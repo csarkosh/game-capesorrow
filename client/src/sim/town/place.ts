@@ -1,0 +1,33 @@
+/**
+ * Cape Sorrow's place: what the game lays over the engine's coast. Importing `coast.ts` registers the
+ * coast with it as the terrain `olympic`, on every thread that builds a world.
+ *
+ * Today it is the town's made ground (`ground.ts`): the fill the town stands on at the cove, the coast's
+ * climb to the massif drawn out behind it so the ground inland of the highway is not a wall, the cliff
+ * bands and the forest kept off the fill, and a clearing about the player's start.
+ */
+import { COVE_Z, type CoastOverlay } from "@csarkosh/engine/sim/olympic";
+import { townBlendWindowD, TOWN_BLEND_END, TOWN_BLEND_TUNABLES } from "./blend.js";
+import { CLEARING_TUNABLES, townFeatureMask, townKeepD } from "./clearing.js";
+import { GROUND_TUNABLES, townGroundD } from "./ground.js";
+import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_SEED_MIX } from "./siteFor.js";
+import { START_SEAWARD, townClearingX } from "./start.js";
+
+export const CAPE_PLACE: CoastOverlay = {
+  tunables: {
+    ...GROUND_TUNABLES,
+    ...TOWN_BLEND_TUNABLES,
+    ...CLEARING_TUNABLES,
+    SHORE_SCAN_STEP,
+    SHORE_SCAN_REACH,
+    SHORE_BISECT_STEPS,
+    TOWN_ONE,
+    TOWN_SEED_MIX,
+    START_SEAWARD,
+  },
+  blend: { end: TOWN_BLEND_END, windowD: townBlendWindowD },
+  cliffKeepD: townKeepD,
+  shapeD: townGroundD,
+  featureMask: (seed, x, z) => townFeatureMask(seed, x, z),
+  clearing: { z: COVE_Z, x: townClearingX },
+};

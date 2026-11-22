@@ -1,4 +1,5 @@
-/** Importing this registers the coast the empty game is played on: the engine's, with no place of a game's laid over it. */
+/** Importing this registers the coast the game is played on: the engine's, with Cape Sorrow's place laid over it. */
 import { registerOlympic } from "@csarkosh/engine/sim/olympic";
+import { CAPE_PLACE } from "./sim/town/place.js";
 
-registerOlympic(null);
+registerOlympic(CAPE_PLACE);
