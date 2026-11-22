@@ -37,9 +37,9 @@ describe("the empty game as the page that runs a session is handed it", () => {
     expect(EMPTY_GAME.weatherIsOwn("walk")).toBe(false);
   });
 
-  it("is drawn and heard with the engine's own and no parts or voices of a game's", () => {
+  it("is drawn with the engine's own and the town's parts, and heard with no voices of a game's", () => {
     const game = code("game.ts");
-    expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, noParts),");
+    expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),");
     expect(game).toContain("audio: () => createAmbientAudio(noGameSound),");
     expect(typeof noGameSound).toBe("function");
   });
