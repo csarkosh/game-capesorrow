@@ -5,33 +5,29 @@ import "../../src/terrain.js";
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { createForest } from "@csarkosh/engine/sim/forest";
 import { CHUNK_SIZE } from "@csarkosh/engine/sim/forestConstants";
-import { facingYaw } from "@csarkosh/engine/sim/facing";
-import { COVE_Z, SEA_LEVEL, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { SEA_LEVEL } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { addPlayer } from "@csarkosh/engine/sim/tick";
 import { EMPTY_GAME } from "../../src/game.js";
 import { WALK_RULES, createWalkWorld } from "../../src/sim.js";
-import { inFootprint } from "../../src/sim/town/ground.js";
+import { townCover } from "../../src/sim/town/clearing.js";
+import { planFor } from "../../src/sim/town/planFor.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { townSpawnCells } from "../../src/sim/town/spawnCells.js";
-import { START_SEAWARD, townStart } from "../../src/sim/town/start.js";
+import { townStart } from "../../src/sim/town/start.js";
 import { TEN_SEEDS } from "./seeds.js";
 
 const SRC = fileURLToPath(new URL("../../src/", import.meta.url));
 
 describe("the player's start in the town", () => {
-  it("is on the made ground, 40 m seaward of the highway at the anchor's z, facing the sea", () => {
+  it("is the plan's spawn at the FBI office's door: the site's anchor plus the spawn, with its yaw, standing on the made ground above the sea", () => {
     for (const seed of TEN_SEEDS) {
       const start = townStart(seed);
-      const site = siteFor(seed);
-      expect(START_SEAWARD).toBe(40);
-      expect([start.x, start.z]).toEqual([roadCenterX(seed, COVE_Z) - 40, site.anchor.z]);
-      expect(start.yaw).toBe(facingYaw(-1, 0));
-      expect(start.yaw).toBeCloseTo(-Math.PI / 2, 12);
-      expect(inFootprint(seed, start.x, start.z)).toBe(true);
-      expect(elevationSampleAt(seed, start.x, start.z).h).toBeGreaterThan(SEA_LEVEL + 2);
-      // Facing west the ground ends in the sea.
-      expect(elevationSampleAt(seed, site.anchor.x + (site.shoreX[32] as number) - 30, start.z).h).toBeLessThan(SEA_LEVEL);
+      const { anchor } = siteFor(seed);
+      const { spawn } = planFor(seed);
+      expect([start.x, start.z, start.yaw]).toEqual([anchor.x + spawn.x, anchor.z + spawn.z, spawn.yaw]);
+      expect(townCover(seed, start.x, start.z), `seed ${seed}`).toBe(1);
+      expect(elevationSampleAt(seed, start.x, start.z).h, `seed ${seed}`).toBeGreaterThan(SEA_LEVEL + 2);
     }
   });
 
