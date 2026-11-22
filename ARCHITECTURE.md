@@ -147,10 +147,10 @@ monospace type, the filled and hollow buttons, the panel slide, the focus and `i
 or loop and no downloads, join box or update banner, since there is no desktop app.
 
 - `words.ts` holds every word the page says that is the game's own, as constants.
-- `landingModel.ts` decides what the page shows, as data, so the decisions are tested without a DOM: `canPlay` (the dev
-  server, or a build given a signaling address, `VITE_SIGNALING_URL`, which the engine's net layer reads in the same
-  way), then Play, `Loading…` while the world builds, `Waiting for the host…` for a follower, or, where the build cannot
-  play, the quiet line `In development.` in Play's place.
+- `landingModel.ts` decides what the page shows, as data, so the decisions are tested without a DOM: the quiet line
+  `In development.` on every build while the game is that, and under it Play, `Loading…` while the world builds, or
+  `Waiting for the host…` for a follower. Play is offered whether or not the build was given a signaling address: with no
+  server the game is played alone, and the engine's shell shows no party.
 - `landing.ts` paints the model with DOM APIs only (`textContent`, never `innerHTML`) and slides between the home panel and
   the Settings and Credits panels. Settings and Credits are the engine's screens (`renderSettings`, `renderCredits`).
 - The panels have addresses, `/settings` and `/credits`, which the shell routes: `showPanel` slides the page to the panel,

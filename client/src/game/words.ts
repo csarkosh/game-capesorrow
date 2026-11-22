@@ -10,7 +10,7 @@ export const TITLE = "Cape Sorrow";
 export const BLURB_LEAD = "A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that ";
 export const BLURB_TURN = "some of them were true.";
 
-/** Where a build cannot be played, in Play's place: no button, a quiet line. */
+/** Above Play while the game is in development: a quiet line, on every build. */
 export const IN_DEVELOPMENT = "In development.";
 
 export const PLAY = "Play";

@@ -164,9 +164,10 @@ const STYLE = `
     /* Colour still moves under the pointer; the slab no longer does. */
     .landing button:hover:not(:disabled), .landing button:active:not(:disabled) { transform: none; }
   }
-  /* What stands in Play's place: a follower's wait, and a build that cannot play. Quiet, as the
-     blurb is, with Play's own space above it. */
+  /* A follower's wait, in Play's place, and the line that says the game is in development, above
+     Play. Quiet, as the blurb is. The line takes Play's space above it and Play sits close under. */
   .landing .waiting, .landing .developing { margin-top: 1.25rem; }
+  .landing .developing + button, .landing .developing + .waiting { margin-top: 0.5rem; }
   /* Phone widths: the title, copy and buttons scale to a 400 px screen with 16 px gutters and
      nothing wider than the viewport. */
   @media (max-width: 480px) {
@@ -295,6 +296,12 @@ export function renderLanding(
   function paint(v: LandingView): void {
     const parts: Node[] = [];
 
+    // Above Play: the game says it is in development.
+    const developing = document.createElement("p");
+    developing.className = "developing";
+    developing.textContent = v.developing;
+    parts.push(developing);
+
     if (v.play !== undefined) {
       const button = document.createElement("button");
       button.id = "create";
@@ -309,12 +316,6 @@ export function renderLanding(
       waiting.className = "waiting";
       waiting.textContent = v.waiting;
       parts.push(waiting);
-    }
-    if (v.developing !== undefined) {
-      const developing = document.createElement("p");
-      developing.className = "developing";
-      developing.textContent = v.developing;
-      parts.push(developing);
     }
 
     // Beneath the primary action: Play, then Settings, then Credits.

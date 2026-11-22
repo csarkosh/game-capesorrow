@@ -12,8 +12,8 @@ The game is live at **https://games.csarko.sh/capesorrow**. One thing ships ther
 | Client (`client/dist`) | Firebase Hosting site `fps-csarko`, at the path `/capesorrow/`: a free CDN, on the site Day Hike shares | `npm run deploy:client` |
 | Server (`server/`: the engine's server, `@csarkosh/engine-server`, from the release `server/package.json` names) | **Not deployed.** There is no Cloud Run service, no infrastructure of this game's own, and no `_infra/` | nothing yet |
 
-Until there is a server, the client is built with no signaling address and cannot play: the public page shows
-"In development." where Play would be, and that is correct. `npm run deploy:verify` checks the result from the outside,
+Until there is a server, the client is built with no signaling address and is played alone: the public page shows
+"In development." with Play under it and no party box, and that is correct. `npm run deploy:verify` checks the result from the outside,
 against the real public URLs.
 
 Deploys are local scripts by choice. There is no CI deploy, so **the gates below are the only thing standing between a
