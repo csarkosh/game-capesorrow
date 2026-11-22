@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import "../../src/terrain.js";
 import { COVE_Z, SEA_LEVEL, coastGround } from "@csarkosh/engine/sim/olympic";
 import { QUAY_BANK, fillWindowD, townFillFor, type FillArea } from "../../src/sim/town/fill.js";
@@ -93,10 +94,6 @@ describe("fillWindowD", () => {
       expect(u).toBeGreaterThanOrEqual(Math.max(fillWindowD([near], x, z).v, fillWindowD([second], x, z).v) - 1e-12);
       expect(u).toBeLessThanOrEqual(1);
     }
-  });
-
-  it("has no fill for a world yet: the plan's fill will be read where `townFillFor` says so", () => {
-    for (const seed of TEN_SEEDS) expect(townFillFor(seed)).toEqual([]);
   });
 });
 
@@ -213,5 +210,200 @@ describe("the made ground with fill laid over the sea", () => {
     expect(steepest).toBeGreaterThan(0.5);
     expect(steepest).toBeLessThan(3);
     process.stderr.write(`steepest slope at the quay's edge over the bank: ${steepest.toFixed(2)} (${(Math.atan(steepest) * 180 / Math.PI).toFixed(0)} degrees)\n`);
+  });
+});
+
+describe("the plan's fill in the ground", () => {
+  const SEEDS = [20261121, 1, 424242];
+
+  /** The edges of an area as unit inward normals and points, and its vertex average (inside a convex polygon). */
+  function centroid(area: FillArea): { x: number; z: number } {
+    const n = area.polygon.length;
+    return { x: area.polygon.reduce((a, p) => a + p.x, 0) / n, z: area.polygon.reduce((a, p) => a + p.z, 0) / n };
+  }
+
+  it("hands over convex counter-clockwise areas, and the ground deep inside one stands at QUAY where the coast's own was under the sea", () => {
+    let seaward = 0;
+    let edgeCases = 0;
+    let areas = 0;
+    const rows: string[] = [];
+    for (const seed of TEN_SEEDS) {
+      const site = siteFor(seed);
+      const fill = townFillFor(seed);
+      expect(fill.length, `seed ${seed}`).toBeGreaterThan(0);
+      let seedSeaward = 0;
+      for (const area of fill) {
+        areas++;
+        const p = area.polygon;
+        expect(p.length).toBeGreaterThanOrEqual(3);
+        let twice = 0;
+        for (let i = 0; i < p.length; i++) {
+          const a = p[i] as { x: number; z: number };
+          const b = p[(i + 1) % p.length] as { x: number; z: number };
+          const c = p[(i + 2) % p.length] as { x: number; z: number };
+          // Every turn is to the left: convex and counter-clockwise.
+          expect((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x), `seed ${seed}`).toBeGreaterThanOrEqual(-1e-9);
+          twice += a.x * b.z - b.x * a.z;
+        }
+        expect(twice).toBeGreaterThan(0);
+        const c = centroid(area);
+        const x = site.anchor.x + c.x;
+        const z = site.anchor.z + c.z;
+        const base = coastGround(seed, x, z).ground.h;
+        // Over the sea and seaward of the shore's spline, where the plane is flat at QUAY: a middle that is under the
+        // sea by a hair but a few centimetres landward of the spline's shore (the spline is a fit through samples) is
+        // left out, and counted.
+        const landward = c.x - shoreXAt(shoreSplineOf(site), c.z).v >= 0;
+        if (base < SEA_LEVEL && landward) edgeCases++;
+        if (base < SEA_LEVEL && !landward) {
+          seaward++;
+          seedSeaward++;
+          expect(elevationSampleAt(seed, x, z).h, `seed ${seed} at ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`).toBeCloseTo(QUAY, 9);
+        }
+      }
+      rows.push(`seed ${seed}: ${fill.length} areas, ${seedSeaward} with their middle over the sea (all at QUAY)`);
+    }
+    expect(seaward).toBeGreaterThan(20);
+    process.stderr.write(`${rows.join("\n")}\n${areas} areas in all; ${edgeCases} middles under the sea but landward of the shore's spline left out\n`);
+  });
+
+  it("keeps the exact gradient over and round the real fill: 200 points a seed across its quads and the quay's bank", () => {
+    let worst = 0;
+    for (const seed of SEEDS) {
+      const rnd = lcg(seed);
+      const site = siteFor(seed);
+      const fill = townFillFor(seed);
+      const H = 0.0002;
+      let n = 0;
+      let bank = 0;
+      while (n < 200) {
+        // A point near a random area: inside it, or within the bank round it.
+        const area = fill[Math.floor(rnd() * fill.length)] as FillArea;
+        const a = area.polygon[Math.floor(rnd() * area.polygon.length)] as { x: number; z: number };
+        const c = centroid(area);
+        const t = rnd() * 1.4 - 0.2;
+        const x = site.anchor.x + c.x + (a.x - c.x) * t + (rnd() - 0.5) * 6;
+        const z = site.anchor.z + c.z + (a.z - c.z) * t + (rnd() - 0.5) * 6;
+        const w = fillWindowD(fill, x - site.anchor.x, z - site.anchor.z).v;
+        if (w > 0 && w < 1) bank++;
+        const f = (px: number, pz: number) => madeWith(seed, fill, px, pz).out;
+        const g = f(x, z);
+        const fdx = (f(x + H, z).h - f(x - H, z).h) / (2 * H);
+        const fdz = (f(x, z + H).h - f(x, z - H).h) / (2 * H);
+        worst = Math.max(worst, Math.abs(g.dx - fdx), Math.abs(g.dz - fdz));
+        n++;
+      }
+      expect(bank, `seed ${seed} points in the bank`).toBeGreaterThan(20);
+    }
+    expect(worst).toBeLessThan(1e-5);
+    process.stderr.write(`real fill, gradient vs finite difference over 600 points: worst ${worst.toExponential(2)}\n`);
+  });
+
+  it("has no step in height where neighbouring quads meet: across every edge of every area, 0.25 m apart", () => {
+    let worst = 0;
+    let edges = 0;
+    let shared = 0;
+    for (const seed of SEEDS) {
+      const site = siteFor(seed);
+      const fill = townFillFor(seed);
+      for (const area of fill) {
+        const p = area.polygon;
+        for (let i = 0; i < p.length; i++) {
+          const a = p[i] as { x: number; z: number };
+          const b = p[(i + 1) % p.length] as { x: number; z: number };
+          const len = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+          const nx = -(b.z - a.z) / len;
+          const nz = (b.x - a.x) / len;
+          for (const along of [0.25, 0.5, 0.75]) {
+            const ex = a.x + (b.x - a.x) * along;
+            const ez = a.z + (b.z - a.z) * along;
+            edges++;
+            // Is another area on the far side of this edge: a shared edge.
+            if (fillWindowD(fill, ex - nx * 0.5, ez - nz * 0.5).v === 1 && area.polygon.length > 0) shared++;
+            let last = madeWith(seed, fill, site.anchor.x + ex + nx * -2, site.anchor.z + ez + nz * -2).out;
+            for (let d = -1.75; d <= 2; d += 0.25) {
+              const cur = madeWith(seed, fill, site.anchor.x + ex + nx * d, site.anchor.z + ez + nz * d).out;
+              // The normal's slope between the two points, as the gradient gives it.
+              const slope = 0.5 * ((last.dx + cur.dx) * nx + (last.dz + cur.dz) * nz);
+              worst = Math.max(worst, Math.abs(cur.h - last.h - 0.25 * slope));
+              last = cur;
+            }
+          }
+        }
+      }
+    }
+    expect(worst).toBeLessThan(0.02);
+    process.stderr.write(`fill edges crossed ${edges} (${shared} with fill on the far side too): largest step beyond the slope between points 0.25 m apart ${(worst * 100).toFixed(2)} cm\n`);
+  });
+
+  it("is nearly flat on top: the steepest slope over the fill, away from its quay's bank, and any dip between neighbouring quads", () => {
+    const rows: string[] = [];
+    let steepestAll = 0;
+    let dipAll = 0;
+    for (const seed of TEN_SEEDS) {
+      const site = siteFor(seed);
+      const fill = townFillFor(seed);
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const a of fill) {
+        for (const p of a.polygon) {
+          minX = Math.min(minX, p.x);
+          maxX = Math.max(maxX, p.x);
+          minZ = Math.min(minZ, p.z);
+          maxZ = Math.max(maxZ, p.z);
+        }
+      }
+      let steepest = 0;
+      let dip = 0;
+      for (let z = minZ; z <= maxZ; z += 1) {
+        // Along x: where the fill's window is 1 the ground is the plane; a stretch of less than 1 between two such
+        // points less than 40 m apart is a seam between quads, and its lowest height below QUAY is a dip.
+        let lastIn = Number.NaN;
+        let low = Infinity;
+        for (let x = minX; x <= maxX; x += 0.5) {
+          const w = fillWindowD(fill, x, z).v;
+          const s = elevationSampleAt(seed, site.anchor.x + x, site.anchor.z + z);
+          if (w === 1) {
+            steepest = Math.max(steepest, Math.hypot(s.dx, s.dz));
+            if (!Number.isNaN(lastIn) && x - lastIn > 0.5 && x - lastIn < 40) dip = Math.max(dip, QUAY - low);
+            lastIn = x;
+            low = Infinity;
+          } else if (!Number.isNaN(lastIn)) low = Math.min(low, s.h);
+        }
+      }
+      steepestAll = Math.max(steepestAll, steepest);
+      dipAll = Math.max(dipAll, dip);
+      rows.push(`seed ${seed}: steepest slope on the fill ${steepest.toFixed(3)}, deepest dip between quads ${dip.toFixed(2)} m`);
+    }
+    process.stderr.write(`${rows.join("\n")}\n`);
+    expect(steepestAll).toBeLessThan(0.1);
+    expect(dipAll).toBeLessThan(0.25);
+  });
+
+  it("ends in a bank at its quay: between the coast's own ground and the quay's height, with a slope that reads as a wall", () => {
+    let steepest = 0;
+    let points = 0;
+    for (const seed of SEEDS) {
+      const site = siteFor(seed);
+      const fill = townFillFor(seed);
+      const rnd = lcg(seed + 1);
+      for (let k = 0; k < 4000; k++) {
+        const area = fill[Math.floor(rnd() * fill.length)] as FillArea;
+        const c = centroid(area);
+        const p = area.polygon[Math.floor(rnd() * area.polygon.length)] as { x: number; z: number };
+        const x = c.x + (p.x - c.x) * (1 + rnd() * 0.3);
+        const z = c.z + (p.z - c.z) * (1 + rnd() * 0.3);
+        const w = fillWindowD(fill, x, z).v;
+        if (!(w > 0 && w < 1)) continue;
+        points++;
+        const { out } = madeWith(seed, fill, site.anchor.x + x, site.anchor.z + z);
+        steepest = Math.max(steepest, Math.hypot(out.dx, out.dz));
+      }
+    }
+    expect(points).toBeGreaterThan(1000);
+    expect(steepest).toBeLessThan(3);
+    process.stderr.write(`steepest slope in the real quays' banks: ${steepest.toFixed(2)} over ${points} points\n`);
   });
 });
