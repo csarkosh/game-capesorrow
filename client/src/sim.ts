@@ -11,6 +11,7 @@ import { createGroundField } from "@csarkosh/engine/sim/ground";
 import { spiralSpawn } from "@csarkosh/engine/sim/spawnGround";
 import { activeTerrainVariant } from "@csarkosh/engine/sim/terrain";
 import type { PlayerCore, Rules, SimState, SimWorld } from "@csarkosh/engine/sim/tick";
+import { townConstrain } from "./sim/town/solid.js";
 import { townStart } from "./sim/town/start.js";
 
 /** A player: what the engine moves, and nothing of a game's beside it. */
@@ -34,6 +35,8 @@ export const WALK_RULES: Rules<WalkWorld, Walker> = {
   spawn: (world) => ({ pos: spiralSpawn(world.boxes, world.forest.seed, PLAYER_HALF, walkFrom(world.forest.seed)), yaw: townStart(world.forest.seed).yaw }),
   newPlayer: (id, at) => ({ id, pos: cloneVec3(at.pos), vel: { x: 0, y: 0, z: 0 }, yaw: at.yaw, pitch: 0, grounded: false, lastProcessedInput: 0 }),
   held: () => false,
+  /** The town's buildings are walls: a hull is moved out of them and slides along them (`sim/town/solid.ts`). */
+  constrain: townConstrain,
   hostStep: () => undefined,
 };
 
