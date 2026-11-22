@@ -7,6 +7,6 @@
     "start": "node ../node_modules/@csarkosh/engine-server/dist/index.js"
   },
   "dependencies": {
-    "@csarkosh/engine-server": "https://github.com/csarkosh/engine/releases/download/v0.2.5/csarkosh-engine-server-0.2.5.tgz"
+    "@csarkosh/engine-server": "https://github.com/csarkosh/engine/releases/download/v0.2.6/csarkosh-engine-server-0.2.6.tgz"
   }
 }

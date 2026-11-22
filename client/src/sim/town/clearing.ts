@@ -47,10 +47,14 @@ export function townCover(seed: number, x: number, z: number, fill: readonly Fil
   return 1 - (1 - bank.v * alongD(zr).v * inlandD(u).v) * (1 - f);
 }
 
-/** No tree and no ground clutter stands on the made ground, the forest and the cover returning over the blend. */
+/**
+ * No tree and no ground clutter stands on the made ground, and nothing lies loose on it (the shore's
+ * driftwood and drift logs, the hillside's scattered rock), the forest, the cover and the drift line
+ * returning over the blend.
+ */
 export function townFeatureMask(seed: number, x: number, z: number): FeatureMask {
   const cover = townCover(seed, x, z);
   if (cover === 0) return { tree: 1, clutter: 1, meadow: 0, bare: 0 };
   const open = smootherstepD(CLEAR_HOLD, 1, 1 - cover).v;
-  return { tree: open, clutter: open, meadow: 0, bare: 0 };
+  return { tree: open, clutter: open, meadow: 0, bare: 0, loose: open };
 }

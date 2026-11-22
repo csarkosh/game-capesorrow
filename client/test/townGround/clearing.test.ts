@@ -95,7 +95,8 @@ describe("the made ground is clear of forest", () => {
   it("holds the forest off by the mask and gives it back over the blend", () => {
     for (const seed of SEEDS) {
       const road = roadCenterX(seed, COVE_Z);
-      expect(townFeatureMask(seed, road + 100, COVE_Z)).toEqual({ tree: 0, clutter: 0, meadow: 0, bare: 0 });
+      // Nothing grows on the made ground and nothing lies loose on it (the engine's `loose`: driftwood, drift logs, scattered rock).
+      expect(townFeatureMask(seed, road + 100, COVE_Z)).toEqual({ tree: 0, clutter: 0, meadow: 0, bare: 0, loose: 0 });
       expect(townFeatureMask(seed, road + TOWN_INLAND + 80, COVE_Z)).toEqual({ tree: 1, clutter: 1, meadow: 0, bare: 0 });
       expect(townFeatureMask(seed, road + 100, TOWN_Z_HALF + 80)).toEqual({ tree: 1, clutter: 1, meadow: 0, bare: 0 });
       let last = 0;
