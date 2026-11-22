@@ -1,26 +1,36 @@
-# Cape Sorrow
+<h1 align="center">Cape Sorrow</h1>
 
-A game built on [`@csarkosh/engine`](https://github.com/csarkosh/engine) at release 0.2.2, started from the engine's empty game.
+<p align="center"><em>A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that some of them were true.</em></p>
+
+You are a detective who investigates paranormal reports across the Pacific Northwest, in an open, procedurally
+generated coastal Washington. It is part PNW life and detective sim, part supernatural horror.
+
+**In development.** Nothing of the game exists yet beyond its title page. It will be played in the browser at
+[games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow), where the page says as much until there is something to
+play.
+
+## Running it
+
+You need Node 22 (see `engines` in `package.json`).
 
 ```
-npm install --legacy-peer-deps
-npm run dev:server   # in one terminal
-npm run dev          # in another
+npm ci
+npm run dev
 ```
 
-The first install needs `--legacy-peer-deps`: with no lockfile yet, npm (10.9.9 was tried) fails in its own peer resolution without it. It writes `package-lock.json`, after which a plain `npm install` works.
+`npm run dev` starts the game's development server and the dev client together, and serves the title page at
+<http://localhost:5174/>. In development, Play starts the engine's empty game, a walkable yard, which stands in until the
+game has a world of its own. Two browser tabs can join each other through the dev server.
 
-| Script | What it does |
-| --- | --- |
-| `npm run dev` | Serves the game on a dev server. |
-| `npm run dev:server` | The game's server, one process with its rooms in memory. |
-| `npm run dev:client` | The same as `npm run dev`. |
-| `npm run build` | Builds the game into `dist/`. |
-| `npm run typecheck` | `tsc` over the game. |
-| `npm test` | The game's tests. |
+Other scripts: `npm run build`, `npm run typecheck`, `npm run lint`, `npm test` (the client and tools suites).
 
-## Playing together
+## Built on
 
-Run `npm run dev:server` in one terminal and `npm run dev` in another. The page reaches the server through the dev server's proxy (`/ws` and `/t`, to `localhost:8080`), so two browser tabs, or two machines reaching the dev server, can join each other.
+[`@csarkosh/engine`](https://github.com/csarkosh/engine), the browser game engine under the sister game
+[Day Hike](https://games.csarko.sh/dayhike): TypeScript, drawing with Babylon Lite on WebGPU, WebRTC netcode between
+peers and a deterministic simulation. [`ARCHITECTURE.md`](ARCHITECTURE.md) says how the game sits on it.
 
-`game.json` says which origins may reach the server (http://localhost:5174 to begin with); extend its `allowedOrigins` when the game has a site. `Dockerfile`, `server.package.json` and `.dockerignore` are for the server's image.
+## Licence
+
+GPL-3.0-only; see [`LICENSE`](LICENSE). The works of others the game and the engine carry are credited under their own
+licences in [`CREDITS.md`](CREDITS.md) and in the engine's, and on the game's Credits screen.
