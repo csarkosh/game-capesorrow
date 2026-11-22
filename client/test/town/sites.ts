@@ -1,21 +1,22 @@
-/** Shared by the town tests: the synthetic sites, and plans made once per seed. */
+/** Shared by the town tests: the world's real sites, and plans made once per world seed. */
 import { planTown } from "../../src/sim/town/plan.js";
 import type { TownSite } from "../../src/sim/town/site.js";
 import type { TownPlan } from "../../src/sim/town/types.js";
+import { realSite } from "../../src/townMap/realSite.js";
 import { syntheticSite } from "../../src/townMap/syntheticSite.js";
 
-export { syntheticSite };
+export { realSite, syntheticSite };
 
-/** Forty seeds, 1 to 40. */
-export const SEEDS: readonly number[] = Array.from({ length: 40 }, (_, i) => i + 1);
+/** Forty world seeds: the ones the game is played on, and 36 more. */
+export const SEEDS: readonly number[] = [20261121, 424242, 123, 99, ...Array.from({ length: 36 }, (_, i) => i + 1)];
 
 const cache: { seed: number; site: TownSite; plan: TownPlan }[] = [];
 
-/** The site and the large port's plan for a seed, made once. */
+/** The real site and the large port's plan for a world seed, made once. */
 export function townFor(seed: number): { site: TownSite; plan: TownPlan } {
   const hit = cache.find((c) => c.seed === seed);
   if (hit) return hit;
-  const site = syntheticSite(seed);
+  const site = realSite(seed);
   const entry = { seed, site, plan: planTown(site, "port") };
   cache.push(entry);
   return entry;

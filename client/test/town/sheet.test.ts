@@ -19,6 +19,11 @@ describe("the contact sheet", () => {
     if (!dir) return;
     mkdirSync(dir, { recursive: true });
     writeFileSync(`${dir}/sheet.svg`, sheet);
-    for (const e of entries) writeFileSync(`${dir}/town-${e.plan.seed === 0 ? 0 : FROM + entries.indexOf(e)}.svg`, planSvg(e.plan, e.site, { width: 1600, lots: true }));
+    for (let k = 0; k < entries.length; k++) writeFileSync(`${dir}/town-${FROM + k}.svg`, planSvg(entries[k]!.plan, entries[k]!.site, { width: 1000, lots: true }));
+    // And single maps of other world seeds, named by TOWN_SHEET_ALSO ("20261121,1,7").
+    for (const s of (process.env.TOWN_SHEET_ALSO ?? "").split(",").filter((x) => x !== "")) {
+      const t = townFor(Number(s));
+      writeFileSync(`${dir}/town-${s}.svg`, planSvg(t.plan, t.site, { width: 1000, lots: true }));
+    }
   });
 });

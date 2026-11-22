@@ -35,7 +35,7 @@ export type LandmarkPlanOut = {
 export type Recipe = {
   history(rng: Rng, names: TownNames, shore: ShoreFacts): { history: History; townName: string };
   layout(site: TownSite, history: History, names: TownNames, s: Streams): Layout;
-  landmarkPlan(layout: Layout, history: History, rng: Rng): LandmarkPlanOut;
+  landmarkPlan(site: TownSite, layout: Layout, history: History, rng: Rng): LandmarkPlanOut;
   lotRule(block: Block, meta: BlockMeta, layout: Layout): LotRule;
   buildings(input: { site: TownSite; history: History; layout: Layout; blocks: readonly Block[]; lots: readonly Lot[]; drafts: readonly LotDraft[] }, rng: Rng): Building[];
   bindLandmarks(history: History, names: TownNames, townName: string, lots: readonly Lot[], buildings: readonly Building[]): Landmark[];
@@ -45,18 +45,11 @@ export type Recipe = {
 const PORT: Recipe = {
   history: makeHistory,
   layout: (site, history, names, s) => layoutPort(site, history, names, s.plats, s.streets),
-  landmarkPlan: (layout, history, rng) => {
-    const p = planLandmarks(layout, history, rng);
+  landmarkPlan: (site, layout, history, rng) => {
+    const p = planLandmarks(site, layout, history, rng);
     return { reservations: p.reservations, civic: p.civic };
   },
-  lotRule: (block, meta) => {
-    const rule = LOT_RULES[block.district];
-    // A deep strip of working waterfront is cut in two rows, the back one facing the track.
-    if (meta.tag === "strip" && block.district === "waterfront" && meta.edge !== undefined) {
-      return meta.edge < -75 ? { ...rule, rows: 2 } : rule;
-    }
-    return rule;
-  },
+  lotRule: (block) => LOT_RULES[block.district],
   buildings: buildPort,
   bindLandmarks,
   spawn: spawnAt,

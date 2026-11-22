@@ -110,9 +110,16 @@ export function cutBlock(
     if (first) lots.push(first);
     let pos = sa;
     const minW = Math.min(...rule.widths);
+    const maxW = Math.max(...rule.widths);
+    // Lots are never wider than the rule's widest: what is left at the end is one lot if it fits, two equal ones if it is a little over, else a gap.
     while (sb - pos > 1) {
+      const rem = sb - pos;
+      if (rem <= maxW) {
+        if (rem >= minW * 0.8) lots.push({ lo: pos, hi: sb, role: null });
+        break;
+      }
       let w = pick(rng, rule.widths);
-      if (sb - pos - w < 0.6 * minW) w = sb - pos;
+      if (rem - w < minW) w = rem / 2;
       lots.push({ lo: pos, hi: pos + w, role: null });
       pos += w;
     }

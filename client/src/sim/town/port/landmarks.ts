@@ -11,6 +11,8 @@ import type { TownNames } from "../names.js";
 import { chance, int, pick, type Rng } from "../rng.js";
 import type { Block, Building, History, Landmark, LandmarkRole, Lot, Spawn } from "../types.js";
 import type { BlockMeta, Layout } from "./layout.js";
+import { roadAt } from "../shore.js";
+import type { TownSite } from "../site.js";
 
 export type LandmarkPlan = {
   readonly reservations: Reservation[];
@@ -34,12 +36,12 @@ function nearest(blocks: readonly Block[], ids: readonly number[], target: Vec):
   return best;
 }
 
-export function planLandmarks(layout: Layout, history: History, rng: Rng): LandmarkPlan {
-  const { blocks, meta } = layout;
+export function planLandmarks(site: TownSite, layout: Layout, history: History, rng: Rng): LandmarkPlan {
+  const { blocks, meta, old } = layout;
   const used: boolean[] = [];
   const reservations: Reservation[] = [];
   const civic: number[] = [];
-  const claimant = (id: number): boolean => blocks[id]!.plat === "claim";
+  const isOld = (id: number): boolean => meta[id]!.tag === "old";
   const ids = (f: (b: Block, m: BlockMeta) => boolean): number[] => {
     const out: number[] = [];
     for (const b of blocks) if (!used[b.id] && f(b, meta[b.id]!)) out.push(b.id);
@@ -50,42 +52,54 @@ export function planLandmarks(layout: Layout, history: History, rng: Rng): Landm
     used[block] = true;
     reservations.push({ block, role, side, at: chance(rng, 0.5) ? "start" : "end", width, whole });
   };
+  const coreRows = old.coreRows;
+  const rowLo = coreRows.length > 0 ? Math.min(...coreRows) : 0;
+  const rowHi = coreRows.length > 0 ? Math.max(...coreRows) : 0;
+  /** The side of a block that faces the main street: the core's rows lie either side of it, the lower row's high side and the upper row's low side. */
+  const toMain = (id: number): "lo" | "hi" => (meta[id]!.row >= old.mainLine ? "lo" : "hi");
 
   // The FBI office: one block off the main street, beside the core.
   const fbiVariant: "federal" | "office" = chance(rng, 0.6) ? "federal" : "office";
-  let fbiBlocks = ids((b, m) => claimant(b.id) && m.tag === "grid" && m.row === 1 && Math.abs(m.d) < 1 && b.district === "core");
-  if (fbiBlocks.length === 0) fbiBlocks = ids((b, m) => claimant(b.id) && m.tag === "grid" && m.row >= 1 && b.district === "core");
-  if (fbiBlocks.length === 0) fbiBlocks = ids((b) => b.district === "core");
-  if (fbiBlocks.length === 0) fbiBlocks = ids((b) => claimant(b.id));
-  const fbi = fbiBlocks.length > 0 ? pick(rng, fbiBlocks) : -1;
+  let fbiBlocks = ids((b, x) => isOld(b.id) && (x.row === rowHi + 1 || x.row === rowLo - 1) && Math.abs(x.d) < 1.5);
+  if (fbiBlocks.length === 0) fbiBlocks = ids((b) => isOld(b.id) && b.district === "core");
+  if (fbiBlocks.length === 0) fbiBlocks = ids((b) => isOld(b.id));
+  if (fbiBlocks.length === 0) fbiBlocks = ids(() => true);
+  // A whole four-cornered block, so that the lot at its street is a plain one.
+  const plain = fbiBlocks.filter((id) => blocks[id]!.polygon.length === 4);
+  const fbi = fbiBlocks.length > 0 ? pick(rng, plain.length > 0 ? plain : fbiBlocks) : -1;
   reserve(fbi, fbiVariant === "federal" ? "fbi-federal" : "fbi-office", "lo", fbiVariant === "federal" ? int(rng, 26, 30) : int(rng, 22, 26));
 
-  // The boom-era hotel, the bank and the lodge hall, in the core's first row, facing the main street.
-  const row0 = ids((b, m) => claimant(b.id) && m.tag === "grid" && m.row === 0 && b.district === "core");
+  // The boom-era hotel, the bank and the lodge hall, on the blocks that face the main street.
   const coreAny = ids((b) => b.district === "core");
-  const hotel = row0.length > 0 ? nearest(blocks, row0, layout.wharfFoot) : coreAny.length > 0 ? nearest(blocks, coreAny, layout.wharfFoot) : -1;
-  reserve(hotel, "hotel", "lo", int(rng, 26, 32));
-  const rest = row0.filter((id) => !used[id]);
-  if (rest.length > 0) reserve(pick(rng, rest), "bank", "lo", 15);
-  const row1 = ids((b, m) => claimant(b.id) && m.tag === "grid" && (m.row === 1 || m.row === 0) && b.district === "core");
-  if (row1.length > 0) reserve(pick(rng, row1), "lodge", "hi", 15);
+  const facing = ids((b) => isOld(b.id) && b.district === "core");
+  const hotel = facing.length > 0 ? nearest(blocks, facing, layout.wharfFoot) : coreAny.length > 0 ? nearest(blocks, coreAny, layout.wharfFoot) : -1;
+  if (hotel >= 0) reserve(hotel, "hotel", toMain(hotel), int(rng, 26, 32));
+  const rest = facing.filter((id) => !used[id]);
+  if (rest.length > 0) {
+    const b = pick(rng, rest);
+    reserve(b, "bank", toMain(b), 15);
+  }
+  const lodges = ids((b) => b.district === "core");
+  if (lodges.length > 0) reserve(pick(rng, lodges), "lodge", "hi", 15);
   if (history.founding.purpose === "customs") {
-    const c = ids((b, m) => claimant(b.id) && m.tag === "grid" && m.row === 0 && b.district === "core");
-    if (c.length > 0) reserve(pick(rng, c), "customs", "lo", 24);
+    const c = ids((b) => isOld(b.id) && b.district === "core");
+    if (c.length > 0) {
+      const b = pick(rng, c);
+      reserve(b, "customs", toMain(b), 24);
+    }
   }
 
-  // The working waterfront: the depot where the railroad meets the wharf street, the public port's terminal toward the mill.
-  const strips = (f: (m: BlockMeta) => boolean): number[] => ids((b, m) => m.tag === "strip" && f(m));
+  // The working waterfront: the depot where the railroad meets the wharf street, at the quay; the public port's terminal on the flats.
   if (history.railroad) {
-    const s = strips((m) => Math.abs(m.d) <= 0.5);
-    if (s.length > 0) reserve(pick(rng, s), "depot", "hi", 24);
+    let s = ids((b, x) => isOld(b.id) && x.row === 0 && Math.abs(x.d) < 1.5);
+    if (s.length === 0) s = ids((b, x) => isOld(b.id) && x.row === 0);
+    if (s.length === 0) s = ids((b) => isOld(b.id));
+    if (s.length > 0) reserve(nearest(blocks, s, layout.wharfFoot), "depot", "lo", 24);
   }
-  let term = strips((m) => m.d < -0.5 && m.d >= -3.5);
-  if (term.length === 0) term = strips((m) => m.d < 0);
-  if (term.length === 0) term = strips(() => true);
+  const term = ids((b, x) => x.site === "terminal");
   if (term.length > 0) {
     let best = term[0]!;
-    for (const id of term) if (Math.abs(meta[id]!.d + 1.5) < Math.abs(meta[best]!.d + 1.5)) best = id;
+    for (const id of term) if (Math.abs(area0(blocks[id]!)) > Math.abs(area0(blocks[best]!))) best = id;
     reserve(best, "terminal", "hi", 45);
   }
 
@@ -93,7 +107,7 @@ export function planLandmarks(layout: Layout, history: History, rng: Rng): Landm
   const resid = ids((b) => b.district === "residential" || b.district === "mill housing");
   const nearCore = resid
     .map((id) => ({ id, d: dist(centroid(blocks[id]!.polygon), layout.coreCentre) }))
-    .filter((x) => x.d > 110 && x.d < 420)
+    .filter((x) => x.d > 90 && x.d < 460)
     .sort((p, q) => p.d - q.d || p.id - q.id);
   const first = nearCore.slice(0, 5);
   if (first.length > 0) {
@@ -103,35 +117,42 @@ export function planLandmarks(layout: Layout, history: History, rng: Rng): Landm
     if (second.length > 0) reserve(pick(rng, second).id, "church", "hi", 22);
   }
 
-  // The civic blocks, whole: the high school and the hospital on the high ground inland, the courthouse if the town is the seat.
-  const big = (min: number) => (b: Block): boolean => (b.district === "residential" || b.district === "mill housing") && area0(b) >= min && b.plat === "company";
-  const inlandPoint = (dx: number, dz: number): Vec => ({ x: layout.coreCentre.x + dx, z: layout.coreCentre.z + dz });
+  // The civic blocks, whole, on the hill inland of the highway: the high school, the hospital, the courthouse if the town is the seat.
+  const hill = (min: number) => (b: Block): boolean => {
+    const c = centroid(b.polygon);
+    return b.plat === "company" && (b.district === "residential" || b.district === "mill housing") && c.x > roadAt(site, c.z) + 25 && Math.abs(area0(b)) >= min;
+  };
+  const hillAt = (dx: number, dz: number): Vec => {
+    const z = layout.coreCentre.z + dz;
+    return { x: roadAt(site, z) + dx, z };
+  };
   const bigAny = (min: number): number[] => {
-    for (const m of [min, 4500, 3000]) {
-      const found = ids(big(m));
+    for (const mn of [min, 4500, 3000, 1800]) {
+      const found = ids(hill(mn));
       if (found.length > 0) return found;
     }
-    return [];
+    return ids((b) => b.plat === "company" && (b.district === "residential" || b.district === "mill housing") && Math.abs(area0(b)) >= 1800);
   };
-  const school = nearest(blocks, bigAny(6500), inlandPoint(380, int(rng, -120, 120)));
+  const school = nearest(blocks, bigAny(6500), hillAt(150, int(rng, -150, 150)));
   if (school >= 0) {
     reserve(school, "school", "lo", 0, true);
     civic.push(school);
   }
-  const hospital = nearest(blocks, bigAny(6500), inlandPoint(560, int(rng, -250, 250)));
+  const hospital = nearest(blocks, bigAny(6500), hillAt(230, int(rng, -250, 250)));
   if (hospital >= 0) {
     reserve(hospital, "hospital", "lo", 0, true);
     civic.push(hospital);
   }
   if (history.countySeat.isSeat) {
-    const ch = nearest(blocks, bigAny(4500), inlandPoint(250, int(rng, -60, 60)));
+    const ch = nearest(blocks, bigAny(4500), hillAt(90, int(rng, -60, 60)));
     if (ch >= 0) {
       reserve(ch, "courthouse", "lo", 0, true);
       civic.push(ch);
     }
   }
   if (history.present.tsunamiRefuge) {
-    const r = nearest(blocks, ids((b) => b.district === "residential" && b.plat === "company"), inlandPoint(300, int(rng, 60, 200)));
+    const cand = ids(hill(1800));
+    const r = nearest(blocks, cand.length > 0 ? cand : ids((b) => b.district === "residential" && b.plat === "company"), hillAt(60, int(rng, 60, 200)));
     if (r >= 0) reserve(r, "refuge", "hi", 22);
   }
   return { reservations, civic };

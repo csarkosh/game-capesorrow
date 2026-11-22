@@ -140,6 +140,10 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   out.push(`<polygon points="${poly([...land, { x: v.x1, z: v.z1 + 10 }, { x: v.x1, z: v.z0 - 10 }])}" fill="#1c201b"/>`);
   out.push(`<polyline points="${poly(land)}" fill="none" stroke="#5fa8c8" stroke-width="2.2"/>`);
 
+  // The made ground: fill the old plat stands on, drawn differently from natural land, and the quay.
+  for (const f of plan.fill) out.push(`<polygon points="${poly(f.polygon)}" fill="#3a3a30" stroke="none"/>`);
+  out.push(`<line x1="${X(plan.quay.a.x)}" y1="${Y(plan.quay.a.z)}" x2="${X(plan.quay.b.x)}" y2="${Y(plan.quay.b.z)}" stroke="#e8e0c8" stroke-width="2.4"/>`);
+
   // Plats' outlines.
   for (const p of plan.plats) out.push(`<polygon points="${poly(p.polygon)}" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="1" stroke-dasharray="6 5"/>`);
 
@@ -227,7 +231,7 @@ export function sheetCaption(plan: TownPlan): string[] {
   return [
     `${plan.name} (seed ${plan.seed})`,
     `founded: ${h.founding.purpose} ${h.founding.year}`,
-    `waterfront grid ${plan.plats[0]!.bearing.deg}deg (${h.firstPlat.basis}), company grid 0deg${seam ? `, seam ${Math.round(seam.angle)}deg` : ""}`,
+    `old grid ${plan.plats[0]!.bearing.deg}deg (${h.firstPlat.basis}), company grid 0deg${seam ? `, seam ${Math.round(seam.angle)}deg` : ""}`,
     `${h.fire ? `fire ${h.fire.year}` : "no fire"}, ${h.railroad ? "rail" : "no rail"}, mill ${h.mill.fate}${h.countySeat.isSeat ? ", county seat" : ""}`,
     `${plan.counts.blocks} blocks, ${plan.counts.buildings} buildings`,
   ];
@@ -237,7 +241,7 @@ export function sheetCaption(plan: TownPlan): string[] {
 export function sheetSvg(entries: readonly { plan: TownPlan; site: TownSite }[], columns: number, cell = 560): string {
   const capH = 96;
   const rows = Math.ceil(entries.length / columns);
-  const cellH = Math.round(cell * 0.85) + capH;
+  const cellH = Math.round(cell * 1.25) + capH;
   const W = columns * cell;
   const H = rows * cellH;
   const out: string[] = [];
