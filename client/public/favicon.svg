@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- A placeholder mark: a pale beam of light across a dark ground, and a "CS" monogram. -->
+  <rect width="64" height="64" rx="12" fill="#101014"/>
+  <path d="M6 14 L58 26 L58 34 Z" fill="#c6dede" opacity="0.28"/>
+  <text x="32" y="46" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="22" font-weight="600" letter-spacing="2" fill="#dbe2e2">CS</text>
+</svg>

@@ -30,6 +30,7 @@ export default mergeConfig(
     test: {
       environment: "node",
       include: ["test/**/*.test.ts"],
+      setupFiles: ["test/setup/identity.ts"],
       // A test here makes a real world from a seed, which takes seconds on a loaded machine, so the
       // limits are the empty game's own 120 s, scaled by TEST_TIME_SCALE like every explicit limit.
       // Only under vitest, which sets VITEST before it loads this file: `vite dev` and `vite build`

@@ -1,67 +1,95 @@
 /**
- * The empty game as the page's shell is handed it (`pageGame.ts`): its
- * definition on a page, and its own of the page, which is as little as a
- * page can be. A title and a Play button for a landing page, nothing played
- * before a session starts, a line for a visitor whose browser cannot draw
- * the world, a name and the one mode.
+ * Cape Sorrow as the page's shell is handed it (`pageGame.ts`): its definition on a page, and its
+ * own of the page. Until the game has a world of its own, what Play starts is the engine's empty
+ * game (a walkable yard); the page around it is Cape Sorrow's: a title page with Play, Settings
+ * and Credits, and nothing played before a session starts.
  */
-import { createModeKeeper } from "@csarkosh/engine/game/modeList";
+import { isMode, createModeKeeper } from "@csarkosh/engine/game/modeList";
 import type { LandingShell, PageGame, PageHost, PageSide } from "@csarkosh/engine/game/pageGame";
-import { pageStorage } from "@csarkosh/engine/game/tierChoice";
+import type { Route } from "@csarkosh/engine/game/router";
+import { pageStorage, parseTierOverride } from "@csarkosh/engine/game/tierChoice";
 import type { AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
 import { EMPTY_GAME, WALK_MODES, type WalkClient, type WalkHost, type WalkRenderer } from "./game.js";
+import { creditsEntries } from "./game/credits.js";
+import { renderLanding, type LandingHandle, type LandingPanel } from "./game/landing.js";
+import { canPlay, landingModel, type LandingInput } from "./game/landingModel.js";
 import { createStatusLine, type WalkHud } from "./hud.js";
+import { CAPE_IDENTITY } from "./identity.js";
 import { WALK_PROTOCOL } from "./net.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
-const STYLE = `
-.empty-landing { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; font: 16px/1.4 ui-monospace, Menlo, monospace; color: #e8e8ea; }
-.empty-landing h1 { font-size: 22px; letter-spacing: 0.3em; margin: 0; font-weight: 600; }
-.empty-landing button { font: inherit; color: inherit; background: #fff1; border: 1px solid #fff5; border-radius: 4px; padding: 8px 28px; letter-spacing: 0.2em; }
-.empty-landing button:disabled { opacity: 0.5; }
-`;
+/** Cape Sorrow's own of the page: made once by the shell, called at the page's own points. */
+export function createCapePage(h: PageHost): PageSide {
+  let landing: LandingHandle | null = null;
+  // The mode (`WALK_MODES`), kept the same way as the graphics choice.
+  const modeChoice = createModeKeeper(WALK_MODES, pageStorage);
+  const currentMode = (): string => modeChoice.mode();
+  const saveMode = (mode: string): void => {
+    modeChoice.save(mode);
+    h.telemetry.event("settings", { mode });
+  };
 
-/** The empty game's own of the page: made once by the shell, called at the page's own points. */
-export function createEmptyPage(h: PageHost): PageSide {
-  let landing: { play: HTMLButtonElement; root: HTMLElement } | null = null;
-  const mode = createModeKeeper(WALK_MODES, pageStorage);
+  /** What the title page shows of the shell as it stands now: a follower waits for the host, and Play says so while it loads. */
+  function landingInput(): LandingInput {
+    return {
+      playable: canPlay(import.meta.env),
+      follower: h.lobby !== null && h.lobby.state.role === "client",
+      launching: h.launching,
+      quality: {
+        choice: h.currentChoice(),
+        auto: h.autoSummary(),
+        override: parseTierOverride(location.search),
+        stored: h.choiceStored(),
+        notice: h.choiceNotice ?? undefined,
+        mode: currentMode(),
+        modes: WALK_MODES,
+      },
+    };
+  }
 
-  /** The landing page shows what the shell holds now: a follower waits for the host, and Play says so while it loads. */
-  function repaint(): void {
-    if (landing === null) return;
-    const follower = h.lobby !== null && h.lobby.state.role === "client";
-    landing.play.disabled = follower || h.launching;
-    landing.play.textContent = follower ? "WAITING FOR THE HOST" : h.launching ? "LOADING…" : "PLAY";
+  function repaintLanding(): void {
+    landing?.setView(landingModel(landingInput()));
+  }
+
+  /** The panel an address shows: Settings and Credits have their own, and every other address is the home panel (there is no Downloads panel). */
+  function panelFor(route: Route): LandingPanel {
+    if (route.kind === "credits") return "credits";
+    if (route.kind === "settings") return "settings";
+    return "home";
   }
 
   return {
-    showLanding(container: HTMLDivElement, _route, shell: LandingShell) {
-      const style = document.createElement("style");
-      style.textContent = STYLE;
-      const root = document.createElement("div");
-      root.className = "empty-landing";
-      const title = document.createElement("h1");
-      title.textContent = "CAPE SORROW";
-      const play = document.createElement("button");
-      play.type = "button";
-      play.addEventListener("click", () => shell.play());
-      root.append(title, play);
-      container.append(style, root);
-      const shown = { play, root };
-      landing = shown;
-      repaint();
-      return {
-        dispose: () => {
-          if (landing === shown) landing = null;
-          root.remove();
-          style.remove();
+    showLanding(container: HTMLDivElement, route, shell: LandingShell) {
+      const handle = renderLanding(
+        container,
+        landingModel(landingInput()),
+        {
+          onCreate: shell.play,
+          onSettings: () => shell.toPanel("settings"),
+          onChooseTier: (choice) => {
+            shell.chooseTier(choice);
+            repaintLanding();
+          },
+          onChooseMode: (mode) => {
+            // A value that is not one of the game's modes is ignored.
+            if (!isMode(WALK_MODES, mode)) return;
+            saveMode(mode);
+            repaintLanding();
+          },
+          onCredits: () => shell.toPanel("credits"),
+          onBack: shell.back,
         },
-      };
+        panelFor(route),
+      );
+      landing = handle;
+      return { dispose: () => handle.dispose() };
     },
     landingUp: () => landing !== null,
-    // One page and no panels: a panel's address shows the landing page as it stands.
-    showPanel: () => undefined,
-    repaint,
+    // A panel's address, with the title page already up: the panel slides in or out, and the browser's Back closes it.
+    showPanel(route) {
+      landing?.setPanel(panelFor(route));
+    },
+    repaint: repaintLanding,
     left() {
       landing = null;
     },
@@ -75,24 +103,24 @@ export function createEmptyPage(h: PageHost): PageSide {
     turnedAway() {
       landing = null;
     },
-    mode: mode.mode,
+    mode: currentMode,
     saveMode(next) {
-      if (WALK_MODES.modes.some((m) => m.id === next)) mode.save(next);
+      if (isMode(WALK_MODES, next)) saveMode(next);
     },
   };
 }
 
-export const EMPTY_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio, WalkHud, WalkHost, WalkClient> = {
+export const CAPE_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio, WalkHud, WalkHost, WalkClient> = {
   game: EMPTY_GAME,
-  side: createEmptyPage,
-  identity: { title: "Cape Sorrow", session: "walk", player: "Walker", storage: "capesorrow", desktop: "CapeSorrow" },
-  /** The page for those turned away stands on no still and credits no works. */
-  away: { still: () => null, credits: () => [] },
+  side: createCapePage,
+  identity: CAPE_IDENTITY,
+  /** The page for those turned away stands on no still (the title page has none), and credits the same works the Credits screen does. */
+  away: { still: () => null, credits: creditsEntries },
   protocol: WALK_PROTOCOL,
   statusLine: createStatusLine,
   /** The worker that makes a session's world: the entry is the game's, since a worker is named by a path. */
   worldWorker: () => new Worker(new URL("./world.worker.ts", import.meta.url), { type: "module" }),
-  /** The empty game stages no scene: a scene's address draws nothing. */
+  /** No scene is staged yet: a scene's address draws nothing. */
   scene: () => ({ dispose: () => undefined }),
   /** What the tier check draws as it measures the renderer: the yard with nobody in it. */
   probeState: (_level, _seed, forest) => createWalkWorld(forest, false).state,
