@@ -11,13 +11,12 @@
  * too: the research has no building inventories for large ports.
  */
 import { orientedRect, type Vec } from "../geom.js";
-import { bearingU, bearingV } from "../bearings.js";
+import { COMPASS, bearingU, bearingV } from "../bearings.js";
 import { fitRect, lotExtents, type LotDraft, type Want } from "../lots.js";
 import { chance, int, next, pick, range, shuffled, weighted, type Rng } from "../rng.js";
-import { polyOnLand } from "../shore.js";
 import type { TownSite } from "../site.js";
 import type { Block, Building, BuildingKind, BuildingState, History, Lot, Material, Roof } from "../types.js";
-import type { BlockMeta, Layout } from "./layout.js";
+import { onMadeGround, type BlockMeta, type Layout } from "./layout.js";
 
 const dec = (y: number): number => Math.floor(y / 10) * 10;
 
@@ -111,6 +110,8 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
         case "customs":
           return { ...coreStockNoInfill(), material: "stone" };
         case "depot":
+          // A depot in the burned core was rebuilt with it.
+          if (fire && district === "core") return coreStockNoInfill();
           return { era: dec(history.railroad?.year ?? 1900), material: chance(rng, 0.7) ? "wood" : "brick" };
         case "terminal":
           return { era: dec(history.port.year + int(rng, 0, 50)), material: pick(rng, ["metal", "concrete"] as const) };
@@ -144,7 +145,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
       case "mill housing":
         return { era: dec(history.mill.startYear + int(rng, 0, 40)), material: "wood" };
       case "residential": {
-        const claim = m.frame === layout.claim.frame;
+        const claim = m.frame === layout.old.frame;
         const era = claim ? dec(1885 + int(rng, 0, 45)) : dec(1905 + int(rng, 0, 65));
         return { era, material: era >= 1950 && chance(rng, 0.35) ? "stucco" : "wood" };
       }
@@ -169,19 +170,14 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
   };
 
   const kindFor = (district: string, m: BlockMeta, lotW: number): BuildingKind => {
-    const t = m.d;
     const cannery = history.founding.purpose === "cannery";
     switch (district) {
       case "core":
         return weighted<BuildingKind>(rng, [["storefront", 78], ["tavern", 6], ["office", 8], ["storefront", 8]]);
       case "dock":
-        if (m.tag === "strip") return weighted<BuildingKind>(rng, [["cannery", cannery ? 35 : 12], ["warehouse", 35], ["tavern", 20], ["boarding house", 15]]);
-        return weighted<BuildingKind>(rng, [["tavern", 25], ["boarding house", 22], ["storefront", 33], ["warehouse", 20]]);
+        return weighted<BuildingKind>(rng, [["tavern", 25], ["boarding house", 22], ["storefront", 33], ["warehouse", 20], ["cannery", cannery ? 25 : 4]]);
       case "waterfront":
-        if (t <= -2.5) return weighted<BuildingKind>(rng, [["warehouse", 70], ["garage", 10], ["port terminal shed", 20]]);
-        if (t < -0.5) return weighted<BuildingKind>(rng, [["port terminal shed", 55], ["warehouse", 35], ["silo", history.port.handles === "grain" ? 25 : 0]]);
-        if (t <= 0.5) return weighted<BuildingKind>(rng, [["warehouse", 60], ["storefront", 25], ["garage", 15]]);
-        return weighted<BuildingKind>(rng, [["warehouse", 60], ["cannery", cannery ? 35 : 10], ["tavern", 10]]);
+        return weighted<BuildingKind>(rng, [["port terminal shed", 55], ["warehouse", 30], ["silo", history.port.handles === "grain" ? 25 : 0], ["garage", 5]]);
       case "mill":
         return chance(rng, 0.9) ? "mill shed" : "warehouse";
       case "mill housing":
@@ -428,7 +424,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
       case "mill housing":
         return 0.76 - decline;
       case "residential": {
-        const claim = m.frame === layout.claim.frame;
+        const claim = m.frame === layout.old.frame;
         return (claim ? 0.8 : 0.62) - decline;
       }
       case "highway strip":
@@ -503,7 +499,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
 
   // Nothing stands in the sea but what belongs there: drop any building that is not landward of the shoreline.
   const polyOf = (d: Draft): Vec[] => orientedRect(d.centre, d.halfAlong, d.halfAcross, bearingU(d.bearing), bearingV(d.bearing));
-  const onLand = out.filter((d) => polyOnLand(site, polyOf(d), 0.5) || d.keep);
+  const onLand = out.filter((d) => onMadeGround(site, layout.fill, polyOf(d)) || d.keep);
 
   // The town's fill: the chance of each district is raised, together, until enough of the plan is built (a plan of few blocks is built fuller).
   const MIN_BUILT = 285;
@@ -531,48 +527,29 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
     kept = kept.filter((d) => !dropped.includes(d));
   }
 
-  // ---- Piers, and the sheds on piles at their ends, from the strip blocks and the mill's site.
+  // ---- Piers, and the sheds on piles at their ends, where the layout found water for them: from the quay and from the flats' shore.
   const piers: Draft[] = [];
-  const U = layout.claim.frame.U;
-  const V = layout.claim.frame.V;
-  const f = layout.claim.frame;
-  const shoreVAt = (u: number): number => {
-    let v = -Infinity;
-    for (const q of layout.claim.shore) if (Math.abs(q.u - u) <= 4 && q.v > v) v = q.v;
-    return v === -Infinity ? -100 : v;
-  };
-  for (const block of blocks) {
-    const m = layout.meta[block.id]!;
-    if (m.tag === "grid" || m.edge === undefined) continue;
-    const near = Math.abs(m.d) <= 0.5;
-    const cannerySide = history.founding.purpose === "cannery" && m.d >= 1.5;
-    if (!(near || cannerySide || chance(rng, 0.45))) continue;
-    // The block's own u range, in the claimant's frame.
-    let u0 = Infinity;
-    let u1 = -Infinity;
-    for (const p of block.polygon) {
-      const l = { u: (p.x - f.o.x) * U.x + (p.z - f.o.z) * U.z };
-      u0 = Math.min(u0, l.u);
-      u1 = Math.max(u1, l.u);
-    }
-    const uc = (u0 + u1) / 2 + range(rng, -10, 10);
-    const sv = shoreVAt(uc);
-    const edge = m.edge;
-    const reach = edge - sv + 20 + int(rng, 0, 45);
-    const width = range(rng, 6, 10);
-    const overSea = cannerySide && m.d >= 1.5 && chance(rng, 0.6);
-    const shedLen = overSea ? 26 : near && chance(rng, 0.5) ? 22 : 0;
-    const pierLen = reach - shedLen;
-    if (pierLen < 12) continue;
-    const mk = (v0: number, v1: number, w: number, kind: BuildingKind, state: BuildingState, material: Material, storeys: number, h: number): Draft => {
-      const c: Vec = { x: f.o.x + uc * U.x + ((v0 + v1) / 2) * V.x, z: f.o.z + uc * U.z + ((v0 + v1) / 2) * V.z };
+  for (const spot of layout.pierSpots) {
+    const block = blocks[spot.block];
+    const m = block ? layout.meta[spot.block]! : null;
+    const shoreSite = m?.site ?? null;
+    const dockSide = spot.kind === "quay" && m !== null && m.d > 0;
+    const cannery = history.founding.purpose === "cannery" && dockSide && chance(rng, 0.6);
+    const terminalShed = shoreSite === "terminal" && chance(rng, 0.7);
+    const shedLen = (cannery || terminalShed) && spot.length >= 54 ? 24 : 0;
+    const pierLen = spot.length - shedLen;
+    const bearing = spot.kind === "quay" ? layout.old.bearing : COMPASS;
+    const mk = (s0: number, s1: number, w: number, kind: BuildingKind, state: BuildingState, material: Material, h: number): Draft => {
+      // The rectangle from s0 to s1 metres along the pier's own line, `w` wide.
+      const mid = (s0 + s1) / 2;
+      const c: Vec = { x: spot.origin.x + spot.dir.x * mid, z: spot.origin.z + spot.dir.z * mid };
       return {
         lot: -1,
         centre: c,
         halfAlong: w / 2,
-        halfAcross: Math.abs(v1 - v0) / 2,
-        bearing: layout.claim.bearing,
-        storeys,
+        halfAcross: (s1 - s0) / 2,
+        bearing,
+        storeys: 1,
         height: h,
         roof: kind === "pier" ? "flat" : "gable",
         kind,
@@ -585,11 +562,11 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
         occ: 1,
       };
     };
-    const pierState: BuildingState = millClosed && chance(rng, 0.3) ? "ruin" : "open";
-    piers.push(mk(edge - pierLen, edge, width, "pier", pierState, "wood", 1, 2.5));
+    const pierState: BuildingState = millClosed && shoreSite === "mill" && chance(rng, 0.5) ? "ruin" : "open";
+    piers.push(mk(0, pierLen, spot.width, "pier", pierState, "wood", 2.5));
     if (shedLen > 0) {
-      const shedKind: BuildingKind = overSea ? "cannery" : "port terminal shed";
-      piers.push(mk(edge - pierLen - shedLen, edge - pierLen, overSea ? 18 : 16, shedKind, "open", overSea ? "wood" : "metal", 1, 9));
+      const kind: BuildingKind = cannery ? "cannery" : "port terminal shed";
+      piers.push(mk(pierLen, pierLen + shedLen, Math.max(spot.width + 4, 16), kind, "open", cannery ? "wood" : "metal", 9));
     }
   }
 

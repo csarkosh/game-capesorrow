@@ -6,7 +6,7 @@
  * first and everything after it is derived from it. Nothing here asks which kind of town it is making:
  * the recipe (`recipes.ts`) supplies each step.
  */
-import { bbox, type Poly } from "./geom.js";
+import { bbox, segSegDist, type Poly } from "./geom.js";
 import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
@@ -35,7 +35,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   const blocks: Block[] = layout.blocks.slice();
 
   // Landmarks reserve their places before the lots are cut.
-  const lmPlan = recipe.landmarkPlan(layout, history, streams.landmarks);
+  const lmPlan = recipe.landmarkPlan(site, layout, history, streams.landmarks);
   for (const id of lmPlan.civic) blocks[id] = { ...blocks[id]!, district: "civic" };
 
   // Lots, and the alleys between them.
@@ -47,7 +47,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     const plat = layout.plats.find((p) => p.id === block.plat)!;
     const res = lmPlan.reservations.find((r) => r.block === block.id);
     const rule = recipe.lotRule(block, meta, layout);
-    const cut = cutBlock(block.polygon, meta.frame, rule, plat.alley, streams.lots, res);
+    // An alley only runs through a plain four-cornered block: where a block is cut oblique its alley would end on no street.
+    const cut = cutBlock(block.polygon, meta.frame, rule, block.polygon.length === 4 ? plat.alley : null, streams.lots, res);
     for (const d of cut.lots) {
       lots.push({
         id: lots.length,
@@ -59,7 +60,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
       });
       drafts.push(d);
     }
-    if (cut.alley) {
+    if (cut.alley && streets.some((st) => st.kind !== "alley" && Math.min(segSegDist(cut.alley!.a, cut.alley!.b, st.a, st.b)) <= (st.width + cut.alley!.width) / 2 + 0.5)) {
       streets.push({ id: streets.length, a: cut.alley.a, b: cut.alley.b, width: cut.alley.width, kind: "alley", plat: block.plat, name: "alley" });
     }
   }
@@ -94,6 +95,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     buildings,
     landmarks,
     spawn,
+    fill: layout.fill,
+    quay: layout.quay,
     bounds: bb,
     counts: { plats: layout.plats.length, streets: streets.length, blocks: blocks.length, lots: lots.length, buildings: buildings.length, open, vacant, ruin },
   };
