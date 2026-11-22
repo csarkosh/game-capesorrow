@@ -1,0 +1,73 @@
+import { describe, expect, it } from "vitest";
+import { planSvg, sheetSvg } from "../../src/townMap/svg.js";
+import { townFor } from "./sites.js";
+
+/** Every tag opened is closed, in order (the SVG is made of nested elements and self-closed ones). */
+function wellFormed(svg: string): boolean {
+  const stack: string[] = [];
+  for (const m of svg.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^>]*?)(\/?)>/g)) {
+    const [, close, name, , self] = m;
+    if (self) continue;
+    if (close) {
+      if (stack.pop() !== name) return false;
+    } else stack.push(name!);
+  }
+  return stack.length === 0;
+}
+
+describe("the plan's SVG", () => {
+  const { plan, site } = townFor(4);
+  const svg = planSvg(plan, site, { lots: true });
+
+  it("is well formed, with a viewBox and no NaN", () => {
+    expect(svg.startsWith("<svg ")).toBe(true);
+    expect(svg.endsWith("</svg>")).toBe(true);
+    expect(svg).toMatch(/viewBox="0 0 [\d.]+ [\d.]+"/);
+    expect(svg).not.toMatch(/NaN|undefined|Infinity/);
+    expect(wellFormed(svg)).toBe(true);
+  });
+
+  it("labels every landmark, the FBI office most prominently", () => {
+    for (const l of plan.landmarks) expect(svg).toContain(l.name.replace(/&/g, "&amp;"));
+    const fbi = plan.landmarks.find((l) => l.role === "fbi")!;
+    const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const sizeOf = (name: string): number => {
+      const el = svg.split("<text ").find((t) => t.includes(`>${esc(name)}</text>`));
+      return Number(/font-size="(\d+)"/.exec(el ?? "")![1]);
+    };
+    const others = plan.landmarks.filter((l) => l.role !== "fbi").map((l) => sizeOf(l.name));
+    expect(sizeOf(fbi.name)).toBeGreaterThan(Math.max(...others));
+  });
+
+  it("draws the sea, the highway, the rail, the blocks, the buildings, the seam, the spawn, the scale and the north arrow", () => {
+    expect(svg).toContain("#0c1822"); // the sea
+    expect(svg).toContain("#9a8d72"); // the highway
+    expect((svg.match(/<polygon /g) ?? []).length).toBeGreaterThan(plan.blocks.length + plan.buildings.length);
+    expect(svg).toContain("#ff8c2a"); // the seam
+    expect(svg).toContain("#3affa0"); // the spawn
+    expect(svg).toContain("100 m");
+    expect(svg).toContain(">N<");
+  });
+
+  it("draws vacant and ruined buildings differently from open ones", () => {
+    expect(plan.counts.vacant).toBeGreaterThan(0);
+    expect(svg).toContain('fill="url(#vacant)"');
+    if (plan.counts.ruin > 0) expect(svg).toContain('fill="url(#ruin)"');
+  });
+
+  it("escapes names", () => {
+    const s = planSvg({ ...plan, name: `A <b> & "c"` }, site, {});
+    expect(s).toContain("A &lt;b&gt; &amp; &quot;c&quot;");
+    expect(wellFormed(s)).toBe(true);
+  });
+
+  it("makes a contact sheet of several towns, each captioned", () => {
+    const entries = [1, 2, 3, 4, 5, 6].map((s) => townFor(s));
+    const sheet = sheetSvg(entries, 3);
+    expect(wellFormed(sheet)).toBe(true);
+    for (const e of entries) {
+      expect(sheet).toContain(e.plan.name.replace(/&/g, "&amp;").replace(/'/g, "'"));
+      expect(sheet).toContain(`seed ${e.plan.seed}`);
+    }
+  });
+});

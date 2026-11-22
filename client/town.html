@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  The town plan's map page, for looking at plans and judging whether towns are alike. It is served by the
+  development server at /town.html and is not part of the production build (index.html is the only page
+  the build takes). /town.html?seed=7 is one town; /town.html?sheet=12&from=1 is a contact sheet.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cape Sorrow - town plans</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #101014; color: #dbe2e2; }
+      #app { height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/townMap/main.ts"></script>
+  </body>
+</html>
