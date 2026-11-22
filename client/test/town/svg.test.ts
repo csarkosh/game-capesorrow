@@ -49,6 +49,12 @@ describe("the plan's SVG", () => {
     expect(svg).toContain(">N<");
   });
 
+  it("draws the made ground differently from natural land, and the quay", () => {
+    expect(svg).toContain("#3a3a30");
+    expect(svg).toContain("#e8e0c8");
+    expect((svg.match(/fill="#3a3a30"/g) ?? []).length).toBe(plan.fill.length);
+  });
+
   it("draws vacant and ruined buildings differently from open ones", () => {
     expect(plan.counts.vacant).toBeGreaterThan(0);
     expect(svg).toContain('fill="url(#vacant)"');

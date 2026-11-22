@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { planTown } from "../../src/sim/town/plan.js";
-import { SEEDS, syntheticSite, townFor } from "./sites.js";
+import { SEEDS, realSite, townFor } from "./sites.js";
 
 describe("the large port's size and speed", () => {
-  it("has 35 to 60 blocks and 250 to 450 buildings, over forty seeds", () => {
+  it("has 30 to 55 blocks and 220 to 420 buildings, over forty world seeds", () => {
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
-      expect(plan.counts.blocks, `seed ${seed}`).toBeGreaterThanOrEqual(35);
-      expect(plan.counts.blocks, `seed ${seed}`).toBeLessThanOrEqual(60);
-      expect(plan.counts.buildings, `seed ${seed}`).toBeGreaterThanOrEqual(250);
-      expect(plan.counts.buildings, `seed ${seed}`).toBeLessThanOrEqual(450);
+      expect(plan.counts.blocks, `seed ${seed}`).toBeGreaterThanOrEqual(30);
+      expect(plan.counts.blocks, `seed ${seed}`).toBeLessThanOrEqual(55);
+      expect(plan.counts.buildings, `seed ${seed}`).toBeGreaterThanOrEqual(220);
+      expect(plan.counts.buildings, `seed ${seed}`).toBeLessThanOrEqual(420);
       expect(plan.counts.open + plan.counts.vacant + plan.counts.ruin).toBe(plan.counts.buildings);
     }
   });
@@ -34,17 +34,18 @@ describe("the large port's size and speed", () => {
       // Commercial lots are 7.5 to 15 m wide: no core lot wider along its street than 15 m or so, but for the reserved ones.
       for (const b of plan.buildings) {
         if (b.lot < 0 || plan.lots[b.lot]!.district !== "core" || plan.lots[b.lot]!.role !== null) continue;
-        const wide = Math.max(b.halfAlong, b.halfAcross) * 2;
-        expect(wide, `seed ${seed} ${b.kind}`).toBeLessThanOrEqual(40);
+        // A shop's frontage is its narrow side: 15 m at most.
+        const narrow = Math.min(b.halfAlong, b.halfAcross) * 2;
+        expect(narrow, `seed ${seed} ${b.kind}`).toBeLessThanOrEqual(15.5);
       }
     }
   });
 
   it("is made in well under 50 ms (asserted under 500) and reports the real figure", () => {
     const times: number[] = [];
-    planTown(syntheticSite(1), "port"); // warm up
+    planTown(realSite(1), "port"); // warm up
     for (const seed of SEEDS) {
-      const site = syntheticSite(seed);
+      const site = realSite(seed);
       const t0 = performance.now();
       planTown(site, "port");
       times.push(performance.now() - t0);

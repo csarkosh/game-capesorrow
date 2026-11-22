@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COMPASS, gridAngle } from "../../src/sim/town/bearings.js";
-import { analyseShore } from "../../src/sim/town/shore.js";
+import { contains } from "../../src/sim/town/geom.js";
+import { analyseShore, shoreAt } from "../../src/sim/town/shore.js";
 import { SEEDS, townFor } from "./sites.js";
 
 const dec = (y: number): number => Math.floor(y / 10) * 10;
@@ -97,23 +98,19 @@ describe("form follows history", () => {
     expect(without).toBeGreaterThan(0);
   });
 
-  it("the rail line runs along the shore, between the water and the main street", () => {
+  it("the rail line runs along the quay and the flats' shore, landward of the water", () => {
     for (const seed of SEEDS) {
       const { plan, site } = townFor(seed);
-      const rail = plan.streets.find((s) => s.kind === "rail");
-      if (!rail) continue;
-      const main = plan.streets.find((s) => s.kind === "main")!;
-      const mid = { x: (rail.a.x + rail.b.x) / 2, z: (rail.a.z + rail.b.z) / 2 };
-      // Landward of the shoreline at its middle, and seaward of the main street's line (the main street is inland of it).
-      const shore = site.shoreX[Math.round((mid.z - site.z0) / site.step)]!;
-      expect(mid.x, `seed ${seed}`).toBeGreaterThan(shore);
-      const mainMid = { x: (main.a.x + main.b.x) / 2, z: (main.a.z + main.b.z) / 2 };
-      const along = { x: main.b.x - main.a.x, z: main.b.z - main.a.z };
-      const len = Math.sqrt(along.x * along.x + along.z * along.z);
-      // Signed distance of the rail's middle from the main street's line: negative toward the sea.
-      const side = ((mid.x - mainMid.x) * along.z - (mid.z - mainMid.z) * along.x) / len;
-      const seaSide = ((shore - mainMid.x) * along.z - (mid.z - mainMid.z) * along.x) / len;
-      expect(Math.sign(side), `seed ${seed}`).toBe(Math.sign(seaSide));
+      const rails = plan.streets.filter((s) => s.kind === "rail");
+      if (!plan.history.railroad) continue;
+      // One piece along the quay, and pieces along the shore of the flats.
+      expect(rails.some((r) => r.plat === "old"), `seed ${seed}`).toBe(true);
+      expect(rails.some((r) => r.plat === "company"), `seed ${seed}`).toBe(true);
+      for (const r of rails) {
+        const mid = { x: (r.a.x + r.b.x) / 2, z: (r.a.z + r.b.z) / 2 };
+        const onMade = mid.x > shoreAt(site, mid.z) || plan.fill.some((f) => contains(f.polygon, mid, 0.5));
+        expect(onMade, `seed ${seed}: the rail stands in the sea`).toBe(true);
+      }
     }
   });
 
@@ -174,46 +171,57 @@ describe("form follows history", () => {
     expect(cleared).toBeLessThan(untouched * 2); // loosely: per town, cleanup leaves far less; both sums are over unequal counts
   });
 
-  it("the seam exists whenever two plats do and their bearings differ by at least 25 degrees", () => {
+  it("the seam exists whenever two plats do and their bearings differ by at least 25 degrees, and is where they actually touch", () => {
+    let wide = 0;
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       expect(plan.plats.length).toBeGreaterThanOrEqual(2);
       const [a, b] = plan.plats;
       const angle = gridAngle(a!.bearing, b!.bearing);
-      expect(angle, `seed ${seed}`).toBeGreaterThanOrEqual(25);
-      expect(plan.seams.length, `seed ${seed}`).toBe(1);
-      const seam = plan.seams[0]!;
-      expect(seam.angle).toBeCloseTo(angle, 5);
-      const street = plan.streets[seam.street]!;
-      expect(street.seam).toBe(true);
-      // Company blocks are cut by the seam: some have 3 or 5 or 6 corners, and the streets of the company's plat end on it.
-      const cut = plan.blocks.filter((x) => x.plat === "company" && x.polygon.length !== 4);
-      expect(cut.length, `seed ${seed}`).toBeGreaterThan(0);
+      // The geometry of the coast allows 12 to 37 degrees between the old grid and the compass.
+      expect(angle, `seed ${seed}`).toBeGreaterThanOrEqual(12);
+      expect(angle, `seed ${seed}`).toBeLessThanOrEqual(37.5);
+      if (angle >= 25) wide++;
+      // The two plats touch (the compass blocks wrap the old plat), so there is a seam.
+      expect(plan.seams.length, `seed ${seed}`).toBeGreaterThanOrEqual(1);
+      for (const seam of plan.seams) {
+        expect(seam.angle).toBeCloseTo(angle, 5);
+        expect(plan.streets[seam.street]!.seam, `seed ${seed}`).toBe(true);
+      }
+      // Company blocks are cut: some have 3, 5 or 6 corners.
+      expect(plan.blocks.filter((x) => x.plat === "company" && x.polygon.length !== 4).length, `seed ${seed}`).toBeGreaterThan(0);
     }
+    expect(wide).toBeGreaterThan(10);
   });
 
-  it("the waterfront plat is laid to what the history says: the shore's line, the cove's flank, or a wharf", () => {
-    const sawBasis: string[] = [];
+  it("the old plat is laid to what the history says: the highway's own line, the first wharf or a railroad's survey", () => {
+    const bases: string[] = [];
     for (const seed of SEEDS) {
       const { plan, site } = townFor(seed);
       const shore = analyseShore(site);
       const f = plan.history.firstPlat;
-      sawBasis.push(f.basis);
+      bases.push(f.basis);
       expect(plan.plats[0]!.bearing).toEqual(f.bearing);
       expect(plan.plats[1]!.bearing).toEqual(COMPASS);
-      if (f.basis === "shore") {
-        expect(f.bearing).toEqual(shore.bearing);
-        expect(Math.abs(f.bearing.deg)).toBeGreaterThanOrEqual(25);
+      const sentence = plan.history.events.find((e) => e.kind === "first plat")!.text;
+      if (f.basis === "road") {
+        // The highway runs 12 degrees or more off north, and the plat is laid to the triple nearest it.
+        expect(Math.abs(shore.roadBearing.deg), `seed ${seed}`).toBeGreaterThanOrEqual(12);
+        expect(f.bearing).toEqual(shore.roadBearing);
+        expect(sentence).toMatch(/wagon road/);
+        // The highway is then the main street: no street of the plat's own is called main.
+        expect(plan.streets.some((s) => s.kind === "main")).toBe(false);
       } else {
-        // The shore runs within 25 degrees of the compass, and the history says what the plat was laid to instead.
-        expect(Math.abs(shore.bearing.deg)).toBeLessThan(25);
-        expect(Math.abs(f.bearing.deg)).toBeGreaterThanOrEqual(25);
-        const sentence = plan.history.events.find((e) => e.kind === "first plat")!.text;
-        expect(sentence).toMatch(f.basis === "cove" ? /cove/ : /wharf/);
+        // The highway runs near north, so the history says what the plat was laid to instead, 22 to 37 degrees off the compass.
+        expect(Math.abs(shore.roadBearing.deg), `seed ${seed}`).toBeLessThan(12);
+        expect(Math.abs(f.bearing.deg)).toBeGreaterThanOrEqual(22);
+        expect(Math.abs(f.bearing.deg)).toBeLessThanOrEqual(37);
+        expect(sentence).toMatch(f.basis === "wharf" ? /wharf/ : /survey/);
+        expect(plan.streets.some((s) => s.kind === "main")).toBe(true);
       }
     }
-    expect(sawBasis).toContain("shore");
-    expect(sawBasis.some((b) => b !== "shore")).toBe(true);
+    expect(bases).toContain("road");
+    expect(bases.some((b) => b !== "road")).toBe(true);
   });
 
   it("the core's vacancy is the share the present-day layer names", () => {
@@ -240,8 +248,9 @@ describe("form follows history", () => {
   it("the main street is wider after a fire, and one wide avenue is 30 m", () => {
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
-      const main = plan.streets.find((s) => s.kind === "main")!;
-      expect(main.width).toBe(plan.history.fire ? 24 : 20);
+      const main = plan.streets.find((s) => s.kind === "main");
+      // Where the highway is the old town's main street there is no other; elsewhere it is 24 m after a fire and 20 m before.
+      if (main) expect(main.width).toBe(plan.history.fire ? 24 : 20);
       const avenue = plan.streets.filter((s) => s.kind === "avenue");
       expect(avenue.length).toBeGreaterThan(0);
       for (const a of avenue) expect(a.width).toBe(30);
