@@ -38,6 +38,12 @@ or loop and no downloads, join box or update banner, since there is no desktop a
 - `credits.ts` merges the repository's `CREDITS.md` (no entry yet) with the engine's `ENGINE_CREDITS`, in the order of the
   ids, then the engine's display pass.
 
+## The town plan
+
+A town is made from its history. `planTown(site, kind)` (`client/src/sim/town/plan.ts`) takes a `TownSite` (the shoreline and the highway as samples, and nothing else of the ground) and a `TownKind` and returns a plain-data `TownPlan`: the history, the plats and the seam between them, the streets, blocks, lots, buildings, the landmarks and the spawn. The history is drawn first (what the town was founded for and when, who laid which plat to what, the railroad, a fire, the 1893 bust, the county seat, the public port, the mill's fate, the present-day layer) and every part of the form is derived from it, so that a difference between two towns has a cause a player can name. A kind of town is a recipe (`recipes.ts`) and a folder beside `port/`; the shared code never asks the kind.
+
+The plan is made on every machine when a world starts, so it is simulation code: only exactly specified arithmetic, grid bearings as Pythagorean triples, and one independent random stream per stage, so that a draw added in one stage changes no other. `TOWN_GEN` names the generator's version and is part of the plan. `client/town.html` (development only) draws plans and a contact sheet of consecutive seeds.
+
 ## Hosting
 
 The client is a static Vite build under the base `/capesorrow/` (`CAPESORROW_BASE`), published to its path on the shared
