@@ -1,0 +1,23 @@
+{
+  "name": "capesorrow",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "REGISTRY=memory node node_modules/@csarkosh/engine-server/dist/index.js",
+    "dev:client": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@csarkosh/engine": "https://github.com/csarkosh/engine/releases/download/v0.2.2/csarkosh-engine-0.2.2.tgz",
+    "@csarkosh/engine-server": "https://github.com/csarkosh/engine/releases/download/v0.2.2/csarkosh-engine-server-0.2.2.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
+  }
+}

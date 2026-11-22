@@ -1,0 +1,8 @@
+{
+  "app": "game-capesorrow",
+  "telemetryDataset": "capesorrow_telemetry",
+  "telemetryBucket": "capesorrow-telemetry",
+  "allowedOrigins": [
+    "http://localhost:5174"
+  ]
+}
