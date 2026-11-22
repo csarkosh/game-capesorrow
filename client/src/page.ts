@@ -12,7 +12,7 @@ import type { AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
 import { EMPTY_GAME, WALK_MODES, type WalkClient, type WalkHost, type WalkRenderer } from "./game.js";
 import { creditsEntries } from "./game/credits.js";
 import { renderLanding, type LandingHandle, type LandingPanel } from "./game/landing.js";
-import { canPlay, landingModel, type LandingInput } from "./game/landingModel.js";
+import { landingModel, type LandingInput } from "./game/landingModel.js";
 import { createStatusLine, type WalkHud } from "./hud.js";
 import { CAPE_IDENTITY } from "./identity.js";
 import { WALK_PROTOCOL } from "./net.js";
@@ -32,7 +32,6 @@ export function createCapePage(h: PageHost): PageSide {
   /** What the title page shows of the shell as it stands now: a follower waits for the host, and Play says so while it loads. */
   function landingInput(): LandingInput {
     return {
-      playable: canPlay(import.meta.env),
       follower: h.lobby !== null && h.lobby.state.role === "client",
       launching: h.launching,
       quality: {

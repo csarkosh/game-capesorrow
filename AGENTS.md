@@ -4,11 +4,11 @@ Cape Sorrow is a game in which a detective investigates paranormal reports acros
 procedurally generated coastal Washington. It is part PNW life and detective sim, part supernatural horror.
 
 It is built on [`@csarkosh/engine`](https://github.com/csarkosh/engine), as its sister game Day Hike is, and is served
-at [games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow). What exists is a title page, and, behind Play (in
-development only), a generated port town on the engine's coast: Play starts the agent at the door of the FBI office, with
+at [games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow). What exists is a title page, and, behind Play, a
+generated port town on the engine's coast: Play starts the agent at the door of the FBI office, with
 the town's streets and buildings to walk through, and the buildings are walls. The game's rules are still the engine's
-walking and nothing else: no case, no people, no sound or interface of the game's own. The public page still says "In
-development." See [`README.md`](README.md) for what it is and [`ARCHITECTURE.md`](ARCHITECTURE.md) for how it is built.
+walking and nothing else: no case, no people, no sound or interface of the game's own. The public page says "In
+development." and offers Play under it, played alone until there is a server. See [`README.md`](README.md) for what it is and [`ARCHITECTURE.md`](ARCHITECTURE.md) for how it is built.
 
 ## Starting development work
 
@@ -116,9 +116,10 @@ the engine's `tools/site/deploy.mjs` (in engine release v0.2.3 or later), which 
 the live site and refuses to release if any other game's file would change: neither game's deploy touches the other's.
 There is no `_infra/` here, and there will not be until the game has a resource of its own.
 
-The server is not deployed. A client built without a signaling address cannot play, and its public page says
-"In development." (`client/src/game/landingModel.ts`, `canPlay`). When the game has a server, `production.json` gains a
-`signaling_url`, and the deploy bakes it into the build as `VITE_SIGNALING_URL`. The `deploy-production` skill has the
+The server is not deployed. A client built without a signaling address is played alone: the public page says
+"In development." and offers Play under it (`client/src/game/landingModel.ts`), and the engine's shell shows no party
+box. When the game has a server, `production.json` gains a `signaling_url`, and the deploy bakes it into the build as
+`VITE_SIGNALING_URL`. The `deploy-production` skill has the
 steps.
 
 ## Docs

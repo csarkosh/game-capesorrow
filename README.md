@@ -6,8 +6,8 @@ You are a detective who investigates paranormal reports across the Pacific North
 generated coastal Washington. It is part PNW life and detective sim, part supernatural horror.
 
 **In development.** So far the game is a title page and a generated port town to walk through; there is no case to
-investigate yet. It will be played in the browser at
-[games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow), where the page says as much until there is something to
+investigate yet. It is played in the browser at
+[games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow), where the page says as much above Play until there is something to
 play.
 
 ## Running it
@@ -20,7 +20,7 @@ npm run dev
 ```
 
 `npm run dev` starts the game's development server and the dev client together, and serves the title page at
-<http://localhost:5174/>. In development, press Play: you start at the door of the FBI office in a port town generated
+<http://localhost:5174/>. Press Play: you start at the door of the FBI office in a port town generated
 on the engine's coast, with its streets, buildings, quay and piers to walk through (the buildings are walls). That is all
 there is to do yet. Two browser tabs can join each other through the dev server.
 
