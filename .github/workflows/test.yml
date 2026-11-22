@@ -1,0 +1,132 @@
+name: test
+
+# The same gates as `npm run typecheck && npm run lint && npm test`, split into jobs so each one
+# reports on its own, with a build of the client as the deploy builds it. The commands are the
+# root package.json's, so a local run and this one test the same thing, with one difference: the
+# runners are shared machines slower than the development one, so every test time limit is scaled
+# (TEST_TIME_SCALE). The workflow answers pass or fail, and no time measured here means anything
+# about the game's performance.
+#
+# Started by hand only: runner minutes cost time and money, so nothing runs that nobody asked for.
+# No push, no pull request starts it. The engine's push gate (`npm run gate`,
+# node_modules/@csarkosh/engine/tools/gate.mjs) dispatches it on the pushed branch with
+# `gh workflow run test.yml --ref <branch>` for every change outside tooling and docs, and follows
+# it to its end: its exit is the run's, which is this workflow's `gates` job. So the file's name
+# (test.yml), its trigger (workflow_dispatch, no inputs) and the name of its last job (gates) are
+# what the gate holds to.
+#
+# There is no job for Git LFS: the repository has no file in LFS yet (the first model or texture
+# committed will land there, `.gitattributes`). The engine's own shipped files, which the build
+# and the client suite read, are not this repository's: they come whole inside the engine's
+# release tarball, which `npm ci` installs.
+
+on:
+  workflow_dispatch:
+
+# One run per ref: a second dispatch on the same branch cancels the first, whose result nobody
+# will read.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read the repository and nothing else: no job writes to it, and none needs a secret, so a pull
+# request from a fork runs exactly what a push does.
+permissions:
+  contents: read
+
+env:
+  # The 22.x line the development machine runs: the first with the Brotli fix (CVE-2026-111497),
+  # the floor package.json's engines sets for 22.x.
+  NODE_VERSION: 22.23.4
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - id: install
+        run: npm ci
+      - run: npm run typecheck
+      # Lint runs even when typecheck fails, so one run reports both.
+      - if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+  tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:tools
+
+  # The client suite is small (the engine's empty game's two files and the title page's), so it
+  # runs whole on one runner, with no shards.
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Every test time limit, and vitest's defaults, times three: the engine's time-limit helper
+      # (`@csarkosh/engine/vite/timeLimit`, read by client/vite.config.ts) multiplies each by this.
+      # The factor is the smallest whole one that keeps a test measured on these runners well under
+      # its limit; it is at most 10.
+      TEST_TIME_SCALE: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:client
+
+  # The real client, built as the deploy builds it (`npm run build`, under the production base
+  # `tools/deploy/lib/buildEnv.mjs` sets). The suites build only fixtures; this is the one place the
+  # real build runs before a deploy. Built without a signaling address, as the deploy builds it
+  # until the game has a server.
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: build the client with the production base
+        env:
+          CAPESORROW_BASE: /capesorrow/
+        run: npm run build
+
+  # The one status to require and to read: it fails unless every job above succeeded. `always()`
+  # matters: a job skipped because its dependency failed would otherwise skip this one too, and a
+  # skipped check reads as passing. It also runs on a run cancelled by a newer dispatch, and fails
+  # there: a red `gates` on a superseded commit is that cancellation, not a failure to chase.
+  gates:
+    if: always()
+    needs: [static, tools, client, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done

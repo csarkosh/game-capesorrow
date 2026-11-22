@@ -36,6 +36,16 @@ export default mergeConfig(
       // Only under vitest, which sets VITEST before it loads this file: `vite dev` and `vite build`
       // load it too, and must not read or validate TEST_TIME_SCALE.
       ...(process.env.VITEST ? { testTimeout: timeLimit(120_000), hookTimeout: timeLimit(120_000) } : {}),
+      tags: [
+        {
+          // Tests whose assertion is a bar on elapsed time, meaningful only on a quiet machine.
+          // None carries it yet, but the engine's push gate runs named files with
+          // `--tags-filter=!wall-clock` (tools/gate.mjs), which vitest refuses for a tag no
+          // config defines.
+          name: "wall-clock",
+          description: "asserts on elapsed time; meaningful only on a quiet machine",
+        },
+      ],
     },
   }),
 );

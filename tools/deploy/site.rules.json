@@ -1,0 +1,9 @@
+{
+  "rewrites": [{ "source": "/capesorrow/**", "destination": "/capesorrow/index.html" }],
+  "headers": [
+    {
+      "source": "/capesorrow/assets/**",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}
