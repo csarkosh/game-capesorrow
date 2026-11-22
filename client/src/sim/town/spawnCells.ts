@@ -12,16 +12,18 @@ import { townStart } from "./start.js";
 
 export function townSpawnCells(seed: number, half: Vec3): { cx: number; cz: number }[] {
   const start = townStart(seed);
-  const cells = new Map<string, { cx: number; cz: number }>();
+  const cells: { cx: number; cz: number }[] = [];
   // The spiral's own first test, against a source that only notes what it is asked for.
   const noting: BoxSource = {
     near(min, max) {
       for (let cx = Math.floor(min.x / CHUNK_SIZE); cx <= Math.floor(max.x / CHUNK_SIZE); cx++) {
-        for (let cz = Math.floor(min.z / CHUNK_SIZE); cz <= Math.floor(max.z / CHUNK_SIZE); cz++) cells.set(`${cx},${cz}`, { cx, cz });
+        for (let cz = Math.floor(min.z / CHUNK_SIZE); cz <= Math.floor(max.z / CHUNK_SIZE); cz++) {
+          if (!cells.some((cell) => cell.cx === cx && cell.cz === cz)) cells.push({ cx, cz });
+        }
       }
       return [];
     },
   };
   groundSpawn(noting, seed, start.x, start.z, half);
-  return [...cells.values()];
+  return cells;
 }

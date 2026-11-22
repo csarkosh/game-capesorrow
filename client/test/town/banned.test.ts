@@ -27,7 +27,7 @@ describe("the town module's determinism rules", () => {
     expect(all.length).toBeGreaterThan(10);
   });
 
-  it("has no banned call, no `**`, no Date, no Map or Set, no key-order iteration", () => {
+  it("has no banned call, no `**`, no Date, no Set, no Map but a cache, no key-order iteration", () => {
     for (const path of all) {
       const text = code(path);
       const where = path.slice(DIR.length);
@@ -35,7 +35,13 @@ describe("the town module's determinism rules", () => {
       expect(text, `${where}: trigonometry, pow, exp, log, hypot, cbrt`).not.toMatch(/Math\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|pow|exp|expm1|log|log1p|log2|log10|hypot|cbrt)\b/);
       expect(text, `${where}: the ** operator`).not.toMatch(/\*\*/);
       expect(text, `${where}: Date`).not.toMatch(/\bDate\b/);
-      expect(text, `${where}: Map or Set`).not.toMatch(/\bnew\s+(Map|Set|WeakMap|WeakSet)\b/);
+      // A set's or a map's order must never reach a result. The one use allowed is a module's own cache of what a
+      // pure function already answered, looked up by key and never walked: `const NAME = new Map<…>()` at the top level.
+      expect(text, `${where}: a Set`).not.toMatch(/\bnew\s+(Set|WeakSet)\b/);
+      for (const m of text.matchAll(/^.*\bnew\s+(?:Map|WeakMap)\b.*$/gm)) {
+        expect(m[0], `${where}: a Map that is not a module's cache`).toMatch(/^const [A-Z][A-Z_]* = new (?:Map|WeakMap)<[^>]+>\(\);$/);
+      }
+      expect(text, `${where}: walking a map`).not.toMatch(/\.(values|keys|entries|forEach)\(/);
       expect(text, `${where}: object key order`).not.toMatch(/Object\.(keys|values|entries)\b|\bfor\s*\([^)]*\sin\s/);
       expect(text, `${where}: sort without a comparator`).not.toMatch(/\.sort\(\s*\)/);
     }
