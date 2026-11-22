@@ -16,7 +16,8 @@ export type { Bearing, Vec, Poly };
 export type TownKind = "port";
 
 export type FoundingPurpose = "sawmill" | "cannery" | "customs" | "railhead";
-export type FirstPlatBasis = "shore" | "cove" | "wharf";
+/** What the first plat was laid to: the wagon road that became the highway, the line of the first wharf, or a railroad's survey. */
+export type FirstPlatBasis = "road" | "wharf" | "survey";
 export type PortCargo = "logs" | "grain" | "seafood" | "autos" | "general cargo";
 export type EventKind =
   | "founding"
@@ -44,11 +45,13 @@ export type History = {
   readonly firstPlat: {
     readonly year: number;
     readonly by: string;
-    /** What the first plat was laid to: the shore's own line, the cove's flank, or the line of the first wharf. */
+    /** What the first plat was laid to. */
     readonly basis: FirstPlatBasis;
     readonly bearing: Bearing;
   };
   readonly secondPlat: { readonly year: number; readonly by: "land company" | "railroad"; readonly company: string };
+  /** Which of the flats beside the cove the mill took; the public port's terminal took the other. */
+  readonly millSide: "north" | "south";
   /** The railroad, if it came: it runs along the shore, between the water and the downtown. */
   readonly railroad: { readonly year: number } | null;
   readonly fire: { readonly year: number; readonly burned: "core" | "both" } | null;
@@ -248,6 +251,10 @@ export type TownPlan = {
   readonly buildings: readonly Building[];
   readonly landmarks: readonly Landmark[];
   readonly spawn: Spawn;
+  /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
+  readonly fill: readonly { readonly polygon: Poly }[];
+  /** The quay: the straight edge of the made ground along the old plat, seaward of it the harbour. */
+  readonly quay: { readonly a: Vec; readonly b: Vec };
   readonly bounds: { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number };
   readonly counts: {
     readonly plats: number;

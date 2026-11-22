@@ -68,38 +68,50 @@ export function shoreSlope(site: TownSite, zlo: number, zhi: number): number {
 }
 
 export type ShoreFacts = {
-  /** The shoreline's slope dx/dz through the harbour, and the grid bearing nearest to its line. */
-  readonly slope: number;
-  readonly bearing: Bearing;
-  /** The bearings of the cove's two flanks (the shore either side of z = 0). */
-  readonly flankNorth: Bearing;
-  readonly flankSouth: Bearing;
-  /** The z at which the shore reaches furthest inland near the anchor: the cove's head. */
+  /** The highway's direction through the town at the anchor (z within 150 m), as the nearest grid bearing. */
+  readonly roadBearing: Bearing;
+  /** The z of the cove's middle: the middle of the stretch where the shore stands furthest inland near the anchor. */
   readonly coveZ: number;
 };
 
-/** The shoreline's own line through the harbour (z within 350 m of the anchor), and its cove. */
+/** The highway's slope dx/dz by least squares over z in [zlo, zhi]. */
+export function roadSlope(site: TownSite, zlo: number, zhi: number): number {
+  let n = 0;
+  let sz = 0;
+  let sx = 0;
+  let szz = 0;
+  let szx = 0;
+  for (let i = 0; i < site.roadX.length; i++) {
+    const z = site.z0 + i * site.step;
+    if (z < zlo || z > zhi) continue;
+    const x = site.roadX[i]!;
+    n++;
+    sz += z;
+    sx += x;
+    szz += z * z;
+    szx += z * x;
+  }
+  const den = n * szz - sz * sz;
+  return n < 2 || den === 0 ? 0 : (n * szx - sz * sx) / den;
+}
+
+/** What the history is built on: the highway's own line at the anchor, and where the cove's middle is. */
 export function analyseShore(site: TownSite): ShoreFacts {
-  const slope = shoreSlope(site, -350, 350);
-  let coveZ = 0;
   let best = -Infinity;
   for (let i = 0; i < site.shoreX.length; i++) {
     const z = site.z0 + i * site.step;
-    if (Math.abs(z) > 200) continue;
-    if (site.shoreX[i]! > best) {
-      best = site.shoreX[i]!;
-      coveZ = z;
+    if (Math.abs(z) <= 220 && site.shoreX[i]! > best) best = site.shoreX[i]!;
+  }
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < site.shoreX.length; i++) {
+    const z = site.z0 + i * site.step;
+    if (Math.abs(z) <= 220 && site.shoreX[i]! >= best - 25) {
+      lo = Math.min(lo, z);
+      hi = Math.max(hi, z);
     }
   }
-  const sN = shoreSlope(site, 40, 320);
-  const sS = shoreSlope(site, -320, -40);
-  return {
-    slope,
-    bearing: nearestBearing(slope, 1),
-    flankNorth: nearestBearing(sN, 1),
-    flankSouth: nearestBearing(sS, 1),
-    coveZ,
-  };
+  return { roadBearing: nearestBearing(roadSlope(site, -150, 150), 1), coveZ: (lo + hi) / 2 };
 }
 
 /** Does a point stand on land, at least `margin` m inland of the shoreline? */

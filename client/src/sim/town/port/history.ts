@@ -12,25 +12,26 @@ import type { ShoreFacts } from "../shore.js";
 import { townNameFor, type TownNames } from "../names.js";
 import type { EventKind, FirstPlatBasis, FoundingPurpose, History, HistoryEvent, PortCargo } from "../types.js";
 
-/** The smallest angle off the compass at which a plat is laid "to the shore" or "to the cove": below it, the first plat was laid to something else. */
-const SHORE_MIN_DEG = 25;
+/** The angle off north at which the highway's own line is taken for the first plat's. */
+const ROAD_MIN_DEG = 12;
 
-/** What the first plat is laid to, and so the bearing: the shore's own line when it runs far enough off the compass, else the cove's flank, else the first wharf. */
+/**
+ * What the first plat is laid to, and so the bearing. Where the highway runs 12 degrees or more off
+ * north, the plat was laid to the wagon road that became the highway, and the highway is then the old
+ * town's main street, running along its grid. Where it runs near north, the plat was laid to the line of
+ * the first wharf or of a railroad's survey, at an angle drawn from the table, 22 to 37 degrees off the
+ * compass on either hand, and the highway then cuts across the old blocks.
+ */
 export function firstPlatBasis(rng: Rng, shore: ShoreFacts): { basis: FirstPlatBasis; bearing: Bearing } {
-  if (Math.abs(shore.bearing.deg) >= SHORE_MIN_DEG) return { basis: "shore", bearing: shore.bearing };
-  // The cove's flank: the steeper of the two sides of the cove.
-  const flank = Math.abs(shore.flankNorth.deg) >= Math.abs(shore.flankSouth.deg) ? shore.flankNorth : shore.flankSouth;
-  if (Math.abs(flank.deg) >= SHORE_MIN_DEG) return { basis: "cove", bearing: flank };
-  // The shore runs near the compass: the claimant laid his plat to the line of his wharf, which ran
-  // out at an angle to reach deep water. The angle is drawn from the table, 28 to 50 degrees off the compass.
-  const options = bearingsBetween(28, 50);
-  return { basis: "wharf", bearing: pick(rng, options) };
+  if (Math.abs(shore.roadBearing.deg) >= ROAD_MIN_DEG) return { basis: "road", bearing: shore.roadBearing };
+  const basis: FirstPlatBasis = chance(rng, 0.6) ? "wharf" : "survey";
+  return { basis, bearing: pick(rng, bearingsBetween(22, 37)) };
 }
 
 const BASIS_TEXT: Record<FirstPlatBasis, string> = {
-  shore: "laid out along the water, its streets running with the shore",
-  cove: "laid out to the flank of the cove, its streets turned to follow the curve of the water",
+  road: "laid out to the line of the wagon road that was to become the highway, so that the old town's main street runs along its grid",
   wharf: "laid out to the line of his wharf, which ran out at a slant to reach deep water, so the streets lean away from the compass",
+  survey: "laid out to the line of a railroad's survey that ran past the cove, so the streets lean away from the compass",
 };
 
 const PURPOSE_TEXT: Record<FoundingPurpose, (founder: string, town: string) => string> = {
@@ -70,6 +71,7 @@ export function makeHistory(rng: Rng, names: TownNames, shore: ShoreFacts): { hi
   const bust = chance(rng, 0.55);
   const peakYear = bust ? int(rng, 1889, 1892) : int(rng, 1900, 1912);
 
+  const millNorth = chance(rng, 0.5);
   const isSeat = chance(rng, 0.28);
   const seatYear = int(rng, 1862, 1900);
 
@@ -149,6 +151,7 @@ export function makeHistory(rng: Rng, names: TownNames, shore: ShoreFacts): { hi
     founding: { purpose, year: foundingYear, founder },
     firstPlat: { year: firstPlatYear, by: names.claimant, basis, bearing },
     secondPlat: { year: secondYear, by: secondBy, company: secondCompany },
+    millSide: millNorth ? "north" : "south",
     railroad: hasRail ? { year: railYear } : null,
     fire: hasFire ? { year: fireYear, burned } : null,
     boom: { peakYear, bust1893: bust },
