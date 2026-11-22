@@ -11,7 +11,8 @@ import { townBlendWindowD, TOWN_BLEND_END, TOWN_BLEND_TUNABLES } from "./blend.j
 import { CLEARING_TUNABLES, townFeatureMask, townKeepD } from "./clearing.js";
 import { GROUND_TUNABLES, townGroundD } from "./ground.js";
 import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_SEED_MIX } from "./siteFor.js";
-import { START_SEAWARD, townClearingX } from "./start.js";
+import { townClearingX } from "./start.js";
+import { TOWN_GEN } from "./version.js";
 
 export const CAPE_PLACE: CoastOverlay = {
   tunables: {
@@ -23,7 +24,8 @@ export const CAPE_PLACE: CoastOverlay = {
     SHORE_BISECT_STEPS,
     TOWN_ONE,
     TOWN_SEED_MIX,
-    START_SEAWARD,
+    // The plan's own version: two machines whose generators differ make different towns, and must not meet.
+    TOWN_GEN,
   },
   blend: { end: TOWN_BLEND_END, windowD: townBlendWindowD },
   cliffKeepD: townKeepD,

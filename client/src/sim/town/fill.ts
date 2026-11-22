@@ -11,6 +11,7 @@
  * The plan reads the SITE, which is the coast's own ground, and never the made ground: the made ground
  * reads the plan's fill from here, so nothing loops.
  */
+import { planFor } from "./planFor.js";
 
 /** A convex polygon of fill, counter-clockwise (+x east, +z north), in the site's frame. */
 export type FillArea = { readonly polygon: readonly { readonly x: number; readonly z: number }[] };
@@ -81,10 +82,10 @@ export function fillWindowD(areas: readonly FillArea[], x: number, z: number): {
 }
 
 /**
- * The fill the plan has named for a world's seed. For now there is none: the plan's `fill` will be
- * read here once the plan and the ground are merged, and nothing else in the ground changes.
+ * The fill the plan has named for a world's seed: the ground the old town's grid stands on where the
+ * sea was, behind its quay (`TownPlan.fill`). The plan is made from the site, which is the coast's own
+ * ground, so reading it here asks nothing of the made ground and cannot come back round.
  */
 export function townFillFor(worldSeed: number): readonly FillArea[] {
-  void worldSeed;
-  return [];
+  return planFor(worldSeed).fill;
 }

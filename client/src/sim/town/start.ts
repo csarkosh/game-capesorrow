@@ -1,20 +1,19 @@
 /**
- * Where the player starts. For now, before the plan names a door: a point on the made ground
- * `START_SEAWARD` metres seaward of the highway at the anchor's z, facing the sea. The plan's FBI
- * office will replace this: its door is where a detective arrives.
+ * Where the player starts: on the street side of the FBI office's door, facing away from it (the
+ * plan's `spawn`, `port/landmarks.ts`). A detective's day begins at the office.
  *
- * A pure function of the world's seed, in world coordinates, so the rules that place the player
- * and the page and the worker that centre the first scene on them agree with nothing exchanged.
+ * A pure function of the world's seed, in world coordinates (the plan's frame plus the site's
+ * anchor), so the rules that place the player and the page and the worker that centre the first
+ * scene on them agree with nothing exchanged.
  */
-import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
-import { facingYaw } from "@csarkosh/engine/sim/facing";
+import { planFor } from "./planFor.js";
+import { siteFor } from "./siteFor.js";
 
-/** How far seaward of the highway the player starts, metres. */
-export const START_SEAWARD = 40;
-
-/** The player's start for a world's seed, and the way they face: west, to the sea. */
+/** The player's start for a world's seed, and the way they face. */
 export function townStart(worldSeed: number): { x: number; z: number; yaw: number } {
-  return { x: roadCenterX(worldSeed, COVE_Z) - START_SEAWARD, z: COVE_Z, yaw: facingYaw(-1, 0) };
+  const { anchor } = siteFor(worldSeed);
+  const { spawn } = planFor(worldSeed);
+  return { x: anchor.x + spawn.x, z: anchor.z + spawn.z, yaw: spawn.yaw };
 }
 
 /** The x of the clearing the clutter keeps its tall things out of: the start's. */
