@@ -19,7 +19,8 @@ export default mergeConfig(
         "/ws": { target: "ws://localhost:8080", ws: true },
         // The telemetry route, for a dev page started with `?telemetry=on`: the dev server process
         // serves both roles (the engine's server `src/index.ts`).
-        "/t": { target: "http://localhost:8080" },
+        // Exact: a bare "/t" would also take /town.html (the town plan's map page) for the telemetry route.
+        "^/t(\\?.*)?$": { target: "http://localhost:8080" },
       },
     },
     build: {

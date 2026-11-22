@@ -14,6 +14,7 @@ import { creditsEntries } from "../src/game/credits.js";
 import { WALK } from "../src/net.js";
 import { CAPE_PAGE, createCapePage } from "../src/page.js";
 import type { WalkState, Walker } from "../src/sim.js";
+import { townStart } from "../src/sim/town/start.js";
 
 /**
  * The empty game as the engine's page and its shell are handed it: two definitions of a game of
@@ -25,20 +26,20 @@ const text = (name: string): string => readFileSync(SRC + name, "utf8");
 const code = (name: string): string => text(name).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the empty game as the page that runs a session is handed it", () => {
-  it("has a level the parser takes, one mode, no actions of its own, no start and no weather of its own", () => {
+  it("has a level the parser takes, one mode, no actions of its own, the town's start and no weather of its own", () => {
     const level = parseLevel(EMPTY_GAME.level);
     expect([level.id, level.brushes.length, level.playerSpawns.length]).toEqual(["empty-yard", 1, 1]);
     expect(EMPTY_GAME.modes).toBe(WALK_MODES);
     expect(isMode(WALK_MODES, WALK_MODES.initial)).toBe(true);
     expect(WALK_MODES.key.startsWith("capesorrow.")).toBe(true);
     expect(EMPTY_GAME.actions).toBe(NO_ACTIONS);
-    expect(EMPTY_GAME.startOf(7)).toBeNull();
+    expect(EMPTY_GAME.startOf(7)).toEqual(townStart(7));
     expect(EMPTY_GAME.weatherIsOwn("walk")).toBe(false);
   });
 
-  it("is drawn and heard with the engine's own and no parts or voices of a game's", () => {
+  it("is drawn with the engine's own and the town's parts, and heard with no voices of a game's", () => {
     const game = code("game.ts");
-    expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, noParts),");
+    expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),");
     expect(game).toContain("audio: () => createAmbientAudio(noGameSound),");
     expect(typeof noGameSound).toBe("function");
   });

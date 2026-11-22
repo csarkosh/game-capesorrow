@@ -1,13 +1,14 @@
 /**
  * The empty game as the page that runs a session is handed it
  * (`sessionGame.ts`): one definition of a game of nothing. Its world is the
- * engine's coast, its rules are walking, its renderer and its sound's bus
- * are the engine's with no parts and no voices of a game's, and its own half
- * of a session does nothing at every point the page calls it. A new game
- * starts from a copy of this and fills in what is its own.
+ * engine's coast with the town's ground, its rules are walking and the town's
+ * buildings are walls, its renderer is the engine's with the town drawn into it
+ * (`game/town/townParts.ts`), its sound's bus is the engine's with no voices of
+ * a game's, and its own half of a session does nothing at every point the page
+ * calls it. A new game starts from a copy of this and fills in what is its own.
  */
 import { createAmbientAudio, noGameSound, type AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
-import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
+import type { NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLiteRenderer } from "@csarkosh/engine/game/lite/renderer";
 import type { ModeList } from "@csarkosh/engine/game/modeList";
 import type { WorldRenderer } from "@csarkosh/engine/game/rendererTypes";
@@ -16,8 +17,10 @@ import { createClientSession, type ClientSession } from "@csarkosh/engine/net/cl
 import { createHostSession, type HostSession } from "@csarkosh/engine/net/host";
 import { NO_ACTIONS } from "@csarkosh/engine/sim/core";
 import yard from "../levels/yard.json" with { type: "json" };
+import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
 import { WALK, type WalkSnapshot } from "./net.js";
+import { townStart } from "./sim/town/start.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
 export type WalkRenderer = WorldRenderer<WalkState> & NoPartsApi;
@@ -64,10 +67,10 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   level: yard as unknown,
   modes: WALK_MODES,
   actions: NO_ACTIONS,
-  /** Nowhere of the game's own: the players stand where the rules' spiral finds dry ground. */
-  startOf: () => null,
+  /** The town's start, on the made ground at the cove (the rules' spawn searches out from the same place). */
+  startOf: townStart,
   weatherIsOwn: () => false,
-  renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, noParts),
+  renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),
   audio: () => createAmbientAudio(noGameSound),
   hud: createWalkHud,
   side: () => WALK_SIDE,
