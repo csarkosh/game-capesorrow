@@ -2,14 +2,16 @@
  * The town plan's map page (served at /town.html in development; not part of the build). Plain DOM and
  * CSS in the dark style of the game's title page, no framework.
  *
- *   /town.html?seed=7                one town: the map (pan with the mouse, zoom with the wheel), the
- *                                    history beside it, a legend and the counts
+ *   /town.html?seed=7                one town, on the real coast of world seed 7: the map (pan with the
+ *                                    mouse, zoom with the wheel), the history beside it, a legend and
+ *                                    the counts; add &site=synthetic for the synthetic site's coast
  *   /town.html?sheet=12&from=1       a contact sheet: twelve towns from consecutive seeds, each with its
  *                                    name, what it was founded for and its bearings under it
  */
 import { planTown } from "../sim/town/plan.js";
 import type { TownPlan } from "../sim/town/types.js";
 import type { TownSite } from "../sim/town/site.js";
+import { realSite } from "./realSite.js";
 import { syntheticSite } from "./syntheticSite.js";
 import { DISTRICT_FILL, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
 
@@ -75,7 +77,7 @@ function setParams(p: Record<string, string | null>): void {
 }
 
 function makePlan(seed: number): { plan: TownPlan; site: TownSite } {
-  const site = syntheticSite(seed);
+  const site = params().get("site") === "synthetic" ? syntheticSite(seed) : realSite(seed);
   return { plan: planTown(site, "port"), site };
 }
 
@@ -160,6 +162,8 @@ function legend(): HTMLElement {
   swatch("repeating-linear-gradient(-45deg, #1a0e0e 0 2px, #d04040 2px 3px)", "ruin");
   for (const s of Object.keys(STREET_STROKE) as (keyof typeof STREET_STROKE)[]) swatch(STREET_STROKE[s], `${s} (street)`);
   swatch("#ff8c2a", "the seam street");
+  swatch("#3a3a30", "made ground (fill)");
+  swatch("#e8e0c8", "the quay");
   swatch("#3affa0", "spawn and its facing");
   return box;
 }
@@ -197,7 +201,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
   const h = plan.history;
   aside.append(
     el("h1", { textContent: plan.name }),
-    el("div", { class: "sub", textContent: `a large port - seed ${seed} - generator ${plan.version}` }),
+    el("div", { class: "sub", textContent: `a large port - world seed ${seed} - generator ${plan.version}${params().get("site") === "synthetic" ? " - synthetic site" : ""}` }),
     el("div", { class: "bar" }, prev, input, nextB, sheetB),
     el("div", { class: "bar" }, el("label", {}, lots, " lots"), el("label", {}, labels, " all labels")),
   );
@@ -210,10 +214,11 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
   aside.append(el("h2", { textContent: "form" }));
   const seam = plan.seams[0];
   const rows: [string, string][] = [
-    ["waterfront grid", `${plan.plats[0]!.bearing.deg} deg, laid to the ${h.firstPlat.basis === "wharf" ? "line of the wharf" : h.firstPlat.basis === "cove" ? "cove's flank" : "shore"}`],
+    ["old grid", `${plan.plats[0]!.bearing.deg} deg, laid to ${h.firstPlat.basis === "wharf" ? "the line of the wharf" : h.firstPlat.basis === "survey" ? "a railroad's survey" : "the wagon road that became the highway"}`],
+    ["made ground", `${plan.fill.length} fill pieces behind a ${Math.round(Math.sqrt((plan.quay.b.x - plan.quay.a.x) ** 2 + (plan.quay.b.z - plan.quay.a.z) ** 2))} m quay`],
     ["company grid", "0 deg (the compass)"],
     ["seam", seam ? `${Math.round(seam.angle)} deg` : "none"],
-    ["blocks", `${plan.counts.blocks} (${plan.plats[0]!.columns} x ${plan.plats[0]!.rows} on the water)`],
+    ["blocks", `${plan.counts.blocks} (the old plat ${plan.plats[0]!.columns} x ${plan.plats[0]!.rows})`],
     ["lots", String(plan.counts.lots)],
     ["buildings", `${plan.counts.buildings}: ${plan.counts.open} open, ${plan.counts.vacant} vacant, ${plan.counts.ruin} ruin`],
     ["streets", String(plan.counts.streets)],
