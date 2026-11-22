@@ -5,7 +5,8 @@
 You are a detective who investigates paranormal reports across the Pacific Northwest, in an open, procedurally
 generated coastal Washington. It is part PNW life and detective sim, part supernatural horror.
 
-**In development.** Nothing of the game exists yet beyond its title page. It will be played in the browser at
+**In development.** So far the game is a title page and a generated port town to walk through; there is no case to
+investigate yet. It will be played in the browser at
 [games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow), where the page says as much until there is something to
 play.
 
@@ -19,8 +20,12 @@ npm run dev
 ```
 
 `npm run dev` starts the game's development server and the dev client together, and serves the title page at
-<http://localhost:5174/>. In development, Play starts the engine's empty game, a walkable yard, which stands in until the
-game has a world of its own. Two browser tabs can join each other through the dev server.
+<http://localhost:5174/>. In development, press Play: you start at the door of the FBI office in a port town generated
+on the engine's coast, with its streets, buildings, quay and piers to walk through (the buildings are walls). That is all
+there is to do yet. Two browser tabs can join each other through the dev server.
+
+The towns the game generates can be looked at as maps at <http://localhost:5174/town.html> (a contact sheet of twelve is at
+`/town.html?sheet=12&from=1`). That page is for development and is not part of the build.
 
 Other scripts: `npm run build`, `npm run typecheck`, `npm run lint`, `npm test` (the client and tools suites).
 
