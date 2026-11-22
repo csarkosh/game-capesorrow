@@ -1,0 +1,25 @@
+# Shipped binaries go through Git LFS: models, textures and stills, sounds, film, the vendored
+# decoders' wasm, and raster icons. Cape Sorrow has no such file yet, and the first one committed
+# lands in LFS because of these lines. Keep this list in sync with the LFS check in
+# .agents/skills/github-push and tools/deploy/test/lfsAttributes.test.mjs.
+*.glb  filter=lfs diff=lfs merge=lfs -text
+*.webp filter=lfs diff=lfs merge=lfs -text
+*.ktx2 filter=lfs diff=lfs merge=lfs -text
+*.mp3  filter=lfs diff=lfs merge=lfs -text
+*.mp4  filter=lfs diff=lfs merge=lfs -text
+*.wasm filter=lfs diff=lfs merge=lfs -text
+*.png  filter=lfs diff=lfs merge=lfs -text
+*.jpg  filter=lfs diff=lfs merge=lfs -text
+*.ico  filter=lfs diff=lfs merge=lfs -text
+
+*.json text eol=lf
+*.md   text eol=lf
+*.ts   text eol=lf
+*.mjs  text eol=lf
+
+# Shader text, if the game gets any: a checkout keeps its line endings.
+*.glsl text eol=lf
+*.wgsl text eol=lf
+*.rs   text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf

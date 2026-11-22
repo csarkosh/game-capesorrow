@@ -10,20 +10,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "noEmit": true,
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "vite/client"
-    ]
-  },
-  "include": [
-    "src",
-    "test",
-    "vite.config.ts",
-    "node_modules/@csarkosh/engine/src/env.d.ts"
-  ]
+    "noEmit": true
+  }
 }

@@ -1,8 +1,0 @@
-{
-  "name": "capesorrow-server",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@csarkosh/engine-server": "https://github.com/csarkosh/engine/releases/download/v0.2.2/csarkosh-engine-server-0.2.2.tgz"
-  }
-}

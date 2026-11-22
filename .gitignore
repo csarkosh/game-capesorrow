@@ -1,2 +1,27 @@
-node_modules
-dist
+node_modules/
+# Build output: the client's (client/dist) and the site directory a deploy may lay out.
+dist/
+site/
+.DS_Store
+*.log
+.env
+.env.local
+coverage/
+.vite/
+
+# Git worktrees for isolated agent runs: a whole second checkout of this repository. ESLint's flat
+# config does not read .gitignore, so eslint.config.js ignores the same path separately.
+.claude/worktrees/
+
+# Working notes kept beside a checkout (plans, research, agents' runs); never part of the repository.
+# The docs file-name test (tools/docs/test) skips this folder.
+docs/superpowers/
+
+# Archives never belong in the tree (an engine tarball packed for a try-out, say).
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.dmg

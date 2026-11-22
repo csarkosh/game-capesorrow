@@ -3,6 +3,7 @@
   "telemetryDataset": "capesorrow_telemetry",
   "telemetryBucket": "capesorrow-telemetry",
   "allowedOrigins": [
+    "https://games.csarko.sh",
     "http://localhost:5174"
   ]
 }
