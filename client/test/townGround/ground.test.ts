@@ -3,6 +3,7 @@ import "../../src/terrain.js";
 import { COVE_Z, HEAD_HALF_WIDTH, SEA_LEVEL, coastGround, coveFor, roadCenterX, roadCorridorOverD, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt, type TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { BANK, EDGE, HILL_FROM, HILL_GRADE, HILL_TO, QUAY, QUAY_JOIN, TOWN_INLAND, TOWN_Z_HALF, bankD, townGroundD } from "../../src/sim/town/ground.js";
+import { fillWindowD, townFillFor } from "../../src/sim/town/fill.js";
 import { shoreSplineOf, shoreXAt } from "../../src/sim/town/shoreSpline.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { TEN_SEEDS } from "./seeds.js";
@@ -20,6 +21,12 @@ function lcg(seed: number): () => number {
 function made(seed: number, x: number, z: number): TerrainSample {
   const { u, uDz, ground } = coastGround(seed, x, z);
   return townGroundD(seed, x, z, u, uDz, ground);
+}
+
+/** Whether the plan's fill, its bank included, reaches a world point: there the ground is made, and not the coast's own, whatever the footprint says. */
+function fillReaches(seed: number, x: number, z: number): boolean {
+  const site = siteFor(seed);
+  return fillWindowD(townFillFor(seed), x - site.anchor.x, z - site.anchor.z).v > 0;
 }
 
 /** The shore's world x and the highway's at a z, and the point `s` metres landward of the water's edge. */
@@ -213,11 +220,18 @@ describe("the town's made ground", () => {
   it("is the coast's own, exactly, outside the footprint and its blend", () => {
     const rnd = lcg(3);
     let checked = 0;
+    // The plan's fill reaches seaward of the natural shore at the cove, and its bank is made ground: a point it
+    // reaches is left out here (and tested as the quay's bank in fill.test.ts), and counted.
+    let inFill = 0;
     for (const seed of [20261121, 1, 424242]) {
-      for (let k = 0; k < 40; k++) {
+      for (let k = 0; k < 60; k++) {
         const z = (rnd() * 2 - 1) * 900;
         const f = frame(seed, z);
         const x = k % 2 === 0 ? f.road + TOWN_INLAND + EDGE + 1 + rnd() * 300 : f.at(-f.foot - 1 - rnd() * 100);
+        if (fillReaches(seed, x, z)) {
+          inFill++;
+          continue;
+        }
         const own = coastGround(seed, x, z);
         const got = elevationSampleAt(seed, x, z);
         expect(got).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
@@ -227,6 +241,10 @@ describe("the town's made ground", () => {
       for (const z of [TOWN_Z_HALF + EDGE + 1, -(TOWN_Z_HALF + EDGE + 1), 700, -1300]) {
         const f = frame(seed, z);
         for (const s of [20, 60, 150]) {
+          if (fillReaches(seed, f.at(s), z)) {
+            inFill++;
+            continue;
+          }
           const own = coastGround(seed, f.at(s), z);
           expect(elevationSampleAt(seed, f.at(s), z)).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
           checked++;
@@ -234,6 +252,7 @@ describe("the town's made ground", () => {
       }
     }
     expect(checked).toBeGreaterThan(150);
+    process.stderr.write(`the coast's own outside the footprint: ${checked} points checked, ${inFill} left out for lying in the plan's fill or its bank\n`);
   });
 
   it("follows the highway's grade line along the whole town: its height at the highway is the grade line's, worst case over ten seeds", () => {
@@ -261,6 +280,12 @@ describe("the town's made ground", () => {
   });
 
   it("ends at the water's edge in a bank, from the quay down to the coast's own ground below the tide line, and not a spike", () => {
+    // The footprint's own bank, at every z: the ground is taken with no fill, so that the plan's fill, which now reaches
+    // seaward of the natural shore at the cove, does not stand in the bank's place (its quay's bank is tested in fill.test.ts).
+    const natural = (seed: number, x: number, z: number) => {
+      const { u, uDz, ground } = coastGround(seed, x, z);
+      return townGroundD(seed, x, z, u, uDz, ground, []);
+    };
     let steepest = 0;
     let widest = 0;
     for (const seed of TEN_SEEDS) {
@@ -270,15 +295,15 @@ describe("the town's made ground", () => {
         // flanks the shore runs east and west and the coast's own ground beyond the bank is the ridge's.
         const atHeadland = heads.some((h) => Math.abs(z - h.z) < HEAD_HALF_WIDTH + 16);
         const f = frame(seed, z);
-        const top = made(seed, f.at(0), z);
-        const foot = made(seed, f.at(-f.foot), z);
+        const top = natural(seed, f.at(0), z);
+        const foot = natural(seed, f.at(-f.foot), z);
         expect(top.h).toBeCloseTo(QUAY, 9);
         expect(foot.h).toBe(coastGround(seed, f.at(-f.foot), z).ground.h);
         widest = Math.max(widest, f.foot);
         if (!atHeadland) expect(foot.h, `seed ${seed} z ${z}`).toBeLessThan(SEA_LEVEL);
         let wet = false;
         for (let s = -f.foot; s <= 0; s += 0.1) {
-          const m = made(seed, f.at(s), z);
+          const m = natural(seed, f.at(s), z);
           if (!atHeadland) steepest = Math.max(steepest, Math.hypot(m.dx, m.dz));
           if (m.h > SEA_LEVEL) wet = true;
         }
