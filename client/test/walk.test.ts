@@ -12,6 +12,7 @@ import { activeTerrainVariant, elevationSampleAt } from "@csarkosh/engine/sim/te
 import { addPlayer } from "@csarkosh/engine/sim/tick";
 import { MOVER_BYTES, WALK, WALK_PROTOCOL, decodeWalkSnapshot, encodeWalkSnapshot, type WalkSnapshot } from "../src/net.js";
 import { WALK_RULES, createWalkWorld } from "../src/sim.js";
+import { townStart } from "../src/sim/town/start.js";
 
 /**
  * The empty game on the engine alone: its world is the engine's coast with no place laid over
@@ -23,7 +24,7 @@ const SEED = 20261121;
 const cmd = (seq: number, more: Partial<InputCommand> = {}): InputCommand => ({ seq, moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0, ...more });
 
 describe("the empty game's world", () => {
-  it("is the engine's coast with no trail, no road's start and no place of a game's", () => {
+  it("is the engine's coast with the town's ground laid over it, no trail and no road's start", () => {
     const variant = activeTerrainVariant();
     expect(variant.trailGraph?.(SEED)).toBeUndefined();
     expect(typeof variant.waterLevel).toBe("number");
@@ -39,7 +40,7 @@ describe("the empty game's world", () => {
     const ground = elevationSampleAt(SEED, a.pos.x, a.pos.z).h;
     expect(a.pos.y).toBeCloseTo(ground + PLAYER_HALF.y, 9);
     expect(ground).toBeGreaterThan((host.waterLevel ?? -Infinity) + 2 - 1e-9);
-    expect([a.id, a.yaw, a.pitch, a.grounded, a.lastProcessedInput]).toEqual([1, 0, 0, false, 0]);
+    expect([a.id, a.yaw, a.pitch, a.grounded, a.lastProcessedInput]).toEqual([1, townStart(SEED).yaw, 0, false, 0]);
     expect(host.state).toEqual({ tick: 0, players: new Map([[1, a]]), nextEntityId: 2, rngSeed: SEED | 0 });
   });
 });

@@ -11,6 +11,7 @@ import { createGroundField } from "@csarkosh/engine/sim/ground";
 import { spiralSpawn } from "@csarkosh/engine/sim/spawnGround";
 import { activeTerrainVariant } from "@csarkosh/engine/sim/terrain";
 import type { PlayerCore, Rules, SimState, SimWorld } from "@csarkosh/engine/sim/tick";
+import { townStart } from "./sim/town/start.js";
 
 /** A player: what the engine moves, and nothing of a game's beside it. */
 export type Walker = PlayerCore;
@@ -20,14 +21,17 @@ export type WalkState = SimState<Walker>;
 export type WalkWorld = SimWorld<Walker> & { forest: Forest };
 
 /**
- * Where the search for a first place to stand begins. Every peer walks the
- * same spiral out from it to the first place a hull stands free, above the
- * sea and off a lake's bed, so all agree with nothing exchanged.
+ * Where the search for a first place to stand begins: the town's start (`townStart`), on the made ground
+ * seaward of the highway at the cove. Every peer walks the same spiral out from it to the first place a hull
+ * stands free, above the sea and off a lake's bed, so all agree with nothing exchanged.
  */
-export const WALK_FROM = { x: 0.5, z: 0.5 };
+export function walkFrom(seed: number): { x: number; z: number } {
+  const start = townStart(seed);
+  return { x: start.x, z: start.z };
+}
 
 export const WALK_RULES: Rules<WalkWorld, Walker> = {
-  spawn: (world) => ({ pos: spiralSpawn(world.boxes, world.forest.seed, PLAYER_HALF, WALK_FROM), yaw: 0 }),
+  spawn: (world) => ({ pos: spiralSpawn(world.boxes, world.forest.seed, PLAYER_HALF, walkFrom(world.forest.seed)), yaw: townStart(world.forest.seed).yaw }),
   newPlayer: (id, at) => ({ id, pos: cloneVec3(at.pos), vel: { x: 0, y: 0, z: 0 }, yaw: at.yaw, pitch: 0, grounded: false, lastProcessedInput: 0 }),
   held: () => false,
   hostStep: () => undefined,
