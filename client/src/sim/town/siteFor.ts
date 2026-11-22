@@ -18,7 +18,7 @@ export const SITE_HALF = 512;
 /** The number of samples: one at the anchor and one each step either side of it. */
 export const SITE_SAMPLES = (2 * SITE_HALF) / SITE_STEP + 1;
 /** How far inland of the highway the made ground reaches, metres. */
-export const SITE_INLAND = 160;
+export const SITE_INLAND = 320;
 /** The seaward scan from the highway for the first ground at or under the sea, metres at a step, and how far. */
 export const SHORE_SCAN_STEP = 4;
 export const SHORE_SCAN_REACH = 400;

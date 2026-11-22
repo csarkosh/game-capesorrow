@@ -12,8 +12,8 @@ describe("the town's site, read off the coast", () => {
     for (const seed of FIVE_SEEDS) {
       const site = siteFor(seed);
       expect(site.anchor).toEqual({ x: roadCenterX(seed, COVE_Z), z: COVE_Z });
-      expect([site.step, site.z0, site.inland, site.shoreX.length, site.roadX.length]).toEqual([16, -512, 160, 65, 65]);
-      expect([SITE_STEP, SITE_SAMPLES, SITE_INLAND]).toEqual([16, 65, 160]);
+      expect([site.step, site.z0, site.inland, site.shoreX.length, site.roadX.length]).toEqual([16, -512, 320, 65, 65]);
+      expect([SITE_STEP, SITE_SAMPLES, SITE_INLAND]).toEqual([16, 65, 320]);
       expect(sampleZ(site, 32)).toBe(0);
       // The anchor's own sample is the anchor: the highway at 0.
       expect(site.roadX[32]).toBe(0);

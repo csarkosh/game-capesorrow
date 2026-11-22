@@ -7,6 +7,7 @@ import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { UNIT_KEEP } from "@csarkosh/engine/sim/cliffs";
 import type { FeatureMask } from "@csarkosh/engine/sim/features";
 import { EDGE, TOWN_INLAND, TOWN_Z_HALF, alongD, bankD, inlandD, smootherstepD } from "./ground.js";
+import { fillWindowD, townFillFor, type FillArea } from "./fill.js";
 import { shoreSplineOf, shoreXAt } from "./shoreSpline.js";
 import { siteFor } from "./siteFor.js";
 
@@ -34,15 +35,16 @@ export function townKeepD(u: number, uDz: number, z: number): { v: number; dx: n
 }
 
 /** How much the footprint covers a world point, 0 to 1: the fill's own weight, its bank and its blend included. */
-export function townCover(seed: number, x: number, z: number): number {
+export function townCover(seed: number, x: number, z: number, fill: readonly FillArea[] = townFillFor(seed)): number {
   const zr = z - COVE_Z;
-  if ((zr < 0 ? -zr : zr) >= TOWN_Z_HALF + EDGE) return 0;
-  const u = x - roadCenterX(seed, z);
-  if (u >= TOWN_INLAND + EDGE) return 0;
   const site = siteFor(seed);
+  const f = fill.length === 0 ? 0 : fillWindowD(fill, x - site.anchor.x, zr).v;
+  if ((zr < 0 ? -zr : zr) >= TOWN_Z_HALF + EDGE) return f;
+  const u = x - roadCenterX(seed, z);
+  if (u >= TOWN_INLAND + EDGE) return f;
   const shore = shoreXAt(shoreSplineOf(site), zr);
   const bank = bankD(x - site.anchor.x - shore.v, -shore.dz, shore.dz, shore.dz2);
-  return bank.v * alongD(zr).v * inlandD(u).v;
+  return 1 - (1 - bank.v * alongD(zr).v * inlandD(u).v) * (1 - f);
 }
 
 /** No tree and no ground clutter stands on the made ground, the forest and the cover returning over the blend. */

@@ -8,10 +8,10 @@
  */
 
 /** Coast distance at which the shore-to-massif blend ends inside the window, metres. */
-export const TOWN_BLEND_END = 1600;
+export const TOWN_BLEND_END = 1900;
 /** The window along z: 1 to this far from the anchor, and 0 beyond it by `TOWN_BLEND_FADE` more. */
-export const TOWN_BLEND_Z_HALF = 600;
-export const TOWN_BLEND_FADE = 150;
+export const TOWN_BLEND_Z_HALF = 1000;
+export const TOWN_BLEND_FADE = 240;
 
 export const TOWN_BLEND_TUNABLES: Readonly<Record<string, number>> = { TOWN_BLEND_END, TOWN_BLEND_Z_HALF, TOWN_BLEND_FADE };
 
