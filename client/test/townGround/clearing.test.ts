@@ -2,114 +2,232 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { generateChunk } from "@csarkosh/engine/sim/chunk";
 import { CHUNK_SIZE } from "@csarkosh/engine/sim/forestConstants";
-import { CLUTTER_BUSH, CLUTTER_GRASS, CLUTTER_ROCK, CLUTTER_SHRUB, clutterInRect } from "@csarkosh/engine/sim/clutter";
+import { CLUTTER_BUSH, CLUTTER_DRIFTWOOD, CLUTTER_GRASS, CLUTTER_ROCK, CLUTTER_SHRUB, clutterInRect } from "@csarkosh/engine/sim/clutter";
 import { CLIFF_MATERIAL } from "@csarkosh/engine/sim/passes/cliffs";
-import { roadCenterX } from "@csarkosh/engine/sim/olympic";
-import { townCover, townFeatureMask, townKeepD } from "../../src/sim/town/clearing.js";
-import { COVE_Z } from "@csarkosh/engine/sim/olympic";
-import { TOWN_INLAND, TOWN_Z_HALF, inFootprint } from "../../src/sim/town/ground.js";
+import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { shoreStrip } from "@csarkosh/engine/sim/terrain";
+import { bearingU, bearingV } from "../../src/sim/town/bearings.js";
+import { CLUTTER_BUILDING_CLEAR, CLUTTER_STREET_CLEAR, TREE_BUILDING_CLEAR, TREE_STREET_CLEAR, YARD_LIFT, YARD_TREE, clearAt, isPaved, townCover, townFeatureMask, townKeepD, townYardWeight } from "../../src/sim/town/clearing.js";
+import { TOWN_INLAND, TOWN_Z_HALF } from "../../src/sim/town/ground.js";
+import { contains, segDist } from "../../src/sim/town/geom.js";
+import { planFor } from "../../src/sim/town/planFor.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
+import type { TownPlan } from "../../src/sim/town/types.js";
 
 const SEEDS = [20261121, 1, 424242];
+/** A seed whose town leaves a few hectares of the old rectangle unbuilt. */
+const CORNER_SEED = 777;
 
-/** Whether the box (any of it) lies on the made ground proper. */
-function onFootprint(seed: number, box: { min: { x: number; z: number }; max: { x: number; z: number } }): boolean {
-  for (const x of [box.min.x, (box.min.x + box.max.x) / 2, box.max.x]) {
-    for (const z of [box.min.z, (box.min.z + box.max.z) / 2, box.max.z]) if (inFootprint(seed, x, z)) return true;
-  }
-  return false;
+/** The distance from a point of the plan's frame to a building's footprint (0 inside it). */
+function toFootprint(plan: TownPlan, id: number, x: number, z: number): number {
+  const b = plan.buildings[id] as (typeof plan.buildings)[number];
+  const u = bearingU(b.bearing);
+  const v = bearingV(b.bearing);
+  const lu = Math.max(0, Math.abs((x - b.centre.x) * u.x + (z - b.centre.z) * u.z) - b.halfAlong);
+  const lv = Math.max(0, Math.abs((x - b.centre.x) * v.x + (z - b.centre.z) * v.z) - b.halfAcross);
+  return Math.sqrt(lu * lu + lv * lv);
 }
 
-describe("the made ground is clear of forest", () => {
-  it("keeps every trunk, rock and cliff box off the footprint, with boxes standing outside it", () => {
+/** The distance from a point of the plan's frame to the nearest street's right of way (0 on it), the highway left to the engine. */
+function toStreet(plan: TownPlan, x: number, z: number): number {
+  let d = Infinity;
+  for (const st of plan.streets) {
+    if (st.kind === "highway" || st.kind === "wharf") continue;
+    d = Math.min(d, Math.max(0, segDist({ x, z }, st.a, st.b) - st.width / 2));
+  }
+  return d;
+}
+
+/** Every tree trunk of every chunk of the town and a margin round it, in the plan's frame. */
+function trunksOf(seed: number): { x: number; z: number }[] {
+  const site = siteFor(seed);
+  const plan = planFor(seed);
+  const margin = 96;
+  const cx0 = Math.floor((site.anchor.x + plan.bounds.x0 - margin) / CHUNK_SIZE);
+  const cx1 = Math.floor((site.anchor.x + plan.bounds.x1 + 330 + margin) / CHUNK_SIZE);
+  const cz0 = Math.floor((site.anchor.z + plan.bounds.z0 - margin) / CHUNK_SIZE);
+  const cz1 = Math.floor((site.anchor.z + plan.bounds.z1 + margin) / CHUNK_SIZE);
+  const out: { x: number; z: number }[] = [];
+  for (let cx = cx0; cx <= cx1; cx++) {
+    for (let cz = cz0; cz <= cz1; cz++) {
+      for (const prop of generateChunk(seed, cx, cz).props) {
+        if (prop.material !== "trunk") continue;
+        out.push({ x: (prop.box.min.x + prop.box.max.x) / 2 - site.anchor.x, z: (prop.box.min.z + prop.box.max.z) / 2 - site.anchor.z });
+      }
+    }
+  }
+  return out;
+}
+
+describe("the forest by the lot", () => {
+  it("keeps every trunk clear of every building and every street, in every chunk of the town, and stands trunks in yards and vacant lots and in the old rectangle's empty corners", () => {
+    const rows: string[] = [];
+    for (const seed of [...SEEDS, CORNER_SEED]) {
+      const plan = planFor(seed);
+      const trunks = trunksOf(seed);
+      const lotHasBuilding = new Set<number>();
+      for (const b of plan.buildings) if (b.lot !== -1) lotHasBuilding.add(b.lot);
+      let nearBuilding = 0;
+      let onStreet = 0;
+      let inYards = 0;
+      let inVacant = 0;
+      let inPaved = 0;
+      let inTown = 0;
+      let corners = 0;
+      let closest = Infinity;
+      for (const t of trunks) {
+        for (const b of plan.buildings) {
+          if (b.lot === -1) continue;
+          const d = toFootprint(plan, b.id, t.x, t.z);
+          closest = Math.min(closest, d);
+          if (d < TREE_BUILDING_CLEAR) nearBuilding++;
+        }
+        if (toStreet(plan, t.x, t.z) < TREE_STREET_CLEAR) onStreet++;
+        const block = plan.blocks.find((bl) => contains(bl.polygon, t, 0));
+        if (block !== undefined) {
+          inTown++;
+          if (isPaved(block.district)) inPaved++;
+          else inYards++;
+          const lot = plan.lots.find((l) => l.block === block.id && contains(l.polygon, t, 0));
+          if (lot !== undefined && !lotHasBuilding.has(lot.id)) inVacant++;
+        }
+        // The old rectangle's far corners: inland of the last block, within the footprint's reach.
+        if (Math.abs(t.z) < TOWN_Z_HALF && t.x + siteFor(seed).anchor.x - roadCenterX(seed, t.z + COVE_Z) < TOWN_INLAND && townCover(seed, t.x + siteFor(seed).anchor.x, t.z + COVE_Z) === 0 && t.x > 0) corners++;
+      }
+      rows.push(`seed ${seed}: ${trunks.length} trunks, ${inTown} inside blocks (${inYards} in yards, ${inVacant} on vacant lots, ${inPaved} on paved blocks), ${corners} where the old rectangle's corners were; nearest a building ${closest.toFixed(1)} m`);
+      process.stderr.write(`${rows[rows.length - 1]}\n`);
+      expect(nearBuilding, `seed ${seed} trunks within ${TREE_BUILDING_CLEAR} m of a building`).toBe(0);
+      expect(onStreet, `seed ${seed} trunks on a street`).toBe(0);
+      expect(inPaved, `seed ${seed} trunks on paved blocks`).toBe(0);
+      if (seed !== CORNER_SEED) expect(inYards, `seed ${seed} trunks in yards`).toBeGreaterThan(0);
+      if (seed === CORNER_SEED) expect(corners, `seed ${seed} trunks in the unbuilt corners`).toBeGreaterThan(20);
+    }
+  });
+
+  it("keeps the ground cover and the scrub off every street, off every building and a few metres round it, and off paved blocks; no loose rock or driftwood on the town", () => {
     const rows: string[] = [];
     for (const seed of SEEDS) {
       const site = siteFor(seed);
-      // Every chunk over the footprint's bounding box and a margin round it.
-      let minX = Infinity;
-      for (let i = 0; i < site.shoreX.length; i++) minX = Math.min(minX, site.anchor.x + (site.shoreX[i] as number));
-      let maxX = -Infinity;
-      for (let z = -TOWN_Z_HALF; z <= TOWN_Z_HALF; z += 16) maxX = Math.max(maxX, roadCenterX(seed, COVE_Z + z) + TOWN_INLAND);
-      const margin = 96;
-      const cx0 = Math.floor((minX - margin) / CHUNK_SIZE);
-      const cx1 = Math.floor((maxX + margin) / CHUNK_SIZE);
-      const cz0 = Math.floor((COVE_Z - TOWN_Z_HALF - margin) / CHUNK_SIZE);
-      const cz1 = Math.floor((COVE_Z + TOWN_Z_HALF + margin) / CHUNK_SIZE);
-      const counts = { trunk: 0, rock: 0, cliff: 0 };
-      const inside = { trunk: 0, rock: 0, cliff: 0 };
-      let chunks = 0;
-      for (let cx = cx0; cx <= cx1; cx++) {
-        for (let cz = cz0; cz <= cz1; cz++) {
-          chunks++;
-          for (const prop of generateChunk(seed, cx, cz).props) {
-            const kind = prop.material === "trunk" ? "trunk" : prop.material === "rock" ? "rock" : prop.material === CLIFF_MATERIAL ? "cliff" : null;
-            if (kind === null) continue;
-            counts[kind]++;
-            if (onFootprint(seed, prop.box)) inside[kind]++;
+      const plan = planFor(seed);
+      const found = { grass: 0, bush: 0, shrub: 0, rock: 0, wood: 0, onStreet: 0, nearBuilding: 0, paved: 0, yardGrass: 0 };
+      for (const [cls, key] of [[CLUTTER_GRASS, "grass"], [CLUTTER_BUSH, "bush"], [CLUTTER_SHRUB, "shrub"], [CLUTTER_ROCK, "rock"], [CLUTTER_DRIFTWOOD, "wood"]] as const) {
+        for (let z = plan.bounds.z0 + 60; z < plan.bounds.z1 - 60; z += 128) {
+          const lo = site.anchor.x + plan.bounds.x0;
+          const hi = site.anchor.x + plan.bounds.x1;
+          for (const c of clutterInRect(seed, cls, lo, site.anchor.z + z, hi, site.anchor.z + z + 128)) {
+            const p = { x: c.x - site.anchor.x, z: c.z - site.anchor.z };
+            if (key === "rock" || key === "wood") {
+              if (townCover(seed, c.x, c.z) >= 0.999) found[key]++;
+              continue;
+            }
+            found[key]++;
+            if (toStreet(plan, p.x, p.z) < CLUTTER_STREET_CLEAR) found.onStreet++;
+            for (const b of plan.buildings) if (b.lot !== -1 && toFootprint(plan, b.id, p.x, p.z) < CLUTTER_BUILDING_CLEAR) found.nearBuilding++;
+            const block = plan.blocks.find((bl) => contains(bl.polygon, p, 0));
+            if (block !== undefined) {
+              if (isPaved(block.district)) found.paved++;
+              else if (key === "grass") found.yardGrass++;
+            }
           }
         }
       }
-      rows.push(`seed ${seed}: ${chunks} chunks, boxes (trunk/boulder/cliff) ${counts.trunk}/${counts.rock}/${counts.cliff}, inside the footprint ${inside.trunk}/${inside.rock}/${inside.cliff}`);
-      expect(inside, `seed ${seed}`).toEqual({ trunk: 0, rock: 0, cliff: 0 });
-      // Boxes do stand beyond it: the forest is there.
-      expect(counts.trunk, `seed ${seed} trunks outside`).toBeGreaterThan(200);
+      rows.push(`seed ${seed}: grass ${found.grass} (${found.yardGrass} in yards), bushes ${found.bush}, shrubs ${found.shrub}; on streets ${found.onStreet}, near buildings ${found.nearBuilding}, on paved blocks ${found.paved}; loose rock ${found.rock}, driftwood ${found.wood} on the town`);
+      process.stderr.write(`${rows[rows.length - 1]}\n`);
+      expect(found.onStreet).toBe(0);
+      expect(found.nearBuilding).toBe(0);
+      expect(found.paved).toBe(0);
+      expect(found.rock).toBe(0);
+      expect(found.wood).toBe(0);
+      expect(found.yardGrass, `seed ${seed} grass in yards`).toBeGreaterThan(50);
     }
-    process.stderr.write(`${rows.join("\n")}\n`);
   });
 
-  it("counts what it means to: the same census finds cliff and boulder boxes where the coast has them, up the coast past the town's reach", () => {
+  it("keeps cliff and boulder boxes off the old rectangle, with boxes standing outside it, and finds them up the coast where the coast has them", () => {
+    for (const seed of SEEDS) {
+      const site = siteFor(seed);
+      let cliffsIn = 0;
+      let outside = 0;
+      for (let cx = Math.floor((site.anchor.x - 150) / CHUNK_SIZE); cx <= Math.floor((site.anchor.x + 700) / CHUNK_SIZE); cx++) {
+        for (let cz = Math.floor((COVE_Z - TOWN_Z_HALF - 96) / CHUNK_SIZE); cz <= Math.floor((COVE_Z + TOWN_Z_HALF + 96) / CHUNK_SIZE); cz++) {
+          for (const prop of generateChunk(seed, cx, cz).props) {
+            const x = (prop.box.min.x + prop.box.max.x) / 2;
+            const z = (prop.box.min.z + prop.box.max.z) / 2;
+            const inside = Math.abs(z - COVE_Z) < TOWN_Z_HALF && x - roadCenterX(seed, z) < TOWN_INLAND && x - roadCenterX(seed, z) > -150;
+            if (prop.material === CLIFF_MATERIAL && inside) cliffsIn++;
+            if (prop.material === "trunk" && !inside) outside++;
+          }
+        }
+      }
+      expect(cliffsIn).toBe(0);
+      expect(outside).toBeGreaterThan(200);
+    }
     const seed = 20261121;
     const road = roadCenterX(seed, 1800);
-    let cliffs = 0;
-    let rocks = 0;
+    let found = 0;
     for (let cx = Math.floor((road - 100) / CHUNK_SIZE); cx <= Math.floor((road + 700) / CHUNK_SIZE); cx++) {
       for (let cz = Math.floor(1700 / CHUNK_SIZE); cz <= Math.floor(2100 / CHUNK_SIZE); cz++) {
-        for (const prop of generateChunk(seed, cx, cz).props) {
-          if (prop.material === CLIFF_MATERIAL) cliffs++;
-          if (prop.material === "rock") rocks++;
+        for (const prop of generateChunk(seed, cx, cz).props) if (prop.material === CLIFF_MATERIAL || prop.material === "rock") found++;
+      }
+    }
+    expect(found).toBeGreaterThan(0);
+  });
+
+  it("says by the mask: shut on the street, on a paved block and beside a building, grass and a share of trees in a yard, the forest whole beyond the blocks", () => {
+    for (const seed of SEEDS) {
+      const plan = planFor(seed);
+      const site = siteFor(seed);
+      const at = (p: { x: number; z: number }) => townFeatureMask(seed, site.anchor.x + p.x, site.anchor.z + p.z);
+      // The middle of a street: no tree, no cover.
+      const street = plan.streets.find((s) => s.kind === "street") as (typeof plan.streets)[number];
+      const mid = { x: (street.a.x + street.b.x) / 2, z: (street.a.z + street.b.z) / 2 };
+      expect(at(mid).tree).toBe(0);
+      expect(at(mid).clutter).toBe(0);
+      expect(at(mid).loose).toBe(0);
+      // A paved block's middle, and a yard block's.
+      const centre = (b: (typeof plan.blocks)[number]) => b.polygon.reduce((acc, p) => ({ x: acc.x + p.x / b.polygon.length, z: acc.z + p.z / b.polygon.length }), { x: 0, z: 0 });
+      const paved = plan.blocks.find((b) => isPaved(b.district)) as (typeof plan.blocks)[number];
+      expect(at(centre(paved)).tree).toBe(0);
+      expect(at(centre(paved)).clutter).toBe(0);
+      const yard = plan.blocks.filter((b) => !isPaved(b.district));
+      expect(yard.length).toBeGreaterThan(5);
+      // Some yard has ground that takes grass and a share of trees, and a building's own wall is shut.
+      let grassy = 0;
+      let treeShare = 0;
+      for (const b of yard) {
+        for (const lot of plan.lots.filter((l) => l.block === b.id)) {
+          const c = lot.polygon.reduce((acc, p) => ({ x: acc.x + p.x / lot.polygon.length, z: acc.z + p.z / lot.polygon.length }), { x: 0, z: 0 });
+          const m = at(c);
+          if (m.clutter > 0.9) grassy++;
+          if (m.tree > 0 && m.tree <= YARD_TREE + 1e-9) treeShare++;
+          expect(m.meadow).toBeGreaterThanOrEqual(0);
         }
       }
+      expect(grassy).toBeGreaterThan(20);
+      expect(treeShare).toBeGreaterThan(0);
+      // Beyond the blocks, far inland: the whole forest, nothing loose held back.
+      const far = { x: plan.bounds.x1 + 200, z: 0 };
+      expect(at(far)).toEqual({ tree: 1, clutter: 1, meadow: 0, bare: 0 });
     }
-    process.stderr.write(`control census past the town: ${cliffs} cliff boxes, ${rocks} boulder boxes\n`);
-    expect(cliffs + rocks).toBeGreaterThan(0);
   });
 
-  it("keeps the ground cover and the scrub off the footprint too, and reports the loose rocks", () => {
-    const rows: string[] = [];
+  it("lifts what the shore's rules read on a yard, and nowhere else", () => {
     for (const seed of SEEDS) {
-      const found = { grass: 0, bush: 0, shrub: 0, rock: 0 };
-      for (let z = -TOWN_Z_HALF; z < TOWN_Z_HALF; z += 96) {
-        const road = roadCenterX(seed, COVE_Z + z);
-        const lo = road - 60;
-        const hi = road + TOWN_INLAND;
-        for (const [cls, key] of [[CLUTTER_GRASS, "grass"], [CLUTTER_BUSH, "bush"], [CLUTTER_SHRUB, "shrub"], [CLUTTER_ROCK, "rock"]] as const) {
-          found[key] += clutterInRect(seed, cls, lo, z, hi, z + 96).filter((c) => inFootprint(seed, c.x, c.z)).length;
-        }
-      }
-      rows.push(`seed ${seed}: clutter on the footprint: grass ${found.grass}, bushes ${found.bush}, shrubs ${found.shrub}, loose rocks ${found.rock}`);
-      expect(found.grass + found.bush + found.shrub).toBe(0);
-    }
-    process.stderr.write(`${rows.join("\n")}\n`);
-  });
-
-  it("holds the forest off by the mask and gives it back over the blend", () => {
-    for (const seed of SEEDS) {
-      const road = roadCenterX(seed, COVE_Z);
-      // Nothing grows on the made ground and nothing lies loose on it (the engine's `loose`: driftwood, drift logs, scattered rock).
-      expect(townFeatureMask(seed, road + 100, COVE_Z)).toEqual({ tree: 0, clutter: 0, meadow: 0, bare: 0, loose: 0 });
-      expect(townFeatureMask(seed, road + TOWN_INLAND + 80, COVE_Z)).toEqual({ tree: 1, clutter: 1, meadow: 0, bare: 0 });
-      expect(townFeatureMask(seed, road + 100, TOWN_Z_HALF + 80)).toEqual({ tree: 1, clutter: 1, meadow: 0, bare: 0 });
-      let last = 0;
-      for (let d = 0; d <= 40; d += 2) {
-        const tree = townFeatureMask(seed, road + TOWN_INLAND + d, COVE_Z).tree;
-        expect(tree).toBeGreaterThanOrEqual(last);
-        last = tree;
-      }
-      expect(townCover(seed, road + 100, COVE_Z)).toBe(1);
+      const plan = planFor(seed);
+      const site = siteFor(seed);
+      const yard = plan.blocks.find((b) => !isPaved(b.district)) as (typeof plan.blocks)[number];
+      const c = yard.polygon.reduce((acc, p) => ({ x: acc.x + p.x / yard.polygon.length, z: acc.z + p.z / yard.polygon.length }), { x: 0, z: 0 });
+      expect(townYardWeight(seed, site.anchor.x + c.x, site.anchor.z + c.z)).toBe(1);
+      expect(shoreStrip(seed, site.anchor.x + c.x, site.anchor.z + c.z)).toBe(1);
+      const paved = plan.blocks.find((b) => isPaved(b.district)) as (typeof plan.blocks)[number];
+      const p = paved.polygon.reduce((acc, q) => ({ x: acc.x + q.x / paved.polygon.length, z: acc.z + q.z / paved.polygon.length }), { x: 0, z: 0 });
+      expect(shoreStrip(seed, site.anchor.x + p.x, site.anchor.z + p.z)).toBe(0);
+      expect(shoreStrip(seed, site.anchor.x + plan.bounds.x1 + 300, site.anchor.z)).toBe(0);
+      expect(clearAt(plan, plan.bounds.x1 + 300, 0)).toEqual({ tree: 1, clutter: 1, yard: 0 });
+      expect(YARD_LIFT).toBeGreaterThan(8);
     }
   });
 
-  it("keeps the cliff bands off the footprint and returns them over the blend, with an exact slope", () => {
+  it("keeps the cliff bands off the old rectangle and returns them over the blend, with an exact slope", () => {
     expect(townKeepD(50, 0.1, 0).v).toBe(0);
     expect(townKeepD(TOWN_INLAND + 80, 0, 0).v).toBe(1);
     expect(townKeepD(50, 0, TOWN_Z_HALF + 80).v).toBe(1);
