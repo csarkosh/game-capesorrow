@@ -10,6 +10,8 @@ import type { TownPlan } from "../../sim/town/types.js";
 
 /** Heights are the world's, metres; x and z are the world's too (the plan's frame plus `anchor`). */
 export type TownGround = {
+  /** The world's seed (the spur's track is found from it). */
+  readonly seed: number;
   readonly plan: TownPlan;
   readonly anchor: { readonly x: number; readonly z: number };
   /** The ground's surface height at a world position, from the engine's ground field. */

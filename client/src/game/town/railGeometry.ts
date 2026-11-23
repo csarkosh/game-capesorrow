@@ -90,7 +90,7 @@ export type RailWorld = {
   poles(z0: number, z1: number): readonly Pole[];
 };
 
-type Frame = { x: number; z: number; g: number; nx: number; nz: number };
+export type Frame = { x: number; z: number; g: number; nx: number; nz: number };
 
 /** The line's frame at a z: its centre, the grade there, and the unit normal across it (toward +x). */
 function frameAt(w: RailWorld, z: number): Frame {
@@ -99,14 +99,14 @@ function frameAt(w: RailWorld, z: number): Frame {
   return { x: w.centreX(z), z, g: w.gradeAt(z), nx: 1 / len, nz: -slope / len };
 }
 
-function pointOf(f: Frame, off: number, dy: number): Vec3 {
+export function pointOf(f: Frame, off: number, dy: number): Vec3 {
   return [f.x + f.nx * off, f.g + dy, f.z + f.nz * off];
 }
 
 /** A cross-section: points as (offset across, height over the bench), in clockwise order seen from along +z with +x to the right. */
-type Profile = readonly (readonly [number, number])[];
+export type Profile = readonly (readonly [number, number])[];
 
-const BALLAST_FULL: Profile = [
+export const BALLAST_FULL: Profile = [
   [-RAIL_BED_HALF, -BALLAST_SKIRT],
   [-RAIL_BED_HALF, 0],
   [-BALLAST_TOP_HALF, BALLAST_TOP],
@@ -114,7 +114,7 @@ const BALLAST_FULL: Profile = [
   [RAIL_BED_HALF, 0],
   [RAIL_BED_HALF, -BALLAST_SKIRT],
 ];
-const BALLAST_STRIP: Profile = [
+export const BALLAST_STRIP: Profile = [
   [-RAIL_BED_HALF, 0],
   [-BALLAST_TOP_HALF, BALLAST_TOP],
   [BALLAST_TOP_HALF, BALLAST_TOP],
@@ -122,7 +122,7 @@ const BALLAST_STRIP: Profile = [
 ];
 
 /** A rail's section round its own centre: the foot, the web and the head, closed (the first point follows the last). */
-const RAIL_PROFILE: Profile = [
+export const RAIL_PROFILE: Profile = [
   [-0.07, RAIL_FOOT],
   [-0.07, RAIL_FOOT + 0.025],
   [-0.02, RAIL_FOOT + 0.04],
@@ -136,7 +136,7 @@ const RAIL_PROFILE: Profile = [
   [0.07, RAIL_FOOT + 0.025],
   [0.07, RAIL_FOOT],
 ];
-const RAIL_PLAIN: Profile = [
+export const RAIL_PLAIN: Profile = [
   [-0.05, RAIL_FOOT],
   [-0.05, RAIL_TOP],
   [0.05, RAIL_TOP],
@@ -147,7 +147,7 @@ const RAIL_PLAIN: Profile = [
  * A profile swept along the frames: a quad for each edge of the profile and each pair of frames, facing out of the section
  * (`closed`: the last point joins the first). `centre` shifts the profile across the track.
  */
-function sweep(sink: MeshBuilder, frames: readonly Frame[], profile: Profile, centre: number, colour: Rgb, closed: boolean, topColour: Rgb = colour): void {
+export function sweep(sink: MeshBuilder, frames: readonly Frame[], profile: Profile, centre: number, colour: Rgb, closed: boolean, topColour: Rgb = colour): void {
   const n = profile.length;
   const edges = closed ? n : n - 1;
   for (let i = 0; i + 1 < frames.length; i++) {
@@ -295,40 +295,71 @@ export function* railCell(w: RailWorld, k: number, lod: RailLod): Slices<RailCel
   return { flat: fl, solid: sol, lod, k };
 }
 
-/** A trestle's frames: its bents of piles every `TRESTLE_BENT` m, the planked deck, the stringers, its ties and its guard rails. */
-function trestle(w: RailWorld, b: MeshBuilder, frames: readonly Frame[], lod: RailLod): void {
+/** The frame `d` metres along a run of frames (by the distance between them), interpolated. */
+export function frameAlong(frames: readonly Frame[], d: number): Frame {
+  let at = 0;
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1] as Frame;
+    const b = frames[i] as Frame;
+    const len = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+    if (d <= at + len || i === frames.length - 1) {
+      const t = len > 1e-9 ? Math.max(0, Math.min(1, (d - at) / len)) : 0;
+      const nx = a.nx + (b.nx - a.nx) * t;
+      const nz = a.nz + (b.nz - a.nz) * t;
+      const nl = Math.sqrt(nx * nx + nz * nz);
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, g: a.g + (b.g - a.g) * t, nx: nx / nl, nz: nz / nl };
+    }
+    at += len;
+  }
+  return frames[frames.length - 1] as Frame;
+}
+
+/** The length of a run of frames. */
+export function runLength(frames: readonly Frame[]): number {
+  let at = 0;
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1] as Frame;
+    const b = frames[i] as Frame;
+    at += Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+  }
+  return at;
+}
+
+/**
+ * A trestle over a run of frames (the main line's, or the spur's): its bents of piles every `TRESTLE_BENT` m, the planked deck, the stringers,
+ * its ties and its guard rails. `heightAt` is the ground the piles stand on.
+ */
+export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshBuilder, frames: readonly Frame[], lod: RailLod): void {
   if (frames.length < 2) return;
   // The planked deck and the stringers under it, swept along the frames.
   sweep(b, frames, [[-TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.08]], 0, DECK, false, DECK);
   sweep(b, frames, [[-TRESTLE_HALF, 0.04], [-TRESTLE_HALF, 0.08]], 0, TIMBER, false);
   sweep(b, frames, [[TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.04]], 0, TIMBER, false);
   for (const off of [-0.8, 0.8]) sweep(b, frames, [[off - 0.15, -0.3], [off - 0.15, 0.04], [off + 0.15, 0.04], [off + 0.15, -0.3]], 0, TIMBER_WEATHERED, true);
-  const first = frames[0] as Frame;
-  const last = frames[frames.length - 1] as Frame;
   // The guard rails: a top rail and a mid rail on posts every bent.
   for (const side of [-1, 1]) {
     const off = side * (TRESTLE_HALF - 0.06);
     sweep(b, frames, [[off - 0.05, 1.0], [off - 0.05, 1.1], [off + 0.05, 1.1], [off + 0.05, 1.0]], 0, TIMBER, true);
     sweep(b, frames, [[off - 0.04, 0.55], [off - 0.04, 0.62], [off + 0.04, 0.62], [off + 0.04, 0.55]], 0, TIMBER, true);
   }
+  const length = runLength(frames);
   // Ties on the deck, as on the bed.
-  const j0 = Math.ceil(first.z / TIE_PITCH);
-  const j1 = Math.ceil(last.z / TIE_PITCH);
   if (lod === 0) {
-    for (let j = j0; j < j1; j++) {
-      const f = frameAt(w, j * TIE_PITCH);
+    const n = Math.floor(length / TIE_PITCH);
+    for (let j = 0; j < n; j++) {
+      const f = frameAlong(frames, (j + 0.5) * TIE_PITCH);
       b.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25));
     }
   }
   // The bents: three piles under a cap beam, down to the ground, and the posts of the guard rails.
-  const nb = Math.max(1, Math.floor((last.z - first.z) / TRESTLE_BENT));
+  const nb = Math.max(1, Math.floor(length / TRESTLE_BENT));
   for (let i = 0; i <= nb; i++) {
-    const f = frameAt(w, first.z + ((last.z - first.z) * i) / nb);
+    const f = frameAlong(frames, (length * i) / nb);
     b.box(f.x, f.z, f.g - 0.55, f.nx, f.nz, 1.55, 0.14, 0.25, TIMBER, TIMBER);
     for (const off of [-1.15, 0, 1.15]) {
       const x = f.x + f.nx * off;
       const z = f.z + f.nz * off;
-      const bottom = Math.min(w.heightAt(x, z), f.g - 1) - 0.4;
+      const bottom = Math.min(heightAt(x, z), f.g - 1) - 0.4;
       b.box(x, z, bottom, 1, 0, 0.16, 0.16, f.g - 0.55 - bottom, PILE, PILE);
     }
     if (lod < 2) {
@@ -339,6 +370,10 @@ function trestle(w: RailWorld, b: MeshBuilder, frames: readonly Frame[], lod: Ra
       }
     }
   }
+}
+
+function trestle(w: RailWorld, b: MeshBuilder, frames: readonly Frame[], lod: RailLod): void {
+  trestleOver(w.heightAt, b, frames, lod);
 }
 
 /** A crossing: the roadway carried over the rails on a panel flush with their heads, crossbucks on posts each side, and a stop line on the highway side. */

@@ -27,7 +27,13 @@ const CELL = 24;
 export const COVER_OUT_HOLD = 6;
 export const COVER_OUT_FADE = 30;
 
-export const COVER_TUNABLES: Readonly<Record<string, number>> = { COVER_HOLD, COVER_FADE, COVER_OUT_HOLD, COVER_OUT_FADE };
+/** The spur's own ground: a strip of the made ground (the plane) laid along its line so the track stands on level ground and not on the tideflat: whole this far from its centre and falling over the next `COVER_SPUR_FADE` metres. */
+export const COVER_SPUR_HOLD = 6;
+export const COVER_SPUR_FADE = 24;
+/** Half the width of the quad a spur segment's window is made from, metres. */
+const SPUR_HALF = 3;
+
+export const COVER_TUNABLES: Readonly<Record<string, number>> = { COVER_HOLD, COVER_FADE, COVER_OUT_HOLD, COVER_OUT_FADE, COVER_SPUR_HOLD, COVER_SPUR_FADE };
 
 type Edge = { readonly nx: number; readonly nz: number; readonly c: number };
 type Window = { readonly edges: readonly Edge[]; readonly hold: number; readonly fade: number; /** A lone outlying lot's: it levels nothing (the ground is the land's own there) but holds the cliff bands and the forest off. */ readonly lot: boolean };
@@ -81,6 +87,39 @@ export function coverIndexOf(plan: TownPlan): CoverIndex {
     const reach = hold + fade;
     windows.push({ edges, hold, fade, lot: out });
     boxes.push({ x0: x0 - reach, z0: z0 - reach, x1: x1 + reach, z1: z1 + reach });
+  }
+  // The town's own track carries a strip of made ground along it, a window to each of its segments.
+  for (const spur of plan.rail.spurs) {
+    for (let i = 1; i < spur.points.length; i++) {
+      const a = spur.points[i - 1] as { x: number; z: number };
+      const b = spur.points[i] as { x: number; z: number };
+      const ex = b.x - a.x;
+      const ez = b.z - a.z;
+      const len = Math.sqrt(ex * ex + ez * ez);
+      if (!(len > 1e-6)) continue;
+      const nx = (-ez / len) * SPUR_HALF;
+      const nz = (ex / len) * SPUR_HALF;
+      const poly = orient([
+        { x: a.x + nx, z: a.z + nz },
+        { x: b.x + nx, z: b.z + nz },
+        { x: b.x - nx, z: b.z - nz },
+        { x: a.x - nx, z: a.z - nz },
+      ]);
+      const edges: Edge[] = [];
+      for (let k = 0; k < 4; k++) {
+        const p = poly[k] as { x: number; z: number };
+        const q = poly[(k + 1) % 4] as { x: number; z: number };
+        const dx = q.x - p.x;
+        const dz = q.z - p.z;
+        const l = Math.sqrt(dx * dx + dz * dz);
+        const inx = -dz / l;
+        const inz = dx / l;
+        edges.push({ nx: inx, nz: inz, c: inx * p.x + inz * p.z });
+      }
+      const reach = COVER_SPUR_HOLD + COVER_SPUR_FADE;
+      windows.push({ edges, hold: COVER_SPUR_HOLD, fade: COVER_SPUR_FADE, lot: false });
+      boxes.push({ x0: Math.min(a.x, b.x) - SPUR_HALF - reach, z0: Math.min(a.z, b.z) - SPUR_HALF - reach, x1: Math.max(a.x, b.x) + SPUR_HALF + reach, z1: Math.max(a.z, b.z) + SPUR_HALF + reach });
+    }
   }
   let bx0 = Infinity;
   let bz0 = Infinity;

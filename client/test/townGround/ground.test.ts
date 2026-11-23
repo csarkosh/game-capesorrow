@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { COVE_Z, HEAD_HALF_WIDTH, SEA_LEVEL, coastGround, coveFor, roadCenterX, roadCorridorOverD, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt, type TerrainSample } from "@csarkosh/engine/sim/terrain";
+import { RAIL_REACH } from "../../src/sim/town/railGround.js";
+import { railCenterX } from "../../src/sim/town/rail.js";
 import { BANK, EDGE, FAR_FROM, HILL_EXTRA, HILL_FROM, HILL_GRADE, HILL_TO, OWN_FLATS, OWN_HILL, QUAY, QUAY_JOIN, RELIEF_LIMIT, TOWN_INLAND, TOWN_Z_HALF, bankD, madePlaneD, townGroundD } from "../../src/sim/town/ground.js";
 import { COVER_FADE, COVER_HOLD, coverD } from "../../src/sim/town/cover.js";
 import { planFor } from "../../src/sim/town/planFor.js";
@@ -349,6 +351,8 @@ describe("the town's made ground", () => {
           continue;
         }
         if (cover(seed, x, z) !== 0) continue;
+        // The railroad's bed is laid over the place's ground along the whole coast (`railGround.ts`): a point it reaches is the bed's, tested in `townRail/`.
+        if (Math.abs(x - railCenterX(seed, z)) < RAIL_REACH + 1) continue;
         const own = coastGround(seed, x, z);
         const got = elevationSampleAt(seed, x, z);
         expect(got).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
@@ -363,6 +367,7 @@ describe("the town's made ground", () => {
             continue;
           }
           if (cover(seed, f.at(s), z) !== 0) continue;
+          if (Math.abs(f.at(s) - railCenterX(seed, z)) < RAIL_REACH + 1) continue;
           const own = coastGround(seed, f.at(s), z);
           expect(elevationSampleAt(seed, f.at(s), z)).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
           checked++;

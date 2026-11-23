@@ -1,6 +1,6 @@
 /**
  * The town's streets as strips of quads that follow the ground: every street of the plan but the highway (which the
- * engine paints and the town does not draw over), with the rail laid simply as ballast, ties and two rails.
+ * engine paints and the town does not draw over).
  *
  * A street is drawn at its true width (`port/ways.ts`): a roadway of `street.roadway` between curbs, and outside it down
  * each side a grass verge and a sidewalk of `street.walk` (the main street has sidewalks and no verge; an alley is gravel,
@@ -25,7 +25,7 @@
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
-import { ALLEY, ASPHALT, BALLAST, CURB, DECK, MEDIAN, PAINT_WHITE, PAINT_YELLOW, RAIL, SIDEWALK, TIE, VERGE } from "./palette.js";
+import { ALLEY, ASPHALT, CURB, DECK, MEDIAN, PAINT_WHITE, PAINT_YELLOW, SIDEWALK, VERGE } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 import type { Street, StreetKind } from "../../sim/town/types.js";
 
@@ -389,36 +389,6 @@ export function streetGeometry(g: TownGround, sink: Sink, lift = STREET_LIFT): v
       if (s0 < 0.5 || s0 + STOP_BAR > p.length - 0.5) continue;
       if (end === 1) strip(p, s0, s0 + STOP_BAR, 0.1, p.cw - 0.1, PAINT_WHITE, paint, "mark");
       else strip(p, s0, s0 + STOP_BAR, -p.cw + 0.1, -0.1, PAINT_WHITE, paint, "mark");
-    }
-  }
-
-  // The rail: ballast, ties and two rails, along each segment of the line.
-  for (const street of plan.streets) {
-    if (street.kind !== "rail") continue;
-    const ax = anchor.x + street.a.x;
-    const az = anchor.z + street.a.z;
-    const length = Math.sqrt((anchor.x + street.b.x - ax) * (anchor.x + street.b.x - ax) + (anchor.z + street.b.z - az) * (anchor.z + street.b.z - az));
-    if (!(length > 0.1)) continue;
-    const tx = (anchor.x + street.b.x - ax) / length;
-    const tz = (anchor.z + street.b.z - az) / length;
-    const nx = tz;
-    const nz = -tx;
-    const at = (s: number, t: number): [number, number] => [ax + tx * s + nx * t, az + tz * s + nz * t];
-    const rail = (s0: number, s1: number, t0: number, t1: number, colour: Rgb, over: number): void => {
-      emit([at(s0, t0), at(s1, t0), at(s1, t1), at(s0, t1)], { t0, t1, colour, lift: lift + over, layer: "walk" });
-    };
-    const n = Math.max(1, Math.ceil(length / TILE));
-    for (let i = 0; i < n; i++) {
-      const s0 = (i / n) * length;
-      const s1 = ((i + 1) / n) * length;
-      rail(s0, s1, -1.7, 1.7, BALLAST, 0);
-      rail(s0, s1, -0.78, -0.66, RAIL, 0.1);
-      rail(s0, s1, 0.66, 0.78, RAIL, 0.1);
-    }
-    const ties = Math.floor(length / 1.9);
-    for (let k = 0; k < ties; k++) {
-      const s = 0.5 + k * 1.9;
-      rail(s, s + 0.28, -1.3, 1.3, TIE, 0.05);
     }
   }
 }

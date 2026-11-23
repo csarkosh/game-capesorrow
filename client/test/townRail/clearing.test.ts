@@ -6,7 +6,8 @@ import { CLUTTER_BUSH, CLUTTER_DRIFTWOOD, CLUTTER_FERN, CLUTTER_GRASS, CLUTTER_R
 import { RAIL_CORRIDOR_HALF, railCenterX } from "../../src/sim/town/rail.js";
 import { RAIL_CLEAR_REACH, railFeatureMask } from "../../src/sim/town/railClearing.js";
 
-const SEEDS = [20261121, 1, 424242];
+// Seeds whose coast beyond the town has forest beside the highway: the bay is the seed's now, and past the town in world 20261121 the highway runs over low flats (under 4 m) where the engine grows no trees.
+const SEEDS = [7, 424242, 123];
 /** A stretch of line a kilometre and more from the town (the town is at z = 0), 2 km long. */
 const Z0 = 1200;
 const Z1 = 3200;
@@ -68,5 +69,47 @@ describe("nothing grows on the railroad", () => {
     expect(at.tree).toBe(0);
     expect(at.clutter).toBe(0);
     expect(at.loose).toBe(0);
+  });
+});
+
+describe("the railroad's clearing and the town's, together", () => {
+  it("shuts the corridor inside the town to trees and cover, and leaves the town's yards and paving as the town made them outside it", async () => {
+    const { CAPE_PLACE } = await import("../../src/sim/town/place.js");
+    const { townFeatureMask } = await import("../../src/sim/town/clearing.js");
+    const { planFor } = await import("../../src/sim/town/planFor.js");
+    const { siteFor } = await import("../../src/sim/town/siteFor.js");
+    const { RAIL_TREE_SHUT } = await import("../../src/sim/town/railClearing.js");
+    let shut = 0;
+    let yardsKept = 0;
+    let yards = 0;
+    for (const seed of [20261121, 1, 424242]) {
+      const plan = planFor(seed);
+      const a = siteFor(seed).anchor;
+      // Across the corridor at every 12 m of the town's length: no tree, whatever the town's mask says there.
+      for (let z = -500; z <= 500; z += 12) {
+        const rc = railCenterX(seed, a.z + z);
+        for (const off of [-4, -2, 0, 2, 4, RAIL_TREE_SHUT - 0.5]) {
+          const m = CAPE_PLACE.featureMask?.(seed, rc + off, a.z + z, 3) as { tree: number; clutter: number };
+          expect(m.tree, `seed ${seed} z ${z} off ${off}`).toBe(0);
+          shut++;
+        }
+      }
+      // A yard well off the corridor keeps what the town gave it: the same mask, trunks and grass included.
+      for (const b of plan.blocks) {
+        if (b.district !== "residential" && b.district !== "mill housing") continue;
+        const c = b.polygon.reduce((acc, p) => ({ x: acc.x + p.x / b.polygon.length, z: acc.z + p.z / b.polygon.length }), { x: 0, z: 0 });
+        const x = a.x + c.x;
+        const z = a.z + c.z;
+        if (Math.abs(x - railCenterX(seed, z)) < RAIL_CLEAR_REACH + 1) continue;
+        yards++;
+        const merged = CAPE_PLACE.featureMask?.(seed, x, z, 3);
+        const town = townFeatureMask(seed, x, z);
+        expect(merged).toEqual(town);
+        if (town.clutter > 0.5) yardsKept++;
+      }
+    }
+    expect(shut).toBeGreaterThan(500);
+    expect(yards).toBeGreaterThan(20);
+    expect(yardsKept).toBeGreaterThan(5);
   });
 });

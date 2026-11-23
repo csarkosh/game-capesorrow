@@ -19,6 +19,7 @@ import { roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { HULL_RADIUS } from "./hull.js";
 import { railCenterX } from "./rail.js";
 import { TRESTLE_RAMP, railSpansIn, type RailSpan } from "./railSpans.js";
+import { nearOnRun, spurHeightAt, spurOf } from "./railSpur.js";
 
 /** The deck's half width, the top of its ties over the bench, and how far the drawn trestle runs past the span's ends, metres. */
 export const TRESTLE_HALF = 1.8;
@@ -43,6 +44,25 @@ export function trestleTopAt(seed: number, x: number, z: number, spans: SpanSour
     if ((off < 0 ? -off : off) > TRESTLE_HALF) continue;
     const d = Math.min(z - a, b - z);
     return roadGradeAt(seed, z).h + TRESTLE_TOP * Math.min(1, d / TRESTLE_TAPER);
+  }
+  return spans === railSpansIn ? spurTrestleTopAt(seed, x, z) : null;
+}
+
+/**
+ * The top of the deck of a trestle of the town's own spur (`railSpur.ts`) over (x, z), or null: within `TRESTLE_HALF` of its centre line
+ * and within a trestle's stretch, `TRESTLE_TOP` over the spur's bed there, the top coming up from the bed over `TRESTLE_TAPER` metres at each end.
+ */
+export function spurTrestleTopAt(seed: number, x: number, z: number): number | null {
+  const track = spurOf(seed);
+  if (track === null) return null;
+  for (const run of track.trestles) {
+    if (x < run.x0 || x > run.x1 || z < run.z0 || z > run.z1) continue;
+    const near = nearOnRun(track, run, x, z);
+    if (near.d > TRESTLE_HALF) continue;
+    const a = (track.points[run.from] as { s: number }).s;
+    const b = (track.points[run.to] as { s: number }).s;
+    const along = Math.min(near.s - a, b - near.s);
+    return spurHeightAt(track, near.s) + TRESTLE_TOP * Math.min(1, along / TRESTLE_TAPER);
   }
   return null;
 }
@@ -81,6 +101,7 @@ type Point = { x: number; y: number; z: number };
 
 /** Holds a hull to the side of the deck's rails it belongs on. Returns whether it moved the hull. */
 export function constrainTrestle(seed: number, pos: Point, vel: Point, spans: SpanSource = railSpansIn): boolean {
+  if (spans === railSpansIn && constrainSpurTrestle(seed, pos, vel)) return true;
   const list = spans(seed, pos.z - 1, pos.z + 1);
   for (const s of list) {
     if (s.kind !== "trestle" || pos.z < s.a - TRESTLE_END || pos.z > s.b + TRESTLE_END) continue;
@@ -96,6 +117,30 @@ export function constrainTrestle(seed: number, pos: Point, vel: Point, spans: Sp
     if (onDeck ? a <= limit : a >= limit) return false;
     pos.x = centre + sign * limit;
     if (vel.x * sign * (onDeck ? 1 : -1) > 0) vel.x = 0;
+    return true;
+  }
+  return false;
+}
+
+/** The same for the spur's trestles: the side is the nearest point of the track's line, so the deck's rails hold wherever the track runs. */
+function constrainSpurTrestle(seed: number, pos: Point, vel: Point): boolean {
+  const track = spurOf(seed);
+  if (track === null) return false;
+  for (const run of track.trestles) {
+    if (pos.x < run.x0 - HULL_RADIUS || pos.x > run.x1 + HULL_RADIUS || pos.z < run.z0 - HULL_RADIUS || pos.z > run.z1 + HULL_RADIUS) continue;
+    const near = nearOnRun(track, run, pos.x, pos.z);
+    if (near.d >= TRESTLE_HALF + HULL_RADIUS) continue;
+    const top = (spurTrestleTopAt(seed, near.qx, near.qz) as number | null) ?? spurHeightAt(track, near.s) + TRESTLE_TOP;
+    const onDeck = pos.y - PLAYER_HALF.y >= top - TRESTLE_STAND;
+    const limit = onDeck ? TRESTLE_HALF - HULL_RADIUS : TRESTLE_HALF + HULL_RADIUS;
+    if (onDeck ? near.d <= limit : near.d >= limit) continue;
+    pos.x = near.qx + near.nx * limit;
+    pos.z = near.qz + near.nz * limit;
+    const dot = vel.x * near.nx + vel.z * near.nz;
+    if (dot * (onDeck ? 1 : -1) > 0) {
+      vel.x -= near.nx * dot;
+      vel.z -= near.nz * dot;
+    }
     return true;
   }
   return false;

@@ -11,6 +11,7 @@ import { deckGeometry } from "../../src/game/town/pileGeometry.js";
 import { MeshBuilder } from "../../src/game/town/meshBuilder.js";
 import { DECK } from "../../src/game/town/palette.js";
 import { townGround } from "../../src/game/town/townGeometry.js";
+import { trestleTopAt } from "../../src/sim/town/railDeck.js";
 import { WORLD_SEEDS, groundOf, planFor, siteFor, worldFor } from "./world.js";
 
 const cmd = (seq: number, moveX: number, moveZ: number, yaw: number, buttons = 0): InputCommand => ({ seq, moveX, moveZ, yaw, pitch: 0, buttons });
@@ -99,7 +100,8 @@ describe("decks as ground", () => {
       for (let k = 0; k < 3000; k++) {
         const x = anchor.x - 250 + rand() * 500;
         const z = anchor.z - 400 + rand() * 800;
-        if (deckTopAt(seed, x, z) !== null) continue;
+        // Nor a trestle's: the main line's, or the town's own spur's, whose decks are ground too.
+        if (deckTopAt(seed, x, z) !== null || trestleTopAt(seed, x, z) !== null) continue;
         off++;
         expect(field.heightAt(x, z)).toBe(base.heightAt(x, z));
         const a = { x: 0, y: 0, z: 0 };

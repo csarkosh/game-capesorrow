@@ -15,7 +15,7 @@
 import { COVE_Z, roadCenterX, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { fbm2d } from "@csarkosh/engine/sim/field";
-import { COVER_FADE, COVER_HOLD, COVER_OUT_FADE, COVER_OUT_HOLD, coverD } from "./cover.js";
+import { COVER_FADE, COVER_HOLD, COVER_OUT_FADE, COVER_OUT_HOLD, COVER_SPUR_FADE, COVER_SPUR_HOLD, coverD } from "./cover.js";
 import { QUAY_BANK, fillWindowD, smootherstepD, type FillArea } from "./fill.js";
 import { QUAY_HEIGHT } from "./levels.js";
 import { planFor } from "./planFor.js";
@@ -156,6 +156,8 @@ export const GROUND_TUNABLES: Readonly<Record<string, number>> = {
   COVER_FADE,
   COVER_OUT_HOLD,
   COVER_OUT_FADE,
+  COVER_SPUR_HOLD,
+  COVER_SPUR_FADE,
   RELIEF_FLATS,
   RELIEF_HILL,
   RELIEF_LIMIT,
