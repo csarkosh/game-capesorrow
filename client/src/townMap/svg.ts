@@ -9,6 +9,7 @@ import type { TownSite } from "../sim/town/site.js";
 import { LAND_SLOPE, landOf } from "../sim/town/land.js";
 import { bayOf } from "../sim/town/blend.js";
 import { RAIL_CORRIDOR_HALF, RAIL_OFFSET } from "../sim/town/rail.js";
+import { polesIn } from "../sim/town/powerLine.js";
 
 export type SvgOptions = {
   /** The drawing's width in pixels (its height follows). */
@@ -23,6 +24,8 @@ export type SvgOptions = {
   readonly bare?: boolean;
   /** Pad the drawing to a square, the town centred in it (for a viewer that crops a tall picture). */
   readonly square?: boolean;
+  /** The world's seed: with it the power line's poles are drawn. */
+  readonly seed?: number;
   /** Shade the land under the town: the buildable ground, and the steep (default: shaded). */
   readonly land?: boolean;
 };
@@ -291,11 +294,6 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   const order: Street[] = plan.streets.slice().sort((a, b) => b.width - a.width || a.id - b.id);
   for (const s of order) {
     const col = STREET_STROKE[s.kind];
-    if (s.kind === "rail") {
-      out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="#555" stroke-width="${s.width}"/>`);
-      out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="${col}" stroke-width="3" stroke-dasharray="9 4"/>`);
-      continue;
-    }
     if (s.kind === "stair") {
       // A flight of steps: its right of way faintly, the steps as short bars across it.
       out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="#4a4e52" stroke-opacity="0.5" stroke-width="${s.width}"/>`);
@@ -344,7 +342,16 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
       out.push(`<polyline points="${poly(line)}" fill="none" stroke="#e0c040" stroke-opacity="0.22" stroke-width="${RAIL_CORRIDOR_HALF * 2}" stroke-linejoin="round"/>`);
       out.push(`<polyline points="${poly(line)}" fill="none" stroke="#f0e0a0" stroke-width="2" stroke-dasharray="7 3" stroke-linejoin="round"/>`);
     }
-    for (const sp of plan.rail.spurs) out.push(`<polyline points="${poly(sp.points)}" fill="none" stroke="#555" stroke-width="5" stroke-linejoin="round"/><polyline points="${poly(sp.points)}" fill="none" stroke="#e8e8e8" stroke-width="2.5" stroke-dasharray="8 3" stroke-linejoin="round"/>`);
+    for (const sp of plan.rail.spurs) {
+      out.push(`<polyline points="${poly(sp.points)}" fill="none" stroke="#555" stroke-width="5" stroke-linejoin="round"/><polyline points="${poly(sp.points)}" fill="none" stroke="#e8e8e8" stroke-width="2.5" stroke-dasharray="8 3" stroke-linejoin="round"/>`);
+      // A trestle where it crosses open water: a timber deck under the track.
+      for (const r of sp.wet) out.push(`<polyline points="${poly(sp.points.slice(r.from, r.to + 1))}" fill="none" stroke="#a8743a" stroke-width="6" stroke-linejoin="round" stroke-opacity="0.9"/>`);
+      // The turnout where it leaves the main line: a ring at its first point.
+      const t = sp.points[0]!;
+      out.push(`<circle cx="${X(t.x)}" cy="${Y(t.z)}" r="7" fill="none" stroke="#ffffff" stroke-width="1.6"/>`);
+    }
+    // The power line: a pole every 45 m or so beside the highway.
+    if (options.seed !== undefined) for (const pl of polesIn(options.seed, v.z0 - 20, v.z1 + 20)) out.push(`<circle cx="${X(pl.x - site.anchor.x)}" cy="${Y(pl.z - site.anchor.z)}" r="1.6" fill="#c8b090" stroke="#201408" stroke-width="0.4"/>`);
     for (const c of plan.rail.crossings) out.push(`<rect x="${X(c.x) - 4}" y="${Y(c.z) - 4}" width="8" height="8" fill="#ff9a30" stroke="#201000" stroke-width="0.8"/>`);
   }
 

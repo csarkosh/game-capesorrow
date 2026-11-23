@@ -184,7 +184,9 @@ function legend(): HTMLElement {
   swatch("#d08848", "a block left as woods: the land said no");
   swatch("#78b878", "a block left as woods: the budget ran out");
   swatch("#e0c040", "the railroad's main line and its corridor");
-  swatch("#e8e8e8", "the town's spur");
+  swatch("#e8e8e8", "the town's spur (a ring at its turnout)");
+  swatch("#a8743a", "a spur trestle over open water");
+  swatch("#c8b090", "a pole of the power line");
   swatch("#ff9a30", "a street crossing the main line");
   swatch("#f0e8c8", "a public stair");
   swatch("#ffd24a", "an outlying building (a ring about it)");
@@ -205,7 +207,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
   const ms = performance.now() - t0;
   root.replaceChildren();
   const map = el("div", { class: "map" });
-  map.innerHTML = planSvg(plan, site, { width: 1600, lots: opts.lots, labels: opts.labels ? "all" : "fbi" });
+  map.innerHTML = planSvg(plan, site, { width: 1600, lots: opts.lots, labels: opts.labels ? "all" : "fbi", ...(params().get("site") === "synthetic" ? {} : { seed }) });
   const aside = el("aside");
 
   const input = el("input", { type: "number", value: String(seed) });
