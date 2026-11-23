@@ -15,6 +15,7 @@ import { planFor } from "../../sim/town/planFor.js";
 import { siteFor } from "../../sim/town/siteFor.js";
 import type { LandmarkRole } from "../../sim/town/types.js";
 import { buildingGeometry } from "./buildingGeometry.js";
+import { propsGeometry } from "./props/index.js";
 import { endsGeometry } from "./endsGeometry.js";
 import { groundGeometry } from "./groundGeometry.js";
 import { yardGeometry } from "./yardGeometry.js";
@@ -98,6 +99,9 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   millGeometry(g, sinks.solid);
   terminalGeometry(g, sinks.solid);
   lightGeometry(g, sinks.solid);
+  yield;
+
+  yield* propsGeometry(g, { solid: sinks.solid, glass: sinks.glass, flat: sinks.flat }, detail, sliceDue);
   yield;
 
   const roles = new Map<number, LandmarkRole>();
