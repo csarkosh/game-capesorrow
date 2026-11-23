@@ -439,12 +439,12 @@ const CAB: Shape = {
   creases: [], side: [[0.2, 1.2]], screens: [[1.28, 1.45]], doors: [0.2, 1.25], mirror: 1.35, seats: [0.75],
 };
 
-export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, detail: Detail): void {
+export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, detail: Detail, paintOver?: Rgb): void {
   // The low tier draws three vehicles in five (the rest are left out by their number).
   if (detail === "low" && (v.id % 5 === 0 || v.id % 5 === 3)) return;
   const m = sinks.solid(v.x, v.z);
   const gl = sinks.glass(v.x, v.z);
-  const paint = PAINT[v.colour % PAINT.length] as Rgb;
+  const paint = paintOver ?? (PAINT[v.colour % PAINT.length] as Rgb);
   const derelict = v.state === "derelict";
   const project = v.state === "project";
   const camper = v.kind === "camper";

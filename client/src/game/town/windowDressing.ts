@@ -12,6 +12,7 @@
  */
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { wat, type WallRef } from "./buildingKit.js";
+import { standOff } from "./faceLedger.js";
 import type { Detail } from "./townTypes.js";
 
 /** The steps of depth, metres: a layer is this far behind the next in front of it (the depth buffer holds 2 cm apart at 60 m). */
@@ -44,22 +45,20 @@ export function slatBlinds(b: Behind, sa: number, sb: number, top: number, drop:
   }
   const pitch = Math.max(0.05, hang / 20);
   const n = Math.max(2, Math.floor(hang / pitch));
-  // One end hangs lower than the other, more toward the bottom (a cord that has slipped); a slat or two is bent.
+  // One end hangs lower than the other, more toward the bottom (a cord that has slipped).
   const sag = hash01(seed, 601) < 0.45 ? (0.03 + hash01(seed, 602) * 0.1) * (hash01(seed, 603) < 0.5 ? 1 : -1) : 0;
-  const bent = [Math.floor(hash01(seed, 604) * n), Math.floor(hash01(seed, 605) * n)];
-  for (let k = 0; k < n; k++) {
-    const t = k / n;
-    const ya = y0 - k * pitch;
-    const lean = Math.abs(sag) * t * t;
-    const isBent = (k === bent[0] && hash01(seed, 606) < 0.7) || (k === bent[1] && hash01(seed, 607) < 0.4);
-    const kink = isBent ? Math.min(pitch * 0.3, 0.02 + hash01(seed + k, 608) * 0.012) : 0;
-    // Each slat is a strip narrower than its pitch (so the room shows between), the sagging end lower; a bent one has an end dropped.
-    const yl = sag > 0 ? ya - lean : ya;
-    const yr = (sag > 0 ? ya : ya - lean) - kink;
-    const hgt = pitch * 0.62;
-    const tone = scaled(warm, 0.82 + 0.18 * ((k * 7 + Math.floor(hash01(seed, 609) * 5)) % 3) / 2);
-    out.poly([wat(w, sa, yl - hgt, off - 0.006), wat(w, sb, yr - hgt, off - 0.006), wat(w, sb, yr, off), wat(w, sa, yl, off)], [w.nx, 0, w.nz], isBent ? scaled(tone, 0.75) : tone, undefined, { glow });
-  }
+  const bl0 = sag > 0 ? -Math.abs(sag) : 0;
+  const br0 = sag > 0 ? 0 : -Math.abs(sag);
+  // The slats are one face, striped in the fragment stage (`townSurfaceCode`: slat and gap by the height in the world, the stripes' pitch riding in the vertex's
+  // spare float, in millimetres): the gaps are cut out near and the stripes are averaged by the pixel's own footprint beyond, so a blind a pixel cannot resolve is one even panel, never a flicker.
+  const tone = scaled(warm, 0.9);
+  const ybot = y0 - n * pitch;
+  // Behind the glass and clear of every face the wall's own builders have noted (`faceLedger.ts`): a transom bar or a frame's face is never within 2.45 cm of it.
+  const lowest = ybot + Math.min(bl0, br0);
+  const oa = wat(w, sa, 0, off);
+  const ob = wat(w, sb, 0, off);
+  const face = off - standOff(w.nx, w.nz, oa[0], oa[2], ob[0], ob[2], lowest, y0, -1);
+  out.poly([wat(w, sa, ybot + bl0, face), wat(w, sb, ybot + br0, face), wat(w, sb, y0, face), wat(w, sa, y0, face)], [w.nx, 0, w.nz], tone, undefined, { glow, tilt: [Math.round(pitch * 1000), 0] });
   // The pull cord and the bottom rail.
   const bottom = y0 - n * pitch;
   const bl = sag > 0 ? -Math.abs(sag) : 0;

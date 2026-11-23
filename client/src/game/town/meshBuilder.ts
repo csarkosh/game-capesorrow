@@ -25,6 +25,8 @@ export type GridLook = {
   readonly streaks?: boolean;
   readonly streaks2?: boolean;
   readonly clear?: number;
+  /** A wire's radius, metres: the vertex shader keeps it at least a pixel and a bit wide at any distance, and the fragment fades it by the same factor (`townMaterial.ts`, `WIRE_CODE`). */
+  readonly wire?: number;
 };
 export type Rgb = readonly [number, number, number];
 
@@ -413,7 +415,7 @@ export class MeshBuilder {
         this.col.push(c[0], c[1], c[2], 1);
         if (layer === NO_LAYER) {
           this.uv.push(0, 0);
-          this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, 0, 0);
+          this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, v.wire === undefined ? 0 : -Math.max(1, Math.round(v.wire * 1000)), 0);
         } else {
           const uv = v.uv === undefined ? [0, 0] : v.uv(i, j);
           this.uv.push(uv[0] / (tile[0] as number), uv[1] / (tile[1] as number));

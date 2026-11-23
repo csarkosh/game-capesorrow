@@ -153,6 +153,32 @@ function wearSlot(amountExpr: string, kindExpr: string, low: boolean, n: string)
   ].join("");
 }
 
+/**
+ * Slat blinds, as one face (`windowDressing.ts`): a flat-coloured vertex whose spare float 10 carries the slats' pitch in millimetres is striped by the height in the
+ * world, slat 62 parts in 100 and gap the rest. The gaps are cut out while a slat is wider than a pixel can lose (the stripe's period under about 0.7 pixel's
+ * footprint); farther, the pixel is shaded by the stripe's average over its own footprint (the box-filtered duty, `fwidth` of the height), gaps a darker room's shade, so
+ * a blind too fine to see is one evenly shaded panel and does not flicker as the player walks.
+ */
+const BLIND_CODE = [
+  "if(tsLayer<0&&tsWearV.z>0.5){",
+  "let bpp=tsWearV.z*0.001;let by=input.worldPos.y/bpp;let bw=max(fwidth(by),0.0001);",
+  "let ba=by-bw*0.5;let bb=by+bw*0.5;",
+  "let bf=floor(bb)*0.62+min(fract(bb),0.62)-floor(ba)*0.62-min(fract(ba),0.62);",
+  "let bc=clamp(bf/bw,0.0,1.0);",
+  "if(bw<0.7&&fract(by)>=0.62){discard;}",
+  "baseColor=baseColor*mix(1.0,mix(0.5,1.0,bc),smoothstep(0.5,1.0,bw));",
+  "}",
+].join("");
+
+/**
+ * Wires: a vertex whose spare float 10 is negative is a wire's, the radius in millimetres. A wire thinner than a pixel flickers as the player moves, so the vertex
+ * stage pushes each vertex of it out along its (radial) normal until its radius is at least 0.94 mm a metre of distance (1.2 pixels across at 1080p, a pixel being
+ * 1.56 mm a metre) and the fragment stage blends its colour toward the sky's by the share of the width that is not the wire's own, so the wider line is no heavier than the real one.
+ */
+const WIRE_PX = 0.00094 * 1.4;
+export const WIRE_VERTEX = `if(townWear.z<-0.5){let wp0=(finalWorld*vec4<f32>(position,1.0)).xyz;let wd=length(wp0-scene.vEyePosition.xyz);let wr=-townWear.z*0.001;let wx=max(0.0,${WIRE_PX.toExponential(4)}*wd-wr);finalWorld[3]=vec4<f32>(finalWorld[3].xyz+normalize(normal)*wx,finalWorld[3].w);}`;
+const WIRE_CODE = `if(tsLayer<0&&tsWearV.z<-0.5){let wr=-tsWearV.z*0.001;let wd=length(scene.vEyePosition.xyz-input.worldPos);let wk=wr/max(wr,${WIRE_PX.toExponential(4)}*wd);baseColor=mix(vec3<f32>(0.2,0.22,0.25),baseColor,wk);}`;
+
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
 export function townSurfaceCode(low: boolean): string {
   return [
@@ -183,6 +209,8 @@ export function townSurfaceCode(low: boolean): string {
     "}",
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
     "if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));}",
+    BLIND_CODE,
+    WIRE_CODE,
   ].join("");
 }
 
@@ -291,7 +319,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getCustomCode: (stage) =>
       stage === "fragment"
         ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
-        : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : ""}` },
+        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX, CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : ""}` },
     getVertexAttributes: () => [
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 0 },
       { name: TOWN_TINT_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 16 },

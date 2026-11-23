@@ -131,7 +131,7 @@ export function wireGeometry(g: TownGround, solid: Sink, a: Pole, b: Pole, detai
       const p1 = B[k] as Vec3;
       pts.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t - 4 * sag * t * (1 - t), p0[2] + (p1[2] - p0[2]) * t]);
     }
-    tube(m, pts, k === 4 ? 0.05 : 0.034, k === 4 ? CABLE : WIRE, 3);
+    tube(m, pts, k === 4 ? 0.05 : 0.034, k === 4 ? CABLE : WIRE, 3, true);
   }
 }
 
@@ -151,5 +151,5 @@ export function dropGeometry(g: TownGround, solid: Sink, d: Drop, pole: Pole, de
     const t = i / segs;
     pts.push([from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t - 4 * sag * t * (1 - t), from[2] + (to[2] - from[2]) * t]);
   }
-  tube(solid(d.x, d.z), pts, 0.03, WIRE, 3);
+  tube(solid(d.x, d.z), pts, 0.03, WIRE, 3, true);
 }
