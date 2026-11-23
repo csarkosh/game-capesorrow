@@ -330,7 +330,7 @@ export function runLength(frames: readonly Frame[]): number {
  * A trestle over a run of frames (the main line's, or the spur's): its bents of piles every `TRESTLE_BENT` m, the planked deck, the stringers,
  * its ties and its guard rails. `heightAt` is the ground the piles stand on.
  */
-export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshBuilder, frames: readonly Frame[], lod: RailLod): void {
+export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshBuilder, frames: readonly Frame[], lod: RailLod, firstBent = 0): void {
   if (frames.length < 2) return;
   // The planked deck and the stringers under it, swept along the frames.
   sweep(b, frames, [[-TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.08]], 0, DECK, false, DECK);
@@ -354,7 +354,7 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
   }
   // The bents: three piles under a cap beam, down to the ground, and the posts of the guard rails.
   const nb = Math.max(1, Math.floor(length / TRESTLE_BENT));
-  for (let i = 0; i <= nb; i++) {
+  for (let i = firstBent; i <= nb; i++) {
     const f = frameAlong(frames, (length * i) / nb);
     b.box(f.x, f.z, f.g - 0.55, f.nx, f.nz, 1.55, 0.14, 0.25, TIMBER, TIMBER);
     for (const off of [-1.15, 0, 1.15]) {

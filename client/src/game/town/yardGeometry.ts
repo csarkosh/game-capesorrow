@@ -18,7 +18,7 @@ import { yardShape, type YardRect } from "../../sim/town/yardShapes.js";
 import type { Street, TownPlan, Yard } from "../../sim/town/types.js";
 import { clamp01, hashN, hashS } from "./groundNoise.js";
 import { tally } from "./groundTally.js";
-import type { Over } from "./groundSurfaces.js";
+import { RANK, type Over } from "./groundSurfaces.js";
 import type { Rgb } from "./meshBuilder.js";
 import { GRAVEL, SIDEWALK } from "./palette.js";
 import { Surface, type P2 } from "./surface.js";
@@ -115,7 +115,7 @@ function blob(surf: Surface, c: P2, r: number, lift: number, key: number, layer:
     const rr = r * (0.8 + 0.4 * hashN(key, k, 0, 31));
     ring.push([c[0] + Math.cos(a) * rr * 1.15, c[1] + Math.sin(a) * rr]);
   }
-  surf.flat(ring, lift, GRAVEL, { layer, tint, frame: { origin: [c[0], 0, c[1]], u: [1, 0, 0], v: [0, 0, 1] }, ...extra });
+  surf.flat(ring, lift, GRAVEL, { layer, tint, frame: { origin: [c[0], 0, c[1]], u: [1, 0, 0], v: [0, 0, 1] }, rank: lift > YARD_OVER + 0.002 ? RANK.detail : RANK.mark, ...extra });
 }
 
 /** Patches on the lawn by the yard's kind: packed dirt and a gravel pad (bare), a worn path (shaggy, mown), moss under the trees (mossy). */
@@ -203,7 +203,7 @@ function verge(surf: Surface, plan: TownPlan, yard: Yard, front: { a: { x: numbe
       const ua = u0 + ((u1 - u0) * i) / steps;
       const ub = u0 + ((u1 - u0) * (i + 1)) / steps;
       const j = (n: number): number => 0.09 * hashS(key, k * 8 + i, n, 60);
-      surf.flat([P(s0 + j(1), ua), P(s1 + j(2), ua), P(s1 + j(3), ub), P(s0 + j(4), ub)], YARD_OVER, GRAVEL, { layer, tint, frame: { origin: [ax, 0, az], u: [gx, 0, gz], v: [fx, 0, fz] }, dirt: 0.2, wear: layer === "mud" ? 0.05 : 0.1 });
+      surf.flat([P(s0 + j(1), ua), P(s1 + j(2), ua), P(s1 + j(3), ub), P(s0 + j(4), ub)], YARD_OVER, GRAVEL, { layer, tint, frame: { origin: [ax, 0, az], u: [gx, 0, gz], v: [fx, 0, fz] }, dirt: 0.2, wear: layer === "mud" ? 0.05 : 0.1, rank: RANK.mark });
     }
   };
   if (drive !== null) {

@@ -337,7 +337,7 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
         const s = u(k, n);
         const cc = col(k);
         if (t === "jeweler") { fbox(c, s, 0.5, y0, 0.16 + (k % 3) * 0.06, 0.07, 0.07, AX, [0.07, 0.06, 0.08], [0.1, 0.09, 0.12]); fbox(c, s, 0.5, y0 + 0.2 + (k % 3) * 0.06, 0.03, 0.05, 0.05, AX, [0.9, 0.78, 0.35], [1, 0.9, 0.5]); }
-        else if (t === "gallery") { fbox(c, s, 0.52, y0, 0.45 + (k % 2) * 0.12, 0.17, 0.02, AX, [0.15, 0.12, 0.1], cc); fbox(c, s, 0.5, y0 + 0.05, 0.3, 0.13, 0.015, AX, cc, scaled(cc, 1.1), BAKED, false); }
+        else if (t === "gallery") { fbox(c, s, 0.52, y0, 0.45 + (k % 2) * 0.12, 0.17, 0.02, AX, [0.15, 0.12, 0.1], cc); fbox(c, s, 0.45, y0 + 0.05, 0.3, 0.13, 0.015, AX, cc, scaled(cc, 1.1), BAKED, false); }
         else { fcyl(c, s, 0.5, y0, 0.09, 0.2 + hash01(seed + k, 795) * 0.2, 6, cc, scaled(cc, 1.2), 0.06); }
       }
       break;
@@ -374,7 +374,7 @@ export function dressRoom(c: Ctx, r: RoomIn, fin: Finish, dw: { s: number; open:
       const hi = Math.max(o.s0, o.s1);
       const s = hash01(seed + k, 801) < 0.5 ? lo + 0.22 : hi - 0.22;
       const green: Rgb = pickOf([[0.14, 0.36, 0.14], [0.2, 0.42, 0.18], [0.1, 0.3, 0.16]] as readonly Rgb[], seed + k, 802);
-      fcyl(c, s, 0.3, o.sill, 0.09, 0.16, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], seed + k, 803), [0.2, 0.12, 0.08]);
+      fcyl(c, s, 0.3, o.sill, 0.09, 0.205, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], seed + k, 803), [0.2, 0.12, 0.08]);
       for (let q = 0; q < 3; q++) fcyl(c, s + (q - 1) * 0.06, 0.3, o.sill + 0.16, 0.07, 0.2 + q * 0.07, 5, green, scaled(green, 1.3), 0.015);
     }
   }

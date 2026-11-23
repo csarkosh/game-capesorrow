@@ -8,6 +8,7 @@
  */
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import type { Fx, Surface } from "./townSurface.js";
+import { noteFace, standOff } from "./faceLedger.js";
 
 export type WallRef = {
   readonly ax: number;
@@ -30,7 +31,13 @@ export const wat = (w: WallRef, s: number, y: number, off: number): Vec3 => [w.a
 /** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). */
 export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface, fx?: Fx, inward = false): void {
   const k = inward ? -1 : 1;
-  out.poly([wat(w, s0, y0, off), wat(w, s1, y0, off), wat(w, s1, y1, off), wat(w, s0, y1, off)], [w.nx * k, 0, w.nz * k], colour, surface, fx);
+  // A face asked for where another already stands (a plate over a frame, a sticker over a plate) stands a step further out (`faceLedger.ts`).
+  const a = wat(w, s0, y0, off);
+  const b = wat(w, s1, y0, off);
+  // Out from the wall for a face over its plane, further in for one behind it (a pane's paper, a room's decoration), so none is pushed toward the wall's own faces.
+  const dir = off < -0.001 ? -1 : 1;
+  const o = off + dir * standOff(w.nx * k, w.nz * k, a[0], a[2], b[0], b[2], y0, y1, k === 1 ? dir : (-dir as 1 | -1));
+  out.poly([wat(w, s0, y0, o), wat(w, s1, y0, o), wat(w, s1, y1, o), wat(w, s0, y1, o)], [w.nx * k, 0, w.nz * k], colour, surface, fx);
 }
 
 /**
@@ -41,6 +48,13 @@ export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: n
   wquad(out, w, s0, y0, s1, y1, off1, colour, surface);
   out.poly([wat(w, s0, y1, off0), wat(w, s1, y1, off0), wat(w, s1, y1, off1), wat(w, s0, y1, off1)], [0, 1, 0], top);
   if (under) out.poly([wat(w, s0, y0, off0), wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s0, y0, off1)], [0, -1, 0], scaled(colour, 0.6));
+  // The box's ends are faces on the ledger too, so what is put beside it later stands clear of them.
+  const e0 = wat(w, s0, y0, off0);
+  const e0b = wat(w, s0, y0, off1);
+  const e1 = wat(w, s1, y0, off0);
+  const e1b = wat(w, s1, y0, off1);
+  noteFace(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y1);
+  noteFace(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y1);
   out.poly([wat(w, s0, y0, off0), wat(w, s0, y0, off1), wat(w, s0, y1, off1), wat(w, s0, y1, off0)], [-w.tx, 0, -w.tz], scaled(colour, 0.85));
   out.poly([wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s1, y1, off1), wat(w, s1, y1, off0)], [w.tx, 0, w.tz], scaled(colour, 0.85));
 }
@@ -72,6 +86,10 @@ export function cutWall(
   const piece = (x0: number, x1: number, ya: number, yb0: number, yb1: number): void => {
     // From height `ya` (flat) up to the top edge, which is `yb0` at x0 and `yb1` at x1.
     if (Math.min(yb0, yb1) - ya < 0.005 && Math.max(yb0, yb1) - ya < 0.01) return;
+    // The wall's own face is on the ledger, so nothing is put within 2.45 cm of it that is not meant to be (`faceLedger.ts`).
+    const wa = wat(w, x0, ya, 0);
+    const wb = wat(w, x1, ya, 0);
+    noteFace(w.nx, w.nz, wa[0], wa[2], wb[0], wb[2], ya, Math.max(yb0, yb1));
     // The wall's foot is a band of its own (its wear has its own kinds): a piece that crosses the band's line is cut along it.
     if (bandY !== undefined && ya < bandY - 0.01 && Math.min(yb0, yb1) > bandY + 0.01) {
       out.poly([wat(w, x0, ya, 0), wat(w, x1, ya, 0), wat(w, x1, bandY, 0), wat(w, x0, bandY, 0)], hint, colour, surfaceOf(0));

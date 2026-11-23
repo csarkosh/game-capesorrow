@@ -55,11 +55,13 @@ export function unsafePatches(f: TownFaces, groundAt: (x: number, z: number) => 
   const high = (at: readonly [number, number, number]): boolean => at[1] - Math.max(groundAt(at[0], at[2]), sea) >= RULE.tallFrom;
   const limit = (q: NearPair): number => (q.a.layer === "flat" && q.b.layer === "flat" ? RULE.gap : high(q.at) ? RULE.tallGap : RULE.gap);
   const pairs = nearPairs(f.tris, RULE.tallGap, 1e-6).filter((q) => q.gap < limit(q) && !alike(q.a, q.b));
+  /** Two flat faces of different ranks are held apart by the rank (a fixed number of depth steps a rank), not by their distance: not a pair. */
   const ground = (q: NearPair): boolean => q.a.layer === "flat" && q.b.layer === "flat";
+  const ranked = (q: NearPair): boolean => ground(q) && q.a.rank !== q.b.rank;
   const found = patchesOf(pairs.filter((q) => !ground(q)), f.tris)
     .filter((p) => p.area >= RULE.area)
     .map((patch) => ({ patch, tall: high(patch.at) }));
-  const flat = patchesOf(pairs.filter(ground), f.tris).filter((p) => p.area >= RULE.area).length;
+  const flat = patchesOf(pairs.filter((q) => ground(q) && !ranked(q)), f.tris).filter((p) => p.area >= RULE.area).length;
   return { found, flat };
 }
 

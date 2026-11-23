@@ -12,7 +12,8 @@
  *
  * The destinations' standing parts go in the solid layer; none is a wall to the rules.
  */
-import { flatSurfaceFor } from "./groundSurfaces.js";
+import { RANK, flatSurfaceFor } from "./groundSurfaces.js";
+import { Surface } from "./surface.js";
 import { FENCE, GRAVEL, HEADSTONE, LOG, ROAD_ASPHALT, TANK, TIMBER, TRACK } from "./palette.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { STREET_LIFT } from "./streetGeometry.js";
@@ -30,6 +31,7 @@ export const ROAD_TILE = 6;
 const UP: Vec3 = [0, 1, 0];
 
 export function roadGeometry(g: TownGround, flat: Sink, solid: Sink): void {
+  const surf = new Surface(g, flat);
   for (const road of g.plan.roads) {
     const pts = road.points.map((p) => ({ x: g.anchor.x + p.x, z: g.anchor.z + p.z, w: p.width, s: p.surface }));
     for (let i = 1; i < pts.length; i++) {
@@ -53,7 +55,7 @@ export function roadGeometry(g: TownGround, flat: Sink, solid: Sink): void {
           const corners = [at(t0, o0), at(t1, o0), at(t1, o1), at(t0, o1)];
           const pp = corners.map(([x, z]): Vec3 => [x, g.heightAt(x, z) + lift, z]);
           if (pp.every((q) => q[1] - lift < SEA + 0.1)) return;
-          flat(corners[0]![0], corners[0]![1]).poly(pp, UP, colour, flatSurfaceFor(colour, g.anchor));
+          surf.lay(flat(corners[0]![0], corners[0]![1]), pp, pp.map(() => lift), colour, flatSurfaceFor(colour, g.anchor), RANK.mark);
         };
         const w0 = wAt(t0) / 2;
         const w1 = wAt(t1) / 2;
@@ -65,7 +67,7 @@ export function roadGeometry(g: TownGround, flat: Sink, solid: Sink): void {
           const pp = c.map(([x, z]): Vec3 => [x, g.heightAt(x, z) + ROAD_LIFT, z]);
           if (!pp.every((q) => q[1] - ROAD_LIFT < SEA + 0.1)) {
             const colour = surface === "paved" ? ROAD_ASPHALT : GRAVEL;
-            flat(c[0]![0], c[0]![1]).poly(pp, UP, colour, flatSurfaceFor(colour, g.anchor));
+            surf.lay(flat(c[0]![0], c[0]![1]), pp, pp.map(() => ROAD_LIFT), colour, flatSurfaceFor(colour, g.anchor), RANK.mark);
           }
         }
       }
@@ -127,7 +129,8 @@ function destinationGeometry(g: TownGround, road: Road, flat: Sink, solid: Sink)
       for (const [p, q, gapSide] of sides) {
         const len = Math.sqrt((q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]));
         const m = Math.ceil(len / 4);
-        for (let k = 0; k <= m; k++) {
+        // From the second post: the first is the last of the side before (a corner's post is one post).
+        for (let k = 1; k <= m; k++) {
           const t = k / m;
           const px = p[0] + (q[0] - p[0]) * t;
           const pz = p[1] + (q[1] - p[1]) * t;

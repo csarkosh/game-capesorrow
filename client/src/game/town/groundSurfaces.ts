@@ -55,6 +55,21 @@ export function faceSurfaceFor(colour: Rgb, ax: number, az: number, bx: number, 
 }
 
 /**
+ * The depth ranks of the flat ground (`townMaterial.ts`, `RANK_UNITS`): a face of a higher rank is drawn that many depth steps ahead of one of a
+ * lower, so two flat faces that overlap are told apart by their rank at every distance, and not by the millimetres between them.
+ *
+ * - `under` (-1): ground tucked under a base surface (the gravel of a shoulder that runs 8 cm under the asphalt's edge).
+ * - `base` (0, the default): a surface that no other base overlaps (a slab, a roadway tile, a yard's drive, a junction's pavement).
+ * - Over the base, in the order they lie on one another: `mark` (a joint, a crack in a slab, a gutter's band, a paving seam, a patch of a
+ *   yard), `detail` (what is laid on those: a cut in the asphalt, a pothole's rim, a manhole's ring, a lid), `top` (weeds, a cut's seam, a
+ *   pothole, a manhole's cover), `crack` (a crack in the roadway, across all of them), `paint`.
+ * - `stain` (7): the dark of the ground under a vehicle, over everything laid on the ground.
+ *
+ * Two marks of one rank are never laid over each other: `Surface` cuts the later one off the earlier (the first laid keeps its ground).
+ */
+export const RANK = { under: -1, base: 0, mark: 1, detail: 2, top: 3, crack: 4, paint: 5, stain: 7 } as const;
+
+/**
  * What a builder may lay over the surface a colour names: another layer, a tint, a frame (so asphalt runs along its street and not along the world's z), and
  * wear and dirt (numbers, or functions of a vertex's position, which is how a gutter is dirtier than a street's middle). A field left out is the colour's own.
  */
@@ -65,6 +80,10 @@ export type Over = {
   readonly wear?: number | ((p: readonly [number, number, number]) => number);
   readonly wearKind?: WearKind;
   readonly dirt?: number | ((p: readonly [number, number, number]) => number);
+  /** The depth rank of flat ground (`townMaterial.ts`): 0 or left out for a base surface, more for what is laid on one. */
+  readonly rank?: number;
+  /** Marks and surfaces of one group are never laid over each other: the one laid later is cut back to where the earlier ones leave ground (`Surface`). A mark with a rank is in the group of its rank; a base surface that may overlap another (a sidewalk's slab and the next street's roadway, where two streets meet) is in the group `base`. */
+  readonly group?: string;
 };
 
 /** `base` (the surface the colour names, if any) with `over` laid on it. With no `over` it is `base` itself. A face takes a layer on its own frame unless `over` gives one. */

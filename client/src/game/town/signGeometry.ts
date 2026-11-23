@@ -147,7 +147,9 @@ function blade(solid: Sink, g: TownGround, x: number, z: number, y: number, ax: 
   const pixel = BLADE_CAPITAL / GLYPH_H;
   const length = textPixels(text) * pixel + 0.16;
   // The face's normal is across the blade's long axis; its reader's right is along the axis.
-  const c: Plane = { x, y, z, nx: az, nz: -ax };
+  // The blade hangs from the post's side, its near end clear of the post (a blade through the post would have the post's faces in the planes of its own).
+  const out = length / 2 + POST_RADIUS + 0.03;
+  const c: Plane = { x: x + ax * out, y, z: z + az * out, nx: az, nz: -ax };
   void g;
   plate(solid, c, [[-length / 2, -BLADE_HEIGHT / 2], [length / 2, -BLADE_HEIGHT / 2], [length / 2, BLADE_HEIGHT / 2], [-length / 2, BLADE_HEIGHT / 2]], SIGN_GREEN, SIGN_GREEN);
   if (full) words(solid, c, text, pixel, (GLYPH_H * pixel) / 2, SIGN_WHITE, true);

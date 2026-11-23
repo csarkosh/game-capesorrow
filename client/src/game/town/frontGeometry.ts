@@ -134,7 +134,8 @@ export function planFront(i: FrontIn): FrontPlan {
           if (x1 - x0 < 0.2) continue;
           const [sa, sb] = ends(x0, x1);
           if (old && sill > 0.35) {
-            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + sill, 0, 0.05, bulk, scaled(bulk, 1.4));
+            // Its top is at least 5 cm over the water table's (35 cm), which runs across the front.
+            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4));
             // The panel's field, a shade off the frame.
             wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8));
           } else wquad(out, w, sa, floorY, sb, floorY + Math.min(0.5, sill), 0.03, [0.13, 0.13, 0.14]);

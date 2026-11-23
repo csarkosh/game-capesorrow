@@ -324,7 +324,8 @@ export function lightGeometry(g: TownGround, sink: Sink): void {
         m.prism([x + Math.cos(a) * 1.6, y, z + Math.sin(a) * 1.6], [x, y + l.height, z], 0.12, 4, TIMBER, TIMBER);
       }
       box3(m, x, z, y + l.height - 0.4, 0.9, 0.08, 1.5, [0.55, 0.1, 0.08], [0.55, 0.1, 0.08]);
-      box3(m, x, z, y + l.height - 0.4, 0.08, 0.9, 1.5, WHITE, WHITE);
+      // The white slat is a little taller than the red, so that their tops and bottoms are not faces in one plane where they cross.
+      box3(m, x, z, y + l.height - 0.44, 0.08, 0.9, 1.58, WHITE, WHITE);
     } else {
       m.prism([x, y, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL);
       box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, GLASS, [0.2, 0.2, 0.22]);

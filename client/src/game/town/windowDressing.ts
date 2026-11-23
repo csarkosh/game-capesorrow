@@ -83,7 +83,8 @@ export function verticalBlinds(b: Behind, sa: number, sb: number, top: number, b
   const pitch = wid / n;
   // The louvres are drawn with their faces turned about the vertical: an open set is all at one angle, a shut one overlaps in a shingle.
   const angle = open ? 0.55 + hash01(seed, 611) * 0.3 : 0.12;
-  const half = pitch * 0.5;
+  // A shut set's louvres are a little narrower than their pitch, so that two that hang at nearly one angle are side by side and not one over the other.
+  const half = pitch * (open ? 0.5 : 0.46);
   for (let k = 0; k < n; k++) {
     if (hash01(seed + k, 612) < 0.04) continue;
     const c = sa + pitch * (k + 0.5);

@@ -238,12 +238,15 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   let frontGround = -Infinity;
   for (let k = 0; k <= 6; k++) frontGround = Math.max(frontGround, g.heightAt(fw.ax + fw.tx * fw.length * (k / 6) + fw.nx * 1.2, fw.az + fw.tz * fw.length * (k / 6) + fw.nz * 1.2));
   planCtx.frontFloorY = onPiles ? floorY : Math.max(baseY + 0.3, Math.min(floorY, frontGround + 0.12));
+  let drawSigns = (): void => {};
   if (ruin) {
     for (const w of walls) brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
   } else {
     cutWalls(planCtx, planWalls(planCtx), walls.map((w): [number, number] => [w.topA, w.topB]), baseY);
+    // The signs are drawn once the building's parts are (below), so each is put where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`).
     if (extra !== undefined && use !== undefined && xf !== null) {
-      signsGeometry({ solid: out, face: extra.sign(f.cx, f.cz), g, b, use, xf, atlas: extra.atlas, floorY: planCtx.frontFloorY, wallTop, detail });
+      const sign = extra.sign(f.cx, f.cz);
+      drawSigns = () => signsGeometry({ solid: out, face: sign, g, b, use, xf, atlas: extra.atlas, floorY: planCtx.frontFloorY, wallTop, detail });
     }
   }
 
@@ -323,6 +326,8 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
       lotOut: xf === null ? 0 : lotDepthOut(g, b, xf),
     });
   }
+
+  drawSigns();
 
   // ---- ruins: rubble inside the walls
   if (ruin) {

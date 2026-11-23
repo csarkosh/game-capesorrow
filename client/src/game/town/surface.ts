@@ -6,7 +6,8 @@
  * splitting goes in as one polygon.
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
-import { type Rgb, type Vec3 } from "./meshBuilder.js";
+import { type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
+import type { Surface as Surface_ } from "./townSurface.js";
 import { faceSurfaceFor, flatSurfaceFor, withOver, type Over } from "./groundSurfaces.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
@@ -15,6 +16,18 @@ export type P2 = readonly [number, number];
 export type P3 = readonly [number, number, number];
 
 const UP: Vec3 = [0, 1, 0];
+
+/** A mark that has been laid, for the marks laid after it to find what lies under them: its outline (a convex polygon in x, z), its box and its rank. */
+type Laid = { readonly pts: readonly P2[]; readonly x0: number; readonly x1: number; readonly z0: number; readonly z1: number; stamp: number };
+/** The marks laid in a town's build, by cell of 8 m (one registry for every `Surface` of one `TownGround`, so a yard's patch and a street's crack stack alike). */
+/** The count of looks at the marks laid, so that a mark in several cells is looked at once. */
+let STAMP = 0;
+const LAID = new WeakMap<object, Map<string | number, Map<number, Laid[]>>>();
+
+/** Forgets the marks laid for `g`: a build starts with none (a ground built twice must give the same ranks twice). */
+export function forgetMarks(g: object): void {
+  LAID.delete(g);
+}
 
 type Corner = { x: number; z: number; u: number; lift: number; y?: number };
 
@@ -122,6 +135,107 @@ export class Surface {
     readonly sink: Sink,
   ) {}
 
+  /**
+   * The pieces of a mark of rank `rank` (convex, in x and z) that no mark of the same rank laid before it covers, the first laid keeping its
+   * ground: two marks that overlap are never of one rank (a mark of another rank is told from it by the rank, `RANK`). The pieces are noted
+   * for the marks after them. A mark that is not trimmed comes back as it was.
+   */
+  private trim(poly: readonly P2[], group: string | number): readonly (readonly P2[])[] {
+    let marks = LAID.get(this.g);
+    if (marks === undefined) {
+      marks = new Map();
+      LAID.set(this.g, marks);
+    }
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    for (const q of poly) {
+      if (q[0] < x0) x0 = q[0];
+      if (q[0] > x1) x1 = q[0];
+      if (q[1] < z0) z0 = q[1];
+      if (q[1] > z1) z1 = q[1];
+    }
+    const ix0 = Math.floor(x0 / 8);
+    const ix1 = Math.floor(x1 / 8);
+    const iz0 = Math.floor(z0 / 8);
+    const iz1 = Math.floor(z1 / 8);
+    // Each group has its own cells, by number (a cell's x and z, 8 m): a mark is looked up against its own group's alone.
+    let cells = marks.get(group);
+    if (cells === undefined) {
+      cells = new Map();
+      marks.set(group, cells);
+    }
+    let pieces: (readonly P2[])[] = [poly];
+    const stamp = ++STAMP;
+    for (let ix = ix0; ix <= ix1; ix++) {
+      for (let iz = iz0; iz <= iz1; iz++) {
+        const list = cells.get(ix * 65536 + iz);
+        if (list === undefined) continue;
+        for (const o of list) {
+          if (o.stamp === stamp || o.x0 > x1 || o.x1 < x0 || o.z0 > z1 || o.z1 < z0) continue;
+          o.stamp = stamp;
+          if (pieces.length === 1 && pieces[0] === poly) {
+            if (shareArea(poly, o.pts, 1e-4)) pieces = subtractConvex(poly, o.pts);
+          } else {
+            pieces = pieces.flatMap((p) => (shareArea(p, o.pts, 1e-4) ? subtractConvex(p, o.pts) : [p]));
+          }
+          if (pieces.length === 0) break;
+        }
+      }
+    }
+    for (const piece of pieces) {
+      let px0 = Infinity;
+      let px1 = -Infinity;
+      let pz0 = Infinity;
+      let pz1 = -Infinity;
+      for (const q of piece) {
+        if (q[0] < px0) px0 = q[0];
+        if (q[0] > px1) px1 = q[0];
+        if (q[1] < pz0) pz0 = q[1];
+        if (q[1] > pz1) pz1 = q[1];
+      }
+      const laid: Laid = { pts: piece, x0: px0, x1: px1, z0: pz0, z1: pz1, stamp: 0 };
+      for (let ix = Math.floor(px0 / 8); ix <= Math.floor(px1 / 8); ix++) {
+        for (let iz = Math.floor(pz0 / 8); iz <= Math.floor(pz1 / 8); iz++) {
+          const k = ix * 65536 + iz;
+          const list = cells.get(k);
+          if (list === undefined) cells.set(k, [laid]);
+          else list.push(laid);
+        }
+      }
+    }
+    return pieces.length === 1 && pieces[0] === poly ? [poly] : pieces;
+  }
+
+  /**
+   * Draws one convex polygon of the ground at its rank: a base surface (rank 0 or under) as it is, a mark (`RANK.mark` and over) in the pieces
+   * of it that no mark of its rank covers. A piece cut off a mark takes the height of the ground at its corners and the mark's mean lift.
+   */
+  lay(builder: MeshBuilder, pts: readonly Vec3[], lifts: readonly number[], colour: Rgb, surface: Surface_ | undefined, rank: number, group: string | number | undefined = rank > 0 ? rank : undefined): void {
+    if (group === undefined) {
+      builder.poly(pts, UP, colour, surface, rank === 0 ? undefined : { rank });
+      return;
+    }
+    const xz = pts.map((q): P2 => [q[0], q[2]]);
+    const pieces = this.trim(xz, group);
+    if (pieces.length === 1 && pieces[0] === xz) {
+      builder.poly(pts, UP, colour, surface, rank === 0 ? undefined : { rank });
+      return;
+    }
+    const lift = lifts.reduce((t, l) => t + l, 0) / lifts.length;
+    for (const piece of pieces) {
+      if (!thick(piece)) continue;
+      // A piece of more than three corners goes in as its ears (one a cut leaves can have a corner on a line or folded), so no fan turns against its face.
+      const parts: (readonly P2[])[] = piece.length > 3 ? triangulate(piece).map(([i, j, k]) => [piece[i] as P2, piece[j] as P2, piece[k] as P2]) : [piece];
+      for (const part of parts) {
+        // A triangle of less than 5 mm^2 is nothing to draw.
+        if (part.length === 3 && Math.abs(((part[1] as P2)[0] - (part[0] as P2)[0]) * ((part[2] as P2)[1] - (part[0] as P2)[1]) - ((part[1] as P2)[1] - (part[0] as P2)[1]) * ((part[2] as P2)[0] - (part[0] as P2)[0])) < 1e-5) continue;
+        builder.poly(part.map((q): Vec3 => [q[0], this.g.heightAt(q[0], q[1]) + lift, q[1]]), UP, colour, surface, rank === 0 ? undefined : { rank });
+      }
+    }
+  }
+
   /** The vertex's height: the ground's plus its lift. */
   y(x: number, z: number, lift: number): number {
     return this.g.heightAt(x, z) + lift;
@@ -161,24 +275,26 @@ export class Surface {
       }
       const surface = withOver(flatSurfaceFor(colour, this.g.anchor), colour, this.g.anchor, over);
       const builder = this.sink(cx / piece.length, cz / piece.length);
+      const want = over?.rank ?? 0;
+      const lifts = piece.map((q) => q.lift);
       if (piece.length > 3 && !convexXZ(piece)) {
         // Not convex (a jittered edge folded, a corner or two collinear): its ears, each a polygon of its own, so no fan turns against the face.
         const flatPts = piece.map((q): P2 => [q.x, q.z]);
         for (const [i, j, k] of triangulate(flatPts)) {
           const tri = [pts[i] as Vec3, pts[j] as Vec3, pts[k] as Vec3];
           const a2 = (tri[1]![0] - tri[0]![0]) * (tri[2]![2] - tri[0]![2]) - (tri[1]![2] - tri[0]![2]) * (tri[2]![0] - tri[0]![0]);
-          if (Math.abs(a2) > 4e-4) builder.poly(tri, UP, colour, surface);
+          if (Math.abs(a2) > 4e-4) this.lay(builder, tri, [lifts[i] as number, lifts[j] as number, lifts[k] as number], colour, surface, want, over?.group);
         }
         continue;
       }
-      builder.poly(pts, UP, colour, surface);
+      this.lay(builder, pts, lifts, colour, surface, want, over?.group);
     }
   }
 
   /** A convex polygon laid on the engine's road itself (a crosswalk across the highway): not cut off the bed, and `lift` over the road's own height. */
-  onRoad(pts: readonly P2[], lift: number, colour: Rgb): void {
+  onRoad(pts: readonly P2[], lift: number, colour: Rgb, over?: Over): void {
     const v: Vec3[] = pts.map((q) => [q[0], this.g.heightAt(q[0], q[1]) + lift, q[1]]);
-    this.sink((pts[0] as P2)[0], (pts[0] as P2)[1]).poly(v, UP, colour, flatSurfaceFor(colour, this.g.anchor));
+    this.lay(this.sink((pts[0] as P2)[0], (pts[0] as P2)[1]), v, v.map(() => lift), colour, flatSurfaceFor(colour, this.g.anchor), over?.rank ?? 0);
   }
 
   /** A convex polygon (kept as one polygon) at corners' own lifts. */
@@ -227,7 +343,8 @@ export class Surface {
       sub(ca, bc, c, d - 1);
       sub(ab, bc, ca, d - 1);
     };
-    for (const [i, j, k] of tris) sub(pts[i] as P2, pts[j] as P2, pts[k] as P2, depth);
+    // An ear under 1 cm across (the corners that lie nearly on a line) is a sliver that a neighbour overlaps by its own width: left out.
+    for (const [i, j, k] of tris) if (thick([pts[i] as P2, pts[j] as P2, pts[k] as P2])) sub(pts[i] as P2, pts[j] as P2, pts[k] as P2, depth);
   }
 
   /** The depth that splits a polygon's longest edge to about `tile` metres, at most `cap`. */
@@ -344,16 +461,27 @@ function thick(p: readonly P2[]): boolean {
   return per > 0 && (2 * Math.abs(areaOfP2(p))) / per > 0.005;
 }
 
+/** The corners of a polygon with a corner that repeats the one before it (or the first, at the end) left out: a zero-length edge has no side to cut by. */
+function distinct(p: readonly P2[]): P2[] {
+  const out: P2[] = [];
+  for (const q of p) {
+    const last = out[out.length - 1];
+    if (last === undefined || Math.abs(last[0] - q[0]) > 1e-9 || Math.abs(last[1] - q[1]) > 1e-9) out.push(q);
+  }
+  while (out.length > 1 && Math.abs((out[0] as P2)[0] - (out[out.length - 1] as P2)[0]) <= 1e-9 && Math.abs((out[0] as P2)[1] - (out[out.length - 1] as P2)[1]) <= 1e-9) out.pop();
+  return out;
+}
+
 /** `p` without `q`: convex pieces (none when `q` covers it). Both convex. */
 export function subtractConvex(p: readonly P2[], q: readonly P2[]): P2[][] {
-  const ring = areaOfP2(q) < 0 ? q.slice().reverse() : q;
+  const ring = distinct(areaOfP2(q) < 0 ? q.slice().reverse() : q);
   const out: P2[][] = [];
   let rest: P2[] = p.slice();
   for (let i = 0; i < ring.length && rest.length >= 3; i++) {
     const a = ring[i] as P2;
     const b = ring[(i + 1) % ring.length] as P2;
     const outside = clipLine(rest, a, b, false);
-    if (outside.length >= 3 && thick(outside)) out.push(outside);
+    if (outside.length >= 3 && thick(outside)) out.push(distinct(outside));
     rest = clipLine(rest, a, b, true);
   }
   return out;
@@ -401,7 +529,7 @@ export class RoadSet {
       for (const other of this.cells.get(k) ?? []) {
         if (seen.includes(other)) continue;
         seen.push(other);
-        pieces = pieces.flatMap((p) => (shareArea(p, other, 0.004) ? subtractConvex(p, other) : [p]));
+        pieces = pieces.flatMap((p) => (shareArea(p, other, 1e-4) ? subtractConvex(p, other) : [p]));
         if (pieces.length === 0) return pieces;
       }
     }
@@ -411,7 +539,7 @@ export class RoadSet {
   /** Lays a convex roadway tile at one lift, without the ground already laid. */
   tile(poly: readonly P2[], lift: number, colour: Rgb, over?: Over): void {
     for (const piece of this.free(poly)) {
-      this.surf.flat(piece, lift, colour, over);
+      this.surf.flat(piece, lift, colour, over?.rank === undefined && over?.group === undefined ? { ...over, group: "base" } : over);
       this.note(piece);
     }
   }

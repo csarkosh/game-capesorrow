@@ -3,6 +3,7 @@
  * (its openings, its room, its signs' words), no window is a dark rectangle, a room's furnishings stand inside the building, a sign's
  * face lies on its wall, two shops of different trades are not drawn alike, and the arrays are consistent and the same every time.
  */
+import { resetLedger } from "../../src/game/town/faceLedger.js";
 import "../../src/terrain.js";
 import { describe, expect, it } from "vitest";
 import { buildingGeometry } from "../../src/game/town/buildingGeometry.js";
@@ -26,6 +27,7 @@ function build(seed: number, b: Building): Built {
   const atlas = new SignAtlas(8192, 8192, 56);
   const report: FillReport = { openings: [], windows: [], rooms: [] };
   const roles = g.plan.landmarks.find((l) => l.building === b.id)?.role ?? null;
+  resetLedger();
   buildingGeometry(g, b, roles, () => solid, "full", { glass: () => glass, sign: () => sign, atlas, report });
   return { solid, glass, sign, report, atlas };
 }

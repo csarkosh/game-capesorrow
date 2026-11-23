@@ -133,7 +133,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         // The vertex colours carry the colour (or the paint the textures are multiplied by): the material's own is white.
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
         m.plugins = [
-          baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, ready, low)] : []),
+          baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, ready, low, undefined, flat)] : []),
           surfaceWetPlugin(wet, shared), ...(flat ? [ahead(FLAT_AHEAD_UNITS, FLAT_AHEAD_SLOPE)] : []), air(),
         ];
         orders.take(m);

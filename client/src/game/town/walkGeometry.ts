@@ -27,7 +27,7 @@ import { clamp01, hashN, hashS, smooth, vnoise } from "./groundNoise.js";
 import { tally } from "./groundTally.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { SIDEWALK } from "./palette.js";
-import type { Over } from "./groundSurfaces.js";
+import { RANK, type Over } from "./groundSurfaces.js";
 import type { P2, P3, Surface } from "./surface.js";
 import type { UvFrame } from "./townSurface.js";
 
@@ -173,7 +173,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
         return replaced ? 0.02 + 0.1 * k : clamp01(0.04 + (0.08 + 0.28 * sw) * (0.2 + 1.0 * k) + 0.14 * neglected * k);
       };
-      const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt };
+      const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt, group: "base" };
       const pt = (s: number, t: number, e: number): P3 => slabPoint(f, sigma, heightAt, s, t, lift(e));
       const T0 = front;
       const T1 = out;
@@ -182,7 +182,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         tally.missingSlabs++;
         // Gone: filled with asphalt (a cheap mend) or left as gravel and weeds.
         const asphalt = hashN(key, runIx, i, 6) < 0.35;
-        surf.poly([pt(ss0, T0, 0.002), pt(ss1, T0, 0.002), pt(ss1, T1 - d1, 0.002), pt(ss0, T1 - d0, 0.002)], SIDEWALK, asphalt ? { layer: "asphalt_dark", tint: [1.6, 1.6, 1.6], frame, dirt: 0.3, wear: 0.15 } : { layer: "gravel", tint: [0.85, 0.8, 0.72], frame, dirt: 0.5, wear: 0.4 });
+        surf.poly([pt(ss0, T0, 0.002), pt(ss1, T0, 0.002), pt(ss1, T1 - d1, 0.002), pt(ss0, T1 - d0, 0.002)], SIDEWALK, asphalt ? { layer: "asphalt_dark", tint: [1.6, 1.6, 1.6], frame, dirt: 0.3, wear: 0.15, group: "base" } : { layer: "gravel", tint: [0.85, 0.8, 0.72], frame, dirt: 0.5, wear: 0.4, group: "base" });
         weeds(ss0, ss1, T0, T1 - d0, 3 + Math.floor(3 * hashN(key, runIx, i, 12)), i, 1);
       } else {
         surf.poly([pt(ss0, T0, l0), pt(ss1, T0, l1), pt(ss1, T1 - d1, l1), pt(ss0, T1 - d0, l0)], SIDEWALK, over);
@@ -197,7 +197,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const jy = (e: number): number => WALK_TOP - JOINT_DROP + e;
         const sj0 = ss1;
         const sj1 = ss1 + JOINT_WIDTH;
-        surf.poly([slabPoint(f, sigma, heightAt, sj0, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T1 - d1, jy(0)), slabPoint(f, sigma, heightAt, sj0, T1 - d1, jy(0))], SIDEWALK, { layer: "mud", tint: [0.55, 0.5, 0.45], frame, dirt: 0.5 });
+        surf.poly([slabPoint(f, sigma, heightAt, sj0, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T1 - d1, jy(0)), slabPoint(f, sigma, heightAt, sj0, T1 - d1, jy(0))], SIDEWALK, { layer: "mud", tint: [0.55, 0.5, 0.45], frame, dirt: 0.5, rank: RANK.detail });
         if (hashN(key, runIx, i, 16) < 0.25 + 0.55 * w) weeds(sj0 - 0.02, sj1 + 0.02, T0 + 0.1, T1 - 0.15, 1 + Math.floor(2 * hashN(key, runIx, i, 17)), i, 0.35);
       }
     }
@@ -221,7 +221,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const pt2 = round === 1 ? Math.sin(ang) * ht * 0.5 : (k < 2 ? -1 : 1) * ht * 0.5;
         pts.push(slabPoint(f, sigma, heightAt, s + ps, t + pt2, WALK_TOP + 0.004));
       }
-      surf.poly(pts, SIDEWALK, { layer: "rust", tint: [0.55, 0.42, 0.36], frame: slabFrame(f, key, runIx, 900 + Math.floor(s), sigma), dirt: 0.25 });
+      surf.poly(pts, SIDEWALK, { layer: "rust", tint: [0.55, 0.42, 0.36], frame: slabFrame(f, key, runIx, 900 + Math.floor(s), sigma), dirt: 0.25, rank: RANK.top });
     }
 
     /** A crack: a dark line of three or four bends from one edge of the slab toward the other. */
@@ -245,7 +245,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const os = (-(qt - pt0) / el) * width;
         const ot = ((qs - ps) / el) * width;
         const e = (s: number): number => l0 + (l1 - l0) * clamp01((s - s0) / (s1 - s0)) + 0.0015;
-        surf.poly([slabPoint(f, sigma, heightAt, ps - os, pt0 - ot, lift(e(ps))), slabPoint(f, sigma, heightAt, qs - os, qt - ot, lift(e(qs))), slabPoint(f, sigma, heightAt, qs + os, qt + ot, lift(e(qs))), slabPoint(f, sigma, heightAt, ps + os, pt0 + ot, lift(e(ps)))], SIDEWALK, { layer: "mud", tint: [0.38, 0.35, 0.32], frame, dirt: 0.2 });
+        surf.poly([slabPoint(f, sigma, heightAt, ps - os, pt0 - ot, lift(e(ps))), slabPoint(f, sigma, heightAt, qs - os, qt - ot, lift(e(qs))), slabPoint(f, sigma, heightAt, qs + os, qt + ot, lift(e(qs))), slabPoint(f, sigma, heightAt, ps + os, pt0 + ot, lift(e(ps)))], SIDEWALK, { layer: "mud", tint: [0.38, 0.35, 0.32], frame, dirt: 0.2, rank: RANK.detail });
       }
     }
 
@@ -260,7 +260,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
       const tc = back ? (atEnd ? tb1 : tb0) : t0;
       const td = back ? -1 : 1;
       const e = (atEnd ? l1 : l0) + 0.002;
-      surf.poly([slabPoint(f, sigma, heightAt, sc, tc, lift(e)), slabPoint(f, sigma, heightAt, sc + sd * size * 1.1, tc, lift(e)), slabPoint(f, sigma, heightAt, sc + sd * size * 0.35, tc + td * size, lift(e))], SIDEWALK, { layer: "gravel", tint: [0.75, 0.7, 0.62], frame, dirt: 0.45 });
+      surf.poly([slabPoint(f, sigma, heightAt, sc, tc, lift(e)), slabPoint(f, sigma, heightAt, sc + sd * size * 1.1, tc, lift(e)), slabPoint(f, sigma, heightAt, sc + sd * size * 0.35, tc + td * size, lift(e))], SIDEWALK, { layer: "gravel", tint: [0.75, 0.7, 0.62], frame, dirt: 0.45, rank: RANK.top });
       void s0;
     }
 
@@ -280,7 +280,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         }
         const hue = hashN(key, runIx, i * 16 + c, 64);
         const tint: Rgb = [1.1 + 0.3 * hue, 1.25 + 0.3 * hue, 0.65 + 0.1 * hue];
-        surf.poly(ring, SIDEWALK, { layer: "moss", tint, frame: slabFrame(f, key, runIx, i * 16 + c, sigma) });
+        surf.poly(ring, SIDEWALK, { layer: "moss", tint, frame: slabFrame(f, key, runIx, i * 16 + c, sigma), rank: RANK.crack });
       }
     }
   }

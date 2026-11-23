@@ -49,7 +49,7 @@ export class MeshBuilder {
   static readonly traced = new WeakMap<object, [number, string][]>();
   readonly tags: [number, string][] = [];
   private tag(from: number): void {
-    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder")).slice(0, 4);
+    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder") && !l.includes("/surface.ts")).slice(0, 4);
     this.tags.push([from, lines.map((l) => l.replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
   }
   private pos: number[] = [];
@@ -138,13 +138,13 @@ export class MeshBuilder {
         const cuv = fx?.uvs?.[pointIndex];
         this.uv.push(cuv?.[0] ?? 0, cuv?.[1] ?? 0);
         // A pane's own data rides in the floats a flat vertex does not use (`townMaterial.ts` says which).
-        this.srf.push(NO_LAYER, fx?.dirt ?? 0, fx?.seed ?? 0, glow, 1, 1, 1, clear, fx?.size?.[0] ?? 0, fx?.size?.[1] ?? 0, fx?.tilt?.[0] ?? 0, fx?.tilt?.[1] ?? 0);
+        this.srf.push(NO_LAYER, fx?.dirt ?? 0, fx?.seed ?? 0, glow, 1, 1, 1, clear, fx?.size?.[0] ?? 0, fx?.size?.[1] ?? 0, fx?.tilt?.[0] ?? 0, fx?.rank ?? fx?.tilt?.[1] ?? 0);
       } else {
         const [u, v] = uvAt(basis, p);
         this.uv.push(u, v);
         const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
         const w2 = surface.wear2 === undefined ? 0 : typeof surface.wear2 === "number" ? surface.wear2 : surface.wear2(p);
-        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, 0, 0);
+        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, 0, fx?.rank ?? 0);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
@@ -441,99 +441,16 @@ export class MeshBuilder {
   }
 
   /**
-   * The finished arrays. A triangle that repeats one already laid (the same three corners, to a tenth of a millimetre, wound the same way, with
-   * the same colour and surface) is left out, and the corners no triangle uses are dropped: two polygons the code made over one place (a post
-   * where two runs of fence meet, a pile two spans share) are one in the mesh. A repeat that looks different is kept: that is two things in one
-   * place, which the finder in `depthSeparation.test.ts` reports.
+   * The finished arrays. No triangle is laid twice (the same three corners, wound the same way, in the same look): the builders that make one
+   * place twice (a post where two runs meet, a pile two spans share) share it or leave it out, and `depthSeparation.test.ts` holds the whole
+   * town to that, so that this step stays a copy.
    */
   finish(): MeshArrays {
-    const nTri = this.idx.length / 3;
-    const corner = (v: number, salt: number): number => {
-      const x = Math.round((this.pos[v * 3] as number) * 1e4);
-      const y = Math.round((this.pos[v * 3 + 1] as number) * 1e4);
-      const z = Math.round((this.pos[v * 3 + 2] as number) * 1e4);
-      let h = Math.imul(x ^ salt, 0x9e3779b1) ^ Math.imul(y + salt, 0x85ebca6b) ^ Math.imul(z ^ (salt << 1), 0xc2b2ae35);
-      h ^= h >>> 15;
-      h = Math.imul(h, 0x2c1b3c6d);
-      return (h ^ (h >>> 12)) >>> 0;
+    const arrays: MeshArrays = {
+      positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col),
+      uvs: new Float32Array(this.uv), surface: new Float32Array(this.srf), indices: Uint32Array.from(this.idx),
     };
-    // A number of 53 bits from the three corners in their cycle, whichever corner it starts at.
-    const key = (i: number): number => {
-      const v = [this.idx[i * 3] as number, this.idx[i * 3 + 1] as number, this.idx[i * 3 + 2] as number];
-      const h = [corner(v[0] as number, 0), corner(v[1] as number, 0), corner(v[2] as number, 0)];
-      let lo = 0;
-      if ((h[1] as number) < (h[lo] as number)) lo = 1;
-      if ((h[2] as number) < (h[lo] as number)) lo = 2;
-      const c = [v[lo] as number, v[(lo + 1) % 3] as number, v[(lo + 2) % 3] as number];
-      const a = Math.imul(corner(c[0] as number, 1) ^ Math.imul(corner(c[1] as number, 2), 31), 0x01000193) ^ corner(c[2] as number, 3);
-      const b = corner(c[0] as number, 4) ^ Math.imul(corner(c[1] as number, 5), 17) ^ Math.imul(corner(c[2] as number, 6), 0x85ebca6b);
-      return (a >>> 0) * 2097152 + ((b >>> 0) & 0x1fffff);
-    };
-    const look = (i: number): string => {
-      let t = "";
-      for (let c = 0; c < 3; c++) {
-        const v = this.idx[i * 3 + c] as number;
-        t += `${this.col[v * 4]?.toFixed(3)},${this.col[v * 4 + 1]?.toFixed(3)},${this.col[v * 4 + 2]?.toFixed(3)};`;
-        for (let q = 0; q < 8; q++) t += `${(this.srf[v * 12 + q] as number).toFixed(3)},`;
-      }
-      return t;
-    };
-    const seen = new Map<number, number>();
-    const keep: number[] = [];
-    // `before[t]` is how many triangles before t are kept, to move the tags.
-    const before = new Int32Array(nTri + 1);
-    for (let t = 0; t < nTri; t++) {
-      before[t] = keep.length;
-      const k = key(t);
-      const had = seen.get(k);
-      if (had !== undefined && look(had) === look(t)) continue;
-      if (had === undefined) seen.set(k, t);
-      keep.push(t);
-    }
-    before[nTri] = keep.length;
-    let idx: number[] = this.idx;
-    let remap: Int32Array | null = null;
-    let nv = this.vertices;
-    if (keep.length < nTri) {
-      const used = new Int32Array(nv).fill(-1);
-      let n = 0;
-      idx = [];
-      for (const t of keep) {
-        for (let c = 0; c < 3; c++) {
-          const v = this.idx[t * 3 + c] as number;
-          if (used[v] === -1) used[v] = n++;
-          idx.push(used[v] as number);
-        }
-      }
-      remap = used;
-      nv = n;
-    }
-    let arrays: MeshArrays;
-    if (remap === null) {
-      arrays = {
-        positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col),
-        uvs: new Float32Array(this.uv), surface: new Float32Array(this.srf), indices: Uint32Array.from(idx),
-      };
-    } else {
-      const positions = new Float32Array(nv * 3);
-      const normals = new Float32Array(nv * 3);
-      const colors = new Float32Array(nv * 4);
-      const uvs = new Float32Array(nv * 2);
-      const surface = new Float32Array(nv * SURFACE_FLOATS);
-      for (let v = 0; v < remap.length; v++) {
-        const to = remap[v] as number;
-        if (to < 0) continue;
-        for (let c = 0; c < 3; c++) {
-          positions[to * 3 + c] = this.pos[v * 3 + c] as number;
-          normals[to * 3 + c] = this.nor[v * 3 + c] as number;
-        }
-        for (let c = 0; c < 4; c++) colors[to * 4 + c] = this.col[v * 4 + c] as number;
-        for (let c = 0; c < 2; c++) uvs[to * 2 + c] = this.uv[v * 2 + c] as number;
-        for (let c = 0; c < SURFACE_FLOATS; c++) surface[to * SURFACE_FLOATS + c] = this.srf[v * SURFACE_FLOATS + c] as number;
-      }
-      arrays = { positions, normals, colors, uvs, surface, indices: Uint32Array.from(idx) };
-    }
-    if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [before[Math.min(t, nTri)] as number, s]));
+    if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [t, s]));
     return arrays;
   }
 }

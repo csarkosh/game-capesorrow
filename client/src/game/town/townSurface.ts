@@ -43,6 +43,7 @@ export type Fx = {
   readonly seed?: number;
   readonly size?: readonly [number, number];
   readonly uvs?: readonly (readonly [number, number])[];
+  /** For the flat ground: the depth rank, 0 for a base surface and more for what lies on one (`townMaterial.ts`, `RANK_UNITS`). Rides in the float a tilt's second number uses, which flat ground has no use for. */ readonly rank?: number;
 };
 
 /** Where a texture lies on a polygon: a point of its plane, and the directions of the texture's across (u) and up (v). */

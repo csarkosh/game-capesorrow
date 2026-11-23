@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resetLedger } from "../../src/game/town/faceLedger.js";
 import { finish } from "@csarkosh/engine/game/syncJobs";
 import { ROAD_BED_HALF, ROAD_CORRIDOR_HALF } from "@csarkosh/engine/sim/road";
 import { buildingGeometry } from "../../src/game/town/buildingGeometry.js";
@@ -74,6 +75,8 @@ const dot = (a: readonly number[], b: readonly number[]): number => (a[0] as num
 /** A building built alone into one builder. */
 function build(g: TownGround, b: Building, role: LandmarkRole | null = null, detail: "low" | "full" = "full"): MeshArrays {
   const builder = new MeshBuilder();
+  // A building is built in a clean town: the faces on the walls (`faceLedger.ts`) are the town build's to clear.
+  resetLedger();
   buildingGeometry(g, b, role, () => builder, detail);
   return builder.finish();
 }
@@ -153,7 +156,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 125, flat: 37, vertices: 889091, triangles: 494160 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 125, flat: 37, vertices: 918063, triangles: 500638 });
   });
 });
 
@@ -640,6 +643,7 @@ describe("the buildings", () => {
     for (const b of g.plan.buildings.filter((q) => q.lot !== -1 && q.state === "open").slice(0, 120)) {
       const solid = new MeshBuilder();
       const glass = new MeshBuilder();
+      resetLedger();
       buildingGeometry(g, b, roleOf(g, b), () => solid, "full", { glass: () => glass, sign: () => new MeshBuilder(), atlas: new SignAtlas() });
       const a = glass.finish();
       const u = bearingU(b.bearing);
