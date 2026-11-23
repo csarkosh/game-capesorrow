@@ -111,7 +111,16 @@ function view(plan: TownPlan, site: TownSite): { x0: number; z0: number; x1: num
   const x1 = b.x1 + pad;
   // Include some sea on the left, so that the shoreline is seen to be a shore.
   x0 = Math.min(x0, Math.min(...site.shoreX) - 60);
-  return { x0, z0: b.z0 - pad, x1, z1: b.z1 + pad };
+  // The roads out run beyond the plan: the view reaches their destinations.
+  let x1r = x1;
+  let z0r = b.z0 - pad;
+  let z1r = b.z1 + pad;
+  for (const road of plan.roads) {
+    x1r = Math.max(x1r, road.destination.x + pad);
+    z0r = Math.min(z0r, road.destination.z - pad);
+    z1r = Math.max(z1r, road.destination.z + pad);
+  }
+  return { x0, z0: z0r, x1: x1r, z1: z1r };
 }
 
 export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}): string {
@@ -165,6 +174,24 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
     }
     out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="${col}" stroke-width="${s.width}"/>`);
   }
+  // The made ends of streets: a gravel bulb for a turnaround, a red bar for a barricade, a blue one for a landing at the water.
+  for (const e of plan.ends) {
+    const nx = e.dz;
+    const nz = -e.dx;
+    const w = (plan.streets[e.street]?.roadway ?? 8) / 2;
+    if (e.kind === "turnaround") out.push(`<circle cx="${X(e.x + e.dx * 7)}" cy="${Y(e.z + e.dz * 7)}" r="7" fill="#8a7a58" stroke="#c8b888" stroke-width="0.8"/>`);
+    else out.push(`<line x1="${X(e.x + nx * w + e.dx)}" y1="${Y(e.z + nz * w + e.dz)}" x2="${X(e.x - nx * w + e.dx)}" y2="${Y(e.z - nz * w + e.dz)}" stroke="${e.kind === "barricade" ? "#d04040" : "#5fa8c8"}" stroke-width="3"/>`);
+  }
+  // The roads out: paved, gravel, and two wheel tracks, narrowing as they go, each to its destination.
+  for (const road of plan.roads) {
+    for (let i = 1; i < road.points.length; i++) {
+      const a = road.points[i - 1]!;
+      const b = road.points[i]!;
+      const col = b.surface === "paved" ? "#7d8084" : b.surface === "gravel" ? "#b09a68" : "#8a5c34";
+      const dash = b.surface === "tracks" ? ' stroke-dasharray="4 3"' : "";
+      out.push(`<line x1="${X(a.x)}" y1="${Y(a.z)}" x2="${X(b.x)}" y2="${Y(b.z)}" stroke="${col}" stroke-width="${f((a.width + b.width) / 2)}" stroke-linecap="round"${dash}/>`);
+    }
+  }
   // The seam, emphasised.
   for (const sm of plan.seams) {
     out.push(`<line x1="${X(sm.a.x)}" y1="${Y(sm.a.z)}" x2="${X(sm.b.x)}" y2="${Y(sm.b.z)}" stroke="#ff8c2a" stroke-width="3" stroke-dasharray="14 6"/>`);
@@ -181,13 +208,15 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   const labels = options.labels ?? "all";
   if (labels !== "none") {
     for (const l of plan.landmarks) {
-      const b = plan.buildings[l.building]!;
+      const b = plan.buildings[l.building];
       const fbi = l.role === "fbi";
       if (labels === "fbi" && !fbi) continue;
       const fs = fbi ? 20 : 12;
-      const lx = b.centre.x;
-      const lz = b.centre.z;
-      out.push(`<circle cx="${X(lx)}" cy="${Y(lz)}" r="${fbi ? 10 : 4}" fill="${fbi ? "#ff3030" : "none"}" fill-opacity="0.35" stroke="${fbi ? "#ff5050" : "#ffffff"}" stroke-width="${fbi ? 2.5 : 1}"/>`);
+      // A place that is no building (a road's destination) has its own position.
+      const lx = l.at?.x ?? b!.centre.x;
+      const lz = l.at?.z ?? b!.centre.z;
+      const place = l.at !== undefined;
+      out.push(`<circle cx="${X(lx)}" cy="${Y(lz)}" r="${fbi ? 10 : place ? 6 : 4}" fill="${fbi ? "#ff3030" : place ? "#ffcf7a" : "none"}" fill-opacity="0.35" stroke="${fbi ? "#ff5050" : place ? "#ffcf7a" : "#ffffff"}" stroke-width="${fbi ? 2.5 : 1}"/>`);
       const tx = lx + (fbi ? 14 : 7);
       const tz = lz + (fbi ? 4 : 3);
       out.push(

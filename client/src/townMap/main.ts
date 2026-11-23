@@ -165,6 +165,13 @@ function legend(): HTMLElement {
   swatch("#3a3a30", "made ground (fill)");
   swatch("#e8e0c8", "the quay");
   swatch("#3affa0", "spawn and its facing");
+  swatch("#7d8084", "a road out, paved");
+  swatch("#b09a68", "a road out, gravel");
+  swatch("#8a5c34", "a road out, two wheel tracks");
+  swatch("#ffcf7a", "a road's destination");
+  swatch("#8a7a58", "a made end: turnaround");
+  swatch("#d04040", "a made end: barricade");
+  swatch("#5fa8c8", "a landing at the water");
   return box;
 }
 
@@ -221,7 +228,8 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
     ["blocks", `${plan.counts.blocks} (the old plat ${plan.plats[0]!.columns} x ${plan.plats[0]!.rows})`],
     ["lots", String(plan.counts.lots)],
     ["buildings", `${plan.counts.buildings}: ${plan.counts.open} open, ${plan.counts.vacant} vacant, ${plan.counts.ruin} ruin`],
-    ["streets", String(plan.counts.streets)],
+    ["streets", `${plan.counts.streets}, ${plan.ends.length} made ends`],
+    ["roads out", plan.roads.length === 0 ? "none" : plan.roads.map((r) => `${r.name} to ${r.destination.kind}`).join("; ")],
     ["made in", `${ms.toFixed(1)} ms`],
   ];
   const table = el("table", { class: "counts" });

@@ -55,6 +55,18 @@ describe("the plan's SVG", () => {
     expect((svg.match(/fill="#3a3a30"/g) ?? []).length).toBe(plan.fill.length);
   });
 
+  it("draws the roads out by their surface, each destination as a place with its label, and the made ends", () => {
+    expect(plan.roads.length).toBeGreaterThan(0);
+    expect(svg).toContain("#7d8084"); // paved
+    for (const road of plan.roads) expect(svg).toContain(road.destination.name.replace(/&/g, "&amp;"));
+    expect(svg).toContain("#ffcf7a"); // a destination's marker
+    expect(plan.ends.filter((e) => e.kind !== "landing").length).toBeGreaterThan(0);
+    expect(svg).toMatch(/stroke="#d04040" stroke-width="3"|fill="#8a7a58"/);
+    // The view reaches the roads' destinations.
+    const vb = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+    expect(Number(vb?.[1])).toBeGreaterThan(plan.bounds.x1 - plan.bounds.x0);
+  });
+
   it("draws vacant and ruined buildings differently from open ones", () => {
     expect(plan.counts.vacant).toBeGreaterThan(0);
     expect(svg).toContain('fill="url(#vacant)"');
