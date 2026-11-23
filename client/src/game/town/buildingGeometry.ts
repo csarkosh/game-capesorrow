@@ -352,7 +352,13 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
 
   // ---- (the doors and windows are drawn with the walls: a ruin keeps its broken wall and the sky through it)
 
-  landmarkTouch(g, role, f, b, out, walls, frontAt, e1, e2, L, S, wallTop, H, floorY, baseY);
+  // The street door of the ground floor, where a unit holds it (the one nearest the middle): a portico belongs over that door, not the wall's middle.
+  let streetDoor: number | null = null;
+  if (use !== undefined && xf !== null) {
+    const mid = xf.width / 2;
+    for (const u of use.units) if (streetDoor === null || Math.abs(u.door.s - mid) < Math.abs(streetDoor - mid)) streetDoor = u.door.s;
+  }
+  landmarkTouch(g, role, f, b, out, walls, frontAt, e1, e2, L, S, wallTop, H, floorY, baseY, streetDoor);
 }
 
 /** A ruin's wall: runs of about a metre, each to its own height, an inner face, and the top of each run left open. */
@@ -379,7 +385,7 @@ function brokenWall(out: MeshBuilder, w: Wall, baseY: number, floorY: number, H:
 /** The one distinguishing touch of a landmark's building. */
 function landmarkTouch(
   g: TownGround, role: LandmarkRole | null, f: Frame, b: Building, out: MeshBuilder, walls: readonly Wall[], frontAt: number,
-  e1: [number, number], e2: [number, number], L: number, S: number, wallTop: number, H: number, floorY: number, baseY: number,
+  e1: [number, number], e2: [number, number], L: number, S: number, wallTop: number, H: number, floorY: number, baseY: number, streetDoor: number | null,
 ): void {
   if (role === null || b.state === "ruin") return;
   const w = walls[frontAt] as Wall;
@@ -390,14 +396,27 @@ function landmarkTouch(
     // A plain, formal front: a stone cornice along the top of the front wall, a portico over the door, a flagpole with its flag.
     const top = Math.max(w.topA, w.topB);
     out.box(mid[0] + w.nx * 0.15, mid[1] + w.nz * 0.15, top - 0.46, tx, tz, w.length / 2 + 0.1, 0.25, 0.5, STONE_TRIM, STONE_TRIM);
-    const px = mid[0] + w.nx * 1.2;
-    const pz = mid[1] + w.nz * 1.2;
+    // Over the street door where the ground floor has one (the old Federal Building's post office door is at the end of its front, not its middle); over the middle otherwise.
     const slab = floorY + 3.3;
-    out.box(px, pz, slab, tx, tz, 2.2, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
-    for (const s of [-1.7, 1.7]) {
-      const cx = px + tx * s + w.nx * 0.7;
-      const cz = pz + tz * s + w.nz * 0.7;
-      out.box(cx, cz, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
+    if (streetDoor === null) {
+      const px = mid[0] + w.nx * 1.2;
+      const pz = mid[1] + w.nz * 1.2;
+      out.box(px, pz, slab, tx, tz, 2.2, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
+      for (const s of [-1.7, 1.7]) {
+        const cx = px + tx * s + w.nx * 0.7;
+        const cz = pz + tz * s + w.nz * 0.7;
+        out.box(cx, cz, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
+      }
+    } else {
+      // A canopy 3.4 m long ending a metre past the door (or at the corner), carried on one column at its far end: a column at the door's side would stand in the doorway.
+      // The unit's `s` runs along the front as the street sees it; the wall runs the other way round (the front's right end is the wall's start).
+      const door = w.length - streetDoor;
+      const c = Math.max(1.8, Math.min(door + 0.9, w.length - 1.7));
+      const px = w.ax + tx * c + w.nx * 1.2;
+      const pz = w.az + tz * c + w.nz * 1.2;
+      out.box(px, pz, slab, tx, tz, 1.7, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
+      const lc = door < c ? 1.45 : -1.45;
+      out.box(px + tx * lc + w.nx * 0.7, pz + tz * lc + w.nz * 0.7, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
     }
     const bx = w.ax + tx * 0.8 + w.nx * 2.2;
     const bz = w.az + tz * 0.8 + w.nz * 2.2;

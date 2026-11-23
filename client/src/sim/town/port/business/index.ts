@@ -16,7 +16,6 @@ import type { Building, BuildingUse, FrontFrame, Landmark, PastTenant, Sign, Ten
 import { NOW, dec, districtOf, r1, r2, sub, type BizCtx, type BizInput } from "./ctx.js";
 import { frontFrame, streetOf } from "./frame.js";
 import { furnish, nameHash, partitionDepth } from "./interiors.js";
-import { legacyDraws } from "./legacyDraws.js";
 import { civicSigns, gasSign, motelSign, pickBrand, unitSigns } from "./signs.js";
 import { fit, openedDecade, pastTrade, pickTrade } from "./tenants.js";
 import { FAMILY, classOf, tradeDef, type TradeDef } from "./trades.js";
@@ -306,7 +305,6 @@ function finish(ctx: BizCtx, d: Draft, takeName: (stem: string) => string): Buil
     const ceiling = r1(Math.min(b.era < 1930 ? 4.3 : b.era < 1970 ? 3.6 : 3.1, b.height - 0.7) - (g.remodel?.what === "dropped fascia" ? 0.4 : 0));
     const type = vacant ? "empty" : def!.interior;
     // The back partition stands where the trade's room ends, from the unit's own hash (its building, its place in it, its tenant's name).
-    legacyDraws({ rng, type, trade, lit, s0: g.s0, s1: g.s1, depth: deep, ceiling, doorS: g.door.s, doorW: g.door.width, openings });
     const sig = hashSeed(hashSeed(ctx.base, b.id * 64 + k), nameHash(tenant?.name ?? ""));
     const roomDepth = partitionDepth(type, sig, deep);
     const room = furnish({ rng: { state: hashSeed(sig, 0x726f6f6d) }, type, trade, lit, s0: g.s0, s1: g.s1, depth: roomDepth, ceiling, doorS: g.door.s, doorW: g.door.width, openings, sig, opened, remodel: g.remodel?.decade ?? 0 });

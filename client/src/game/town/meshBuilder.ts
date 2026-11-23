@@ -25,6 +25,8 @@ export type GridLook = {
   readonly streaks?: boolean;
   readonly streaks2?: boolean;
   readonly clear?: number;
+  /** A wire's radius, metres: the vertex shader keeps it at least a pixel and a bit wide at any distance, and the fragment fades it by the same factor (`townMaterial.ts`, `WIRE_CODE`). */
+  readonly wire?: number;
 };
 export type Rgb = readonly [number, number, number];
 
@@ -261,7 +263,7 @@ export class MeshBuilder {
   }
 
   /** An axis-aligned-in-a-turned-frame box: centre (x, z), base y, along axis (ux, uz), half extents, height; every face but the bottom. */
-  box(cx: number, cz: number, y0: number, ux: number, uz: number, halfU: number, halfV: number, height: number, side: Rgb, top: Rgb): void {
+  box(cx: number, cz: number, y0: number, ux: number, uz: number, halfU: number, halfV: number, height: number, side: Rgb, top: Rgb, topFace = true): void {
     const vx = uz;
     const vz = -ux;
     const c = (su: number, sv: number): [number, number] => [cx + ux * halfU * su + vx * halfV * sv, cz + uz * halfU * su + vz * halfV * sv];
@@ -271,7 +273,7 @@ export class MeshBuilder {
     this.wall(p10[0], p10[1], p11[0], p11[1], y0, y1, [ux, 0, uz], side);
     this.wall(p11[0], p11[1], p01[0], p01[1], y0, y1, [vx, 0, vz], side);
     this.wall(p01[0], p01[1], p00[0], p00[1], y0, y1, [-ux, 0, -uz], side);
-    this.poly([[p00[0], y1, p00[1]], [p10[0], y1, p10[1]], [p11[0], y1, p11[1]], [p01[0], y1, p01[1]]], [0, 1, 0], top);
+    if (topFace) this.poly([[p00[0], y1, p00[1]], [p10[0], y1, p10[1]], [p11[0], y1, p11[1]], [p01[0], y1, p01[1]]], [0, 1, 0], top);
   }
 
   /**
@@ -413,7 +415,7 @@ export class MeshBuilder {
         this.col.push(c[0], c[1], c[2], 1);
         if (layer === NO_LAYER) {
           this.uv.push(0, 0);
-          this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, 0, 0);
+          this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, v.wire === undefined ? 0 : -Math.max(1, Math.round(v.wire * 1000)), 0);
         } else {
           const uv = v.uv === undefined ? [0, 0] : v.uv(i, j);
           this.uv.push(uv[0] / (tile[0] as number), uv[1] / (tile[1] as number));

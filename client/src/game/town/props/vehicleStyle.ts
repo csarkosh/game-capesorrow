@@ -71,10 +71,11 @@ export const SHAPES: Readonly<Record<Exclude<VehicleKind, "work truck" | "camper
   },
 };
 
-/** Paint colours, by index (a table `PAINT_WEIGHTS` in the plan's tuning gives the weights): white, silver, black, charcoal, blue, red, green, tan, maroon, teal, yellow, orange. Linear colours. */
+/** Paint colours, by index (a table `PAINT_WEIGHTS` in the plan's tuning gives the weights): white, silver, black, charcoal, blue, red, green, tan, maroon, teal, yellow, orange, light blue, cream, brown, sage, champagne, pale grey. Linear colours. */
 export const PAINT: readonly Rgb[] = [
   [0.55, 0.55, 0.53], [0.3, 0.31, 0.32], [0.025, 0.025, 0.03], [0.07, 0.075, 0.08], [0.04, 0.09, 0.2], [0.3, 0.03, 0.03],
   [0.03, 0.11, 0.06], [0.27, 0.21, 0.13], [0.12, 0.02, 0.04], [0.03, 0.17, 0.17], [0.45, 0.34, 0.04], [0.36, 0.12, 0.03],
+  [0.17, 0.26, 0.36], [0.45, 0.41, 0.26], [0.12, 0.07, 0.04], [0.13, 0.18, 0.13], [0.3, 0.25, 0.17], [0.34, 0.36, 0.37],
 ];
 
 /** The body layer's own mean colour in linear light (`roof_bitumen`: the smoothest and most even of the town's layers, matt like old paint, where the painted-metal layer is ribbed sheet and the board-formed concrete grooved): a tint is the paint over it, so a vertex shows the paint. */

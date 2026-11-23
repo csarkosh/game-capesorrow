@@ -201,7 +201,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
           const t = 0.03 / Math.max(0.01, s1 - s0) + i * (1 - 0.06 / Math.max(0.01, s1 - s0));
           pts.push([a.x + (b.x - a.x) * t + nx * 0.05, a.y + (b.y - a.y) * t + y - 0.05 * Math.sin(t * Math.PI), a.z + (b.z - a.z) * t + nz * 0.05]);
         }
-        tube(m, pts, 0.018, [0.18, 0.17, 0.16], 3);
+        tube(m, pts, 0.018, [0.18, 0.17, 0.16], 3, true);
       }
     } else {
       // Chain-link: the mesh as a see-through sheet (both ways), a top rail, a tension wire at the foot.
@@ -239,7 +239,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       gl.poly([q[1] as Vec3, q[0] as Vec3, q[3] as Vec3, q[2] as Vec3], [-gx / gl2, 0, -gz / gl2], [0.45, 0.46, 0.48], undefined, { clear: 0.8 });
       tube(m, [sh(q[3] as Vec3, 0.01), sh(q[2] as Vec3, 0.01)], 0.022, GALV, 3);
     } else if (f.kind === "wire") {
-      for (const y of [0.4, 0.78, 1.1]) tube(m, [sh([hinge.x, hinge.y + y, hinge.z], 0.04), sh([tipX, tipY + y, tipZ], 0.04)], 0.02, [0.3, 0.26, 0.2], 3);
+      for (const y of [0.4, 0.78, 1.1]) tube(m, [sh([hinge.x, hinge.y + y, hinge.z], 0.04), sh([tipX, tipY + y, tipZ], 0.04)], 0.02, [0.3, 0.26, 0.2], 3, true);
     } else {
       const sf: Surface = f.kind === "board" ? surfBoard([hinge.x, hinge.y, hinge.z]) : surfPicket([hinge.x, hinge.y, hinge.z]);
       const c: Rgb = f.kind === "board" ? [0.3, 0.28, 0.25] : paint;

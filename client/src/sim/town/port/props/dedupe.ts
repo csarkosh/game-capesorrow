@@ -5,7 +5,7 @@
  */
 import type { Bin, BoatTrailer, Fence, Gear, PlanProps, Vehicle } from "../../types.js";
 import type { Context } from "./context.js";
-import { PAINT_COUNT } from "./tuning.js";
+import { PAINT_COUNT, PAINT_NEIGHBOUR } from "./tuning.js";
 
 type M<T> = { -readonly [K in keyof T]: T[K] };
 
@@ -50,5 +50,32 @@ export function dedupe(ctx: Context, props: PlanProps): PlanProps {
     }
     if (!changed) break;
   }
+  neighbours(vehicles);
   return work;
+}
+
+/** Two parked vehicles of one model within `PAINT_NEIGHBOUR` of each other are never one paint: the later one takes the next colour that none of its model's neighbours wears. The worn models (derelicts, the covered car) keep their own textures, so their index is not a paint. */
+function neighbours(vehicles: M<Vehicle>[]): void {
+  const lim = PAINT_NEIGHBOUR * PAINT_NEIGHBOUR;
+  for (let i = 0; i < vehicles.length; i++) {
+    const v = vehicles[i] as M<Vehicle>;
+    if (v.model === "" || v.state === "derelict" || v.state === "project") continue;
+    const worn: number[] = [];
+    for (let j = 0; j < vehicles.length; j++) {
+      const o = vehicles[j] as M<Vehicle>;
+      if (j === i || o.model !== v.model) continue;
+      const dx = o.x - v.x;
+      const dz = o.z - v.z;
+      if (dx * dx + dz * dz <= lim) worn.push(o.colour);
+    }
+    // Only vehicles before it have settled; a later one that shares is moved when its turn comes.
+    if (!vehicles.slice(0, i).some((o) => o.model === v.model && o.colour === v.colour && (o.x - v.x) * (o.x - v.x) + (o.z - v.z) * (o.z - v.z) <= lim)) continue;
+    for (let k = 1; k < PAINT_COUNT; k++) {
+      const c = (v.colour + k) % PAINT_COUNT;
+      if (!worn.includes(c)) {
+        v.colour = c;
+        break;
+      }
+    }
+  }
 }
