@@ -15,8 +15,8 @@ import { groundAt } from "./kit.js";
 import { manifestOf, type ManifestVehicle } from "./vehicleManifest.js";
 import { vehicleLook, type VehicleLook } from "./vehicleLook.js";
 
-/** Floats of plugin data an instance carries: paint rgb and grime, then dust, moss, the offset seed and the fade. */
-export const FLEET_DATA_FLOATS = 8;
+/** Floats of plugin data an instance carries: paint rgb and grime, then dust, moss, the offset seed and the fade, then rust, the primer panel, the dull lamp's side and the mud. */
+export const FLEET_DATA_FLOATS = 12;
 
 export type FleetInstance = {
   readonly vehicle: Vehicle;
@@ -95,7 +95,7 @@ export function placeVehicle(g: TownGround, v: Vehicle, entry: ManifestVehicle):
     return { x: px, y: py, z: pz, ground: groundAt(g, px, pz), i };
   });
   const look = vehicleLook(v);
-  const data = new Float32Array([look.paint[0], look.paint[1], look.paint[2], look.grime, look.dust, look.moss, look.seed, look.fade]);
+  const data = new Float32Array([look.paint[0], look.paint[1], look.paint[2], look.grime, look.dust, look.moss, look.seed, look.fade, look.rust, look.primer, look.lamp, look.mud]);
   const f = entry.footprint;
   const radius = Math.sqrt(f.length * f.length + f.width * f.width + f.height * f.height) / 2;
   return { vehicle: v, model: entry.id, matrix, x: wx, y: oy + f.height / 2, z: wz, radius, data, look, contacts };

@@ -58,9 +58,11 @@ export const KIND_OLD: W<VehicleKind> = [["pickup", 0.42], ["sedan", 0.28], ["su
 /** Trades that park work trucks and vans at their door. */
 export const WORK_TRADES: readonly Trade[] = ["auto repair", "hardware", "garden and feed", "boat yard", "marine supply", "saw and chain shop", "tire shop", "auto parts", "self storage"];
 
-/** Paint colours (indices into the drawing's table, `game/town/props/vehicleStyle.ts`) with the weight each has among parked vehicles. */
-export const PAINT_COUNT = 12;
-export const PAINT_WEIGHTS: readonly number[] = [0.2, 0.17, 0.15, 0.13, 0.08, 0.07, 0.05, 0.04, 0.03, 0.03, 0.03, 0.02];
+/** Paint colours (indices into the drawing's table, `game/town/props/vehicleStyle.ts`) with the weight each has among parked vehicles: a rural spread of whites, silvers and faded reds, greens, tans and light blues, with black and charcoal a minority. */
+export const PAINT_COUNT = 18;
+export const PAINT_WEIGHTS: readonly number[] = [0.13, 0.12, 0.05, 0.04, 0.05, 0.08, 0.07, 0.07, 0.03, 0.02, 0.02, 0.01, 0.07, 0.05, 0.04, 0.04, 0.05, 0.06];
+/** Vehicles of one model within this many metres of each other do not share a paint. */
+export const PAINT_NEIGHBOUR = 45;
 
 /** The odds a vehicle is of a given age: the neighbourhood's age moves the range (a 1950s street's cars are older). */
 export const AGE = { newest: 0.0, oldest: 1.0 };

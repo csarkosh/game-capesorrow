@@ -25,7 +25,8 @@ import type { WetUniforms } from "@csarkosh/engine/game/wetSurface";
 import type { PluginUniformBlock } from "@babylonjs/lite";
 import type { Slices, SyncJobs } from "@csarkosh/engine/game/syncJobs";
 import { FLEET_DATA_FLOATS, type FleetInstance } from "./vehicleFleet.js";
-import { vehiclePlugin } from "./vehicleMaterial.js";
+import { vehiclePlugin, type VehicleGeom } from "./vehicleMaterial.js";
+import { MANIFEST } from "./vehicleManifest.js";
 
 /** How far from the eye a vehicle is drawn (m): past it a vehicle is a few pixels under the town's own fog. */
 export const REACH = 160;
@@ -48,6 +49,8 @@ export type VehicleParts = {
   begin(): void;
   /** Shows the instances in the view and within reach. */
   seen(planes: readonly ViewFrustumPlane[]): void;
+  /** Whether a model's meshes are all made (so its instances stand for its vehicles). */
+  ready(model: string): boolean;
   /** Models still being loaded or made. */
   waiting(): number;
   /** What is made and drawn now: the models landed, the meshes made, the meshes drawn and the instances drawn (a vehicle once, however many roles). */
@@ -98,7 +101,41 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
   });
   if (order.length === 0) resolveSettled();
 
-  function material(part: ModelPart, role: string): PbrMaterialProps {
+  /** Where a model's wheels, glass and windscreen are, read off its parts (the manifest's wheels, the glass's vertices and their normals). */
+  function geometryOf(id: string, parts: readonly ModelPart[]): VehicleGeom {
+    const wheels = MANIFEST.vehicles.find((v) => v.id === id)?.wheels ?? [];
+    const xs = wheels.map((w) => w.x);
+    const axles: [number, number] = xs.length > 0 ? [Math.min(...xs), Math.max(...xs)] : [-1.3, 1.3];
+    const wheel = wheels.length > 0 ? wheels.reduce((n, w) => n + w.r, 0) / wheels.length : 0.33;
+    let gy0 = Infinity;
+    let gy1 = -Infinity;
+    let sx = Infinity;
+    let sy0 = Infinity;
+    let sy1 = -Infinity;
+    let sz = 0;
+    for (const part of parts) {
+      if (part.facts.material !== "glass") continue;
+      for (let i = 0; i < part.positions.length; i += 3) {
+        const y = part.positions[i + 1] as number;
+        gy0 = Math.min(gy0, y);
+        gy1 = Math.max(gy1, y);
+        if ((part.normals[i] as number) > 0.5) {
+          sx = Math.min(sx, part.positions[i] as number);
+          sy0 = Math.min(sy0, y);
+          sy1 = Math.max(sy1, y);
+          sz = Math.max(sz, Math.abs(part.positions[i + 2] as number));
+        }
+      }
+    }
+    const have = gy0 < gy1;
+    return {
+      axles, wheel,
+      glass: have ? [gy0, gy1] : [1.0, 1.4],
+      screen: sx < Infinity ? { x: sx, y0: sy0, y1: sy1, zh: sz } : { x: axles[1] - 0.4, y0: 1.0, y1: 1.4, zh: 0.6 },
+    };
+  }
+
+  function material(part: ModelPart, role: string, geom: VehicleGeom): PbrMaterialProps {
     const src = part.material;
     const glass = role === "glass";
     const made = createPbrMaterial({
@@ -112,7 +149,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
       ...(src.ormTexture === undefined ? {} : { ormTexture: src.ormTexture }),
       ...(src.normalTexture === undefined ? {} : { normalTexture: src.normalTexture }),
     });
-    const own = vehiclePlugin(role);
+    const own = vehiclePlugin(role, geom);
     made.plugins = [baseColourPlugin(), ...(own === null ? [] : [own]), surfaceWetPlugin(host.wet, host.shared), host.air()];
     materials.push(made);
     if (!glass) orders.take(made);
@@ -124,6 +161,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
     const n = batch.instances.length;
     batch.matrices = new Float32Array(n * 16);
     batch.data = new Float32Array(n * FLEET_DATA_FLOATS);
+    const geom = geometryOf(batch.id, parts);
     for (const [k, part] of parts.entries()) {
       if (disposed) return;
       const role = part.facts.material ?? "body";
@@ -132,7 +170,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
         host.engine, `${batch.id}.${role}.${k}`, part.positions.slice(), part.normals.slice(), part.indices.slice(),
         mapped ? part.uvs.slice() : undefined, undefined, mapped && part.tangents !== null ? part.tangents.slice() : undefined,
       );
-      mesh.material = material(part, role);
+      mesh.material = material(part, role, geom);
       mesh.renderOrder = role === "glass" ? SEE_THROUGH_ORDER.glass + 1 : (orders.of(mesh.material as PbrMaterialProps) ?? DRAW_ORDER.bodies);
       setThinInstances(mesh, batch.matrices, n);
       if (mesh.thinInstances !== undefined && mesh.thinInstances !== null) mesh.thinInstances.pluginData = batch.data;
@@ -218,6 +256,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
   return {
     begin,
     seen,
+    ready: (model) => batches.get(model)?.ready === true,
     waiting: () => pending,
     stats() {
       let meshes = 0;

@@ -122,7 +122,7 @@ export { greyed, scaled };
  * A thin smooth tube through points (a wire, a rope, a strand): a ring of `sides` corners (three is enough to be seen and to hold still
  * at a distance) of radius `r`, shaded round. `r` is wider than a real wire's, so that it does not shimmer.
  */
-export function tube(m: MeshBuilder, pts: readonly Vec3[], r: number, colour: Rgb, sides = 3): void {
+export function tube(m: MeshBuilder, pts: readonly Vec3[], r: number, colour: Rgb, sides = 3, wire = false): void {
   if (pts.length < 2) return;
   const rows: Vec3[][] = [];
   for (let i = 0; i < pts.length; i++) {
@@ -160,7 +160,7 @@ export function tube(m: MeshBuilder, pts: readonly Vec3[], r: number, colour: Rg
     }
     rows.push(ring);
   }
-  m.grid(rows, pts, { colour });
+  m.grid(rows, pts, wire ? { colour, wire: r } : { colour });
 }
 
 /** A tapered, leaning post as sections of prisms: radius `r0` at the base to `r1` at the top, the top standing off by (ox, oz), the lean growing with the square of the height. */
