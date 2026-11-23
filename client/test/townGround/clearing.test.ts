@@ -229,7 +229,7 @@ describe("the forest by the lot", () => {
     }
   });
 
-  it("lifts what the shore's rules read on a yard, and nowhere else", () => {
+  it("lifts what the shore's rules read on a yard, a paved block and a street's right of way and a little past them, and nowhere else", () => {
     for (const seed of SEEDS) {
       const plan = planFor(seed);
       const site = siteFor(seed);
@@ -239,7 +239,11 @@ describe("the forest by the lot", () => {
       expect(shoreStrip(seed, site.anchor.x + c.x, site.anchor.z + c.z)).toBe(1);
       const paved = plan.blocks.find((b) => isPaved(b.district)) as (typeof plan.blocks)[number];
       const p = paved.polygon.reduce((acc, q) => ({ x: acc.x + q.x / paved.polygon.length, z: acc.z + q.z / paved.polygon.length }), { x: 0, z: 0 });
-      expect(shoreStrip(seed, site.anchor.x + p.x, site.anchor.z + p.z)).toBe(0);
+      // A paved block reads as soil too (its pavement is laid over it, and its margin shows), and so does every street's way: the beach is not under the town.
+      expect(shoreStrip(seed, site.anchor.x + p.x, site.anchor.z + p.z)).toBe(1);
+      const street = plan.streets.find((st) => st.kind === "street") as (typeof plan.streets)[number];
+      const mid = { x: (street.a.x + street.b.x) / 2, z: (street.a.z + street.b.z) / 2 };
+      expect(shoreStrip(seed, site.anchor.x + mid.x, site.anchor.z + mid.z)).toBe(1);
       expect(shoreStrip(seed, site.anchor.x + plan.bounds.x1 + 300, site.anchor.z)).toBe(0);
       expect(clearAt(plan, plan.bounds.x1 + 300, 0)).toEqual({ tree: 1, clutter: 1, yard: 0, meadow: 0 });
       expect(YARD_LIFT).toBeGreaterThan(8);

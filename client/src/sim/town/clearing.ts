@@ -87,6 +87,8 @@ export const TRACK_TO = 1.3;
 export const YARD_LIFT = 12;
 /** A block's own window falls over this many metres outside its edges. */
 export const BLOCK_MARGIN = 4;
+/** The strip that reads as soil (not beach) runs this many metres past a street's right of way before it falls to nothing. */
+export const STRIP_RAMP = 2;
 
 /** While the site is read (before there is a plan) the cliff bands are kept off this rectangle: this far along the shore either way of the cove and this far inland of the highway, metres, the bands returning over `READ_KEEP_EDGE`. It holds everything the plan builds on and the roads out of it, which the world then keeps clear of the bands too (`ROAD_KEEP_*`). */
 export const READ_KEEP_Z = 1000;
@@ -136,6 +138,7 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   TRACK_FROM,
   TRACK_TO,
   BLOCK_MARGIN,
+  STRIP_RAMP,
   READ_KEEP_Z,
   READ_KEEP_INLAND,
   READ_KEEP_EDGE,
@@ -416,7 +419,7 @@ function indexOf(plan: TownPlan): Index {
     const j1 = Math.floor((box.z1 + reach - bz0) / CELL);
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) (cells[i * nz + j] as number[]).push(k);
   };
-  for (let k = 0; k < blocks.length; k++) put(cellBlocks, blockBox[k] as (typeof blockBox)[number], k, BLOCK_MARGIN);
+  for (let k = 0; k < blocks.length; k++) put(cellBlocks, blockBox[k] as (typeof blockBox)[number], k, BLOCK_MARGIN + TREE_JITTER * 1.5);
   for (let k = 0; k < buildings.length; k++) put(cellBuildings, bldBox[k] as (typeof bldBox)[number], k, TREE_BUILDING_CLEAR + TREE_JITTER + TREE_RAMP);
   for (let k = 0; k < streets.length; k++) put(cellStreets, stBox[k] as (typeof stBox)[number], k, TREE_STREET_CLEAR + TREE_JITTER + TREE_RAMP);
   for (let k = 0; k < discs.length; k++) put(cellDiscs, discBox[k] as (typeof discBox)[number], k, TREE_STREET_CLEAR + TREE_JITTER + TREE_RAMP);
@@ -433,6 +436,18 @@ function blockWindow(edges: readonly Edge[], x: number, z: number): number {
     const d = e.nx * x + e.nz * z - e.c;
     if (d <= -BLOCK_MARGIN) return 0;
     if (d < 0) v *= smootherstepD(-BLOCK_MARGIN, 0, d).v;
+  }
+  return v;
+}
+
+/** A block's window with its edges moved out by `off` metres (1 inside them and up to `off` beyond, falling to 0 over `ramp` more). */
+function blockWindowOff(edges: readonly Edge[], x: number, z: number, off: number, ramp: number): number {
+  let v = 1;
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i] as Edge;
+    const d = e.nx * x + e.nz * z - e.c;
+    if (d <= -off - ramp) return 0;
+    if (d < -off) v *= smootherstepD(-off - ramp, -off, d).v;
   }
   return v;
 }
@@ -524,10 +539,20 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
   const cell = i * index.nz + j;
   let paved = 0;
   let yard = 0;
+  // Beyond a paved block's edge nothing is let grow that could stand on it: an instance stands off its cell's middle by its jitter
+  // (the ground here reads as soil, not sand, under the strip, so the beach no longer keeps those out: `townStripWeight`).
+  let pavedTree = 0;
+  let pavedClutter = 0;
   const blocks = index.cellBlocks[cell] as readonly number[];
   for (let k = 0; k < blocks.length; k++) {
     const b = index.blocks[blocks[k] as number] as (typeof index.blocks)[number];
     const w = blockWindow(b.edges, xf, zr);
+    if (b.paved) {
+      const wt = blockWindowOff(b.edges, xf, zr, TREE_JITTER * 1.5, BLOCK_MARGIN);
+      if (wt > pavedTree) pavedTree = wt;
+      const wc = blockWindowOff(b.edges, xf, zr, CLUTTER_JITTER * 1.5, BLOCK_MARGIN);
+      if (wc > pavedClutter) pavedClutter = wc;
+    }
     if (w === 0) continue;
     if (b.paved) paved = 1 - (1 - paved) * (1 - w);
     else yard = 1 - (1 - yard) * (1 - w);
@@ -594,6 +619,11 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
     const cshut = CLUTTER_BUILDING_CLEAR + CLUTTER_JITTER;
     if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
   }
+  if (pavedTree > 0) tree *= 1 - pavedTree;
+  if (pavedClutter > 0) {
+    clutter *= 1 - pavedClutter;
+    meadow *= 1 - pavedClutter;
+  }
   return { tree, clutter, yard: lawn, meadow };
 }
 
@@ -618,4 +648,42 @@ export function townYardWeight(seed: number, x: number, z: number): number {
   const plan = planFor(seed);
   const site = siteFor(seed);
   return clearAt(plan, x - site.anchor.x, z - COVE_Z).yard;
+}
+
+/**
+ * The place's shore strip (`CoastOverlay.shoreStrip`): how far a place is made ground that is not beach, 0 to 1. The engine
+ * paints the terrain by its height, and the town's flats (2 to 3 m) would paint as pebble and sand, so where the town is the
+ * shore's rules read the ground `YARD_LIFT` m higher, as ground that paints as soil. That is a yard (the lot's lawn), a paved
+ * block (the core, the dock end, the working waterfront: its pavement is laid over soil, and the margin around it shows) and every
+ * street's right of way (roadway, curbs, sidewalks, shoulders, verge, and the junctions' pavement, which lies within the streets'
+ * ways) and `STRIP_RAMP` beyond it. Under a street the terrain is cut out of sight (`streetField.ts`), so what shows of it where
+ * the drawn surface fails to hide it (an edge, a coarse ring) is dirt at the edge of the asphalt, never a stripe of sand.
+ */
+export function townStripWeight(seed: number, x: number, z: number): number {
+  const plan = planFor(seed);
+  const site = siteFor(seed);
+  const xf = x - site.anchor.x;
+  const zr = z - COVE_Z;
+  const index = indexOf(plan);
+  const i = Math.floor((xf - index.x0) / CELL);
+  const j = Math.floor((zr - index.z0) / CELL);
+  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) return 0;
+  const cell = i * index.nz + j;
+  let w = 0;
+  const blocks = index.cellBlocks[cell] as readonly number[];
+  for (let k = 0; k < blocks.length; k++) {
+    const b = index.blocks[blocks[k] as number] as (typeof index.blocks)[number];
+    const bw = blockWindow(b.edges, xf, zr);
+    if (bw > w) w = bw;
+  }
+  const streets = index.cellStreets[cell] as readonly number[];
+  for (let k = 0; k < streets.length; k++) {
+    const d = streetDistance(index.streets[streets[k] as number] as Streetway, xf, zr);
+    if (d >= STRIP_RAMP) continue;
+    const sw = 1 - smootherstepD(0, STRIP_RAMP, d).v;
+    if (sw > w) w = sw;
+  }
+  // The yard's own weight is its lawn's (a block's window with the paved blocks' taken out): never less than it was.
+  const yard = clearAt(plan, xf, zr).yard;
+  return yard > w ? yard : w;
 }
