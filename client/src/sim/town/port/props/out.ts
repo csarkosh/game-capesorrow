@@ -1,6 +1,6 @@
 /** What the props stage has made so far, with the ids and the solids, and the one way a prop is put down. */
 import { boxAt, boxInside, type Box } from "./boxes.js";
-import type { Bin, BoatTrailer, Drop, Fence, Gear, Mailbox, Pole, Vehicle } from "../../types.js";
+import type { Bin, BoatTrailer, Drop, Fence, Furniture, Gear, Litter, Mailbox, Pole, Vehicle } from "../../types.js";
 import type { Context, LotInfo } from "./context.js";
 
 export class Out {
@@ -12,6 +12,8 @@ export class Out {
   bins: Bin[] = [];
   mailboxes: Mailbox[] = [];
   gear: Gear[] = [];
+  furniture: Furniture[] = [];
+  litter: Litter[] = [];
   solids: Box[] = [];
   private ids = 0;
   id(): number {

@@ -20,6 +20,7 @@ import { slatBlinds, slatColour, verticalBlinds } from "./windowDressing.js";
 import type { Building, BuildingUse, Unit } from "../../sim/town/types.js";
 import type { Detail, FillReport } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
+import { bulkheadWear } from "./buildingWear.js";
 
 export type FrontIn = {
   readonly report?: FillReport;
@@ -135,10 +136,17 @@ export function planFront(i: FrontIn): FrontPlan {
           const [sa, sb] = ends(x0, x1);
           if (old && sill > 0.35) {
             // Its top is at least 5 cm over the water table's (35 cm), which runs across the front.
-            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4));
-            // The panel's field, a shade off the frame.
-            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8));
-          } else wquad(out, w, sa, floorY, sb, floorY + Math.min(0.5, sill), 0.03, [0.13, 0.13, 0.14]);
+            const roll = hash01(b.id * 7 + u.id, 450);
+            const fr = i.surface(w).frame;
+            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4), false, { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 2.2), ...bulkheadWear(b, vacantUnit, roll, false, false) });
+            // The panel's field, a shade off the frame, and a kick plate at its foot that has taken the shoes and the mop.
+            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8), { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 1.8), ...bulkheadWear(b, vacantUnit, roll, false, false) });
+          } else {
+            const roll = hash01(b.id * 7 + u.id, 450);
+            const fr = i.surface(w).frame;
+            const top = floorY + Math.min(0.5, sill);
+            wquad(out, w, sa, floorY, sb, top, 0.03, [0.13, 0.13, 0.14], { layer: "metal_painted", frame: fr, tint: [0.5, 0.5, 0.52], ...bulkheadWear(b, vacantUnit, roll, true, false) });
+          }
         }
       });
     }
@@ -286,7 +294,7 @@ function awning(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: 
   const eave = head - 0.42;
   const face = faded ? scaled([0.55, 0.52, 0.48], 1.1) : col;
   const n = Math.max(3, Math.min(9, Math.round((sb - sa) / 0.32)));
-  const ribs: Rgb = [0.3, 0.3, 0.32];
+  const ribs: Rgb = hash01(id, 444) < 0.55 ? [0.36, 0.2, 0.12] : [0.3, 0.3, 0.32];
   for (let k = 0; k <= n; k++) {
     const s = sa + ((sb - sa) * k) / n;
     out.prism(wat(w, s, top, 0.02), wat(w, s, eave, proj), 0.012, 4, ribs, null);

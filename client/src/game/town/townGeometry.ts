@@ -28,6 +28,7 @@ import { spurGeometry } from "./spurGeometry.js";
 import { stairGeometry } from "./stairGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import { SignAtlas } from "./signAtlas.js";
+import { groundStains } from "./groundStains.js";
 import { forgetMarks } from "./surface.js";
 import { resetLedger } from "./faceLedger.js";
 import type { Detail, TownGround } from "./townTypes.js";
@@ -108,6 +109,9 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   yield;
 
   yield* propsGeometry(g, { solid: sinks.solid, glass: sinks.glass, flat: sinks.flat }, detail, sliceDue);
+  yield;
+  // The marks on the street: oil, scuffs, puddles, drifts (`groundStains.ts`).
+  if (detail !== "low") groundStains(g, sinks.flat);
   yield;
 
   const roles = new Map<number, LandmarkRole>();
