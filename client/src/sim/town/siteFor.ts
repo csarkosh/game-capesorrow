@@ -9,6 +9,7 @@
  * number of bisection steps, so every machine finds the same bits.
  */
 import { SEA_LEVEL, COVE_Z, coastGround, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { whileReadingSite } from "./reading.js";
 import type { GroundGrid, TownSite } from "./site.js";
 
 /** The spacing of the site's samples along z, metres. */
@@ -78,6 +79,10 @@ function readGround(worldSeed: number, anchor: { x: number; z: number }): Ground
 
 /** The town's site for a world's seed, read off the coast now: what `siteFor` caches. */
 export function readSite(worldSeed: number): TownSite {
+  return whileReadingSite(() => readSiteNow(worldSeed));
+}
+
+function readSiteNow(worldSeed: number): TownSite {
   const anchor = { x: roadCenterX(worldSeed, COVE_Z), z: COVE_Z };
   const z0 = -SITE_HALF;
   const shoreX: number[] = [];

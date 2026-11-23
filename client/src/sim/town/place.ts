@@ -8,7 +8,7 @@
  * bands kept off the old rectangle, and a clearing about the player's start.
  */
 import { COVE_Z, type CoastOverlay } from "@csarkosh/engine/sim/olympic";
-import { townBlendWindowD, TOWN_BLEND_END, TOWN_BLEND_TUNABLES } from "./blend.js";
+import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
 import { CLEARING_TUNABLES, YARD_LIFT, townFeatureMask, townKeepD, townYardWeight } from "./clearing.js";
 import { GROUND_TUNABLES, townGroundD } from "./ground.js";
 import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_SEED_MIX } from "./siteFor.js";
@@ -28,7 +28,7 @@ export const CAPE_PLACE: CoastOverlay = {
     // The plan's own version: two machines whose generators differ make different towns, and must not meet.
     TOWN_GEN,
   },
-  blend: { end: TOWN_BLEND_END, windowD: townBlendWindowD },
+  blend: { end: townBlendEnd, windowD: townBlendWindowD },
   cliffKeepD: townKeepD,
   shapeD: townGroundD,
   featureMask: (seed, x, z) => townFeatureMask(seed, x, z),
