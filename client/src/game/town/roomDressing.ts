@@ -14,6 +14,7 @@ import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, fcyl, shade, wallBox, wallPoint, wallPoly, wallQuad, type Ctx, type WallName } from "./roomKit.js";
 import type { Finish, RoomIn } from "./roomShell.js";
+import { sillThings, tallThings } from "./roomWindow.js";
 import type { Furnishing, Trade } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
@@ -312,6 +313,52 @@ function curtain(c: Ctx, a: number, seed: number): void {
   for (let k = 0; k < 6; k++) wallQuad(c, "back", a - 0.5 + k * 0.17, a - 0.5 + (k + 1) * 0.17, 0.12, 2.08, 0.06, scaled(col, k % 2 === 0 ? 1 : 0.78));
 }
 
+function framesRow(c: Ctx, wall: WallName, a: number, seed: number): void {
+  let x = a - 0.55;
+  for (let k = 0; k < 3; k++) {
+    const w = 0.25 + hash01(seed + k, 870) * 0.2;
+    framed(c, wall, x + w / 2, 1.4 + hash01(seed + k * 3, 871) * 0.3, w, w * (0.8 + hash01(seed + k, 872) * 0.5), (hash01(seed + k, 873) - 0.5) * 0.1, seed + k * 13);
+    x += w + 0.1;
+  }
+}
+
+function television(c: Ctx, wall: WallName, a: number): void {
+  wallBox(c, wall, a - 0.5, a + 0.5, 1.7, 2.2, 0.12, [0.06, 0.06, 0.07]);
+  wallQuad(c, wall, a - 0.45, a + 0.45, 1.75, 2.15, 0.16, [0.2, 0.35, 0.5], c.lit ? 1.4 : 0.1);
+}
+
+function mountedFish(c: Ctx, wall: WallName, a: number, seed: number): void {
+  wallQuad(c, wall, a - 0.42, a + 0.42, 1.55, 1.95, 0.03, [0.3, 0.2, 0.11]);
+  const body: Rgb = pickOf([[0.55, 0.65, 0.7], [0.6, 0.5, 0.35], [0.45, 0.6, 0.5]] as readonly Rgb[], seed, 880);
+  wallPoly(c, wall, [[a - 0.34, 1.75], [a - 0.2, 1.86], [a + 0.12, 1.84], [a + 0.24, 1.75], [a + 0.12, 1.66], [a - 0.2, 1.64]], 0.06, body);
+  wallPoly(c, wall, [[a + 0.24, 1.75], [a + 0.36, 1.86], [a + 0.36, 1.64]], 0.06, scaled(body, 0.75));
+}
+
+function antlers(c: Ctx, wall: WallName, a: number): void {
+  wallQuad(c, wall, a - 0.15, a + 0.15, 1.7, 1.9, 0.03, [0.3, 0.2, 0.11]);
+  for (const sg of [-1, 1]) {
+    wallPoly(c, wall, [[a + sg * 0.08, 1.9], [a + sg * 0.14, 1.9], [a + sg * 0.34, 2.25], [a + sg * 0.28, 2.25]], 0.06, [0.75, 0.68, 0.55]);
+    wallPoly(c, wall, [[a + sg * 0.22, 2.06], [a + sg * 0.4, 2.09], [a + sg * 0.4, 2.14], [a + sg * 0.22, 2.11]], 0.06, [0.75, 0.68, 0.55]);
+  }
+}
+
+function beerSign(c: Ctx, wall: WallName, a: number, seed: number): void {
+  const col = pickOf([[0.9, 0.7, 0.1], [0.8, 0.15, 0.1], [0.15, 0.5, 0.25], [0.2, 0.4, 0.8]] as readonly Rgb[], seed, 881);
+  wallQuad(c, wall, a - 0.32, a + 0.32, 1.55, 2.0, 0.03, [0.08, 0.08, 0.09]);
+  wallQuad(c, wall, a - 0.28, a + 0.28, 1.6, 1.95, 0.06, col, c.lit ? 2.0 : 0.3);
+  wallQuad(c, wall, a - 0.2, a + 0.2, 1.72, 1.82, 0.09, [0.95, 0.93, 0.85], c.lit ? 2.2 : 0.3);
+}
+
+function certificates(c: Ctx, wall: WallName, a: number, seed: number): void {
+  for (let r = 0; r < 2; r++) for (let q = 0; q < 3; q++) {
+    const x = a - 0.55 + q * 0.38;
+    const y = 1.35 + r * 0.42;
+    wallQuad(c, wall, x, x + 0.3, y, y + 0.34, 0.03, [0.3, 0.22, 0.12]);
+    wallQuad(c, wall, x + 0.03, x + 0.27, y + 0.03, y + 0.31, 0.06, [0.9, 0.88, 0.8]);
+    if (hash01(seed + r * 3 + q, 882) < 0.7) wallQuad(c, wall, x + 0.07, x + 0.23, y + 0.15, y + 0.17, 0.09, [0.3, 0.3, 0.33]);
+  }
+}
+
 /**
  * The party walls: a run of things from near the front to the partition, one after another with a gap between, chosen by the trade and the
  * unit's own rolls, and left out where a tall piece of furniture stands against the wall or the partition's jog meets it. The menu board
@@ -323,6 +370,7 @@ function sideWalls(c: Ctx, r: RoomIn, seed: number): void {
   const bar = c.type === "bar";
   const office = c.type === "office" || c.type === "lobby";
   const clothes = c.trade !== null && ["clothing", "thrift store"].includes(c.trade);
+  const handy = c.trade !== null && ["hardware", "auto parts", "marine supply", "garden and feed", "bait and tackle", "sporting goods", "saw and chain shop"].includes(c.trade);
   (["left", "right"] as WallName[]).forEach((wall, wi) => {
     const wallS = wall === "left" ? c.s0 : c.s1;
     const reach = (f: Furnishing): number => (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
@@ -347,14 +395,11 @@ function sideWalls(c: Ctx, r: RoomIn, seed: number): void {
     const blocked = (a0: number, a1: number): boolean => taken.some(([t0, t1]) => a1 > t0 - 0.15 && a0 < t1 + 0.15);
     let x = 0.9 + hash01(seed + wi, 840) * 0.9;
     let k = 0;
-    while (x < end - 0.6 && k < 6) {
+    while (x < end - 0.6 && k < 9) {
       const roll = hash01(seed + wi * 17 + k * 5, 841);
-      const kind = food ? (roll < 0.35 ? 0 : roll < 0.55 ? 1 : roll < 0.7 ? 2 : roll < 0.85 ? 3 : 4)
-        : bar ? (roll < 0.25 ? 0 : roll < 0.45 ? 5 : roll < 0.65 ? 1 : roll < 0.8 ? 6 : 3)
-          : office ? (roll < 0.4 ? 0 : roll < 0.6 ? 2 : roll < 0.8 ? 3 : 7)
-            : clothes ? (roll < 0.3 ? 0 : roll < 0.5 ? 8 : roll < 0.7 ? 4 : 1)
-              : (roll < 0.25 ? 0 : roll < 0.45 ? 1 : roll < 0.65 ? 2 : roll < 0.8 ? 3 : 4);
-      const w = [0.6, 0.7, 1.3, 0.5, 0.9, 0.8, 0.7, 0.5, 0.7][kind] as number;
+      const cats = food ? [0, 0, 1, 3, 4, 16, 9, 11] : bar ? [5, 6, 10, 13, 13, 12, 11, 3] : office ? [0, 15, 15, 2, 3, 7, 9] : clothes ? [0, 8, 4, 1, 9] : handy ? [14, 14, 2, 3, 1, 14] : [0, 1, 2, 3, 4, 9];
+      const kind = cats[Math.min(cats.length - 1, Math.floor(roll * cats.length))] as number;
+      const w = [0.6, 0.7, 1.3, 0.5, 0.9, 0.8, 0.7, 0.5, 0.7, 1.3, 1.1, 1.0, 0.7, 0.7, 1.4, 1.3, 1.2][kind] as number;
       const a = x + w / 2;
       if (a + w / 2 > end) break;
       if (!blocked(a - w / 2, a + w / 2)) {
@@ -369,10 +414,18 @@ function sideWalls(c: Ctx, r: RoomIn, seed: number): void {
           case 5: dartBoard(c, wall, a, 1.6); break;
           case 6: neonSign(c, wall, a, 1.9, 0.55, pickOf([[1, 0.2, 0.15], [0.3, 0.6, 1], [1, 0.55, 0.2]] as readonly Rgb[], s, 850)); break;
           case 7: calendar(c, wall, a, 1.45); break;
+          case 9: framesRow(c, wall, a, s); break;
+          case 10: television(c, wall, a); break;
+          case 11: mountedFish(c, wall, a, s); break;
+          case 12: antlers(c, wall, a); break;
+          case 13: beerSign(c, wall, a, s); break;
+          case 14: pegboard(c, wall, a, 1.0, 1.3, 1.2, s); break;
+          case 15: certificates(c, wall, a, s); break;
+          case 16: board(c, wall, a, 1.3, 1.1, 0.9, [0.1, 0.13, 0.1], WOOD, 5, CHALK, s); break;
           default: mirror(c, wall, a, 0.9, 0.5, 1.2); break;
         }
       }
-      x += w + 0.5 + hash01(seed + k, 851) * 0.9;
+      x += w + 0.25 + hash01(seed + k, 851) * 0.5;
       k++;
     }
     // A high shelf of stock or crockery along the wall over everything else: the room's upper walls are what the street sees first.
@@ -381,7 +434,7 @@ function sideWalls(c: Ctx, r: RoomIn, seed: number): void {
       let xs = 0.8 + hash01(seed + wi, 861) * 0.6;
       while (xs + 0.9 < end) {
         const w = Math.min(1.1 + hash01(seed + xs * 7, 862) * 1.1, end - xs - 0.05);
-        if (!blocked(xs, xs + w)) wallShelves(c, wall, xs + w / 2, w, y0, 1, seed + wi * 53 + Math.floor(xs * 3));
+        if (!blocked(xs, xs + w)) wallShelves(c, wall, xs + w / 2, w, y0, c.ceiling >= 3.6 ? 2 : 1, seed + wi * 53 + Math.floor(xs * 3));
         xs += w + 0.25 + hash01(seed + xs * 3, 863) * 0.5;
       }
     }
@@ -532,21 +585,14 @@ export function dressRoom(c: Ctx, r: RoomIn, fin: Finish, dw: { s: number; open:
       }
     }
     placeBack(c, backWallItems(c, seed), segs, seed);
+    // A high shelf of stock or crockery over the whole back wall where the ceiling is high enough, above everything hung below it.
+    if (c.ceiling >= 3.3) for (const [a, b] of segs) if (b - a > 0.8 && hash01(seed + a * 5, 864) < 0.85) wallShelves(c, "back", (a + b) / 2, Math.min(b - a, 2.6), Math.min(2.65, c.ceiling - 0.75), 1, seed + Math.floor(a * 7));
     if (c.ceiling >= 2.6 && hash01(seed, 795) < 0.85) exitSign(c, dw.s);
     sideWalls(c, r, seed);
   }
-  // A plant or two on the sill of a window that is not covered: a pot of green at one end, a trailing one in the corner of another.
-  for (const [k, o] of r.openings.entries()) {
-    if (o.cover !== "none" && o.cover !== "blinds") continue;
-    if (full && hash01(seed + k * 7, 800) < 0.28) {
-      const lo = Math.min(o.s0, o.s1);
-      const hi = Math.max(o.s0, o.s1);
-      const s = hash01(seed + k, 801) < 0.5 ? lo + 0.22 : hi - 0.22;
-      const green: Rgb = pickOf([[0.14, 0.36, 0.14], [0.2, 0.42, 0.18], [0.1, 0.3, 0.16]] as readonly Rgb[], seed + k, 802);
-      fcyl(c, s, 0.3, o.sill, 0.09, 0.205, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], seed + k, 803), [0.2, 0.12, 0.08]);
-      for (let q = 0; q < 3; q++) fcyl(c, s + (q - 1) * 0.06, 0.3, o.sill + 0.16, 0.07, 0.2 + q * 0.07, 5, green, scaled(green, 1.3), 0.015);
-    }
-  }
+  // The sills' plants, jars, curtains and lights, and the tall things that show over them.
+  sillThings(c, r.openings);
+  tallThings(c, seed);
   for (const [k, o] of r.openings.entries()) {
     if (o.cover !== "display") continue;
     // A table, a booth or a case the plan put in the window is the display: no riser is laid over it.

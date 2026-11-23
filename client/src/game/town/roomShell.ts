@@ -52,6 +52,8 @@ export type Finish = {
   readonly stripe: { readonly y: number; readonly h: number; readonly paint: Rgb } | null;
   /** How stained the surfaces are (0 to 1). */
   readonly stain: number;
+  /** A picture rail: a trim band round the wall under the ceiling, or null. */
+  readonly rail: Rgb | null;
   /** The colour of the dark squares of a black-and-white tile floor, or null. */
   readonly checker: Rgb | null;
 };
@@ -79,19 +81,28 @@ const TRADE_STRIPE: Partial<Record<Trade, Rgb>> = { grocery: [0.15, 0.4, 0.2], "
 
 /** The finish of a unit's room, from its record. */
 export function finishOf(r: RoomIn): Finish {
-  let f: Finish = { ...finishBase(r), checker: null };
+  let f: Finish = { ...finishBase(r), checker: null, rail: null };
   const open = r.state !== "vacant for lease" && r.state !== "vacant boarded";
-  // A painted lower band where there is no wainscot: a darker coat of the wall's colour, or the trade's own, up to the chair rail.
-  if (open && f.wainscot === null && r.interior.type !== "bar" && r.interior.type !== "workshop" && hash01(r.id, 723) < 0.7) {
-    const band: Rgb = hash01(r.id, 724) < 0.5 ? scaled(f.wall.paint, 0.55) : pickOf([[0.2, 0.32, 0.3], [0.4, 0.2, 0.18], [0.22, 0.26, 0.4], [0.5, 0.42, 0.25]] as readonly Rgb[], r.id, 725);
-    f = { ...f, wainscot: { ...lay(null, band), h: 0.9 + hash01(r.id, 726) * 0.3 } };
+  if (open) {
+    const type = r.interior.type;
+    const food = r.trade !== null && ["cafe", "diner", "restaurant", "bakery", "espresso stand", "pizza and burgers", "fish market"].includes(r.trade);
+    // A strong dado in another colour and another material than the wall's: tile in a kitchen's room, dark panelling in a bar, a painted band elsewhere.
+    if (type === "bar") f = { ...f, wainscot: { ...lay("planks_weathered", [0.16, 0.09, 0.05]), h: 1.2 }, rail: [0.1, 0.06, 0.04] };
+    else if (food && hash01(r.id, 727) < 0.7) f = { ...f, wainscot: { ...lay(null, pickOf([[0.85, 0.85, 0.8], [0.35, 0.5, 0.45], [0.75, 0.82, 0.85], [0.8, 0.7, 0.55]] as readonly Rgb[], r.id, 728)), h: 1.2 }, rail: [0.25, 0.2, 0.15] };
+    else if (type !== "workshop" && type !== "laundromat" && (f.wainscot === null || hash01(r.id, 723) < 0.3)) {
+      const band: Rgb = hash01(r.id, 724) < 0.4 ? scaled(f.wall.paint, 0.5) : pickOf([[0.2, 0.32, 0.3], [0.4, 0.2, 0.18], [0.22, 0.26, 0.4], [0.5, 0.42, 0.25], [0.25, 0.4, 0.22]] as readonly Rgb[], r.id, 725);
+      f = { ...f, wainscot: { ...lay(null, band), h: 0.9 + hash01(r.id, 726) * 0.3 } };
+    }
+    if (f.rail === null && type !== "workshop" && hash01(r.id, 729) < 0.55) f = { ...f, rail: scaled(f.wall.paint, 0.45) };
+    // A ceiling darker than the walls, so that the room stops glowing as a pale box.
+    if (type !== "bar") f = { ...f, ceiling: { ...f.ceiling, paint: scaled(f.ceiling.paint, 0.6) } };
   }
   // An old diner has black-and-white tile.
   if (open && r.trade === "diner" && (r.opened < 1985 || r.era < 1965) && hash01(r.id, 722) < 0.8) f = { ...f, floor: lay(null, [0.74, 0.72, 0.64]), checker: [0.12, 0.12, 0.13] };
   return f;
 }
 
-function finishBase(r: RoomIn): Omit<Finish, "checker"> {
+function finishBase(r: RoomIn): Omit<Finish, "checker" | "rail"> {
   const vacant = r.state === "vacant for lease" || r.state === "vacant boarded";
   const type = r.interior.type;
   // A vacant unit keeps the last tenant's paint; an open one its own trade's; a plain one a colour of the town's.
@@ -250,6 +261,11 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
       bands.push({ y0: y, y1: fin.stripe.y, f: fin.wall, kind: "wall" });
       bands.push({ y0: fin.stripe.y, y1: fin.stripe.y + fin.stripe.h, f: lay(null, fin.stripe.paint), kind: "stripe" });
       y = fin.stripe.y + fin.stripe.h;
+    }
+    if (fin.rail !== null && top - 0.62 > y + 0.3) {
+      bands.push({ y0: y, y1: top - 0.62, f: fin.wall, kind: "wall" });
+      bands.push({ y0: top - 0.62, y1: top - 0.5, f: lay(null, fin.rail), kind: "stripe" });
+      y = top - 0.5;
     }
     bands.push({ y0: y, y1: top, f: fin.wall, kind: "wall" });
     return bands;

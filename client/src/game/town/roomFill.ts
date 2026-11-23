@@ -14,10 +14,10 @@ import { BAKED, fbox, fcyl, shade, xd, xp, type Ctx } from "./roomKit.js";
 import type { Furnishing } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
-const NEAR = 9;
-const H = (c: Ctx, k: number, salt = 0): number => hash01(c.seed * 131 + k, 900 + salt);
+export const NEAR = 9;
+export const H = (c: Ctx, k: number, salt = 0): number => hash01(c.seed * 131 + k, 900 + salt);
 const dirOf = (f: Furnishing): { x: number; z: number } => ({ x: f.dir.x, z: f.dir.z });
-const up = (v: Rgb, k: number): Rgb => [Math.min(1, v[0] * k), Math.min(1, v[1] * k), Math.min(1, v[2] * k)];
+export const up = (v: Rgb, k: number): Rgb => [Math.min(1, v[0] * k), Math.min(1, v[1] * k), Math.min(1, v[2] * k)];
 
 /** A rectangle a thing stands on, in the frame, for what must stand clear of it (a chair, a cone). */
 export type Foot = { readonly i: number; readonly s0: number; readonly s1: number; readonly d0: number; readonly d1: number; readonly h: number };
@@ -50,7 +50,7 @@ export function styleOf(seed: number, trade: string | null, era: number, opened:
 }
 
 /** True when a spot is clear of the furnishings (except `skip`), of the chairs already stood, of the walls and of the door's way. */
-function free(c: Ctx, s: number, d: number, r: number, skip: number): boolean {
+export function free(c: Ctx, s: number, d: number, r: number, skip: number): boolean {
   if (d < 0.6 || d > c.d1 - 0.45 || s < c.s0 + 0.3 || s > c.s1 - 0.3) return false;
   if (Math.abs(s - c.door.s) < c.door.w / 2 + 0.45 + r && d < 2.4) return false;
   for (const f of c.feet) if (f.i !== skip && s > f.s0 - r && s < f.s1 + r && d > f.d0 - r && d < f.d1 + r) return false;
@@ -59,13 +59,13 @@ function free(c: Ctx, s: number, d: number, r: number, skip: number): boolean {
 }
 
 /** One chair at (s, d) facing the unit vector (fs, fd): a seat and a back, a few centimetres each way from true. */
-export function chair(c: Ctx, s: number, d: number, fs: number, fd: number, col: Rgb, kind: number): void {
+export function chair(c: Ctx, s: number, d: number, fs: number, fd: number, col: Rgb, kind: number, yb = 0): void {
   c.chairs.push([s, d]);
   const dir = { x: -fd, z: fs };
   const seatTop = kind === 1 ? 0.48 : 0.45;
   const seat = kind === 1 ? [0.62, 0.1, 0.08] as Rgb : col;
-  fbox(c, s, d, 0.04, seatTop - 0.04, 0.2, 0.2, dir, kind === 1 ? c.style.metal : col, up(seat, 1.15), BAKED, false);
-  fbox(c, s - fs * 0.18, d - fd * 0.18, seatTop, kind === 1 ? 0.4 : 0.42, 0.19, 0.025, dir, kind === 1 ? c.style.metal : scaled(col, 0.92), kind === 1 ? seat : col, BAKED, false);
+  fbox(c, s, d, yb + 0.04, seatTop - 0.04, 0.2, 0.2, dir, kind === 1 ? c.style.metal : col, up(seat, 1.15), BAKED, false);
+  fbox(c, s - fs * 0.18, d - fd * 0.18, yb + seatTop, kind === 1 ? 0.5 : 0.52, 0.19, 0.025, dir, kind === 1 ? c.style.metal : scaled(col, 0.92), kind === 1 ? seat : col, BAKED, false);
 }
 
 /** The colour and kind of the k-th chair of furnishing i. */
@@ -120,23 +120,35 @@ function chairsAround(c: Ctx, f: Furnishing, i: number): void {
   }
 }
 
-/** Things left on a table top at (s, d), the top at `ty`: napkins, a caddy, a plate and a mug, a vase; by a roll, none, one or two. */
+/** Things left on a table top at (s, d), the top at `ty`: napkins, a caddy, a plate and a mug, a menu stand, bottles, a flower in a vase, now and then two chairs stacked; several reach 1.0 to 1.2 m, so that they show over a sill. */
 function onTable(c: Ctx, f: Furnishing, i: number, ty: number, span: number): void {
-  if (f.d > NEAR || c.detail === "low") return;
+  if (f.d > NEAR + 1 || c.detail === "low") return;
   const dir = dirOf(f);
   const px = -dir.z;
   const pd = dir.x;
   const at = (u: number, v: number): [number, number] => [f.s + dir.x * u + px * v, f.d + dir.z * u + pd * v];
-  const n = H(c, i, 5) < 0.2 ? 0 : H(c, i, 6) < 0.5 || span < 0.75 ? 1 : 2;
-  const lo = 0.16;
+  const n = H(c, i, 5) < 0.12 ? 0 : span < 0.75 ? 1 + (H(c, i, 6) < 0.5 ? 1 : 0) : 2 + (H(c, i, 6) < 0.35 ? 1 : 0);
+  const lo = 0.17;
+  // Three places along the long axis, taken in an order of the table's own so that no two tables read alike.
+  const order = H(c, i, 8) < 0.5 ? [0, 1, -1] : [1, -1, 0];
   for (let k = 0; k < n; k++) {
-    const kind = Math.floor(H(c, i * 3 + k, 7) * 4);
-    const u = k === 0 ? (n === 1 ? 0 : -lo) : lo;
-    const [s, d] = at(u, (H(c, i + k, 8) - 0.5) * 0.12);
+    const kind = Math.floor(H(c, i * 3 + k, 7) * 8);
+    const u = (order[k] as number) * lo;
+    const [s, d] = at(u, (H(c, i + k, 9) - 0.5) * 0.1);
+    const col = pickOf([[0.8, 0.8, 0.76], [0.15, 0.3, 0.35], [0.6, 0.15, 0.1], [0.85, 0.7, 0.2]] as readonly Rgb[], c.seed + i + k, 1020);
     if (kind === 0) fbox(c, s, d, ty, 0.1, 0.05, 0.04, dir, c.style.metal, up(c.style.metal, 1.1), BAKED, false);
-    else if (kind === 1) { fbox(c, s, d, ty, 0.1, 0.06, 0.04, dir, [0.78, 0.4, 0.12], [0.85, 0.5, 0.2], BAKED, false); fbox(c, s + dir.x * 0.1, d + dir.z * 0.1, ty, 0.14, 0.015, 0.015, dir, [0.8, 0.12, 0.08], [0.85, 0.2, 0.12], BAKED, false); }
-    else if (kind === 2) { fcyl(c, s, d, ty, 0.12, 0.03, 6, [0.88, 0.88, 0.84], [0.94, 0.94, 0.9]); fcyl(c, s + 0.08, d, ty, 0.04, 0.1, 5, pickOf([[0.8, 0.8, 0.76], [0.15, 0.3, 0.35], [0.6, 0.15, 0.1]] as readonly Rgb[], c.seed + i + k, 1020), [0.15, 0.1, 0.07]); }
-    else { fcyl(c, s, d, ty, 0.035, 0.13, 5, [0.5, 0.65, 0.6], [0.14, 0.4, 0.16], 0.02); }
+    else if (kind === 1) { fbox(c, s, d, ty, 0.1, 0.06, 0.04, dir, [0.78, 0.4, 0.12], [0.85, 0.5, 0.2], BAKED, false); fcyl(c, s, d, ty + 0.1, 0.02, 0.14, 4, [0.8, 0.12, 0.08], [0.85, 0.2, 0.12], 0.012); }
+    else if (kind === 2) { fcyl(c, s, d, ty, 0.12, 0.03, 6, [0.88, 0.88, 0.84], [0.94, 0.94, 0.9]); fcyl(c, s + 0.05, d, ty + 0.03, 0.04, 0.09, 5, col, [0.15, 0.1, 0.07]); }
+    else if (kind === 3) { fcyl(c, s, d, ty, 0.035, 0.16, 5, [0.5, 0.65, 0.6], [0.14, 0.4, 0.16], 0.025); fcyl(c, s, d, ty + 0.16, 0.07, 0.22, 5, [0.2, 0.45, 0.18], [0.85, 0.3, 0.4], 0.02); }
+    else if (kind === 4) { fbox(c, s, d, ty, 0.3, 0.07, 0.012, dir, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1], BAKED, false); fbox(c, s, d, ty + 0.05, 0.2, 0.035, 0.045, dir, [0.9, 0.88, 0.8], [0.9, 0.88, 0.8], BAKED, false); }
+    else if (kind === 5) { fcyl(c, s, d, ty, 0.04, 0.3, 5, col, [0.7, 0.7, 0.66], 0.02); fcyl(c, s + 0.1, d, ty, 0.035, 0.26, 5, scaled(col, 0.7), [0.7, 0.7, 0.66], 0.02); }
+    else if (kind === 6 && k === 0 && H(c, i, 10) < 0.5) {
+      // Two chairs stacked on the table, the upper one a hand forward and aside so that no face of one lies on a face of the other.
+      const fs = -pd;
+      const fd = px;
+      chair(c, s, d, fs, fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty);
+      chair(c, s + px * 0.04 - fs * 0.0 + dir.x * 0.04, d + pd * 0.04 + dir.z * 0.04, fs, fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty + 0.14);
+    } else fcyl(c, s, d, ty, 0.05, 0.4, 6, [0.5, 0.15, 0.1], [0.4, 0.1, 0.08], 0.03);
   }
 }
 
@@ -171,7 +183,10 @@ export function tableSet(c: Ctx, f: Furnishing, i: number): void {
 }
 const RACKS = ["clothing", "thrift store", "sporting goods", "game shop", "variety store", "video store"];
 
-/** A booth: a bench on each long side with a tall back, and a table between with its own things. */
+/**
+ * A booth: a bench on each long side with a tall back of slats (gaps between them to see through), a table between with upright things on it.
+ * In a window it stands with its long axis into the room, so the street sees its two backs end-on and the table between them.
+ */
 export function booth(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
   const px = -dir.z;
@@ -179,16 +194,23 @@ export function booth(c: Ctx, f: Furnishing, i: number): void {
   const vinyl: Rgb = c.style.chrome ? c.style.seat[0] as Rgb : pickOf(VINYL, c.seed + i, 315);
   const wood: Rgb = H(c, i, 12) < 0.5 ? scaled(vinyl, 0.8) : pickOf(WOODS, c.seed + i, 1022);
   const half = f.sd / 2;
+  const slats = Math.max(3, Math.floor(f.sx / 0.4));
   for (const sg of [-1, 1]) {
     const mid = (half - 0.25) * sg;
     fbox(c, f.s + px * mid, f.d + pd * mid, 0, 0.45, f.sx / 2, 0.25, dir, vinyl, up(vinyl, 1.2));
+    if (c.detail === "low") { fbox(c, f.s + px * (half - 0.04) * sg, f.d + pd * (half - 0.04) * sg, 0.45, 0.65, f.sx / 2, 0.04, dir, wood, wood); continue; }
+    // The back: slats with gaps between, over a rail.
     const back = (half - 0.04) * sg;
-    fbox(c, f.s + px * back, f.d + pd * back, 0.45, 0.62, f.sx / 2, 0.04, dir, wood, wood);
+    fbox(c, f.s + px * back, f.d + pd * back, 0.45, 0.12, f.sx / 2, 0.04, dir, wood, wood);
+    for (let k = 0; k < slats; k++) {
+      const u = -f.sx / 2 + ((k + 0.5) * f.sx) / slats;
+      fbox(c, f.s + dir.x * u + px * back, f.d + dir.z * u + pd * back, 0.57, 0.53, (f.sx / slats) * 0.32, 0.04, dir, wood, wood, BAKED, false);
+    }
   }
   const ty = 0.74;
   fbox(c, f.s, f.d, ty - 0.04, 0.04, f.sx / 2 - 0.1, 0.32, dir, scaled(c.style.top, 0.8), c.style.top);
   fbox(c, f.s, f.d, 0, ty - 0.04, 0.05, 0.05, dir, [0.15, 0.15, 0.16], [0.15, 0.15, 0.16], BAKED, false);
-  onTable(c, { ...f, sx: f.sx - 0.2, sd: 0.64 }, i, ty, 0.5);
+  onTable(c, { ...f, sx: f.sx - 0.2, sd: 0.64 }, i, ty, 0.8);
 }
 
 /** Stools at a counter: chrome with a red seat in an old diner, plain wood otherwise; one turned out. */
@@ -270,6 +292,22 @@ export function counterTop(c: Ctx, f: Furnishing, i: number): void {
     cupStack(c, cs2, cd2, ct, 6);
     return;
   }
+  if (c.type === "office" || c.type === "lobby") {
+    // A reception counter with someone's things on it: a screen, a lamp, a holder of leaflets, a framed photo, a bell, a mug.
+    const [ms, md] = at(-L * 0.25, 0);
+    fbox(c, ms, md, ct, 0.04, 0.1, 0.08, dir, [0.15, 0.15, 0.17], [0.2, 0.2, 0.22], BAKED, false);
+    fbox(c, ms, md, ct + 0.04, 0.3, 0.2, 0.025, dir, [0.07, 0.07, 0.08], [0.1, 0.1, 0.1], c.lit ? 0.9 : BAKED);
+    const [ls, ld] = at(L * 0.05, 0.05);
+    fcyl(c, ls, ld, ct, 0.06, 0.03, 5, [0.15, 0.15, 0.16], [0.2, 0.2, 0.2]);
+    fcyl(c, ls, ld, ct + 0.03, 0.015, 0.3, 4, [0.2, 0.2, 0.2], [0.2, 0.2, 0.2]);
+    fcyl(c, ls, ld, ct + 0.33, 0.11, 0.12, 6, [0.8, 0.65, 0.2], [0.9, 0.8, 0.4], 0.05);
+    const [hs, hd] = at(L * 0.3, 0);
+    fbox(c, hs, hd, ct, 0.3, 0.1, 0.04, dir, [0.5, 0.5, 0.52], [0.6, 0.6, 0.62], BAKED, false);
+    for (let k = 0; k < 3; k++) fbox(c, hs, hd, ct + 0.08 + k * 0.07, 0.05, 0.06, 0.075, dir, pickOf([[0.8, 0.2, 0.15], [0.2, 0.4, 0.7], [0.9, 0.8, 0.3]] as readonly Rgb[], c.seed + k + i, 1034), [0.9, 0.9, 0.9], BAKED, false);
+    const [fs2, fd2] = at(-L * 0.42, 0.05);
+    fbox(c, fs2, fd2, ct, 0.2, 0.07, 0.015, dir, [0.3, 0.2, 0.12], [0.5, 0.5, 0.45], BAKED, false);
+    return;
+  }
   if (tr === "bank" || tr === "credit union" || tr === "post office" || tr === "pharmacy" || tr === "bookstore" || tr === "medical clinic" || tr === "dentist") {
     const [s, d] = at(L * 0.3, 0);
     fbox(c, s, d, ct, 0.18, 0.1, 0.07, dir, [0.15, 0.32, 0.5], [0.2, 0.4, 0.6]);
@@ -319,7 +357,7 @@ export function deskSet(c: Ctx, f: Furnishing, i: number): void {
   if (free(c, cs, cd, 0.27, i)) chair(c, cs, cd, -px * sg * Math.cos(a) - -pd * sg * Math.sin(a), -px * sg * Math.sin(a) + -pd * sg * Math.cos(a), pickOf([[0.1, 0.12, 0.2], [0.2, 0.2, 0.22], [0.3, 0.14, 0.12]] as readonly Rgb[], c.seed + i, 314), 0);
 }
 
-/** A bench by a window or the wall; a high chair or two beside one in a cafe. */
+/** A bench by a window or the wall, with cushions and a back; a high chair beside one in a cafe. */
 export function benchSet(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
   const wood = pickOf([[0.3, 0.2, 0.12], [0.45, 0.3, 0.16], [0.3, 0.34, 0.3]] as readonly Rgb[], c.seed + i, 1040);
@@ -327,10 +365,17 @@ export function benchSet(c: Ctx, f: Furnishing, i: number): void {
   if (c.detail === "low") return;
   const px = -dir.z;
   const pd = dir.x;
-  // A back on the side nearer the wall behind it: toward larger d for a bench along the front, toward the nearer side wall for one along a side.
   let sg = pd >= 0 ? 1 : -1;
   if (Math.abs(dir.z) > 0.7) sg = f.s - c.s0 < c.s1 - f.s ? -1 : 1;
-  fbox(c, f.s + px * sg * (f.sd / 2 - 0.02), f.d + pd * sg * (f.sd / 2 - 0.02), f.h, 0.4, f.sx / 2, 0.02, dir, scaled(wood, 0.9), wood, BAKED, false);
+  fbox(c, f.s + px * sg * (f.sd / 2 - 0.02), f.d + pd * sg * (f.sd / 2 - 0.02), f.h, 0.55, f.sx / 2, 0.02, dir, scaled(wood, 0.9), wood, BAKED, false);
+  // Cushions, each its own colour, one leaning.
+  const n = Math.max(2, Math.floor(f.sx / 0.6));
+  for (let k = 0; k < n; k++) {
+    if (H(c, i * 5 + k, 41) < 0.15) continue;
+    const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
+    const col = pickOf([[0.6, 0.15, 0.12], [0.15, 0.35, 0.4], [0.8, 0.65, 0.2], [0.3, 0.4, 0.25], [0.55, 0.5, 0.45]] as readonly Rgb[], c.seed + i * 7 + k, 1047);
+    fbox(c, f.s + dir.x * u + px * sg * (f.sd / 2 - 0.12), f.d + dir.z * u + pd * sg * (f.sd / 2 - 0.12), f.h + 0.03, 0.3 + (H(c, k + i, 42) < 0.3 ? 0.1 : 0), (f.sx / n) * 0.38, 0.06, dir, col, up(col, 1.2), BAKED, false);
+  }
 }
 
 export function cabinets(c: Ctx, f: Furnishing, i: number): void {
@@ -341,6 +386,15 @@ export function cabinets(c: Ctx, f: Furnishing, i: number): void {
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
     const hgt = f.h - (k % 3 === 2 ? 0.45 : 0);
     fbox(c, f.s + dir.x * u, f.d + dir.z * u, 0, hgt, f.sx / n / 2 - 0.015, f.sd / 2, dir, col, up(col, 1.15));
+    // Archive boxes and a binder or two on top, a plant on one.
+    if (c.detail === "full" && f.d < NEAR + 3) {
+      const r = H(c, i * 9 + k, 43);
+      if (r < 0.55) {
+        const bc = pickOf([[0.6, 0.5, 0.35], [0.85, 0.85, 0.8], [0.45, 0.35, 0.25]] as readonly Rgb[], c.seed + i + k, 1048);
+        fbox(c, f.s + dir.x * u, f.d + dir.z * u, hgt, 0.28, f.sx / n / 2 - 0.1, f.sd / 2 - 0.08, dir, bc, up(bc, 1.15), BAKED, false);
+        if (r < 0.25) fbox(c, f.s + dir.x * u, f.d + dir.z * u, hgt + 0.28, 0.26, f.sx / n / 2 - 0.14, f.sd / 2 - 0.12, dir, scaled(bc, 0.85), up(bc, 1.05), BAKED, false);
+      } else if (r < 0.7) fcyl(c, f.s + dir.x * u, f.d + dir.z * u, hgt, 0.12, 0.3, 5, [0.2, 0.42, 0.18], [0.3, 0.55, 0.25], 0.02);
+    }
   }
 }
 
@@ -355,7 +409,7 @@ export function plant(c: Ctx, f: Furnishing, i: number): void {
   const green = pickOf([[0.14, 0.36, 0.14], [0.2, 0.42, 0.18], [0.1, 0.3, 0.16]] as readonly Rgb[], c.seed + i, 1042);
   fcyl(c, f.s, f.d, 0, 0.17, 0.34, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], c.seed + i, 1043), [0.2, 0.12, 0.08]);
   if (c.detail === "low") return;
-  for (let q = 0; q < 3; q++) fcyl(c, f.s + (q - 1) * 0.09, f.d + (q === 1 ? -0.05 : 0.04), 0.3, 0.12, Math.max(0.35, f.h - 0.34 - q * 0.1), 5, green, scaled(green, 1.3), 0.02);
+  for (let q = 0; q < 3; q++) fcyl(c, f.s + (q - 1) * 0.09, f.d + (q === 1 ? -0.05 : 0.04), 0.3, 0.14, Math.max(0.5, f.h + 0.25 - q * 0.15), 5, green, scaled(green, 1.3), 0.02);
 }
 
 /** A gondola's head: a stack of promotional cases, a sign on a post above. */
@@ -472,6 +526,13 @@ export function couch(c: Ctx, f: Furnishing, i: number): void {
 /** A jukebox in a tavern, a vending machine anywhere else: a body with a lit window of colour. */
 export function machine(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
+  if (c.type === "office" || c.type === "lobby") {
+    // A copier: a body with a lid, a panel that lights.
+    fbox(c, f.s, f.d, 0, f.h * 0.85, f.sx / 2, f.sd / 2, dir, [0.8, 0.8, 0.78], [0.86, 0.86, 0.84]);
+    fbox(c, f.s, f.d, f.h * 0.85, 0.06, f.sx / 2 - 0.03, f.sd / 2 - 0.03, dir, [0.2, 0.22, 0.25], [0.25, 0.27, 0.3], BAKED, false);
+    if (c.detail === "full") fbox(c, f.s, f.d, f.h * 0.6, 0.1, 0.12, f.sd / 2 + 0.03, dir, [0.3, 0.7, 0.9], [0.3, 0.7, 0.9], c.lit ? 1.6 : 0.2, false);
+    return;
+  }
   const jukebox = c.type === "bar";
   const body: Rgb = jukebox ? [0.3, 0.14, 0.08] : pickOf([[0.7, 0.1, 0.1], [0.12, 0.3, 0.6], [0.8, 0.8, 0.8]] as readonly Rgb[], c.seed + i, 1053);
   fbox(c, f.s, f.d, 0, f.h, f.sx / 2, f.sd / 2, dir, body, up(body, 1.15));
@@ -564,6 +625,46 @@ export function ceilingThings(c: Ctx, furnishings: readonly Furnishing[], lightS
         const ux = Math.cos(ang);
         const uz = Math.sin(ang);
         cbox(c, fs + ux * 0.42, fd + uz * 0.42, top - 0.75, 0.012, 0.3, 0.07, { x: ux, z: uz }, [0.35, 0.25, 0.15], [0.4, 0.3, 0.18]);
+      }
+    }
+  }
+  // Bunting: a string of small flags across the room under the ceiling (a cafe, a bar, a gift shop), sagging between the walls.
+  if (t !== null && (FOOD.includes(t) || c.type === "bar" || t === "gift shop") && top >= 2.9 && H(c, 4, 39) < 0.5) {
+    const d = 2.2 + H(c, 5, 39) * Math.max(0.5, Math.min(reach, 7) - 2.5);
+    const flags = Math.max(8, Math.floor(W / 0.3));
+    for (let k = 0; k < flags; k++) {
+      const u0 = c.s0 + 0.15 + (k * (W - 0.3)) / flags;
+      const u1 = u0 + ((W - 0.3) / flags) * 0.8;
+      const sag = (x: number): number => 0.35 * (1 - Math.pow(((x - c.s0) / W) * 2 - 1, 2));
+      const y = (x: number): number => top - 0.45 - sag(x);
+      const col = pickOf([[0.8, 0.15, 0.1], [0.9, 0.75, 0.1], [0.15, 0.4, 0.7], [0.2, 0.55, 0.3], [0.9, 0.9, 0.85]] as readonly Rgb[], c.seed + k, 1063);
+      const m = (u0 + u1) / 2;
+      c.out.poly([xp(c.xf, u0, d, c.floorY + y(u0)), xp(c.xf, u1, d, c.floorY + y(u1)), xp(c.xf, m, d, c.floorY + y(m) - 0.2)], xd(c.xf, 0, -1), shade(c, col, m, d, y(m), 0), undefined, { glow: 1 });
+    }
+  }
+  // A pot rack over the back counter of a kitchen's room: a bar hung from the ceiling with pots on it.
+  const backCounter = furnishings.find((f) => f.kind === "counter" && f.d > c.d1 - 1.7);
+  if (backCounter !== undefined && t !== null && FOOD.includes(t) && top >= 2.9 && H(c, 3, 37) < 0.6) {
+    const rs = backCounter.s;
+    const rd = backCounter.d - 0.3;
+    cbox(c, rs, rd, top - 0.75, 0.04, Math.min(1.0, backCounter.sx / 2 - 0.2), 0.04, AX, [0.2, 0.2, 0.22], [0.25, 0.25, 0.27]);
+    for (const sg of [-1, 1]) c.out.prism(xp(c.xf, rs + sg * 0.9, rd, c.floorY + top), xp(c.xf, rs + sg * 0.9, rd, c.floorY + top - 0.72), 0.008, 3, [0.15, 0.15, 0.15], null);
+    for (let k = 0; k < 5; k++) {
+      const col: Rgb = k % 2 === 0 ? [0.55, 0.55, 0.58] : [0.25, 0.25, 0.27];
+      c.out.prism(xp(c.xf, rs - 0.8 + k * 0.4, rd, c.floorY + top - 0.75), xp(c.xf, rs - 0.8 + k * 0.4, rd, c.floorY + top - 0.86), 0.006, 3, [0.15, 0.15, 0.15], null);
+      fcyl(c, rs - 0.8 + k * 0.4, rd, top - 1.0, 0.1 - (k % 2) * 0.02, 0.14, 6, col, scaled(col, 1.2), 0.08);
+    }
+  }
+  // A canoe hung from the ceiling of a tackle or a marine shop, on two lines.
+  if ((t === "bait and tackle" || t === "marine supply") && top >= 3.0) {
+    for (let k = 0; k < 6; k++) {
+      const s = c.s0 + 0.9 + H(c, k, 38) * (W - 1.8);
+      if (lightS.every((ls) => Math.abs(ls - s) > 1.05)) {
+        const col: Rgb = pickOf([[0.6, 0.25, 0.12], [0.2, 0.4, 0.3], [0.7, 0.65, 0.5]] as readonly Rgb[], c.seed, 1062);
+        const ha = Math.max(0.6, Math.min(1.6, (c.d1 - 2.4) / 2));
+        cbox(c, s, 1.4 + ha, top - 1.05, 0.28, ha, 0.32, { x: 0, z: 1 }, col, scaled(col, 0.7));
+        for (const sg of [-1, 1]) c.out.prism(xp(c.xf, s, 1.4 + ha + sg * ha * 0.6, c.floorY + top), xp(c.xf, s, 1.4 + ha + sg * ha * 0.6, c.floorY + top - 0.77), 0.008, 3, [0.15, 0.15, 0.15], null);
+        break;
       }
     }
   }

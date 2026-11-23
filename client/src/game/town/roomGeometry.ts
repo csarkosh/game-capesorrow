@@ -17,6 +17,7 @@ import { roomField, type DayOpening } from "./roomLight.js";
 import { finishOf, roomShell, type RoomIn } from "./roomShell.js";
 import { dressRoom, goodsOf } from "./roomDressing.js";
 import { benchSet, bin, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
+import { carpetRoll, chairStack, highTable, leaner, stand, windowBar } from "./roomWindow.js";
 import type { Furnishing, RoomLight } from "../../sim/town/types.js";
 
 export { xp, type Xf } from "./roomKit.js";
@@ -34,15 +35,19 @@ function shelfRun(c: Ctx, f: Furnishing, i: number): void {
   fbox(c, f.s, f.d, 0, f.h, f.sx / 2, f.sd / 2, dir, body, frame);
   if (c.detail === "low") return;
   // Goods on the long faces that look toward the room: a plank at each tier and a row of packages on it, drawn on the face 3 and 5.5 cm proud of it (each layer its own depth).
-  const tiers = Math.max(2, Math.min(4, Math.floor(f.h / 0.5)));
-  const cap = c.detail === "full" ? 7 : 4;
-  const items = Math.max(2, Math.min(cap, Math.floor(f.sx / 0.26)));
+  const tiers = Math.max(2, Math.min(5, Math.floor(f.h / 0.45)));
+  const cap = c.detail === "full" ? 11 : 4;
+  const bottles = c.type === "bar" && f.sd < 0.4;
+  const items = bottles ? Math.max(3, Math.min(cap + 8, Math.floor(f.sx / 0.12))) : Math.max(2, Math.min(cap, Math.floor(f.sx / 0.26)));
   const px = -dir.z;
   const pd = dir.x;
   const face = (sg: number): void => {
     // A face that points away from the street shows only at a slant; both are drawn, each to its own side of the run.
     const nd = sg * pd;
     if (nd > 0.35) return;
+    // A face against a party wall is never seen.
+    const fsx = f.s + px * sg * (f.sd / 2 + 0.1);
+    if (fsx < c.s0 + 0.05 || fsx > c.s1 - 0.05) return;
     const ox = px * sg;
     const od = pd * sg;
     const along = (u: number, off: number, y: number): Vec3 => xp(c.xf, f.s + dir.x * u + ox * (f.sd / 2 + off), f.d + dir.z * u + od * (f.sd / 2 + off), c.floorY + y);
@@ -52,18 +57,30 @@ function shelfRun(c: Ctx, f: Furnishing, i: number): void {
       const plank = lightShade(c, frame, f.s + ox * f.sd / 2, f.d + od * f.sd / 2, y, 0);
       c.out.poly([along(-f.sx / 2, 0.03, y), along(f.sx / 2, 0.03, y), along(f.sx / 2, 0.03, y + 0.025), along(-f.sx / 2, 0.03, y + 0.025)], hint, plank, undefined, { glow: 1 });
       for (let k = 0; k < items; k++) {
-        const u0 = -f.sx / 2 + (k * f.sx) / items + 0.02;
-        const u1 = -f.sx / 2 + ((k + 1) * f.sx) / items - 0.02;
-        const ih = Math.min(0.36, (f.h - 0.3) / tiers - 0.06) * (0.55 + hash01(c.seed + i * 31 + t * 5 + k, 311) * 0.5);
+        const u0 = -f.sx / 2 + (k * f.sx) / items + (bottles ? 0.03 : 0.02);
+        const u1 = -f.sx / 2 + ((k + 1) * f.sx) / items - (bottles ? 0.03 : 0.02);
+        // A vacant unit's shelving is empty but for what was left; a sold-out gap is a gap in any.
+        if ((c.vacant && hash01(c.seed + i * 29 + t * 3 + k, 313) < 0.9) || hash01(c.seed + i * 19 + t * 11 + k, 312) < 0.08) continue;
+        const ih = Math.min(bottles ? 0.4 : 0.36, (f.h - 0.3) / tiers - 0.06) * (bottles ? 0.8 + hash01(c.seed + i * 31 + t * 5 + k, 311) * 0.2 : 0.55 + hash01(c.seed + i * 31 + t * 5 + k, 311) * 0.5);
         const col = pickGoods(c, i * 97 + t * 13 + k + sg * 7);
         const mid = f.s + dir.x * ((u0 + u1) / 2) + ox * (f.sd / 2);
         const midD = f.d + dir.z * ((u0 + u1) / 2) + od * (f.sd / 2);
-        c.out.poly([along(u0, 0.055, y + 0.03), along(u1, 0.055, y + 0.03), along(u1, 0.055, y + 0.03 + ih), along(u0, 0.055, y + 0.03 + ih)], hint, [lightShade(c, scaled(col, 0.8), mid, midD, y, 0), lightShade(c, scaled(col, 0.8), mid, midD, y, 0), lightShade(c, col, mid, midD, y + ih, 0), lightShade(c, col, mid, midD, y + ih, 0)], undefined, { glow: 1 });
+        c.out.poly([along(u0, 0.055, y + 0.03), along(u1, 0.055, y + 0.03), along(u1, 0.055, y + 0.03 + ih), along(u0, 0.055, y + 0.03 + ih)], hint, [lightShade(c, scaled(col, 0.8), mid, midD, y, 0), lightShade(c, scaled(col, 0.8), mid, midD, y, 0), lightShade(c, col, mid, midD, y + ih, 0), lightShade(c, col, mid, midD, y + ih, 0)], undefined, { glow: bottles && c.lit ? 1.7 : 1 });
       }
     }
   };
   face(1);
   face(-1);
+  // Boxes of reserve stock on top of tall shelving, above head height.
+  if (c.detail === "full" && f.h >= 1.9 && f.d < 12) {
+    const n = Math.max(2, Math.floor(f.sx / 0.45));
+    for (let k = 0; k < n; k++) {
+      if (hash01(c.seed + i * 23 + k, 314) < 0.2) continue;
+      const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
+      const col = pickGoods(c, i * 61 + k);
+      fbox(c, f.s + dir.x * u, f.d + dir.z * u, f.h, 0.18 + hash01(c.seed + i + k, 315) * 0.15, (f.sx / n) * 0.4, f.sd * 0.4, dir, col, shade(col, 1.15), BAKED, false);
+    }
+  }
 }
 
 function counter(c: Ctx, f: Furnishing, i: number): void {
@@ -128,6 +145,18 @@ function washers(c: Ctx, f: Furnishing): void {
 
 function rack(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
+  if (c.type === "office" || c.type === "lobby" || (c.type === "counter service" && c.trade === "post office")) {
+    // A rack of leaflets: a tall frame with rows of pockets, each its own colour.
+    fbox(c, f.s, f.d, 0, 1.6, f.sx / 2, f.sd / 2, dir, [0.35, 0.36, 0.38], [0.45, 0.46, 0.48]);
+    if (c.detail === "low") return;
+    const cols = Math.max(2, Math.floor(f.sx / 0.2));
+    for (let r = 0; r < 4; r++) for (let q = 0; q < cols; q++) {
+      if (hash01(c.seed + i * 17 + r * 5 + q, 330) < 0.15) continue;
+      const col = pickGoods(c, i * 71 + r * 9 + q);
+      fbox(c, f.s + dir.x * (-f.sx / 2 + ((q + 0.5) * f.sx) / cols), f.d + dir.z * (-f.sx / 2 + ((q + 0.5) * f.sx) / cols), 0.5 + r * 0.28, 0.2, (f.sx / cols) * 0.4, f.sd / 2 + 0.03, dir, col, shade(col, 1.15), BAKED, false);
+    }
+    return;
+  }
   const rail: Rgb = [0.5, 0.5, 0.52];
   fbox(c, f.s, f.d, 1.45, 0.03, f.sx / 2, 0.02, dir, rail, rail, BAKED, false);
   for (const sg of [-1, 1]) fbox(c, f.s + dir.x * sg * (f.sx / 2 - 0.03), f.d + dir.z * sg * (f.sx / 2 - 0.03), 0, 1.45, 0.02, 0.02, dir, rail, rail, BAKED, false);
@@ -224,6 +253,12 @@ function furnishing(c: Ctx, f: Furnishing, i: number): void {
     case "water cooler": return waterCooler(c, f);
     case "plant": return plant(c, f, i);
     case "sheet": return sheet(c, f, i);
+    case "windowbar": return windowBar(c, f, i);
+    case "hightable": return highTable(c, f, i);
+    case "stand": return stand(c, f, i);
+    case "stack": return chairStack(c, f, i);
+    case "roll": return carpetRoll(c, f, i);
+    case "leaner": return leaner(c, f, i);
   }
 }
 
@@ -304,7 +339,7 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
   const wear = vacant ? 0 : Math.min(0.3, 0.04 + 0.03 * r.past.length + (r.era < 1950 ? 0.03 : 0));
   const field = roomField({
     s0: r.s0, s1: r.s1, depth: interior.depth, ceiling: interior.ceiling, lights: interior.lights, openings: day, lit, vacant, furnishings: interior.furnishings,
-    seed: r.id, wear, step: full ? 0.75 : 2.0, backLamp: dw.open && !vacant ? dw.s : null,
+    seed: r.id, wear, step: full ? 0.75 : 2.0, backLamp: dw.open && !vacant ? dw.s : null, exposure: interior.type === "bar" ? 0.42 : undefined,
   });
   const fin = finishOf(r);
   const feet: Foot[] = interior.furnishings.map((f, i) => {

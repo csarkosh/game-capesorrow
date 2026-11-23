@@ -727,7 +727,7 @@ export type InteriorType = "retail aisles" | "counter service" | "dining room" |
 export type FurnishingKind =
   | "shelf run" | "counter" | "table" | "booth" | "stool row" | "display case" | "cooler" | "washer row" | "desk"
   | "rack" | "stacked crates" | "ladder" | "paint cans" | "bench" | "pool table" | "lift"
-  | "partition" | "endcap" | "checkout" | "bin" | "cart" | "couch" | "machine" | "cabinet" | "water cooler" | "plant" | "sheet";
+  | "windowbar" | "hightable" | "stand" | "stack" | "roll" | "leaner" | "partition" | "endcap" | "checkout" | "bin" | "cart" | "couch" | "machine" | "cabinet" | "water cooler" | "plant" | "sheet";
 export type SignKind = "fascia" | "blade" | "glass" | "wall" | "pole" | "sandwich" | "banner" | "open" | "lease" | "ghost" | "board";
 /** Hand-painted wood or paint (before 1950), neon and porcelain enamel (1950s and 60s), backlit plastic boxes (1970 to 1999), vinyl (2000 on). */
 export type SignStyle = "hand-painted" | "neon and porcelain" | "backlit box" | "vinyl";

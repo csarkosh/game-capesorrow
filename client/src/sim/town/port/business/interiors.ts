@@ -34,7 +34,7 @@ export type RoomInput = {
   readonly ceiling: number;
   readonly doorS: number;
   readonly doorW: number;
-  readonly openings: readonly { readonly s0: number; readonly s1: number }[];
+  readonly openings: readonly { readonly s0: number; readonly s1: number; readonly cover?: string }[];
   /** A hash of the unit (its building, its place in it, its tenant's name). */
   readonly sig: number;
   /** The year the tenant opened and the year of the unit's last remodel (0 for none): how old the fittings are. */
@@ -117,14 +117,55 @@ export function furnish(i: RoomInput): Room {
   const skew = (): Vec => pick(rng, SKEW);
   // Each window's span outside the door's zone: a display beside the door never stands in it.
   const windows: { c: number; w: number }[] = [];
+  /** The centres of the windows with nothing over the glass. */
+  const clear: number[] = [];
   for (const o of i.openings) {
     let lo = o.s0 + 0.1;
     let hi = o.s1 - 0.1;
     if ((o.s0 + o.s1) / 2 < i.doorS) hi = Math.min(hi, dz0 - 0.12);
     else lo = Math.max(lo, dz1 + 0.12);
-    if (hi - lo >= 0.6) windows.push({ c: (lo + hi) / 2, w: hi - lo + 0.3 });
+    if (hi - lo >= 0.6) {
+      windows.push({ c: (lo + hi) / 2, w: hi - lo + 0.3 });
+      if (o.cover === undefined || o.cover === "none" || o.cover === "display") clear.push((lo + hi) / 2);
+    }
   }
   const backD = D - 0.7;
+  /** What stands in one window, from the trade's list and the unit's own roll; the unit's windows never repeat one another while the list lasts. */
+  const winThing = (w: { c: number; w: number }, k: number): void => {
+    const grocery = trade === "grocery" || trade === "convenience store";
+    let opts: string[];
+    switch (i.type) {
+      case "counter service": case "dining room": opts = ["booth", "windowbar", "hightable", "bench", "stand", "table"]; break;
+      case "bar": opts = ["hightable", "windowbar", "booth", "hightable"]; break;
+      case "office": opts = ["desk", "bench", "plantrack", "table"]; break;
+      case "lobby": opts = ["bench", "plantrack", "desk"]; break;
+      case "laundromat": opts = ["bench", "table", "stand"]; break;
+      case "retail aisles":
+        opts = grocery ? ["bin", "stand", "bin", "table"] : trade !== null && BINS.includes(trade) ? ["bin", "rack", "stand"] : trade !== null && CASES.includes(trade) ? ["display case", "stand", "display case"] : trade !== null && RACKS.includes(trade) ? ["rack", "stand", "table"] : ["display case", "stand", "table", "rack"];
+        break;
+      default: opts = ["table"];
+    }
+    const start = Math.floor(hs(500) * opts.length);
+    const ww = w.w;
+    for (let a = 0; a < opts.length; a++) {
+      const o = opts[(start + k + a) % opts.length] as string;
+      let ok = false;
+      switch (o) {
+        case "booth": ok = ww >= 2.0 && put("booth", w.c, 1.05, 1.5, 1.7, 1.1, AD); break;
+        case "windowbar": ok = ww >= 1.3 && put("windowbar", w.c, 0.85, Math.min(3, ww - 0.3), 1.1, 1.05, AX); break;
+        case "hightable": ok = ww >= 1.0 && put("hightable", w.c, 0.95, 0.7, 0.7, 1.05, AX); break;
+        case "bench": ok = put("bench", w.c, 0.6, Math.min(1.8, ww - 0.2), 0.45, 0.45, AX); break;
+        case "stand": ok = ww >= 1.0 && put("stand", w.c, 0.8, Math.min(1.6, ww - 0.4), 0.6, 1.2, AX); break;
+        case "table": ok = put("table", w.c, 1.35, Math.min(0.8, Math.max(0.5, ww - 0.3)), 0.75, 0.75, AX); break;
+        case "desk": ok = put("desk", w.c, 1.2, Math.min(1.6, ww - 0.3), 0.8, 0.75, AX); break;
+        case "plantrack": ok = put("rack", w.c, 0.8, Math.min(1.2, ww - 0.5), 0.4, 1.7, AX); put("plant", w.c + Math.min(0.8, ww / 2 - 0.3), 0.6, 0.4, 0.4, 1.3, AX); break;
+        case "bin": ok = put("bin", w.c, 0.85, Math.min(1.4, Math.max(0.6, ww - 0.4)), 0.7, 0.9, AX); break;
+        case "rack": ok = put("rack", w.c, 0.65, Math.min(Math.max(0.5, ww - 0.3), 2.2), 0.5, 1.6, AX); break;
+        case "display case": ok = put("display case", w.c, 0.65, Math.min(Math.max(0.5, ww - 0.3), 2.2), 0.7, 1.1, AX); break;
+      }
+      if (ok) return;
+    }
+  };
   const full = i.type !== "empty";
 
   // ---- The back partition: a jog (an L of partition standing out from one end of the back wall) or, in a room that serves food, a half wall.
@@ -154,18 +195,13 @@ export function furnish(i: RoomInput): Room {
     case "retail aisles": {
       const grocery = trade === "grocery" || trade === "convenience store";
       // The window first: what the street sees.
-      const display: FurnishingKind = grocery ? "bin" : trade !== null && BINS.includes(trade) ? "bin" : trade !== null && (CASES.includes(trade) || trade === "bookstore") ? "display case" : trade !== null && RACKS.includes(trade) ? "rack" : chance(rng, 0.5) ? "display case" : "table";
-      for (const w of windows.slice(0, 3)) {
-        if (display === "bin") put("bin", w.c, 0.85, Math.min(Math.max(0.6, w.w - 0.4), 1.4), 0.7, 0.9, AX);
-        else put(display, w.c, 0.65, Math.min(Math.max(0.5, w.w - 0.3), 2.2), display === "rack" ? 0.5 : 0.7, display === "table" ? 0.8 : 1.1, AX);
-      }
+      for (let k = 0; k < Math.min(3, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       // The checkout lanes by the door (a grocery's) or the till counter (any other shop's).
       if (grocery) {
         const lanes = W >= 9 ? 2 : 1;
         for (let k = 0; k < lanes; k++) put("checkout", wallS(near, 0.6 + k * 1.5), 2.2, 1.9, 0.8, 0.95, AD);
         put("cart", wallS(far, 0.6), 1.6, 1.3, 0.6, 1, AD);
-      } else if (trade !== null && BINS.includes(trade)) put("counter", wallS(near, 0.5), 2.2, 1.6, 0.6, 1.05, AD);
-      else put("counter", wallS(far, 0.5), 3.4, 2.4, 0.7, 1.05, AD);
+      } else put("counter", wallS(near, 0.5), 2.2, 1.6, 0.6, 1.05, AD);
       const aisle: FurnishingKind = trade !== null && RACKS.includes(trade) ? "rack" : "shelf run";
       const endZ = D - 1.6;
       // A run of shelving is broken by cross-aisles every 4 metres, as real ones are; each aisle has an endcap at its head.
@@ -175,7 +211,14 @@ export function furnish(i: RoomInput): Room {
           if (head && d === d0 && grocery) put("endcap", s, d - 0.42, 1.0, 0.6, 1.4, AX);
         }
       };
-      if (W >= 4) run("shelf run", wallS(near, 0.35), 3.6, endZ, 0.45, 1.9, false);
+      // Shelving along the whole of both side walls to above head height, in runs with a hand's gap between.
+      const wallRun = (side: "left" | "right", d0: number): void => {
+        for (let d = d0; d + 1.2 <= endZ; d += 5.6) put("shelf run", wallS(side, 0.25), (d + Math.min(d + 5.3, endZ)) / 2, Math.min(5.3, endZ - d), 0.4, 2.1, AD);
+      };
+      if (trade === null || !CASES.includes(trade)) {
+        if (W >= 4) wallRun(near, grocery ? 3.4 : 3.2);
+        if (W >= 6) wallRun(far, 1.7);
+      }
       const n = Math.min(W > 18 ? 9 : 6, Math.floor((W - 2.2) / 2.2));
       for (let k = 0; k < n; k++) {
         const s = sMin + 1.8 + k * 2.2;
@@ -183,7 +226,7 @@ export function furnish(i: RoomInput): Room {
           for (let d = 3.5; d < endZ; d += 2.2) put("rack", s, d, 1.4, 0.5, 1.6, hs(20 + k) < 0.3 ? skew() : AX);
         } else if (trade !== null && BINS.includes(trade) && k % 2 === 1) {
           for (let d = 3.6; d < endZ - 0.4; d += 1.1) put("bin", s, d, 0.8, 0.7, 0.85, AX);
-        } else run("shelf run", s, 3.6, endZ, 0.55, 1.6, true);
+        } else run("shelf run", s, 3.6, endZ, 0.55, 1.7, true);
       }
       if (trade !== null && RACKS.includes(trade)) {
         put("table", wallS(far, 0.9), 3.6, 1.3, 0.8, 0.8, AX);
@@ -209,10 +252,7 @@ export function furnish(i: RoomInput): Room {
       put("counter", wallS(far, 0.65), counterD, chrome ? Math.min(D - 3.9, 7) : L, 0.7, 1.05, AD);
       put("stool row", wallS(far, 0.65) + toward(far) * 0.85, counterD, L - 0.4, 0.45, 0.75, AD);
       const exclEnd = counterD + L / 2 + 0.7;
-      for (const w of windows.slice(0, 3)) {
-        if (w.w >= 1.9) put("booth", w.c, 1.2, 1.6, 1.7, 1.1, AX);
-        else put("table", w.c, 1.35, Math.min(0.8, Math.max(0.5, w.w - 0.3)), 0.7, 0.75, AX);
-      }
+      for (let k = 0; k < Math.min(3, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       put("counter", (sMin + sMax) / 2 + toward(far) * 0.2, backD, Math.min(W - 1.2, 4.5), 0.8, 1.05, AX);
       put("cart", wallS(near, 0.5), D - 1.7, 0.9, 0.6, 1, AX);
       if (trade === "post office") {
@@ -227,38 +267,36 @@ export function furnish(i: RoomInput): Room {
         }
         put("plant", wallS(near, 0.35), 1.2, 0.4, 0.4, 1.0, AX);
       }
-      tablesFill(sMin, sMax, 3.3, D - 2.1, 2.1, 1.8, (d, sa, sb) => (d < exclEnd ? (far === "left" ? [sa + 1.95, sb] : [sa, sb - 1.95]) : [sa, sb]));
+      tablesFill(sMin, sMax, 3.3, D - 2.1, 1.95, 1.65, (d, sa, sb) => (d < exclEnd ? (far === "left" ? [sa + 1.95, sb] : [sa, sb - 1.95]) : [sa, sb]));
       if (trade !== "post office") put("display case", wallS(near, 0.5), 3.4, 1.5, 0.6, 1.2, AD);
       break;
     }
     case "dining room": {
-      for (const w of windows.slice(0, 3)) {
-        if (w.w >= 1.9) put("booth", w.c, 1.2, 1.6, 1.7, 1.1, AX);
-        else put("table", w.c, 1.35, Math.min(0.8, Math.max(0.5, w.w - 0.3)), 0.8, 0.75, AX);
-      }
+      for (let k = 0; k < Math.min(3, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       put("desk", wallS(near, 0.6), 2.9, 0.6, 0.5, 1.1, AX);
       let lastBooth = 2.6;
       for (let d = 3.5; d < D - 2.4; d += 2.1) if (put("booth", wallS(far, 0.95), d, 1.9, 1.7, 1.1, AD)) lastBooth = d;
       put("counter", (sMin + sMax) / 2, backD, Math.min(W - 1, 4), 0.8, 1.05, AX);
       put("cart", wallS(near, 0.5), D - 1.7, 0.9, 0.6, 1, AX);
       put("plant", wallS(near, 0.35), 1.2, 0.4, 0.4, 1.0, AX);
-      tablesFill(sMin, sMax, 3.4, D - 2.1, 2.1, 1.8, (d, sa, sb) => (d < lastBooth + 1.2 ? (far === "left" ? [sa + 2.5, sb] : [sa, sb - 2.5]) : [sa, sb]));
+      tablesFill(sMin, sMax, 3.4, D - 2.1, 1.95, 1.65, (d, sa, sb) => (d < lastBooth + 1.2 ? (far === "left" ? [sa + 2.5, sb] : [sa, sb - 2.5]) : [sa, sb]));
       break;
     }
     case "bar": {
-      const L = Math.max(2.5, Math.min(D - 4, 9));
-      put("counter", wallS(far, 0.95), 3 + L / 2, L, 0.7, 1.1, AD);
-      put("shelf run", wallS(far, 0.2), 3 + L / 2, L, 0.35, 1.9, AD);
-      put("stool row", wallS(far, 1.55), 3 + L / 2, L - 0.4, 0.4, 0.75, AD);
-      for (const w of windows.slice(0, 2)) put("table", w.c, 1.35, Math.min(0.8, Math.max(0.5, w.w - 0.3)), 0.8, 0.75, AX);
+      // The bar starts 2.6 m in, where the windows see it, and runs toward the partition with the back-bar behind it.
+      const L = Math.max(2.5, Math.min(D - 3.6, 9));
+      put("counter", wallS(far, 0.95), 2.6 + L / 2, L, 0.7, 1.1, AD);
+      put("shelf run", wallS(far, 0.2), 2.6 + L / 2, L, 0.35, 2.1, AD);
+      put("stool row", wallS(far, 1.55), 2.6 + L / 2, L - 0.4, 0.4, 0.75, AD);
+      for (let k = 0; k < Math.min(3, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       if (W >= 4.5 && D >= 8.5) put("pool table", (sMin + sMax) / 2 + toward(near) * 0.2, D - 2.9, 2.6, 1.4, 0.85, chance(rng, 0.4) ? { x: 0.8, z: 0.6 } : AX);
       put("machine", wallS(near, 0.4), 2.9, 0.8, 0.55, 1.5, AD);
       for (let d = 4.2, k = 0; k < 3 && d < D - 2; d += 2.1, k++) put("booth", wallS(near, 0.95), d, 1.9, 1.7, 1.1, AD);
-      tablesFill(sMin, sMax, 3.4, D - 2.4, 2.4, 2.2, (d, sa, sb) => (d < 3 + L + 0.8 ? (far === "left" ? [sa + 2.9, sb - 2.5] : [sa + 2.5, sb - 2.9]) : [sa + 0.6, sb - 0.6]));
+      tablesFill(sMin, sMax, 3.4, D - 2.4, 2.4, 2.2, (d, sa, sb) => (d < 2.6 + L + 0.8 ? (far === "left" ? [sa + 2.9, sb - 2.5] : [sa + 2.5, sb - 2.9]) : [sa + 0.6, sb - 0.6]));
       break;
     }
     case "office": {
-      for (const w of windows.slice(0, 2)) put("bench", w.c, 0.6, Math.min(1.8, w.w - 0.2), 0.45, 0.45, AX);
+      for (let k = 0; k < Math.min(3, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       const personal = trade === "hair salon" || trade === "barber" || trade === "tattoo parlor";
       if (personal) {
         for (let d = 3.4, k = 0; k < 4 && d < D - 1.5; d += 1.8, k++) put("counter", wallS(far, 0.5), d, 1.4, 0.5, 0.9, AD);
@@ -276,9 +314,12 @@ export function furnish(i: RoomInput): Room {
         for (let k = 0; k < 4; k++) put("bench", sMin + 1 + k * 1.1, D - 1.2, 1, 0.4, 0.45, AX);
         put("desk", wallS(far, 0.8), 3.4, 1.4, 0.7, 0.75, AX);
       } else {
-        put("counter", wallS(far, 0.7), 3.0, 1.8, 0.6, 1.05, AX);
+        // A reception desk within 3 m of the glass, waiting chairs along the near wall, a copier at the far one.
+        put("counter", (sMin + sMax) / 2 + toward(far) * 0.4, 2.7, Math.min(2.6, W - 2.6), 0.7, 1.05, AX);
+        put("bench", wallS(near, 0.35), 3.8, 2.0, 0.45, 0.45, AD);
+        put("machine", wallS(far, 0.4), 4.9, 0.8, 0.6, 1.1, AD);
         const dn = int(rng, 3, 5);
-        for (let k = 0; k < dn; k++) put("desk", sMin + 1.3 + (k % 2) * 2.7, 4.6 + Math.floor(k / 2) * 2.0, 1.6, 0.8, 0.75, chance(rng, 0.3) ? skew() : AX);
+        for (let k = 0; k < dn; k++) put("desk", sMin + 1.3 + (k % 2) * 2.7, 5.6 + Math.floor(k / 2) * 2.0, 1.6, 0.8, 0.75, chance(rng, 0.3) ? skew() : AX);
         if (W >= 8) put("desk", sMin + 6.4, 4.6, 1.6, 0.8, 0.75, AX);
       }
       put("cabinet", wallS(far, 0.3), D - 1.4, 1.6, 0.55, 1.3, AD);
@@ -293,7 +334,7 @@ export function furnish(i: RoomInput): Room {
       put("washer row", sMin + 0.6, 3 + L / 2, L, 0.9, 1.1, AD);
       if (W >= 5.5) put("washer row", sMax - 0.6, 3 + L / 2, L, 0.9, 1.1, AD);
       if (W >= 8) put("washer row", (sMin + sMax) / 2, 3.4 + (L - 1) / 2, L - 1, 1, 1.1, AD);
-      for (const w of windows.slice(0, 1)) put("bench", w.c, 0.6, Math.min(1.8, w.w - 0.2), 0.45, 0.45, AX);
+      for (let k = 0; k < Math.min(2, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       put("table", (sMin + sMax) / 2 + toward(near) * 0.6, D - 1.4, 1.8, 0.9, 0.9, AX);
       put("counter", wallS(far, 0.6), 2.9, 1.6, 0.6, 1.05, AX);
       put("cart", wallS(near, 0.9), 2.7, 0.7, 0.5, 0.8, AX);
@@ -315,7 +356,7 @@ export function furnish(i: RoomInput): Room {
     }
     case "lobby": {
       put("desk", wallS(far, 0.9), 3.4, 2.2, 0.8, 1.1, AX);
-      for (const w of windows.slice(0, 2)) put("bench", w.c, 0.6, Math.min(1.8, w.w - 0.2), 0.45, 0.45, AX);
+      for (let k = 0; k < Math.min(3, windows.length); k++) winThing(windows[k] as (typeof windows)[number], k);
       put("rack", wallS(near, 0.3), 4, 1, 0.4, 1.7, AD);
       for (let k = 0; k < 3; k++) put("bench", sMin + 1.2 + k * 1.6, D - 1.2 + (k % 2) * 0.3, 1.4, 0.45, 0.45, AX);
       put("table", (sMin + sMax) / 2, 5.2, 1, 0.8, 0.5, skew());
@@ -331,7 +372,12 @@ export function furnish(i: RoomInput): Room {
     default: {
       // Empty: what the last tenant left behind.
       const w = windows.length > 0 ? windows[windows.length - 1]!.c : (sMin + sMax) / 2;
-      // The ladder leans on the partition where the jog leaves it room; the cans stand by it, or by the first wall.
+      // Tall leftovers that show over the sill: the ladder and what the last tenant stacked or leaned, near the glass first.
+      const near1 = clear.length > 0 ? clear[0]! : windows.length > 0 ? windows[0]!.c : (sMin + sMax) / 2;
+      const near2 = clear.length > 1 ? clear[clear.length - 1]! : near1 + 1.8;
+      put("stack", near1, 1.2, 0.5, 0.5, 1.4, AX);
+      put("roll", near2, 1.1, 0.35, 0.35, 1.8, AX);
+      put("leaner", (near1 + near2) / 2 + 0.6, 0.55, 1.0, 0.15, 2.0, AX);
       for (const s of [w, sMin + 0.8, sMax - 0.8, (sMin + sMax) / 2, w - 1.2, w + 1.2]) if (put("ladder", s, D - 0.3, 0.5, 0.12, 2.4, AX)) break;
       for (const s of [w + 0.9, sMin + 0.7, sMax - 0.7, (sMin + sMax) / 2 + 0.6, w - 0.9]) if (put("paint cans", s, D - 0.5, 0.5, 0.5, 0.35, skew())) break;
       put("paint cans", w + 1.5, D - 0.8, 0.4, 0.4, 0.35, AX);
@@ -377,7 +423,7 @@ export function furnish(i: RoomInput): Room {
   const kind: RoomLight["kind"] = i.type === "dining room" || i.type === "bar" || i.type === "counter service" ? "pendant" : i.type === "lobby" ? "lamp" : "tube";
   const anchors = boxes.filter((b) => b.f.kind === "table" && b.f.h > 0.6 && b.f.d > 2.4 && b.f.d < D - 1).filter((_, k) => k % 2 === 0).slice(0, 7);
   if (kind === "pendant" && anchors.length >= 2) {
-    for (let k = 0; k < anchors.length; k++) lights.push({ s: r2((anchors[k] as (typeof anchors)[number]).f.s + (h01(i.sig, 400 + k) - 0.5) * 0.5), d: r2((anchors[k] as (typeof anchors)[number]).f.d + (h01(i.sig, 420 + k) - 0.5) * 0.4), h: r2(i.ceiling - 0.7 - h01(i.sig, 440 + k) * 0.35), on: i.lit, kind });
+    for (let k = 0; k < anchors.length; k++) lights.push({ s: r2((anchors[k] as (typeof anchors)[number]).f.s + (h01(i.sig, 400 + k) - 0.5) * 0.5), d: r2((anchors[k] as (typeof anchors)[number]).f.d + (h01(i.sig, 420 + k) - 0.5) * 0.4), h: r2(Math.max(1.9, i.ceiling - 1.0 - h01(i.sig, 440 + k) * 0.3)), on: i.lit, kind });
     const front = windows.length > 0 ? windows[0]!.c : (sMin + sMax) / 2;
     lights.push({ s: r2(front), d: 1.3, h: r2(i.ceiling - 0.8), on: i.lit, kind });
   } else {
@@ -394,6 +440,11 @@ export function furnish(i: RoomInput): Room {
       }
     }
   }
-  if (i.type === "bar" && windows.length > 0) lights.push({ s: r2(windows[0]!.c), d: 0.3, h: r2(range(rng, 1.7, 2.1)), on: i.lit, kind: "neon" });
+  if (i.type === "bar") {
+    // A neon in each window, and a low lamp over the pool table.
+    for (let k = 0; k < Math.min(3, windows.length); k++) lights.push({ s: r2(windows[k]!.c), d: 0.3, h: r2(range(rng, 1.7, 2.1)), on: i.lit, kind: "neon" });
+    const pool = boxes.find((o) => o.f.kind === "pool table");
+    if (pool !== undefined) lights.push({ s: pool.f.s, d: pool.f.d, h: r2(Math.max(1.8, i.ceiling - 1.3)), on: i.lit, kind: "pendant" });
+  }
   return { furnishings: boxes.map((b) => b.f), lights };
 }
