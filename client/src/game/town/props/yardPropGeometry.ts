@@ -82,7 +82,7 @@ function pallets(m: MeshBuilder, pl: Place, b: Bin): void {
 function drum(m: MeshBuilder, pl: Place, b: Bin): void {
   const c: Rgb = rnd(b.seed, 1) < 0.5 ? [0.16, 0.06, 0.03] : [0.05, 0.08, 0.15];
   lcylY(m, pl, 0, 0, 0.0, 0.88, 0.29, 0.29, 8, c, mixC(c, [0.2, 0.2, 0.2], 0.4));
-  for (const y of [0.25, 0.62]) lcylY(m, pl, 0, 0, y, y + 0.04, 0.3, 0.3, 8, mixC(c, [0, 0, 0], 0.4), null);
+  for (const y of [0.25, 0.62]) lcylY(m, pl, 0, 0, y, y + 0.04, 0.315, 0.315, 8, mixC(c, [0, 0, 0], 0.4), null);
 }
 
 export function binGeometry(g: TownGround, solid: Sink, b: Bin, detail: Detail): void {
@@ -110,7 +110,7 @@ export function mailboxGeometry(g: TownGround, solid: Sink, mb: Mailbox, detail:
     for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
       const y = 0.4 + r * 0.19;
       const z = -0.36 + k * 0.24;
-      m.poly([P(pl, 0.203, y, z - 0.09), P(pl, 0.203, y, z + 0.09), P(pl, 0.203, y + 0.15, z + 0.09), P(pl, 0.203, y + 0.15, z - 0.09)], D(pl, 1, 0, 0), mixC(c, [0, 0, 0], 0.4));
+      m.poly([P(pl, 0.225, y, z - 0.09), P(pl, 0.225, y, z + 0.09), P(pl, 0.225, y + 0.15, z + 0.09), P(pl, 0.225, y + 0.15, z - 0.09)], D(pl, 1, 0, 0), mixC(c, [0, 0, 0], 0.4));
     }
     return;
   }
@@ -141,7 +141,7 @@ export function mailboxGeometry(g: TownGround, solid: Sink, mb: Mailbox, detail:
   for (const [pts, h] of sides) m.poly(pts, h, c);
   // The flag, up or down, and the door's seam.
   const up = rnd(mb.seed, 1) < 0.3;
-  m.poly([corner(-0.05, 0.1, W + 0.005), corner(0.05, 0.1, W + 0.005), corner(0.05, up ? 0.3 : 0.14, W + 0.005), corner(-0.05, up ? 0.3 : 0.14, W + 0.005)], hl, [0.5, 0.06, 0.04]);
+  m.poly([corner(-0.05, 0.1, W + 0.02), corner(0.05, 0.1, W + 0.02), corner(0.05, up ? 0.3 : 0.14, W + 0.02), corner(-0.05, up ? 0.3 : 0.14, W + 0.02)], hl, [0.5, 0.06, 0.04]);
 }
 
 function pot(m: MeshBuilder, pl: Place, x: number, z: number, y: number, tilt: number, tiltZ: number, colour: Rgb): void {
@@ -172,7 +172,7 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
         m.cylinder(p0[0], p0[2], p0[1], 0.44, o.n * 0.3, 5, wire, mixC(wire, [0.3, 0.28, 0.2], 0.3), 0.4);
         break;
       }
-      for (let k = 0; k < o.n; k++) pot(m, pl, 0, 0, k * 0.3, lx * (k / 6), lz * (k / 6), k % 2 === 0 ? wire : mixC(wire, [0.04, 0.04, 0.04], 0.55));
+      for (let k = 0; k < o.n; k++) pot(m, pl, 0, 0, k * 0.32, lx * (k / 6), lz * (k / 6), k % 2 === 0 ? wire : mixC(wire, [0.04, 0.04, 0.04], 0.55));
       const buoy = BUOY[o.colour % BUOY.length] as Rgb;
       m.cylinder(P(pl, 0.2, 0, 0.1)[0], P(pl, 0.2, 0, 0.1)[2], P(pl, 0, o.n * 0.3 + 0.32, 0)[1], 0.11, 0.2, 5, buoy, buoy, 0.07);
       if (!low) tube(m, [P(pl, 0, o.n * 0.3 + 0.3, 0), P(pl, 0.35, o.n * 0.3 + 0.1, 0.2), P(pl, 0.5, 0.05, 0.3)], 0.02, [0.3, 0.25, 0.14], 3);
@@ -227,7 +227,7 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
         void z;
         const y = 0.12 + r * 0.3;
         const x = -0.7 + k * 0.45;
-        m.poly(Array.from({ length: 5 }, (_, i) => P(pl, x + Math.cos((i / 5) * Math.PI * 2) * 0.16, y + Math.sin((i / 5) * Math.PI * 2) * 0.13, 0.201)), D(pl, 0, 0, 1), mixC([0.38, 0.28, 0.17], [0.25, 0.17, 0.1], rnd(o.seed, r * 8 + k)));
+        m.poly(Array.from({ length: 5 }, (_, i) => P(pl, x + Math.cos((i / 5) * Math.PI * 2) * 0.16, y + Math.sin((i / 5) * Math.PI * 2) * 0.13, 0.225)), D(pl, 0, 0, 1), mixC([0.38, 0.28, 0.17], [0.25, 0.17, 0.1], rnd(o.seed, r * 8 + k)));
       }
       lbox(m, pl, -L / 2 - 0.05, L / 2 + 0.05, 0.92, 0.97, -0.26, 0.26, [0.05, 0.1, 0.2]);
       break;

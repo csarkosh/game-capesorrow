@@ -113,7 +113,8 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
         const [f0x, f0z] = at(s0, faceOff);
         const [f1x, f1z] = at(s1, faceOff);
         if (timber) {
-          s.poly([P(f0x, y, f0z), P(f1x, y, f1z), P(f1x, SEA - WALL_FOOT, f1z), P(f0x, SEA - WALL_FOOT, f0z)], out, faceColour);
+          // The face runs from under the cap down: the cap's own face is the wall's top.
+          s.poly([P(f0x, y - CAP_HEIGHT, f0z), P(f1x, y - CAP_HEIGHT, f1z), P(f1x, SEA - WALL_FOOT, f1z), P(f0x, SEA - WALL_FOOT, f0z)], out, faceColour);
           // Wales: horizontal timbers proud of the face, every 1.3 m from the cap's foot down to just under the water.
           for (let h = y - CAP_HEIGHT - 0.5; h > SEA - FACE_DETAIL; h -= 1.3) {
             const c = at(sm, faceOff + 0.04);
@@ -133,8 +134,8 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
             const [x1, z1] = at(t1, faceOff);
             const [xm, zm] = at(tm, faceOff + (k % 2 === 0 ? 0.08 : -0.02));
             // Two flanks meeting at a ridge or a trough.
-            s.poly([P(x0, lowEdge, z0), P(xm, lowEdge, zm), P(xm, y, zm), P(x0, y, z0)], out, colour);
-            s.poly([P(xm, lowEdge, zm), P(x1, lowEdge, z1), P(x1, y, z1), P(xm, y, zm)], out, colour);
+            s.poly([P(x0, lowEdge, z0), P(xm, lowEdge, zm), P(xm, y - CAP_HEIGHT, zm), P(x0, y - CAP_HEIGHT, z0)], out, colour);
+            s.poly([P(xm, lowEdge, zm), P(x1, lowEdge, z1), P(x1, y - CAP_HEIGHT, z1), P(xm, y - CAP_HEIGHT, zm)], out, colour);
           }
         }
         // The cap along the top: a beam from just inboard of the edge to the face, flush with the deck.
@@ -160,10 +161,10 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
       const foot = SEA - 1.5;
       const top = y - 0.1;
       for (const side of [-0.3, 0.3]) {
-        const [x, z] = at(s + side, faceOff + 0.07);
-        solid(x, z).box(x, z, foot, tx, tz, 0.03, 0.03, top - foot, STEEL, STEEL);
+        const [x, z] = at(s + side, faceOff + 0.1);
+        solid(x, z).box(x, z, foot, tx, tz, 0.05, 0.05, top - foot, STEEL, STEEL);
       }
-      const [cx, cz] = at(s, faceOff + 0.07);
+      const [cx, cz] = at(s, faceOff + 0.1);
       const rungs = Math.round((top - foot) / 0.3);
       for (let k = 0; k < rungs; k++) solid(cx, cz).box(cx, cz, foot + 0.15 + k * 0.3, tx, tz, 0.3, 0.02, 0.04, STEEL, STEEL);
     }

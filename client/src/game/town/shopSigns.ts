@@ -58,18 +58,29 @@ const FACES = new WeakMap<SignIn, { sg: number; nx: number; nz: number; off: num
 
 
 /** The offset a face is laid at: asked for, or a step (3 cm) in front of any face already laid over its place (`FACES`). */
-function stepOff(i: SignIn, pl: Pl, cx: number, y0: number, ww: number, hh: number, sg: number, offAsked: number): number {
+function stepOff(i: SignIn, pl: Pl, cx: number, y0: number, ww: number, hh: number, sg: number, offAsked: number, behind?: { readonly ww: number; readonly hh: number; readonly y0: number; readonly d: number }): number {
   const reg = FACES.get(i) ?? [];
   FACES.set(i, reg);
   const wx = pl.x + pl.rx * cx;
   const wz = pl.z + pl.rz * cx;
+  const clashes = (off: number, w: number, y: number, h: number): boolean =>
+    reg.some((f) => f.sg === sg && f.nx === pl.nx && f.nz === pl.nz && Math.abs(f.off - off) < 0.03 && Math.abs((f.x - wx) * pl.rx + (f.z - wz) * pl.rz) < (f.w + w) / 2 && f.y0 < y + h && y < f.y0 + f.h);
   let off = offAsked;
-  for (let tries = 0; tries < 6; tries++) {
+  // A board's own front, `d` behind the face on it, is a face too: no other face within 3 cm of it.
+  for (let tries = 0; tries < 8; tries++) {
     const clash = reg.find((f) => f.sg === sg && f.nx === pl.nx && f.nz === pl.nz && Math.abs(f.off - off) < 0.03 && Math.abs((f.x - wx) * pl.rx + (f.z - wz) * pl.rz) < (f.w + ww) / 2 && f.y0 < y0 + hh && y0 < f.y0 + f.h);
-    if (clash === undefined) break;
-    off = clash.off + 0.03;
+    if (clash !== undefined) {
+      off = clash.off + 0.03;
+      continue;
+    }
+    if (behind !== undefined && clashes(off - behind.d, behind.ww, behind.y0, behind.hh)) {
+      off += 0.03;
+      continue;
+    }
+    break;
   }
   reg.push({ sg, nx: pl.nx, nz: pl.nz, off, x: wx, z: wz, w: ww, y0, h: hh });
+  if (behind !== undefined) reg.push({ sg, nx: pl.nx, nz: pl.nz, off: off - behind.d, x: wx, z: wz, w: behind.ww, y0: behind.y0, h: behind.hh });
   return off;
 }
 
@@ -128,7 +139,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     const o = unit.openings.find((q) => sign.place.s >= Math.min(q.s0, q.s1) - 0.05 && sign.place.s <= Math.max(q.s0, q.s1) + 0.05);
     if (o !== undefined) {
       w = Math.min(w, Math.max(0.3, Math.abs(o.s1 - o.s0) - 0.14));
-      if (o.cover === "boarded") glassOff = 0.06;
+      if (o.cover === "boarded") glassOff = 0.09;
       else if (o.cover === "bricked") glassOff = 0.03;
     }
   }
@@ -138,13 +149,14 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   const ink: Rgb = old ? [0.08, 0.07, 0.06] : [0.17, 0.17, 0.18];
 
   /** The face as a quad at `off` off the wall, centred `cx` along the viewer's right, its bottom `y0` up, facing out (or the other way when `back`). */
-  const quad = (cx: number, y0: number, ww: number, hh: number, offAsked: number, back = false): void => {
-    if (at === null) return;
+  const quad = (cx: number, y0: number, ww: number, hh: number, offAsked: number, back = false, behind?: Parameters<typeof stepOff>[8]): number => {
+    if (at === null) return offAsked;
     const sg = back ? -1 : 1;
     // A face laid where another already is (a new board over an old, two records of one place) stands a step in front of it: never within 3 cm of another.
-    const off = stepOff(i, pl, cx, y0, ww, hh, sg, offAsked);
+    const off = stepOff(i, pl, cx, y0, ww, hh, sg, offAsked, behind);
     const c = (dr: number, yy: number): Vec3 => [pl.x + pl.rx * (cx + sg * dr) + pl.nx * off, yy, pl.z + pl.rz * (cx + sg * dr) + pl.nz * off];
     i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx * sg, 0, pl.nz * sg], [1, 1, 1], { glow });
+    return off;
   };
   /** A box on the wall: `off0` to `off1` off it, centred `cx`, `ww` wide, from `y0` up `hh`. */
   const obox = (cx: number, y0: number, ww: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side): void => {
@@ -160,8 +172,9 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       // The board spans the sign's width; its colour is dark and its edge a trim.
       const top = Math.min(y + h / 2, i.wallTop - 0.15);
       const y0 = top - h;
-      obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, 0.18, ink, scaled(ink, 1.6));
-      quad(0, y0, w, h, 0.21);
+      // The board's front stands 3 cm behind the face on it, and clear of any other face on the wall.
+      const off = quad(0, y0, w, h, 0.21, false, { ww: w + 0.1, hh: h + 0.1, y0: y0 - 0.03, d: 0.03 });
+      obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, off - 0.03, ink, scaled(ink, 1.6));
       break;
     }
     case "banner": {
@@ -169,6 +182,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       if (at === null) break;
       const n = 6;
       const loose = hash01(seed, 624) < 0.5 ? 1 : -1;
+      // Hung clear of any other face on the wall (a second banner, a board): its columns lean out a centimetre each from there.
+      const hang = stepOff(i, pl, 0, y - h / 2, w, h, 1, 0.3);
       for (let c = 0; c < n; c++) {
         const a = -w / 2 + (w * c) / n;
         const e = -w / 2 + (w * (c + 1)) / n;
@@ -179,7 +194,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         const pt = (dr: number, yy: number, off: number): Vec3 => [pl.x + pl.rx * dr + pl.nx * off, yy, pl.z + pl.rz * dr + pl.nz * off];
         const u = (m: number): number => at.u0 + ((at.u1 - at.u0) * m) / n;
         const vb = (yy: number): number => at.v0 + ((at.v1 - at.v0) * (yt - yy)) / h;
-        i.face.polyUv([pt(a, yt, 0.3 + 0.01 * c), pt(e, yt, 0.3 + 0.01 * (c + 1)), pt(e, ye, 0.31 + 0.01 * (c + 1)), pt(a, ya, 0.31 + 0.01 * c)], [[u(c), at.v0], [u(c + 1), at.v0], [u(c + 1), vb(ye)], [u(c), vb(ya)]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow: 0 });
+        i.face.polyUv([pt(a, yt, hang + 0.01 * c), pt(e, yt, hang + 0.01 * (c + 1)), pt(e, ye, hang + 0.01 + 0.01 * (c + 1)), pt(a, ya, hang + 0.01 + 0.01 * c)], [[u(c), at.v0], [u(c + 1), at.v0], [u(c + 1), vb(ye)], [u(c), vb(ya)]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow: 0 });
       }
       break;
     }
@@ -250,7 +265,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "lease": {
       // In the glass, or, on a boarded unit, taped to the plywood.
-      quad(0, y - h / 2, w, h, unit?.state === "vacant boarded" ? Math.max(glassOff, 0.06) : glassOff);
+      quad(0, y - h / 2, w, h, unit?.state === "vacant boarded" ? Math.max(glassOff, 0.09) : glassOff);
       break;
     }
     default: {
@@ -263,8 +278,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.08, true);
       } else {
         const y0 = y - h / 2;
-        obox(0, y0 - 0.04, w + 0.12, h + 0.08, 0, 0.06, ink, scaled(ink, 1.4));
-        quad(0, y0, w, h, 0.09);
+        const off = quad(0, y0, w, h, 0.12, false, { ww: w + 0.12, hh: h + 0.08, y0: y0 - 0.04, d: 0.03 });
+        obox(0, y0 - 0.04, w + 0.12, h + 0.08, 0, off - 0.03, ink, scaled(ink, 1.4));
       }
       break;
     }
@@ -328,7 +343,7 @@ function windowLife(i: SignIn): void {
       const y0 = i.floorY + o.sill + 0.12 + r(5 + k * 5) * Math.max(0.05, o.head - o.sill - hh - 0.35);
       const lines = NOTICES[Math.floor(r(6 + k * 5) * NOTICES.length) % NOTICES.length] as readonly string[];
       const faded = vacant ? 0.3 + r(7 + k) * 0.3 : 0.55 + r(7 + k) * 0.4;
-      paint(cx, y0, ww, hh, boarded || o.cover === "boarded" ? 0.06 : -0.015, lines, seed + k * 31, PAPER_COLOURS[Math.floor(r(8 + k * 5) * PAPER_COLOURS.length) % PAPER_COLOURS.length] as [number, number, number], [30, 30, 36], faded, (r(9 + k * 5) - 0.5) * 0.12);
+      paint(cx, y0, ww, hh, boarded || o.cover === "boarded" ? 0.09 : -0.015, lines, seed + k * 31, PAPER_COLOURS[Math.floor(r(8 + k * 5) * PAPER_COLOURS.length) % PAPER_COLOURS.length] as [number, number, number], [30, 30, 36], faded, (r(9 + k * 5) - 0.5) * 0.12);
     }
     if (boarded || openings.length === 0) continue;
     // A sticker or two by the door, at the height of a hand.

@@ -169,26 +169,40 @@ function meterAndConduit(i: PartsIn): void {
   if (k < 0) return;
   const w = refs[k] as WallRef;
   const s = w.length * (0.55 + 0.35 * hash01(b.id, 513));
+  // Not where the owner's addition stands against this wall (its posts and its roof).
+  const add = additionPlan(i);
+  if (add !== null && add.k === k && s + 0.5 > add.s0 && s - 0.5 < add.s1) return;
   wbox(out, w, s - 0.15, s + 0.15, floorY + 1.3, floorY + 1.8, 0, 0.14, [0.7, 0.7, 0.68], [0.7, 0.7, 0.68]);
   out.prism(wat(w, s, floorY + 1.8, 0.07), wat(w, s, i.wallTop, 0.07), 0.018, 4, [0.45, 0.45, 0.47], null);
   out.prism(wat(w, s, floorY + 1.3, 0.07), wat(w, s, floorY + 0.3, 0.07), 0.018, 4, [0.45, 0.45, 0.47], null);
 }
 
-/** A lean-to at the back, or a carport at the side: the one thing an owner added, in a different siding and roof. */
-function addition(i: PartsIn): void {
-  const { b, refs, frontAt, out } = i;
+/** Where the owner's addition stands, if there is one: the wall it is built against, its extent along it and its depth (from a roll of the building's id). */
+function additionPlan(i: PartsIn): { k: number; s0: number; s1: number; depth: number } | null {
+  const { b, refs, frontAt } = i;
   const { age } = agingOf(b);
   // The owner of one house in three of before 1990 added to it, in 1970 or after (a roll from its id).
-  if (b.kind !== "house" || b.era >= 1990 || hash01(b.id, 520) > 0.34 + 0.2 * age) return;
+  if (b.kind !== "house" || b.era >= 1990 || hash01(b.id, 520) > 0.34 + 0.2 * age) return null;
   const front = refs[frontAt] as WallRef;
   let k = refs.findIndex((w) => w.nx * front.nx + w.nz * front.nz < -0.9);
   if (hash01(b.id, 521) < 0.35) k = refs.findIndex((w, j) => j !== frontAt && Math.abs(w.nx * front.nx + w.nz * front.nz) < 0.1 && !i.blocked[j]);
-  if (k < 0 || i.blocked[k]) return;
+  if (k < 0 || i.blocked[k]) return null;
   const w = refs[k] as WallRef;
-  const along = Math.min(w.length * (0.4 + 0.4 * hash01(b.id, 522)), 6);
-  const s0 = (w.length - along) * hash01(b.id, 523);
-  const s1 = s0 + along;
-  const depth = 2.3 + hash01(b.id, 524) * 1.2;
+  // Clear of the corner boards at the wall's ends (and the posts of a carport stand in the wall's span).
+  if (w.length < 2) return null;
+  const along = Math.min(w.length * (0.4 + 0.4 * hash01(b.id, 522)), 6, w.length - 0.8);
+  const s0 = 0.4 + (w.length - along - 0.8) * hash01(b.id, 523);
+  return { k, s0, s1: s0 + along, depth: 2.3 + hash01(b.id, 524) * 1.2 };
+}
+
+/** A lean-to at the back, or a carport at the side: the one thing an owner added, in a different siding and roof. */
+function addition(i: PartsIn): void {
+  const { b, refs, out } = i;
+  const plan = additionPlan(i);
+  if (plan === null) return;
+  const { k, s0, s1, depth } = plan;
+  const w = refs[k] as WallRef;
+  const { age } = agingOf(b);
   const top = i.floorY + 2.7;
   const low = i.floorY + 2.3;
   const base = i.baseY;
@@ -233,7 +247,7 @@ function repairs(i: PartsIn, age: number, neglect: number): void {
       const s = 0.8 + hash01(b.id, 532) * (w.length - 2.6);
       const sf = i.wallSurface(k);
       const tint: Rgb = hash01(b.id, 533) < 0.5 ? [1.2, 1.18, 1.1] : [0.8, 0.82, 0.85];
-      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, s + 1.1 + hash01(b.id, 535) * 0.9, i.floorY + 0.55 + hash01(b.id, 534) * 0.3, 0.07, scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 });
+      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, Math.min(s + 1.1 + hash01(b.id, 535) * 0.9, w.length - 0.15), i.floorY + 0.55 + hash01(b.id, 534) * 0.3, 0.07, scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 });
     }
   }
   // The roof: a patch of newer shingle, or a tarp. A tarp is on a roof that is neglected or that a storm has taken a part of (a roll for one in eight of the old).
@@ -287,13 +301,26 @@ function flatRoofParts(i: PartsIn, full: boolean): void {
   const H = i.H + 0.02;
   const hv = (n: number): number => hash01(b.id, n);
   const at = (a: number, c: number): Vec3 => i.P(a * (i.L - 1.2), c * (i.S - 1), H);
+  // What stands on the roof stands apart: a place that meets another is tried again (another draw), and given up after a few.
+  const stood: { x: number; z: number; r: number }[] = [];
+  const place = (r: number, sa: number, sb: number, x0: number, x1: number, z0: number, z1: number): Vec3 | null => {
+    for (let t = 0; t < 6; t++) {
+      const p = at(hv(sa + 100 * t) * (x1 - x0) + x0, hv(sb + 100 * t) * (z1 - z0) + z0);
+      if (stood.every((q) => (q.x - p[0]) * (q.x - p[0]) + (q.z - p[2]) * (q.z - p[2]) > (q.r + r + 0.2) * (q.r + r + 0.2))) {
+        stood.push({ x: p[0], z: p[2], r });
+        return p;
+      }
+    }
+    return null;
+  };
   // A hatch to the roof from the stair, and vents of the old plumbing: on every old block.
-  const hp = at(hv(560) * 1.6 - 0.8, hv(561) * 1.2 - 0.6);
+  const hp = place(0.71, 560, 561, -0.8, 0.8, -0.6, 0.6) ?? at(hv(560) * 1.6 - 0.8, hv(561) * 1.2 - 0.6);
   out.box(hp[0], hp[2], H, 1, 0, 0.5, 0.5, 0.55, [0.3, 0.3, 0.3], [0.36, 0.36, 0.36]);
   if (!full) return;
   const nVents = 1 + Math.floor(hv(562) * 3);
   for (let k = 0; k < nVents; k++) {
-    const p = at(hv(570 + k) * 2 - 1, hv(580 + k) * 2 - 1);
+    const p = place(0.16, 570 + k, 580 + k, -1, 1, -1, 1);
+    if (p === null) continue;
     out.cylinder(p[0], p[2], H, 0.07, 0.8 + hv(590 + k) * 0.6, 6, METAL, [0.2, 0.2, 0.22]);
     out.cylinder(p[0], p[2], H + 0.9 + hv(590 + k) * 0.6, 0.14, 0.06, 6, DARK, DARK);
   }
@@ -301,7 +328,8 @@ function flatRoofParts(i: PartsIn, full: boolean): void {
   if (b.era >= 1900 && hv(563) < 0.55) {
     const n = 1 + Math.floor(hv(564) * 2);
     for (let k = 0; k < n; k++) {
-      const p = at(hv(600 + k) * 2 - 1, hv(610 + k) * 2 - 1);
+      const p = place(1.0, 600 + k, 610 + k, -1, 1, -1, 1);
+      if (p === null) continue;
       out.box(p[0], p[2], H, 1, 0, 0.8, 0.55, 0.75, [0.6, 0.62, 0.62], [0.5, 0.52, 0.52]);
       out.cylinder(p[0], p[2], H + 0.75, 0.3, 0.04, 8, DARK, [0.15, 0.15, 0.16]);
     }
@@ -425,7 +453,7 @@ function gasStation(i: PartsIn): void {
     wbox(out, front, s - 0.9, s + 0.9, ground - 0.1, ground + 0.2, d - 0.5, d + 0.5, [0.55, 0.55, 0.53], [0.6, 0.6, 0.58]);
     for (const sg of [-0.5, 0.5]) {
       wbox(out, front, s + sg - 0.25, s + sg + 0.25, ground + 0.2, ground + 1.5, d - 0.2, d + 0.2, col, scaled(col, 1.1));
-      wquad(out, front, s + sg - 0.2, ground + 1.0, s + sg + 0.2, ground + 1.3, d + 0.205, [0.1, 0.1, 0.12], undefined, { glow: lit ? 1.6 : 0.2 });
+      wquad(out, front, s + sg - 0.2, ground + 1.0, s + sg + 0.2, ground + 1.3, d + 0.225, [0.1, 0.1, 0.12], undefined, { glow: lit ? 1.6 : 0.2 });
     }
   }
 }

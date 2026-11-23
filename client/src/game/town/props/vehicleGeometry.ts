@@ -206,11 +206,6 @@ function loft(m: MeshBuilder, gl: MeshBuilder, pl: Place, sh: Shape, o: Opts): v
       const gi = ii + a0;
       return glassQuad(gi, j) || opening(gi, j);
     });
-    // The bridge to the next segment: one row of quads, its own surface.
-    if (b + 1 < breaks.length - 1) {
-      const bridge = rowsPts.slice(a1, a1 + 2);
-      m.grid(bridge, centre, { colour: o.paint, layer: "roof_bitumen", tint: paintTint(o.paint), uv: (ii, j) => [ii, (j as number) * 0.2] });
-    }
   }
   // The glass over a dark cabin, a window at a time: for each window (a range of the shape), its first and last rows and the coarse cells between them (columns belt, roof's
   // edge, crown, roof's edge, belt): the glass a quad per cell, the dark sheet inside it the same quad drawn inward.
@@ -295,12 +290,13 @@ function faceNormal(a: Vec3, b: Vec3, c: Vec3, d: Vec3, inside: Vec3): Vec3 {
 
 /** A tyre on a rim at the local place (x, y of its centre, z of its outer face), its face out to the side `sg`: the tread smooth round, a dark face and a lighter rim. */
 function wheel(m: MeshBuilder, pl: Place, x: number, y: number, z: number, r: number, tw: number, sg: number, detail: Detail, flat: boolean, paintRim: Rgb): void {
-  const n = detail === "low" ? 6 : 12;
+  const n = detail === "low" ? 6 : 9;
   const sq = flat ? 0.93 : 1;
   const ring = (rad: number, zz: number): Vec3[] => Array.from({ length: n + 1 }, (_, i) => P(pl, x + Math.cos((i / n) * Math.PI * 2) * rad, y + Math.sin((i / n) * Math.PI * 2) * rad * sq - (flat ? 0.015 : 0), zz));
   m.grid([ring(r, z - sg * tw), ring(r, z)], P(pl, x, y, z - sg * tw / 2), { colour: TYRE });
+  // The tyre's face and the rim's disc 3 cm proud of it (a hub that stands out, not a second face laid on the first).
   m.poly(ring(r, z).slice(0, n), D(pl, 0, 0, sg), TYRE);
-  m.poly(ring(r * 0.62, z + sg * 0.006).slice(0, n), D(pl, 0, 0, sg), paintRim);
+  m.poly(ring(r * 0.62, z + sg * 0.03).slice(0, n), D(pl, 0, 0, sg), paintRim);
 }
 
 function wheelsOf(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, v: Vehicle, wAt: (x: number) => number): void {
@@ -340,12 +336,12 @@ function details(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, v: Vehicle, wAt:
   // Lamps and a grille at the nose, tail lamps and a plate at the tail.
   const yN = Math.max(beltAt(sh.L * o.sx) - 0.04, 0.7);
   for (const sg of [1, -1]) {
-    lquadX(m, pl, front + 0.006, yN - 0.12, yN + 0.04, sg * wF * 0.55, sg * wF * 0.93, 1, LAMP);
-    lquadX(m, pl, rear - 0.006, beltAt(0.05) - 0.16, beltAt(0.05) - 0.02, sg * wR * 0.6, sg * wR * 0.95, -1, TAIL);
+    lquadX(m, pl, front + 0.025, Math.max(yN - 0.12, 0.66), yN + 0.04, sg * wF * 0.55, sg * wF * 0.93, 1, LAMP);
+    lquadX(m, pl, rear - 0.025, Math.max(beltAt(0.05) - 0.16, 0.66), Math.max(beltAt(0.05) - 0.02, 0.7), sg * wR * 0.6, sg * wR * 0.95, -1, TAIL);
   }
   if (lowTier) return;
-  lquadX(m, pl, front + 0.006, yN - 0.12, yN + 0.02, -wF * 0.45, wF * 0.45, 1, [0.02, 0.02, 0.025]);
-  lquadX(m, pl, rear - 0.007, 0.5, 0.64, -0.2, 0.2, -1, PLATE);
+  lquadX(m, pl, front + 0.025, Math.max(yN - 0.12, 0.66), yN + 0.02, -wF * 0.45, wF * 0.45, 1, [0.02, 0.02, 0.025]);
+  lquadX(m, pl, rear - 0.06, 0.5, 0.64, -0.2, 0.2, -1, PLATE);
   for (const sg of [1, -1]) {
     const mx = sh.mirror * o.sx + o.xOff - o.len / 2;
     const w = wAt(sh.mirror * o.sx);
@@ -354,7 +350,7 @@ function details(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, v: Vehicle, wAt:
     for (const dxm of sh.doors) {
       const x = dxm * o.sx + o.xOff - o.len / 2;
       const w2 = wAt(dxm * o.sx);
-      lquadZ(m, pl, sg * (w2 - 0.004), x - 0.006, x + 0.006, sh.sill + 0.12, beltAt(dxm * o.sx) - 0.02, sg as 1 | -1, [0.008, 0.008, 0.01]);
+      lquadZ(m, pl, sg * (w2 + 0.02), x - 0.006, x + 0.006, sh.sill + 0.12, beltAt(dxm * o.sx) - 0.02, sg as 1 | -1, [0.008, 0.008, 0.01]);
     }
   }
 }
@@ -390,14 +386,14 @@ function loads(m: MeshBuilder, pl: Place, v: Vehicle, sh: Shape, o: Opts): void 
       for (let k = 0; k < 14; k++) box(0.25 + (k % 4) * 0.38, 0.6 + (k % 4) * 0.38, f + Math.floor(k / 4) * 0.2, f + 0.2 + Math.floor(k / 4) * 0.2, -0.75, 0.75, mixC([0.2, 0.12, 0.06], [0.28, 0.18, 0.1], rnd(v.seed, k)));
     } else if (v.load === "rack" || v.load === "ladder") {
       const top = 1.95 * o.sy;
-      for (const x of [0.35, 1.75]) for (const z of [-0.84, 0.84]) box(x - 0.025, x + 0.025, f, top, z - 0.025, z + 0.025, [0.1, 0.1, 0.11]);
+      for (const x of [0.35, 1.75]) for (const z of [-0.84, 0.84]) box(x - 0.025, x + 0.025, f, top + 0.03, z - 0.025, z + 0.025, [0.1, 0.1, 0.11]);
       for (const z of [-0.84, 0.84]) box(0.35, 1.75, top - 0.05, top, z - 0.025, z + 0.025, [0.1, 0.1, 0.11]);
       if (v.load === "ladder") for (const z of [-0.2, 0.2]) box(-0.5, 2.9, top + 0.0, top + 0.05, z - 0.02, z + 0.02, [0.45, 0.46, 0.48]);
     }
   } else if (v.kind === "van" && v.load === "rack") {
     const top = 2.02 * o.sy;
     for (const z of [-0.8, 0.8]) box(0.4, 3.3, top, top + 0.06, z - 0.025, z + 0.025, [0.1, 0.1, 0.11]);
-    for (const x of [0.6, 1.8, 3.1]) box(x - 0.02, x + 0.02, top, top + 0.06, -0.8, 0.8, [0.1, 0.1, 0.11]);
+    for (const x of [0.6, 1.8, 3.1]) box(x - 0.02, x + 0.02, top, top + 0.08, -0.8, 0.8, [0.1, 0.1, 0.11]);
     box(-0.4, 3.6, top + 0.06, top + 0.1, -0.2, 0.2, [0.45, 0.46, 0.48]);
   }
 }
@@ -415,7 +411,7 @@ function tarpOver(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, seed: number): 
   picks.forEach((s, i) => {
     const [x, top, belt, w, wTop] = s;
     const lo = 0.5;
-    const pts: [number, number][] = [[w * 1.05, lo], [w * 1.07, belt * 0.8], [mix(w, wTop, 0.6) * 1.08, belt + (top - belt) * 0.5 + 0.03], [wTop * 0.7 * 1.08, top + 0.05 + sag(i)], [0, top + 0.07 + sag(i)]];
+    const pts: [number, number][] = [[w * 1.05, lo], [w * 1.07, belt * 0.8], [mix(w, wTop, 0.6) * 1.08, belt + (top - belt) * 0.5 + 0.03], [wTop * 0.7 * 1.08, top + 0.1 + sag(i)], [0, top + 0.12 + sag(i)]];
     const row: Vec3[] = [];
     for (const [z, y] of pts) row.push(P(pl, L(x), y, -z));
     for (let k = pts.length - 2; k >= 0; k--) row.push(P(pl, L(x), (pts[k] as [number, number])[1], (pts[k] as [number, number])[0]));
@@ -508,10 +504,10 @@ function workTruck(m: MeshBuilder, pl: Place, v: Vehicle, o: Opts, wAt: (x: numb
     lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 0.8, 1.55, -1.05, 1.05, paint);
     for (const z of [-0.95, 0.95]) lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 1.55, 1.62, z - 0.03, z + 0.03, frame);
     lbox(m, pl, rear + 0.1, rear + cabX - 0.1, 1.62, 1.68, -0.2, 0.2, [0.45, 0.46, 0.48]);
-    for (const x of [0.5, 1.6, 2.7]) lbox(m, pl, rear + x, rear + x + 0.04, 1.55, 1.68, -0.95, 0.95, frame);
+    for (const x of [0.5, 1.6, 2.7]) lbox(m, pl, rear + x, rear + x + 0.04, 1.55, 1.71, -0.95, 0.95, frame);
   }
   lbox(m, pl, rear - 0.02, rear + 0.06, 0.55, 0.72, -1.0, 1.0, [0.06, 0.06, 0.06]);
-  lquadX(m, pl, rear - 0.026, 0.62, 0.78, -0.2, 0.2, -1, PLATE);
+  lquadX(m, pl, rear - 0.05, 0.62, 0.78, -0.2, 0.2, -1, PLATE);
   for (const sg of [1, -1]) lquadX(m, pl, rear - 0.026, 0.8, 0.94, sg * 0.5, sg * 0.9, -1, TAIL);
 }
 
