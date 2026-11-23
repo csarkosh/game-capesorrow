@@ -50,7 +50,7 @@ fixed order, each on a stream of its own: names, history, plats and streets, lot
 first (`port/history.ts`) and every part of the form is derived from it, so that a difference between two towns has a cause a
 player can name. `planFor(worldSeed)` (`planFor.ts`) is the plan on the world's own site, cached. A kind of town is a recipe
 (`recipes.ts`) and a folder beside `port/`; the shared code never asks the kind, and only the large port exists. `TOWN_GEN` is
-the generator's version and is part of every plan.
+the generator's version (2) and is part of every plan.
 
 On the real coast the shore runs near north to south, the highway stands 70 to 270 m inland of it, and at the cove two narrow
 headlands run out to sea, so the cove is a natural harbour. The old plat stands at the cove behind a straight quay, partly on
@@ -82,6 +82,18 @@ off the main street), the hotel, the bank, a lodge hall, a depot, the port's ter
 hospital, and as the history says a customs house, a courthouse and a tsunami refuge. Grids are turned to bearings that are
 Pythagorean triples (`bearings.ts`), so a plat's rotation is exact arithmetic.
 
+### The harbour
+
+The made ground along the quay is one convex polygon for each stretch of the quay with water seaward (`plan.quay.wet`), with collinear quay-side edges and no overlap, so the bank along the quay is one smooth slope. `plan.decks` lists every deck over the water (the quay's apron along each wet stretch, piers, the platforms of sheds on piles, the wharf street, and the boat basin's floats and gangways) as an oriented rectangle with the height of its top (`DECK_TOP` 2.6 m, floats `FLOAT_TOP` 0.4 m, a gangway's from one to the other): the one list the walking and the drawing both read. `plan.harbour` (`port/harbour.ts`, its own random stream) holds the rest, decided by the history:
+
+- **The basin and its boats.** One or two main floats parallel to the quay, 22 m out, each reached by a gangway from the apron, with finger floats and slips of three classes. A cannery town or a seafood port keeps a full basin of working boats; a mill, customs or railhead town fewer and more pleasure boats and sailboats; the share of the core's vacant storefronts is also the share of empty slips and the weight of derelicts (a few degrees' list, faded, gear gone) and of one that has sunk at its mooring. Boats (`{ id, kind, x, z, heading, length, beam, draft, state, colour, name, mooring }`; troller, gillnetter, crabber, tug, skiff, sailboat, pleasure; 4.5 to 20 m) lie in slips, alongside piers, a few at anchor, and a tug by the terminal's barge. They do not move.
+- **Pilings.** Fields of dead piles (uneven tops, some leaning, gaps) where a closed mill's or a cannery's wharf was pulled down (or an old fish dock), with the year in a sentence of the history's list; dolphins (three piles lashed) off the longer pier ends.
+- **The mill's water.** A working mill has a log pond held by a boom of sticks chained between piles, floating logs, and a jack ladder to a jack house; a closed mill's boom is empty and, if the mill is old enough and not cleared, the rusting wigwam burner stands on its site.
+- **The terminal.** A yard by what the port handles (decks of logs in trapezoid stacks and perhaps a chip pile, silos and a bulk shed, rows of containers, rows of cars), on the terminal's open lots (the terminal's blocks are built to 42 per cent so there is room), and at the port's wharf (the wharf street's pier, in the cove's deep water) a loaded barge with its tug and, for grain and chips, a loading spout. A terminal the history says is idle (more likely the emptier the town) has an empty yard and no barge.
+- **Lights.** A white harbour light on one headland's tip and a day beacon on the other (the tongues are the samples where the site's shore runs far seaward), and a light at the end of the longest pier. Structures only: no lamps are lit.
+
+Depth is not read from the ground (the plan reads the site alone): it is estimated from the distance seaward of the shore, one way in the cove between its headlands and a shallower one outside, and checked in `test/town/harbour.test.ts` against the coast's real floor, which finds about 2 per cent of boat footprint points over a sea stack the site cannot see.
+
 ### The ground the game lays over the coast
 
 What the game lays over the engine's coast is `CAPE_PLACE` (`place.ts`), a `CoastOverlay` that the coast is registered with
@@ -101,7 +113,9 @@ indices), with no renderer, so the builders are tested as pure functions:
 
 - **Streets** (`streetGeometry.ts`): strips cut every 4 m along their length and into bands (two halves of carriageway and a sidewalk down each side on main streets, avenues and streets; a timber deck for the wharf), each vertex at the ground's height plus a small lift so the layers never share a height. A crossing is drawn once, by rank. Strips are cut at the edge of the engine's painted highway. The rail is ballast, ties and two rails. Ground under the sea is not drawn.
 - **Buildings** (`buildingGeometry.ts`): shells on the plan's oriented rectangles, roofs by kind (flat with a parapet, gable, hip, shed), windows and doors, vacant buildings duller and boarded, ruins roofless and broken at the top, and one touch for each landmark (a flagpole and portico for the FBI office, a steeple, an open tower on legs for the refuge, a mill's stack). Colour comes from the material and the building's id; no random call is made.
-- **The quay, piers and the wharf** (`pileGeometry.ts`): the quay as an apron, a low curb and a face down into the water; piers, the decks the terminal's sheds stand on, and the wharf street's deck, each on rows of piles.
+- **The quay** (`quayGeometry.ts`): along each wet stretch an apron (a deck) and a straight wall a hand's width beyond its edge, so the bank is hidden: timber cribwork under a timber cap, or, where a fire after 1921 took the waterfront, steel sheet piling under a concrete cap (`plan.quay.wall`), with wales or a corrugated face, fender piles every 6 m, ladders every 40 m and bollards every 15 m.
+- **Decks and rails** (`pileGeometry.ts`): each deck of `plan.decks` with its top at exactly the height the walking uses, a skirt, and piles for piers and sheds; a timber bull rail with posts along every edge the simulation holds a walker back from.
+- **Boats and the harbour's things** (`boatGeometry.ts`, `harbourGeometry.ts`): hulls lofted through six stations with a sheer line, wheelhouses with dark windows and the kind's gear; piles, boom sticks and logs, the jack ladder, the burner, the yard's stacks, silos, containers and cars, the barge, and the lights.
 - **Batches** (`townGeometry.ts`): by cells of 128 m, one set of arrays for what lies flat and one for what stands, built as a generator of slices the engine's scheduler spreads over frames, so no frame stalls on the town.
 
 `townParts.ts` is the renderer part: a `RenderGame` that wraps the engine's `noParts` and, once the scene is registered, makes
@@ -135,10 +149,10 @@ rules search out from it for the first place a hull stands free. The map page (`
 
 - One kind of town (the large port) and one site, at the engine's cove. The recipe structure is there for others; none is written.
 - The names (the town's, the streets', the founder's, the hotel's, the mill's) are authored placeholders in ordinary English, Scots, Scandinavian and Spanish-looking words, not sourced. The building mixes and their shares are authored, and so is the order of uses along the working waterfront (lumber docks and warehouses, the terminal, the wharf street and depot, warehouses, then the canneries and the rough dock end): the research found no source for either. The history's dates and shares follow the research on Washington ports; the rest of the numbers are authored.
-- Pier and wharf decks are drawn but cannot be walked on: the rules treat piers and sheds on piles as no wall and give the deck no floor.
+- The harbour is plan data and structures: boats do not move or bob, no lamp is lit, bollards, fenders, ladders and boats are not solid, a gangway is not a ramp the rules know beyond its floor, and the depth under a boat is estimated from the shore alone, so a sea stack can stand under one now and then. The mill's pond sits on the coast's shallow flats, where the logs lie near the bottom. The boat names, colours, slip classes, the yard's items and the share of terminals idle are authored, not sourced.
 - No lamps, no street markings and no interiors: buildings are shells, and a door is drawn, not opened.
 - No Native places or people are generated, by decision, until they can come from the nations' own sources; no name in the generator is a Native word.
-- The town is an unreleased generator: `TOWN_GEN` is 1, and its digests are replaced when it changes until a first release.
+- The town is an unreleased generator: `TOWN_GEN` is 2, and its digests are replaced when it changes until a first release.
 
 ## The title page
 

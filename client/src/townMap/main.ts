@@ -13,7 +13,8 @@ import type { TownPlan } from "../sim/town/types.js";
 import type { TownSite } from "../sim/town/site.js";
 import { realSite } from "./realSite.js";
 import { syntheticSite } from "./syntheticSite.js";
-import { DISTRICT_FILL, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
+import { harbourSummary } from "../sim/town/port/harbour.js";
+import { BOAT_FILL, DISTRICT_FILL, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
 
 const STYLE = `
   body { font-family: ui-monospace, monospace; }
@@ -164,6 +165,14 @@ function legend(): HTMLElement {
   swatch("#ff8c2a", "the seam street");
   swatch("#3a3a30", "made ground (fill)");
   swatch("#e8e0c8", "the quay");
+  swatch("#a88a5a", "floats (gangways paler)");
+  for (const [k, c] of Object.entries(BOAT_FILL)) swatch(c, `boat: ${k}`);
+  swatch("#7a7066", "derelict boat (a sunk one is black)");
+  swatch("#b0a890", "dead pilings, dolphins");
+  swatch("#1c3a40", "the mill's log pond");
+  swatch("#a0502a", "a wigwam burner");
+  swatch("#6aa4de", "the terminal's yard (barge grey)");
+  swatch("#ffffff", "harbour light (beacon red, pier light yellow)");
   swatch("#3affa0", "spawn and its facing");
   return box;
 }
@@ -222,6 +231,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
     ["lots", String(plan.counts.lots)],
     ["buildings", `${plan.counts.buildings}: ${plan.counts.open} open, ${plan.counts.vacant} vacant, ${plan.counts.ruin} ruin`],
     ["streets", String(plan.counts.streets)],
+    ["harbour", harbourSummary(plan.harbour)],
     ["made in", `${ms.toFixed(1)} ms`],
   ];
   const table = el("table", { class: "counts" });
