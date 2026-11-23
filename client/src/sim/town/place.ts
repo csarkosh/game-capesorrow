@@ -9,7 +9,7 @@
  */
 import { COVE_Z, type CoastOverlay } from "@csarkosh/engine/sim/olympic";
 import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
-import { CLEARING_TUNABLES, YARD_LIFT, townFeatureMask, townKeepD, townYardWeight } from "./clearing.js";
+import { CLEARING_TUNABLES, YARD_LIFT, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
 import { GROUND_TUNABLES, townGroundD } from "./ground.js";
 import { RAIL_CLEARING_TUNABLES, railFeatureMask } from "./railClearing.js";
 import { RAIL_TUNABLES, railGroundD } from "./railGround.js";
@@ -41,6 +41,6 @@ export const CAPE_PLACE: CoastOverlay = {
   // The town's mask, with the railroad's corridor shut in it (`railClearing.ts`).
   featureMask: (seed, x, z) => railFeatureMask(seed, x, z, townFeatureMask(seed, x, z)),
   // On a yard the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and trees.
-  shoreStrip: { lift: YARD_LIFT, forestFloor: 0, at: townYardWeight },
+  shoreStrip: { lift: YARD_LIFT, forestFloor: 0, at: townStripWeight },
   clearing: { z: COVE_Z, x: townClearingX },
 };
