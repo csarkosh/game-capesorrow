@@ -12,6 +12,14 @@ export const VERGE: Rgb = [0.1, 0.17, 0.07];
 export const CURB: Rgb = [0.4, 0.4, 0.38];
 export const PAINT_YELLOW: Rgb = [0.55, 0.43, 0.08];
 export const PAINT_WHITE: Rgb = [0.62, 0.62, 0.6];
+/** A curb ramp's dome panel: federal yellow (section 2: the colour WSDOT uses for the contrast). */
+export const DOME: Rgb = [0.8, 0.6, 0.05];
+export const PLANTER: Rgb = [0.1, 0.2, 0.08];
+export const SIGN_RED: Rgb = [0.55, 0.03, 0.04];
+export const SIGN_WHITE: Rgb = [0.8, 0.8, 0.78];
+export const SIGN_GREEN: Rgb = [0.02, 0.27, 0.15];
+export const SIGN_YELLOW: Rgb = [0.85, 0.68, 0.04];
+export const SIGN_BLACK: Rgb = [0.03, 0.03, 0.035];
 export const MEDIAN: Rgb = [0.15, 0.14, 0.12];
 export const GRAVEL: Rgb = [0.24, 0.22, 0.19];
 export const WALK_CONCRETE: Rgb = [0.31, 0.31, 0.3];

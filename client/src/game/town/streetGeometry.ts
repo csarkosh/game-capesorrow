@@ -1,115 +1,89 @@
 /**
- * The town's streets as strips of quads that follow the ground: every street of the plan but the highway (which the
- * engine paints and the town does not draw over).
+ * The town's streets as flat surfaces that follow the ground: every street of the plan but the highway (which the engine
+ * paints and the town does not draw over). A street is a roadway of `street.roadway` between curbs and, down each side, a
+ * grass verge and a sidewalk of `street.walk` (the main street has sidewalks and no verge; an alley is gravel, all roadway; the
+ * wharf is a timber deck).
  *
- * A street is drawn at its true width (`port/ways.ts`): a roadway of `street.roadway` between curbs, and outside it down
- * each side a grass verge and a sidewalk of `street.walk` (the main street has sidewalks and no verge; an alley is gravel,
- * all roadway).
- *
- * - **Each street is cut** along its length every `TILE` m (at most) and across into bands: two halves of roadway, the
- *   verge and the sidewalk each side; a wharf is a timber deck.
- * - **Every vertex stands at the ground's height plus a lift**: `STREET_LIFT` (0.06 m) for a verge, 0.003 more for a sidewalk,
- *   and 0.08 to 0.12 m for a roadway by its rank, so the layers never share a height (the renderer also draws the strips
- *   a depth step ahead of the terrain). A rank adds `RANK_LIFT`, and each street of a rank its own `SLOT_LIFT` more than the one before.
- * - **A crossing is drawn once.** A roadway tile that lies wholly inside a roadway of higher rank (a main over an avenue
- *   over a street over an alley, ties by the street's number) is left out, and a sidewalk or verge tile that lies wholly
- *   inside any roadway is left out; a tile only partly covered stays, lifted below the one that covers it.
- * - **The curb** is a low strip, `CURB_RISE` over the roadway, along each edge of a roadway that has sidewalks, with its
- *   face down to the roadway, left off where another street's roadway crosses it.
- * - **Markings** lie `MARK_OVER` over their roadway and are cut away where another roadway crosses them: a dashed yellow
- *   centre line on streets, the main street and the avenue; on the main street also parking stalls along both curbs and
- *   zebra crosswalks beside each cross street; on the avenue a painted median; and a stop bar where a street meets the highway.
- * - **The highway's edge**: a tile that reaches into the engine's road bed (`ROAD_BED_HALF` either side of its centre
- *   line) is cut along the bed's edge, so a street ends exactly at the road's gravel.
- * - Ground under the sea is not drawn.
+ * - **One height for every roadway.** Every roadway, the junctions' pavements included, lies `ROADWAY_LIFT` over the ground, so no
+ *   two roadway surfaces overlap and none stands over another. The sidewalk lies a curb's face (6 in, `CURB_RISE`) over the
+ *   roadway, the verge 2 cm under it, and the curb's top is the sidewalk's own height.
+ * - **The legs' strips end on the junction.** A street is cut where it meets another: its roadway strip ends at each junction's
+ *   mouth (`sim/town/junctions.ts`), its verge, sidewalk and curb at the corner's tangent point, and the pavement between is the
+ *   junction's, bounded by its curb returns (`junctionGeometry.ts`). A street that runs through a junction is two strips.
+ * - **Cut every `TILE` m** along its length and across into bands; a vertex stands at the ground's height plus its lift, so a
+ *   surface follows the ground's roll.
+ * - **Curb ramps, aprons and gaps**: the sidewalk's bands are cut where a ramp or a driveway apron stands, and the curb with them.
+ * - **Paint**: the main street has a dashed yellow centre line (10 ft dashes with 30 ft gaps, ending short of every crossing) and
+ *   white parking stalls held back from corners; the avenue a painted median between solid yellow lines. A residential street
+ *   has none. The marks at a junction (crosswalks, stop lines, the dotted extension) are `junctionPaint.ts`'s.
+ * - Ground under the sea is not drawn. A tile that reaches into the engine's road bed is cut along the bed's edge.
  */
-import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
 import { ALLEY, ASPHALT, CURB, DECK, MEDIAN, PAINT_WHITE, PAINT_YELLOW, SIDEWALK, VERGE } from "./palette.js";
-import { SEA, type Sink, type TownGround } from "./townTypes.js";
-import type { Street, StreetKind } from "../../sim/town/types.js";
+import { junctionGeometry } from "./junctionGeometry.js";
+import { junctionPaint } from "./junctionPaint.js";
+import { worldJunctions } from "./junctionWorld.js";
+import { signGeometry } from "./signGeometry.js";
+import { RoadSet, Surface, type P2, type P3 } from "./surface.js";
+import type { Detail, Sink, TownGround } from "./townTypes.js";
+import { RAMP_RUN, RAMP_LANDING, CURB_FACE } from "../../sim/town/junctionShape.js";
+import { hasPavement } from "../../sim/town/junctions.js";
+import type { JunctionLeg, Street } from "../../sim/town/types.js";
 
 /** A strip is cut along its length at least this often, metres. */
 export const TILE = 4;
-/** The lift of a verge over the ground, metres; a sidewalk adds `WALK_OVER`, a carriageway `ASPHALT_OVER` and its rank's share. */
+/** The lift of a verge's base over the ground, metres; a roadway lies `ASPHALT_OVER` more. */
 export const STREET_LIFT = 0.06;
-export const WALK_OVER = 0.003;
 export const ASPHALT_OVER = 0.02;
-/** What a rank adds to a carriageway's lift, and what each street of a rank adds beside the one before (its slot): ranks never meet, and no two streets share a height. */
-export const RANK_LIFT = 0.01;
-export const SLOT_LIFT = 0.0002;
-/** A curb stands this much over its roadway, and is this wide, metres. */
-export const CURB_RISE = 0.045;
+/** Every roadway's lift over the ground, the junctions' pavements and the legs alike. */
+export const ROADWAY_LIFT = STREET_LIFT + ASPHALT_OVER;
+/** The curb's face over the gutter, 6 in (the research, section 1), the sidewalk's height over the roadway, and the curb's width. */
+export const CURB_RISE = CURB_FACE;
+export const WALK_LIFT = ROADWAY_LIFT + CURB_RISE;
+export const VERGE_LIFT = WALK_LIFT - 0.02;
 export const CURB_WIDTH = 0.18;
 /** Paint lies this much over its roadway, metres. */
 export const MARK_OVER = 0.012;
-/** The dashed centre line: its width, dash and gap, metres. */
-export const CENTRE_WIDTH = 0.14;
-export const CENTRE_DASH = 2;
-export const CENTRE_GAP = 4;
+/** The main street's centre line: its width (4 in, WSDOT), dash and gap (10 ft and 30 ft, MUTCD and WSDOT), metres. */
+export const CENTRE_WIDTH = 0.1;
+export const CENTRE_DASH = 3.05;
+export const CENTRE_GAP = 9.14;
+/** The dotted extension through a junction: dashes of 2 ft with gaps of 6 ft (WSDOT's sheet). */
+export const DOTTED_DASH = 0.61;
+export const DOTTED_GAP = 1.83;
 /** Parking along the main street: the lane's width, a stall's length along the curb, and a line's width, metres. */
 export const PARKING_LANE = 2.4;
 export const PARKING_STALL = 6.5;
 export const LINE_WIDTH = 0.1;
-/** A zebra crosswalk: a bar's width across the street, its pitch, its length along the street, and how far beside a cross street's roadway it begins, metres. */
-export const ZEBRA_BAR = 0.4;
-export const ZEBRA_PITCH = 0.85;
-export const ZEBRA_LENGTH = 3;
-export const ZEBRA_OFFSET = 1.5;
-/** A stop bar's width along the street, and how far back from the highway's bed it lies, metres. */
-export const STOP_BAR = 0.5;
-export const STOP_BACK = 1.8;
 /** The avenue's painted median: its width, metres. */
 export const MEDIAN_WIDTH = 2;
+/** A driveway apron's flare at each side (2 ft 6 in, WSDOT's sheet) and its lip at the gutter (1/2 in), metres. */
+export const APRON_FLARE = 0.76;
+export const APRON_LIP = 0.013;
+/** Where an alley's gravel rises to the sidewalk's height, over this long a ramp at its mouth, metres. */
+export const ALLEY_RISE = 1.8;
+/** How far beyond the sidewalk the skirt's foot lies under the ground, so no light shows under it, metres. */
+const SKIRT_FOOT = 0.0;
 
-const UP: Vec3 = [0, 1, 0];
-
-/** The kinds drawn as a carriageway, with their rank among the layers. */
-const RANK: Partial<Record<StreetKind, number>> = { alley: 0, street: 1, avenue: 2, main: 3 };
-
-type Prepared = {
+type PS = {
   street: Street;
   ax: number;
   az: number;
   tx: number;
   tz: number;
+  /** The left normal: a positive offset lies left of the street's direction. */
+  nx: number;
+  nz: number;
   length: number;
-  /** Half the roadway's width, and half the right of way's. */
   cw: number;
   hw: number;
-  /** The sidewalk down each side. */
   walk: number;
-  rank: number;
-  /** The street's place among those of its rank, in the plan's order. */
-  slot: number;
-  x0: number;
-  x1: number;
-  z0: number;
-  z1: number;
+  /** The verge's width between the curb's back and the sidewalk (0 for none). */
+  verge: number;
 };
 
-type Layer = "walk" | "verge" | "asphalt" | "deck" | "curb" | "mark";
-type Band = { t0: number; t1: number; colour: Rgb; lift: number; layer: Layer };
-
-type Corner = { x: number; z: number; u: number };
-
-/** A convex polygon clipped to one side of the highway's bed edge: `sign` 1 keeps u >= edge, -1 keeps u <= -edge. */
-function clipSide(poly: readonly Corner[], sign: 1 | -1, edge: number): Corner[] {
-  const out: Corner[] = [];
-  const n = poly.length;
-  for (let i = 0; i < n; i++) {
-    const a = poly[i] as Corner;
-    const b = poly[(i + 1) % n] as Corner;
-    const da = a.u * sign - edge;
-    const db = b.u * sign - edge;
-    if (da >= 0) out.push(a);
-    if ((da >= 0) !== (db >= 0)) {
-      const k = da / (da - db);
-      out.push({ x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, u: a.u + (b.u - a.u) * k });
-    }
-  }
-  return out;
-}
+type Rect = [number, number, number, number];
+type Span = { lo: number; hi: number; backCentre: number; backPark: number; fwdCentre: number; fwdPark: number };
 
 /** The parts of [lo, hi] that none of `blocked` covers. */
 function without(lo: number, hi: number, blocked: readonly (readonly [number, number])[]): [number, number][] {
@@ -126,11 +100,38 @@ function without(lo: number, hi: number, blocked: readonly (readonly [number, nu
   return out.filter(([a, b]) => b - a > 1e-6);
 }
 
-export function streetGeometry(g: TownGround, sink: Sink, lift = STREET_LIFT): void {
+/** A rectangle (s0, s1, t0, t1) with one hole cut out of it: up to four rectangles. */
+function minus(r: Rect, h: Rect): Rect[] {
+  const [s0, s1, t0, t1] = r;
+  const [a0, a1, b0, b1] = h;
+  if (a1 <= s0 || a0 >= s1 || b1 <= t0 || b0 >= t1) return [r];
+  const out: Rect[] = [];
+  if (a0 > s0) out.push([s0, a0, t0, t1]);
+  if (a1 < s1) out.push([a1, s1, t0, t1]);
+  const m0 = Math.max(s0, a0);
+  const m1 = Math.min(s1, a1);
+  if (b0 > t0) out.push([m0, m1, t0, Math.min(b0, t1)]);
+  if (b1 < t1) out.push([m0, m1, Math.max(b1, t0), t1]);
+  return out;
+}
+
+function cut(r: Rect, holes: readonly Rect[]): Rect[] {
+  let pieces: Rect[] = [r];
+  for (const h of holes) pieces = pieces.flatMap((p) => minus(p, h));
+  return pieces.filter((p) => p[1] - p[0] > 1e-6 && p[3] - p[2] > 1e-6);
+}
+
+export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, detail: Detail = "full"): void {
   const { plan, anchor } = g;
-  const prepared: Prepared[] = [];
+  const surf = new Surface(g, flat);
+  const road = new RoadSet(surf);
+  /** The junctions' pavements alone: paint is laid without them (a neighbour's stop line does not run over this one's). */
+  const pavements = new RoadSet(surf);
+  const junctions = worldJunctions(g);
+  const paved = junctions.filter(hasPavement);
+
+  const prepared = new Map<number, PS>();
   for (const street of plan.streets) {
-    // A flight of public steps is drawn by `stairGeometry.ts`, not as a strip of roadway.
     if (street.kind === "highway" || street.kind === "rail" || street.kind === "stair") continue;
     const ax = anchor.x + street.a.x;
     const az = anchor.z + street.a.z;
@@ -138,257 +139,288 @@ export function streetGeometry(g: TownGround, sink: Sink, lift = STREET_LIFT): v
     const bz = anchor.z + street.b.z;
     const length = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
     if (!(length > 0.1)) continue;
+    const tx = (bx - ax) / length;
+    const tz = (bz - az) / length;
     const hw = street.width / 2;
     const cw = street.kind === "wharf" ? 0 : street.roadway / 2;
-    const reach = hw + 0.1;
-    prepared.push({
-      street, ax, az, tx: (bx - ax) / length, tz: (bz - az) / length, length, cw, hw, walk: street.walk, rank: RANK[street.kind] ?? -1, slot: 0,
-      x0: Math.min(ax, bx) - reach, x1: Math.max(ax, bx) + reach, z0: Math.min(az, bz) - reach, z1: Math.max(az, bz) + reach,
-    });
+    const inner = cw + CURB_WIDTH;
+    const verge = street.walk > 0 ? Math.max(0, hw - street.walk - inner) : 0;
+    prepared.set(street.id, { street, ax, az, tx, tz, nx: -tz, nz: tx, length, cw, hw, walk: street.walk, verge: verge > 0.05 ? verge : 0 });
   }
 
-  const seen = new Map<number, number>();
-  for (const p of prepared) {
-    p.slot = seen.get(p.rank) ?? 0;
-    seen.set(p.rank, p.slot + 1);
-  }
+  const at = (p: PS, s: number, t: number): P2 => [p.ax + p.tx * s + p.nx * t, p.az + p.tz * s + p.nz * t];
 
-  /** Whether the point is within the carriageway of `t` (its centre line, to half its width, along its length). */
-  const inCarriage = (t: Prepared, x: number, z: number): boolean => {
-    const s = (x - t.ax) * t.tx + (z - t.az) * t.tz;
-    const c = (x - t.ax) * t.tz - (z - t.az) * t.tx;
-    return s >= -1e-6 && s <= t.length + 1e-6 && Math.abs(c) <= t.cw + 1e-6;
-  };
-
-  /** Whether the four corners of a tile of `p` lie inside what is drawn over it. */
-  const covered = (p: Prepared, layer: Layer, pts: readonly [number, number][]): boolean => {
-    if (layer === "deck" || layer === "mark" || layer === "curb") return false;
-    let lox = Infinity;
-    let hix = -Infinity;
-    let loz = Infinity;
-    let hiz = -Infinity;
-    for (const q of pts) {
-      lox = Math.min(lox, q[0]);
-      hix = Math.max(hix, q[0]);
-      loz = Math.min(loz, q[1]);
-      hiz = Math.max(hiz, q[1]);
-    }
-    for (const t of prepared) {
-      if (t === p || t.cw <= 0 || t.x1 < lox || t.x0 > hix || t.z1 < loz || t.z0 > hiz) continue;
-      // What is drawn over a carriageway: a carriageway of higher rank, or of the same rank and a later street.
-      if (layer === "asphalt" && !(t.rank > p.rank || (t.rank === p.rank && t.street.id > p.street.id))) continue;
-      if (pts.every((q) => inCarriage(t, q[0], q[1]))) return true;
-    }
-    return false;
-  };
-
-  /**
-   * The parts of a street's length (from 0 to its length) along the line at offset `t0` from its centre that lie inside
-   * another street's carriageway, grown by `margin`: where that line is crossed.
-   */
-  const crossed = (p: Prepared, t0: number, margin: number): [number, number][] => {
-    const nx = p.tz;
-    const nz = -p.tx;
-    const out: [number, number][] = [];
-    for (const q of prepared) {
-      if (q === p || q.cw <= 0 || q.x1 < p.x0 || q.x0 > p.x1 || q.z1 < p.z0 || q.z0 > p.z1) continue;
-      const rx = p.ax + nx * t0 - q.ax;
-      const rz = p.az + nz * t0 - q.az;
-      // q's frame along p's line: s_q = s0 + s1 * s, c_q = c0 + c1 * s.
-      const s0 = rx * q.tx + rz * q.tz;
-      const s1 = p.tx * q.tx + p.tz * q.tz;
-      const c0 = rx * q.tz - rz * q.tx;
-      const c1 = p.tx * q.tz - p.tz * q.tx;
-      let lo = 0;
-      let hi = p.length;
-      const across = q.cw + margin;
-      if (Math.abs(c1) < 1e-9) {
-        if (Math.abs(c0) > across) continue;
-      } else {
-        const a = (-across - c0) / c1;
-        const b = (across - c0) / c1;
-        lo = Math.max(lo, Math.min(a, b));
-        hi = Math.min(hi, Math.max(a, b));
-      }
-      if (Math.abs(s1) < 1e-9) {
-        if (s0 < -margin || s0 > q.length + margin) continue;
-      } else {
-        const a = (-margin - s0) / s1;
-        const b = (q.length + margin - s0) / s1;
-        lo = Math.max(lo, Math.min(a, b));
-        hi = Math.min(hi, Math.max(a, b));
-      }
-      if (hi > lo) out.push([lo, hi]);
-    }
-    return out;
-  };
-
-  const bed = ROAD_BED_HALF;
-  const emit = (corners: readonly [number, number][], band: Band): void => {
-    const asCorner = (q: readonly [number, number]): Corner => ({ x: q[0], z: q[1], u: q[0] - g.roadX(q[1]) });
-    const poly = corners.map(asCorner);
-    let pieces: Corner[][];
-    const us = poly.map((q) => q.u);
-    if (us.every((u) => u >= bed) || us.every((u) => u <= -bed)) pieces = [poly];
-    else if (us.every((u) => u > -bed && u < bed)) pieces = [];
-    else pieces = [clipSide(poly, 1, bed), clipSide(poly, -1, bed)];
-    for (const piece of pieces) {
-      if (piece.length < 3) continue;
-      const pts: Vec3[] = piece.map((q) => {
-        const ground = g.heightAt(q.x, q.z);
-        const y = band.layer === "deck" ? Math.max(ground + band.lift, g.deckAt(q.x, q.z)) : ground + band.lift;
-        return [q.x, y, q.z];
-      });
-      if (band.layer !== "deck" && pts.every((q) => q[1] - band.lift < SEA + 0.1)) continue;
-      const c = piece.reduce((acc, q) => ({ x: acc.x + q.x / piece.length, z: acc.z + q.z / piece.length }), { x: 0, z: 0 });
-      sink(c.x, c.z).poly(pts, UP, band.colour);
-    }
-  };
-
-  /** A flat strip of a street: from `s0` to `s1` along it and `t0` to `t1` across it, at a lift. */
-  const strip = (p: Prepared, s0: number, s1: number, t0: number, t1: number, colour: Rgb, liftOf: number, layer: Layer): void => {
-    const nx = p.tz;
-    const nz = -p.tx;
-    const at = (s: number, t: number): [number, number] => [p.ax + p.tx * s + nx * t, p.az + p.tz * s + nz * t];
-    // Cut every TILE m, so a strip follows the ground and meets the highway's bed edge as a tile does.
+  /** A flat strip of a street: from `s0` to `s1` along it and `t0` to `t1` across it, cut every `TILE` m, at one lift; a roadway's tiles are laid without the ground a roadway laid before covers. */
+  const strip = (p: PS, r: Rect, colour: Rgb, lift: number, roadway = false): void => {
+    const [s0, s1, t0, t1] = r;
     const n = Math.max(1, Math.ceil((s1 - s0) / TILE));
     for (let i = 0; i < n; i++) {
       const a = s0 + ((s1 - s0) * i) / n;
       const b = s0 + ((s1 - s0) * (i + 1)) / n;
-      emit([at(a, t0), at(b, t0), at(b, t1), at(a, t1)], { t0, t1, colour, lift: liftOf, layer });
+      const quad = [at(p, a, t0), at(p, b, t0), at(p, b, t1), at(p, a, t1)];
+      if (roadway) road.tile(quad, lift, colour);
+      else surf.flat(quad, lift, colour);
     }
   };
 
-  /** A vertical face along a street: from `s0` to `s1` at offset `t`, from height `y0` over the ground to `y1`, facing along the street's normal times `face`. */
-  const face = (p: Prepared, s0: number, s1: number, t: number, y0: number, y1: number, facing: number, colour: Rgb): void => {
-    const nx = p.tz;
-    const nz = -p.tx;
-    const ax = p.ax + p.tx * s0 + nx * t;
-    const az = p.az + p.tz * s0 + nz * t;
-    const bx = p.ax + p.tx * s1 + nx * t;
-    const bz = p.az + p.tz * s1 + nz * t;
-    // Not inside the road's bed: left off where either end is.
-    if (Math.abs(ax - g.roadX(az)) < bed + 0.3 || Math.abs(bx - g.roadX(bz)) < bed + 0.3) return;
-    const ga = g.heightAt(ax, az);
-    const gb = g.heightAt(bx, bz);
-    if (ga + y1 < SEA + 0.1 && gb + y1 < SEA + 0.1) return;
-    sink((ax + bx) / 2, (az + bz) / 2).poly([[ax, ga + y0, az], [bx, gb + y0, bz], [bx, gb + y1, bz], [ax, ga + y1, az]], [nx * facing, 0, nz * facing], colour);
-  };
+  // ---- Where each street is cut: the junctions' legs on it, and the ramps' and aprons' holes in its bands.
+  const spansOf = new Map<number, Span[]>();
+  const sideBlocked = new Map<number, [number, number][][]>();
+  const holes = new Map<number, Rect[][]>();
+  for (const p of prepared.values()) {
+    spansOf.set(p.street.id, []);
+    sideBlocked.set(p.street.id, [[], []]);
+    holes.set(p.street.id, [[], []]);
+  }
+  const sideIx = (sigma: number): number => (sigma > 0 ? 0 : 1);
+  for (const j of paved) {
+    const list: { leg: JunctionLeg; closed: boolean }[] = [...j.legs.map((leg) => ({ leg, closed: false })), ...j.closed.map((leg) => ({ leg, closed: true }))];
+    for (const p of prepared.values()) {
+      const mine = list.filter((m) => m.leg.street === p.street.id && !m.leg.engine);
+      if (mine.length === 0) continue;
+      let lo = 1e9;
+      let hi = -1e9;
+      let backCentre = -1e9;
+      let backPark = -1e9;
+      let fwdCentre = 1e9;
+      let fwdPark = 1e9;
+      const sideLo = [1e9, 1e9];
+      const sideHi = [-1e9, -1e9];
+      let hasFwd = false;
+      let hasBack = false;
+      for (const { leg: l, closed } of mine) {
+        const so = (l.x - p.ax) * p.tx + (l.z - p.az) * p.tz;
+        const fwd = l.dx * p.tx + l.dz * p.tz > 0;
+        const band = (sigma: number): number => (closed ? l.mouth : fwd === sigma > 0 ? l.bandLeft : l.bandRight);
+        if (fwd) {
+          hasFwd = true;
+          hi = Math.max(hi, so + l.mouth);
+          fwdCentre = Math.min(fwdCentre, so + l.centreEnd);
+          fwdPark = Math.min(fwdPark, so + l.mouth + l.holdBack);
+          for (const sg of [1, -1]) sideHi[sideIx(sg)] = Math.max(sideHi[sideIx(sg)] as number, so + band(sg));
+        } else {
+          hasBack = true;
+          lo = Math.min(lo, so - l.mouth);
+          backCentre = Math.max(backCentre, so - l.centreEnd);
+          backPark = Math.max(backPark, so - l.mouth - l.holdBack);
+          for (const sg of [1, -1]) sideLo[sideIx(sg)] = Math.min(sideLo[sideIx(sg)] as number, so - band(sg));
+        }
+      }
+      (spansOf.get(p.street.id) as Span[]).push({ lo: hasBack ? lo : -1e9, hi: hasFwd ? hi : 1e9, backCentre, backPark, fwdCentre, fwdPark });
+      for (const sg of [1, -1]) {
+        (sideBlocked.get(p.street.id) as [number, number][][])[sideIx(sg)]!.push([hasBack ? (sideLo[sideIx(sg)] as number) : -1e9, hasFwd ? (sideHi[sideIx(sg)] as number) : 1e9]);
+      }
+      // Each ramp of this junction on this street: a hole in the verge, sidewalk and curb.
+      for (const r of j.ramp) {
+        const l = j.legs[r.leg] as JunctionLeg;
+        if (l.street !== p.street.id) continue;
+        const so = (l.x - p.ax) * p.tx + (l.z - p.az) * p.tz;
+        const fwd = l.dx * p.tx + l.dz * p.tz > 0;
+        const sigma = fwd ? r.side : -r.side;
+        const s0 = fwd ? so + r.s0 : so - r.s1;
+        const s1 = fwd ? so + r.s1 : so - r.s0;
+        const reach = p.cw + RAMP_RUN + RAMP_LANDING;
+        (holes.get(p.street.id) as Rect[][])[sideIx(sigma)]!.push([s0, s1, sigma > 0 ? p.cw : -reach, sigma > 0 ? reach : -p.cw]);
+      }
+    }
+  }
+  // Alleys' mouths: the apron's opening in the curb, verge and sidewalk.
+  const apronsOf: { p: PS; s: number; sigma: number; width: number; depth: number }[] = [];
+  for (const j of junctions) {
+    if (j.kind !== "alley" || j.alley === null) continue;
+    const p = prepared.get(j.alley.street);
+    if (p === undefined) continue;
+    const s = (j.legs[0]!.x - p.ax) * p.tx + (j.legs[0]!.z - p.az) * p.tz;
+    const sigma = j.alley.dx * p.nx + j.alley.dz * p.nz > 0 ? 1 : -1;
+    const depth = p.verge > 0.5 ? p.verge : CURB_FACE / 0.083;
+    const half = j.alley.width / 2 + APRON_FLARE;
+    (holes.get(p.street.id) as Rect[][])[sideIx(sigma)]!.push([s - half, s + half, sigma > 0 ? p.cw : -(p.cw + depth + 0.0), sigma > 0 ? p.cw + depth : -p.cw]);
+    apronsOf.push({ p, s, sigma, width: j.alley.width, depth });
+  }
 
-  for (const p of prepared) {
+  /** The curb's gaps along a side: the ramps' and the aprons' s-ranges. */
+  const curbGaps = (p: PS, sigma: number): [number, number][] => (holes.get(p.street.id) as Rect[][])[sideIx(sigma)]!.map((h): [number, number] => [h[0], h[1]]);
+
+  // The junctions' pavements first: they keep their ground, and the roadways laid after them leave it.
+  junctionGeometry(g, surf, solid, paved, road, pavements);
+
+  // ---- The streets.
+  for (const p of prepared.values()) {
     const { street } = p;
-    const nx = p.tz;
-    const nz = -p.tx;
-    const bands: Band[] = [];
-    const flat = street.kind === "alley" ? ALLEY : ASPHALT;
-    const up = lift + ASPHALT_OVER + RANK_LIFT * p.rank + SLOT_LIFT * p.slot;
     if (street.kind === "wharf") {
-      bands.push({ t0: -p.hw, t1: 0, colour: DECK, lift, layer: "deck" }, { t0: 0, t1: p.hw, colour: DECK, lift, layer: "deck" });
-    } else {
-      bands.push({ t0: -p.cw, t1: 0, colour: flat, lift: up, layer: "asphalt" }, { t0: 0, t1: p.cw, colour: flat, lift: up, layer: "asphalt" });
-      const verge = p.hw - p.cw - p.walk;
-      if (p.walk > 0) {
-        for (const sg of [-1, 1]) {
-          bands.push({ t0: sg * (p.hw - p.walk), t1: sg * p.hw, colour: SIDEWALK, lift: lift + WALK_OVER, layer: "walk" });
-          if (verge > 0.05) bands.push({ t0: sg * p.cw, t1: sg * (p.hw - p.walk), colour: VERGE, lift, layer: "verge" });
+      for (const [t0, t1] of [[-p.hw, 0], [0, p.hw]] as const) {
+        const n = Math.max(1, Math.ceil(p.length / TILE));
+        for (let i = 0; i < n; i++) {
+          const corners = [at(p, (i / n) * p.length, t0), at(p, ((i + 1) / n) * p.length, t0), at(p, ((i + 1) / n) * p.length, t1), at(p, (i / n) * p.length, t1)];
+          const pts: Vec3[] = corners.map(([x, z]) => [x, Math.max(g.heightAt(x, z) + STREET_LIFT, g.deckAt(x, z)), z]);
+          const c = corners[0] as P2;
+          solid(c[0], c[1]).poly(pts, [0, 1, 0], DECK);
         }
       }
+      continue;
     }
-    const n = Math.max(1, Math.ceil(p.length / TILE));
-    for (let i = 0; i < n; i++) {
-      const s0 = (i / n) * p.length;
-      const s1 = ((i + 1) / n) * p.length;
-      for (const band of bands) {
-        const at = (s: number, t: number): [number, number] => [p.ax + p.tx * s + nx * t, p.az + p.tz * s + nz * t];
-        const corners: [number, number][] = [at(s0, band.t0), at(s1, band.t0), at(s1, band.t1), at(s0, band.t1)];
-        if (covered(p, band.layer, corners)) continue;
-        emit(corners, band);
-      }
+    if (street.kind === "alley") {
+      alleyGeometry(p);
+      continue;
     }
-    if (street.kind === "wharf" || street.kind === "alley") continue;
-
-    // The curb: along each edge of the roadway, cut where another roadway crosses it.
-    for (const sg of [-1, 1]) {
-      const t = sg * (p.cw + CURB_WIDTH / 2);
-      const gaps = crossed(p, t, 0.1);
-      const m = Math.max(1, Math.ceil(p.length / TILE));
-      for (let i = 0; i < m; i++) {
-        for (const [a, b] of without((i / m) * p.length, ((i + 1) / m) * p.length, gaps)) {
-          strip(p, a, b, sg * p.cw, sg * (p.cw + CURB_WIDTH), CURB, up + CURB_RISE, "curb");
-          // The face down to the roadway, looking over it (the outer side, down to the sidewalk, is left open: nobody sees it).
-          face(p, a, b, sg * p.cw, up, up + CURB_RISE, -sg, CURB);
-        }
-      }
+    const spans = spansOf.get(street.id) as Span[];
+    const blocked = spans.map((s): [number, number] => [s.lo, s.hi]);
+    const roadIntervals = without(0, p.length, blocked);
+    for (const [a, b] of roadIntervals) {
+      strip(p, [a, b, -p.cw, 0], ASPHALT, ROADWAY_LIFT, true);
+      strip(p, [a, b, 0, p.cw], ASPHALT, ROADWAY_LIFT, true);
     }
-
-    // The markings, on the roadway.
-    const paint = up + MARK_OVER;
-    const dashed = (t: number, colour: Rgb): void => {
-      const gaps = crossed(p, t, 0.6);
-      const period = CENTRE_DASH + CENTRE_GAP;
-      for (let s = (p.length % period) / 2; s < p.length; s += period) {
-        for (const [a, b] of without(s, Math.min(s + CENTRE_DASH, p.length), gaps)) strip(p, a, b, t - CENTRE_WIDTH / 2, t + CENTRE_WIDTH / 2, colour, paint, "mark");
-      }
-    };
-    const solid = (t: number, colour: Rgb, margin: number): void => {
-      for (const [a, b] of without(0, p.length, crossed(p, t, margin))) strip(p, a, b, t - LINE_WIDTH / 2, t + LINE_WIDTH / 2, colour, paint, "mark");
-    };
-    if (street.kind === "street" || street.kind === "main") dashed(0, PAINT_YELLOW);
-    if (street.kind === "avenue") {
-      // A painted median: a band of its own paint between two solid yellow lines.
-      for (const [a, b] of without(0, p.length, crossed(p, 0, 0.6))) strip(p, a, b, -MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2, MEDIAN, paint, "mark");
-      solid(-MEDIAN_WIDTH / 2, PAINT_YELLOW, 0.6);
-      solid(MEDIAN_WIDTH / 2, PAINT_YELLOW, 0.6);
-    }
-    if (street.kind === "main") {
-      for (const sg of [-1, 1]) {
-        // The parking lane's edge, and a tick across it at each stall, kept back from the corners.
-        const edge = sg * (p.cw - PARKING_LANE);
-        solid(edge, PAINT_WHITE, 2);
-        const gaps = crossed(p, sg * (p.cw - PARKING_LANE / 2), 2.5);
-        for (let s = PARKING_STALL / 2; s < p.length - 0.5; s += PARKING_STALL) {
-          for (const [a, b] of without(s, s + LINE_WIDTH, gaps)) strip(p, a, b, Math.min(edge, sg * p.cw), Math.max(edge, sg * p.cw), PAINT_WHITE, paint, "mark");
-        }
-      }
-      // A zebra crosswalk across the roadway beside each cross street's mouth, on both sides of it.
-      for (const q of prepared) {
-        if (q === p || (q.street.kind !== "street" && q.street.kind !== "avenue") || q.cw <= 0) continue;
-        // Where q's centre line crosses this street's, and the angle between them, so the crosswalk clears q's roadway.
-        const den = p.tx * q.tz - p.tz * q.tx;
-        if (Math.abs(den) < 0.5) continue;
-        const sx = ((q.ax - p.ax) * q.tz - (q.az - p.az) * q.tx) / den;
-        const qs = ((q.ax - p.ax) * p.tz - (q.az - p.az) * p.tx) / den;
-        // q must reach this street: its centre line crosses it between its ends, or ends on it.
-        if (sx < 1 || sx > p.length - 1 || qs < -0.5 || qs > q.length + 0.5) continue;
-        const half = q.cw / Math.abs(den) + ZEBRA_OFFSET;
-        for (const sgn of [-1, 1]) {
-          const s0 = sgn < 0 ? sx - half - ZEBRA_LENGTH : sx + half;
-          if (s0 < 0.5 || s0 + ZEBRA_LENGTH > p.length - 0.5) continue;
-          const lane = p.cw - 0.3;
-          for (let t = -lane + ZEBRA_BAR / 2; t < lane - ZEBRA_BAR / 2; t += ZEBRA_PITCH) {
-            if (Math.abs(t) > lane) break;
-            strip(p, s0, s0 + ZEBRA_LENGTH, t - ZEBRA_BAR / 2, t + ZEBRA_BAR / 2, PAINT_WHITE, paint, "mark");
+    const inner = p.cw + CURB_WIDTH;
+    for (const sg of [1, -1]) {
+      const sideBand = (sideBlocked.get(street.id) as [number, number][][])[sideIx(sg)] as [number, number][];
+      const hs = (holes.get(street.id) as Rect[][])[sideIx(sg)] as Rect[];
+      const lat = (u0: number, u1: number): [number, number] => (sg > 0 ? [u0, u1] : [-u1, -u0]);
+      for (const [a, b] of without(0, p.length, sideBand)) {
+        if (p.walk > 0) {
+          const [c0, c1] = lat(p.cw, inner);
+          for (const r of cut([a, b, c0, c1], hs)) strip(p, r, CURB, WALK_LIFT);
+          if (p.verge > 0) {
+            const [v0, v1] = lat(inner, inner + p.verge);
+            for (const r of cut([a, b, v0, v1], hs)) strip(p, r, VERGE, VERGE_LIFT);
+          }
+          const [w0, w1] = lat(p.hw - p.walk, p.hw);
+          const [x0, x1] = lat(Math.max(inner, p.hw - p.walk), p.hw);
+          void w0;
+          void w1;
+          for (const r of cut([a, b, x0, x1], hs)) strip(p, r, SIDEWALK, WALK_LIFT);
+          // The curb's face down to the roadway, looking over it, and the sidewalk's outer edge down to the ground.
+          for (const [fa, fb] of without(a, b, curbGaps(p, sg))) {
+            const m = Math.max(1, Math.ceil((fb - fa) / TILE));
+            for (let i = 0; i < m; i++) {
+              const s0 = fa + ((fb - fa) * i) / m;
+              const s1 = fa + ((fb - fa) * (i + 1)) / m;
+              surf.face(at(p, s0, sg * p.cw), at(p, s1, sg * p.cw), ROADWAY_LIFT, WALK_LIFT, [-sg * p.nx, -sg * p.nz], CURB);
+            }
+          }
+          const m = Math.max(1, Math.ceil((b - a) / TILE));
+          for (let i = 0; i < m; i++) {
+            const s0 = a + ((b - a) * i) / m;
+            const s1 = a + ((b - a) * (i + 1)) / m;
+            surf.face(at(p, s0, sg * p.hw), at(p, s1, sg * p.hw), SKIRT_FOOT, WALK_LIFT, [sg * p.nx, sg * p.nz], CURB);
           }
         }
       }
     }
-    // A stop bar where the street meets the highway: across the lane that runs toward it.
-    for (const end of [0, 1] as const) {
-      const ex = end === 0 ? p.ax : p.ax + p.tx * p.length;
-      const ez = end === 0 ? p.az : p.az + p.tz * p.length;
-      if (Math.abs(ex - g.roadX(ez)) > 1.5) continue;
-      const hx = g.roadX(ez + 5) - g.roadX(ez - 5);
-      const hl = Math.sqrt(100 + hx * hx);
-      const sin = Math.abs(p.tx * 10 - p.tz * hx) / hl;
-      const cos = Math.abs(p.tx * hx + p.tz * 10) / hl;
-      if (sin < 0.3) continue;
-      // Far enough back that the bar's far corner, across the roadway and along the highway's edge, is clear of the bed.
-      const back = (bed + STOP_BACK + p.cw * cos) / sin;
-      // Traffic toward the end at the street's far end keeps to its right, toward the start to the left of the street's direction.
-      const s0 = end === 1 ? p.length - back - STOP_BAR : back;
-      if (s0 < 0.5 || s0 + STOP_BAR > p.length - 0.5) continue;
-      if (end === 1) strip(p, s0, s0 + STOP_BAR, 0.1, p.cw - 0.1, PAINT_WHITE, paint, "mark");
-      else strip(p, s0, s0 + STOP_BAR, -p.cw + 0.1, -0.1, PAINT_WHITE, paint, "mark");
+    streetPaint(p, spans, roadIntervals);
+  }
+
+  // ---- Aprons: the driveway aprons across the verge, each with its flared wings.
+  for (const { p, s, sigma, width, depth } of apronsOf) {
+    const half = width / 2;
+    const f = APRON_FLARE;
+    const t0 = sigma * p.cw;
+    const t1 = sigma * (p.cw + depth);
+    const lip = ROADWAY_LIFT + APRON_LIP;
+    const pt = (ss: number, t: number, lift: number): P3 => {
+      const q = at(p, ss, t);
+      return [q[0], q[1], lift];
+    };
+    // The apron's middle, sloping from the lip at the gutter up to the sidewalk's height.
+    surf.poly([pt(s - half, t0, lip), pt(s + half, t0, lip), pt(s + half, t1, WALK_LIFT), pt(s - half, t1, WALK_LIFT)], SIDEWALK);
+    // Each wing: the flare, a triangle from the apron's edge at the gutter up to the curb's full height.
+    for (const e of [-1, 1]) {
+      surf.poly([pt(s + e * half, t0, lip), pt(s + e * (half + f), t0, WALK_LIFT), pt(s + e * half, t1, WALK_LIFT)], SIDEWALK);
+      surf.poly([pt(s + e * (half + f), t0, WALK_LIFT), pt(s + e * (half + f), t1, WALK_LIFT), pt(s + e * half, t1, WALK_LIFT)], SIDEWALK);
     }
   }
+
+  // ---- An alley: gravel, risen to the sidewalk's height where it meets a street.
+  function alleyGeometry(p: PS): void {
+    const mouths = junctions.filter((j) => j.kind === "alley" && j.legs[2]!.street === p.street.id);
+    // The alley's own two ends: the one nearer each mouth is where its gravel rises; the end carries on to the street's lot line.
+    const lifts = (s: number): number => {
+      let lift = ROADWAY_LIFT;
+      for (const m of mouths) {
+        const e = m.legs[2] as JunctionLeg;
+        const sm = (e.x - p.ax) * p.tx + (e.z - p.az) * p.tz;
+        const d = Math.abs(s - sm);
+        if (d < ALLEY_RISE) lift = Math.max(lift, WALK_LIFT - ((WALK_LIFT - ROADWAY_LIFT) * d) / ALLEY_RISE);
+      }
+      return lift;
+    };
+    // Along the alley, from its end (or the lot line it is carried out to) to its other end.
+    let a = 0;
+    let b = p.length;
+    for (const m of mouths) {
+      const e = m.legs[2] as JunctionLeg;
+      const sm = (e.x - p.ax) * p.tx + (e.z - p.az) * p.tz;
+      if (sm < p.length / 2) a = Math.min(a, sm);
+      else b = Math.max(b, sm);
+    }
+    const stations: number[] = [a];
+    const n = Math.max(1, Math.ceil((b - a) / TILE));
+    for (let i = 1; i < n; i++) stations.push(a + ((b - a) * i) / n);
+    stations.push(b);
+    for (const m of mouths) {
+      const e = m.legs[2] as JunctionLeg;
+      const sm = (e.x - p.ax) * p.tx + (e.z - p.az) * p.tz;
+      stations.push(sm + (sm < p.length / 2 ? ALLEY_RISE : -ALLEY_RISE));
+    }
+    stations.sort((x, y) => x - y);
+    for (let i = 0; i + 1 < stations.length; i++) {
+      const s0 = stations[i] as number;
+      const s1 = stations[i + 1] as number;
+      if (s1 - s0 < 1e-3) continue;
+      const y0 = lifts(s0);
+      const y1 = lifts(s1);
+      const l0 = at(p, s0, -p.cw);
+      const l1 = at(p, s1, -p.cw);
+      const r1 = at(p, s1, p.cw);
+      const r0 = at(p, s0, p.cw);
+      surf.poly([[l0[0], l0[1], y0], [l1[0], l1[1], y1], [r1[0], r1[1], y1], [r0[0], r0[1], y0]], ALLEY);
+    }
+  }
+
+  // ---- The paint along a street: the main street's centre line and parking, the avenue's median.
+  function streetPaint(p: PS, spans: readonly Span[], roadIntervals: readonly [number, number][]): void {
+    const kind = p.street.kind;
+    if (kind !== "main" && kind !== "avenue") return;
+    const lift = ROADWAY_LIFT + MARK_OVER;
+    for (const [a, b] of roadIntervals) {
+      // Where the paint may begin and end: short of the crossing at each junction end.
+      const start = spans.filter((s) => Math.abs(s.hi - a) < 1e-6);
+      const end = spans.filter((s) => Math.abs(s.lo - b) < 1e-6);
+      const ca = start.length > 0 ? Math.max(a, ...start.map((s) => s.fwdCentre)) : a;
+      const cb = end.length > 0 ? Math.min(b, ...end.map((s) => s.backCentre)) : b;
+      if (cb - ca > 0.2) {
+        if (kind === "main") {
+          // Dashes, 10 ft with 30 ft gaps, spread so they begin and end even.
+          const run = cb - ca;
+          const count = Math.max(1, Math.floor((run + CENTRE_GAP) / (CENTRE_DASH + CENTRE_GAP)));
+          const used = count * CENTRE_DASH + (count - 1) * CENTRE_GAP;
+          let s = ca + (run - used) / 2;
+          for (let k = 0; k < count; k++, s += CENTRE_DASH + CENTRE_GAP) strip(p, [Math.max(ca, s), Math.min(cb, s + CENTRE_DASH), -CENTRE_WIDTH / 2, CENTRE_WIDTH / 2], PAINT_YELLOW, lift);
+        } else {
+          // The avenue's median: a band between two solid yellow lines, ended short of the crossing.
+          strip(p, [ca, cb, -MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2], MEDIAN, lift);
+          for (const t of [-MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2]) strip(p, [ca, cb, t - LINE_WIDTH / 2, t + LINE_WIDTH / 2], PAINT_YELLOW, lift + 0.002);
+        }
+      }
+      if (kind !== "main") continue;
+      // Parking along both curbs, held back from the crossings (20 ft from a crosswalk, 30 ft from a STOP sign).
+      const pa = start.length > 0 ? Math.max(a, ...start.map((s) => s.fwdPark)) : a;
+      const pb = end.length > 0 ? Math.min(b, ...end.map((s) => s.backPark)) : b;
+      if (pb - pa < PARKING_STALL * 0.5) continue;
+      for (const sg of [1, -1]) {
+        const edge = sg * (p.cw - PARKING_LANE);
+        const lo = Math.min(edge, sg * p.cw);
+        const hi = Math.max(edge, sg * p.cw);
+        strip(p, [pa, pb, edge - LINE_WIDTH / 2, edge + LINE_WIDTH / 2], PAINT_WHITE, lift);
+        const stalls = Math.max(1, Math.round((pb - pa) / PARKING_STALL));
+        for (let k = 0; k <= stalls; k++) {
+          const s = pa + ((pb - pa) * k) / stalls;
+          strip(p, [Math.max(pa, s - LINE_WIDTH / 2), Math.min(pb, s + LINE_WIDTH / 2), lo, hi], PAINT_WHITE, lift);
+        }
+      }
+    }
+  }
+
+  // ---- Everything at the junctions.
+  junctionPaint(g, surf, junctions, pavements);
+  signGeometry(g, surf, solid, junctions, detail);
 }
