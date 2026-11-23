@@ -271,15 +271,23 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const cs = s0 + (s1 - s0) * hashN(key, runIx, i * 16 + c, 60);
         const ct = t0 + (t1 - t0) * hashN(key, runIx, i * 16 + c, 61);
         const r = (0.07 + 0.3 * hashN(key, runIx, i * 16 + c, 62) * hashN(key, runIx, i * 16 + c, 63)) * scale;
-        const n = 6;
+        // Irregular growth: seven points with swings in radius and angle (kept star-shaped, so the fan stays whole), the whole stretched along a joint-ish direction (a roll), never a regular ring.
+        const n = 7;
         const ring: P3[] = [];
+        const rot = (hashN(key, runIx, i * 16 + c, 66) - 0.5) * 0.9;
+        const stretch = 1.15 + 0.7 * hashN(key, runIx, i * 16 + c, 67);
         for (let k = 0; k < n; k++) {
-          const ang = (k / n) * Math.PI * 2;
-          const rr = r * (0.8 + 0.35 * hashN(key, runIx, i * 16 + c, 70 + k));
-          ring.push(slabPoint(f, sigma, heightAt, cs + Math.cos(ang) * rr * 1.25, Math.min(out - 0.003, ct + Math.sin(ang) * rr), WALK_TOP + 0.005));
+          const ang = ((k + 0.3 * hashN(key, runIx, i * 16 + c, 90 + k)) / n) * Math.PI * 2;
+          const rr = r * (0.72 + 0.42 * hashN(key, runIx, i * 16 + c, 70 + k));
+          const ex = Math.cos(ang) * rr * stretch;
+          const ey = Math.sin(ang) * rr;
+          const rx = ex * Math.cos(rot) - ey * Math.sin(rot);
+          const ry = ex * Math.sin(rot) + ey * Math.cos(rot);
+          ring.push(slabPoint(f, sigma, heightAt, cs + rx, Math.min(out - 0.003, ct + ry), WALK_TOP + 0.005));
         }
         const hue = hashN(key, runIx, i * 16 + c, 64);
-        const tint: Rgb = [1.1 + 0.3 * hue, 1.25 + 0.3 * hue, 0.65 + 0.1 * hue];
+        // Dull, dry moss and weed, browning at the edges of the patch's range: not a lawn-green.
+        const tint: Rgb = [0.85 + 0.3 * hue, 0.95 + 0.25 * hue, 0.55 + 0.1 * hue];
         surf.poly(ring, SIDEWALK, { layer: "moss", tint, frame: slabFrame(f, key, runIx, i * 16 + c, sigma), rank: RANK.crack });
       }
     }

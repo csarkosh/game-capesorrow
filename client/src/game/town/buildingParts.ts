@@ -19,6 +19,7 @@ import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBui
 import { pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { isClear, noteFace } from "./faceLedger.js";
 import { agingOf } from "./buildingWear.js";
+import { attachmentsGeometry } from "./buildingAttach.js";
 import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
 import type { Detail, TownGround } from "./townTypes.js";
@@ -68,6 +69,7 @@ export function partsGeometry(i: PartsIn): void {
   else if (b.roof === "flat" || i.roofKind === "flat") flatRoofParts(i, full);
   kindParts(i, full, role);
   if (full) gutters(i);
+  if (full && !dwelling) attachmentsGeometry(i);
 }
 
 function eachWall(i: PartsIn, fn: (w: WallRef, k: number) => void): void {

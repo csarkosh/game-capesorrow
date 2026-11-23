@@ -9,6 +9,7 @@ import { fenceGeometry, type PostBook } from "./fenceGeometry.js";
 import { dropGeometry, poleGeometry, wireGeometry } from "./poleGeometry.js";
 import { trailerGeometry } from "./trailerGeometry.js";
 import { vehicleGeometry } from "./vehicleGeometry.js";
+import { furnitureGeometry, litterGeometry } from "./streetGeometry.js";
 import { binGeometry, gearGeometry, mailboxGeometry } from "./yardPropGeometry.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
@@ -56,4 +57,7 @@ export function* propsGeometry(g: TownGround, sinks: PropSinks, detail: Detail, 
   for (const b of p.bins) binGeometry(g, world.solid, b, detail);
   for (const mb of p.mailboxes) mailboxGeometry(g, world.solid, mb, detail);
   for (const o of p.gear) gearGeometry(g, world.solid, o, detail);
+  for (const o of p.furniture) furnitureGeometry(g, world.solid, o, detail);
+  yield;
+  if (detail !== "low") for (const o of p.litter) litterGeometry(g, world.solid, o);
 }

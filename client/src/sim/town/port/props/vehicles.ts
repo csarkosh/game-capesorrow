@@ -26,7 +26,7 @@ import { VEHICLE_MODELS, vehicleModelFor, type VehicleModel } from "./vehicleMod
 void contextOf;
 
 /** Tags of the streams (never renumbered). */
-export const TAG = { curb: 1, lot: 2, strip: 3, harbour: 4, pole: 5, mail: 6, fence: 7, bin: 8, gear: 9, trailer: 10, dedupe: 11 } as const;
+export const TAG = { curb: 1, lot: 2, strip: 3, harbour: 4, pole: 5, mail: 6, fence: 7, bin: 8, gear: 9, trailer: 10, dedupe: 11, furn: 12, litter: 13 } as const;
 
 function weightedKind(rng: Rng, table: T.W<VehicleKind>): VehicleKind {
   return table[pickIndex(table.map((e) => e[1]), next(rng))]![0];
