@@ -304,7 +304,7 @@ export function boatsGeometry(g: TownGround, sink: Sink): void {
   for (const b of g.plan.harbour.boats) boatGeometry((x, z) => sink(x, z), { ...b, x: g.anchor.x + b.x, z: g.anchor.z + b.z });
 }
 
-/** The lights: a harbour light on a tower, a day beacon on a tripod, a light on the end of a pier. */
+/** The lights: a harbour light on a tower, a day beacon on three legs, a light on the end of a pier. */
 export function lightGeometry(g: TownGround, sink: Sink): void {
   for (const l of g.plan.harbour.lights) {
     const x = g.anchor.x + l.x;
