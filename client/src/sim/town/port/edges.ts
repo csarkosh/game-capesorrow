@@ -20,10 +20,11 @@
  * Every number here is authored: the research found no source for any share of sidewalk coverage, the length of a pour or
  * the wear of a decade. They follow how such towns look. One stream, `edges`, so a draw added here moves no other stage.
  */
-import { contains, dist, type Poly, type Vec } from "../geom.js";
+import { contains, dist, segCross, segDist, type Poly, type Vec } from "../geom.js";
 import { lotIdAt } from "../lotIndex.js";
+import { SIZING } from "./sizing.js";
 import { chance, int, next, range, type Rng } from "../rng.js";
-import type { Block, Building, District, History, Lot, Paving, SideEdge, Street, StreetEdge, TownPlan, WalkRun } from "../types.js";
+import type { Block, Building, BuildingKind, BuildingUse, District, History, Lot, Paving, SideEdge, Street, StreetEdge, TownPlan, WalkRun } from "../types.js";
 
 export type EdgeInput = {
   readonly streets: readonly Street[];
@@ -32,6 +33,8 @@ export type EdgeInput = {
   readonly buildings: readonly Building[];
   readonly history: History;
   readonly rng: Rng;
+  /** What is in each building (`business/`): where each business's door is. Without it no shop's frontage is looked at. */
+  readonly uses?: readonly BuildingUse[];
 };
 
 /** The year the town's present is taken at, for the age of a pour. */
@@ -267,6 +270,129 @@ export function planEdges(inp: EdgeInput): StreetEdge[] {
       paving.push({ s0: cuts[i] as number, s1: cuts[i + 1] as number, decade, curb, wear });
     }
     out.push({ street: st.id, sides: [sides[0] as SideEdge, sides[1] as SideEdge], paving, use, era });
+  }
+  return inp.uses === undefined ? out : addShopWalks(out, inp, platYear);
+}
+
+/**
+ * A shop's door opens onto a sidewalk, whatever the street's era. The era decided each side from the street alone; here every stretch of a
+ * grid street's side that a business or a civic front stands on (a storefront, tavern, restaurant, office, bank, hotel, lodge, depot, church,
+ * school, hospital, and the rest that have a door on the street) is given a sidewalk and a curb for at least its frontage, and on to the nearest
+ * junction or the neighbouring sidewalk run, but not further than `SHOP_WALK_REACH` metres from the frontage. The pours are the street's own
+ * (a decade after its plat, its own wear), drawn from the `edges` stream after every street's own draws so that none of those is moved.
+ */
+const FRONTS: readonly BuildingKind[] = ["storefront", "tavern", "restaurant", "office", "bank", "hotel", "lodge hall", "depot", "church", "school", "hospital", "courthouse", "customs house", "federal building", "boarding house", "gas station", "motel", "big-box store", "garage", "warehouse"];
+/** How far a shop's sidewalk runs on past its frontage toward a junction or a neighbouring run, metres. AUTHORED, NOT RESEARCHED. */
+export const SHOP_WALK_REACH = SIZING.SHOP_WALK_REACH;
+/** A front is on a street if its middle, 1.5 m out from the wall, is within this of the street's edge, metres. */
+const FRONT_REACH = 20;
+
+function addShopWalks(edges: StreetEdge[], inp: EdgeInput, platYear: (id: string | null) => number): StreetEdge[] {
+  const { streets, buildings, rng } = inp;
+  const uses = inp.uses as readonly BuildingUse[];
+  type Need = { street: number; side: 0 | 1; s0: number; s1: number };
+  const needs: Need[] = [];
+  for (const use of uses) {
+    const f = use.frame;
+    const b = buildings[use.building];
+    if (f === null || b === undefined || b.kind === "pier") continue;
+    if (use.units.length === 0 && !FRONTS.includes(b.kind)) continue;
+    if (use.units.length === 0 && b.state === "ruin") continue;
+    const mid = { x: f.origin.x + f.t.x * (f.width / 2) + f.n.x * 1.5, z: f.origin.z + f.t.z * (f.width / 2) + f.n.z * 1.5 };
+    let best: Street | null = null;
+    let bestD = FRONT_REACH;
+    for (const st of streets) {
+      if (st.kind !== "street" && st.kind !== "main" && st.kind !== "avenue") continue;
+      const d = segDist(mid, st.a, st.b) - st.width / 2;
+      if (d < bestD) {
+        bestD = d;
+        best = st;
+      }
+    }
+    if (best === null) continue;
+    const len = dist(best.a, best.b);
+    if (len < 1) continue;
+    const tx = (best.b.x - best.a.x) / len;
+    const tz = (best.b.z - best.a.z) / len;
+    const station = (p: Vec): number => (p.x - best!.a.x) * tx + (p.z - best!.a.z) * tz;
+    const side: 0 | 1 = -(mid.x - best.a.x) * tz + (mid.z - best.a.z) * tx >= 0 ? 0 : 1;
+    const sa = station(f.origin);
+    const sb = station({ x: f.origin.x + f.t.x * f.width, z: f.origin.z + f.t.z * f.width });
+    // A front that stands past the street's end is served by its last few metres.
+    let s0 = Math.max(0, Math.min(sa, sb));
+    const s1 = Math.min(len, Math.max(sa, sb));
+    if (s1 - s0 < 4) s0 = Math.max(0, s1 - 4);
+    needs.push({ street: best.id, side, s0, s1 });
+  }
+  const out = edges.slice();
+  for (const street of streets) {
+    if (street.kind !== "street" && street.kind !== "main" && street.kind !== "avenue") continue;
+    const mine = needs.filter((n) => n.street === street.id);
+    if (mine.length === 0) continue;
+    const at = out.findIndex((e) => e.street === street.id);
+    if (at < 0) continue;
+    const edge = out[at] as StreetEdge;
+    const len = dist(street.a, street.b);
+    // The stations where another street crosses this one: a sidewalk runs on to the nearest.
+    const junctions: number[] = [0, len];
+    for (const o of streets) {
+      if (o.id === street.id || o.kind === "alley" || o.kind === "rail" || o.kind === "wharf") continue;
+      const x = segCross(street.a, street.b, o.a, o.b);
+      if (x) junctions.push(x.t * len);
+    }
+    const sides: SideEdge[] = [edge.sides[0], edge.sides[1]];
+    for (const k of [0, 1] as const) {
+      const want = mine.filter((n) => n.side === k).sort((p, q) => p.s0 - q.s0);
+      if (want.length === 0) continue;
+      // Merge fronts that stand close along the street (under a lot's width apart), then run each on to a junction or the next run.
+      const merged: [number, number][] = [];
+      for (const n of want) {
+        const last = merged[merged.length - 1];
+        if (last !== undefined && n.s0 - last[1] < 10) last[1] = Math.max(last[1], n.s1);
+        else merged.push([n.s0, n.s1]);
+      }
+      const side = sides[k] as SideEdge;
+      let runs = side.runs.slice();
+      const least = Math.floor(platYear(street.plat) / 10) * 10 + 10;
+      for (const [m0, m1] of merged) {
+        let a = m0;
+        let b = m1;
+        const down = junctions.filter((j) => j <= a + 1e-6 && a - j <= SHOP_WALK_REACH);
+        const up = junctions.filter((j) => j >= b - 1e-6 && j - b <= SHOP_WALK_REACH);
+        for (const r of runs) {
+          if (r.s1 <= a + 1e-6 && a - r.s1 <= SHOP_WALK_REACH) down.push(r.s1);
+          if (r.s0 >= b - 1e-6 && r.s0 - b <= SHOP_WALK_REACH) up.push(r.s0);
+        }
+        if (down.length > 0) a = Math.max(...down);
+        if (up.length > 0) b = Math.min(...up);
+        // What of [a, b] has no run yet.
+        let free: [number, number][] = [[a, b]];
+        for (const r of runs) {
+          const next: [number, number][] = [];
+          for (const [f0, f1] of free) {
+            if (r.s1 <= f0 || r.s0 >= f1) next.push([f0, f1]);
+            else {
+              if (r.s0 > f0) next.push([f0, r.s0]);
+              if (r.s1 < f1) next.push([r.s1, f1]);
+            }
+          }
+          free = next;
+        }
+        for (const [f0, f1] of free) {
+          if (f1 - f0 < 0.5) continue;
+          const decade = decadeFrom(rng, least);
+          const base = edge.era === "core" ? 0.04 : edge.era === "old" ? 0.2 : 0.1;
+          runs.push({ s0: f0, s1: f1, decade, wear: Math.min(1, Math.max(0, base + (NOW - decade) / 280 + range(rng, -0.08, 0.2))) });
+        }
+      }
+      runs = runs.sort((p, q) => p.s0 - q.s0);
+      const inner = street.roadway / 2 + 0.18;
+      sides[k] = { walk: street.walk, curb: true, runs, verge: Math.max(0, street.width / 2 - street.walk - inner), ditch: false };
+    }
+    // A curb where there was none: the roadway's paving shows it.
+    const anyCurb = sides.some((s) => s.curb);
+    const paving: Paving[] = edge.paving.map((p) => (anyCurb && p.curb === 0 ? { ...p, curb: Math.max(CURB_LEAST, CURB_REBUILT - CURB_OVERLAY) } : p));
+    out[at] = { ...edge, sides: [sides[0] as SideEdge, sides[1] as SideEdge], paving };
   }
   return out;
 }
