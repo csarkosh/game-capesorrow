@@ -15,7 +15,7 @@
 import { COVE_Z, roadCenterX, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { fbm2d } from "@csarkosh/engine/sim/field";
-import { COVER_FADE, COVER_HOLD, coverD } from "./cover.js";
+import { COVER_FADE, COVER_HOLD, COVER_OUT_FADE, COVER_OUT_HOLD, COVER_SPUR_FADE, COVER_SPUR_HOLD, coverD } from "./cover.js";
 import { QUAY_BANK, fillWindowD, smootherstepD, type FillArea } from "./fill.js";
 import { QUAY_HEIGHT } from "./levels.js";
 import { planFor } from "./planFor.js";
@@ -79,9 +79,9 @@ export const QUAY_JOIN = 8;
  * level), rising over the next `QUAY_RAMP`; none within `RELIEF_HIGHWAY_FROM` metres of the highway, rising to all of it by
  * `RELIEF_HIGHWAY_TO`; none within `RELIEF_SHORE_FROM` metres of the water's edge, all of it by `RELIEF_SHORE_TO`.
  */
-export const RELIEF_FLATS = 0.12;
-export const RELIEF_HILL = 0.2;
-export const RELIEF_LIMIT = 1.2;
+export const RELIEF_FLATS = 0.2;
+export const RELIEF_HILL = 0.3;
+export const RELIEF_LIMIT = 2;
 export const RELIEF_HILL_FROM = 0;
 export const RELIEF_HILL_TO = 80;
 export const OWN_FLATS = 3.0;
@@ -138,7 +138,7 @@ function footD(y: number): { v: number; d: number } {
 
 /** What the made ground declares of itself for the level id: every constant that shapes it. */
 export const GROUND_TUNABLES: Readonly<Record<string, number>> = {
-  TOWN_GROUND: 4,
+  TOWN_GROUND: 6,
   QUAY,
   EDGE,
   TOWN_Z_HALF,
@@ -154,6 +154,10 @@ export const GROUND_TUNABLES: Readonly<Record<string, number>> = {
   QUAY_BANK,
   COVER_HOLD,
   COVER_FADE,
+  COVER_OUT_HOLD,
+  COVER_OUT_FADE,
+  COVER_SPUR_HOLD,
+  COVER_SPUR_FADE,
   RELIEF_FLATS,
   RELIEF_HILL,
   RELIEF_LIMIT,
@@ -304,7 +308,7 @@ export function townGroundD(seed: number, x: number, z: number, u: number, uDz: 
   const site = ctx.site;
   const xf = x - site.anchor.x;
   const zr = z - COVE_Z;
-  const cov = coverD(ctx.plan, xf, zr);
+  const cov = coverD(ctx.plan, xf, zr, false);
   // The plan's fill matters only near it: a point beyond its box is not asked.
   const areas = fill ?? (xf < ctx.fillBox.x0 || xf > ctx.fillBox.x1 || zr < ctx.fillBox.z0 || zr > ctx.fillBox.z1 ? NO_FILL : ctx.plan.fill);
   if (cov.v === 0 && areas.length === 0) return base;

@@ -21,6 +21,8 @@ import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
 import { deckGeometryAll, railGeometry, wharfGeometry } from "./pileGeometry.js";
 import { quayGeometry } from "./quayGeometry.js";
 import { roadGeometry } from "./roadGeometry.js";
+import { spurGeometry } from "./spurGeometry.js";
+import { stairGeometry } from "./stairGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import type { Detail, TownGround } from "./townTypes.js";
 
@@ -40,7 +42,7 @@ export type TownBatch = {
 export function townGround(worldSeed: number): TownGround {
   const plan = planFor(worldSeed);
   const { anchor } = siteFor(worldSeed);
-  const base = { plan, anchor, heightAt: (x: number, z: number) => elevationSampleAt(worldSeed, x, z).h, roadX: (z: number) => roadCenterX(worldSeed, z) };
+  const base = { seed: worldSeed, plan, anchor, heightAt: (x: number, z: number) => elevationSampleAt(worldSeed, x, z).h, roadX: (z: number) => roadCenterX(worldSeed, z) };
   return { ...base, deckAt: (x, z) => deckTopAt(worldSeed, x, z) ?? -Infinity, rails: townDecks(worldSeed).rails };
 }
 
@@ -61,6 +63,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   const sinks = { flat: (x: number, z: number) => cell(x, z).flat, solid: (x: number, z: number) => cell(x, z).solid };
 
   streetGeometry(g, sinks.flat);
+  stairGeometry(g, sinks.solid);
   endsGeometry(g, sinks.flat, sinks.solid);
   groundGeometry(g, sinks.flat);
   roadGeometry(g, sinks.flat, sinks.solid);
@@ -69,6 +72,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   for (const street of g.plan.streets) if (street.kind === "wharf") wharfGeometry(g, street, sinks.solid);
   deckGeometryAll(g, sinks.solid);
   railGeometry(g, sinks.solid);
+  spurGeometry(g, sinks.solid, detail);
   yield;
   boatsGeometry(g, sinks.solid);
   pilingGeometry(g, sinks.solid);

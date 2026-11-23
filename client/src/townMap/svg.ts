@@ -6,6 +6,10 @@
  */
 import type { Building, BuildingKind, District, Street, StreetKind, TownPlan } from "../sim/town/types.js";
 import type { TownSite } from "../sim/town/site.js";
+import { LAND_SLOPE, landOf } from "../sim/town/land.js";
+import { bayOf } from "../sim/town/blend.js";
+import { RAIL_CORRIDOR_HALF, RAIL_OFFSET } from "../sim/town/rail.js";
+import { polesIn } from "../sim/town/powerLine.js";
 
 export type SvgOptions = {
   /** The drawing's width in pixels (its height follows). */
@@ -18,7 +22,16 @@ export type SvgOptions = {
   readonly furniture?: boolean;
   /** Draw the plan's frame only (no outer margin), for thumbnails. */
   readonly bare?: boolean;
+  /** Pad the drawing to a square, the town centred in it (for a viewer that crops a tall picture). */
+  readonly square?: boolean;
+  /** The world's seed: with it the power line's poles are drawn. */
+  readonly seed?: number;
+  /** Shade the land under the town: the buildable ground, and the steep (default: shaded). */
+  readonly land?: boolean;
 };
+
+/** How the land is shaded: buildable ground, ground that is gentle but held out (the highway, the rail's corridor, a headland, too low), steep ground, and very steep ground. */
+export const LAND_SHADE = { buildable: "#2f6a3a", held: "#5a5a2a", steep: "#5a3a26", cliff: "#3a2018" } as const;
 
 export const DISTRICT_FILL: Record<District, string> = {
   core: "#c9a45a",
@@ -30,6 +43,7 @@ export const DISTRICT_FILL: Record<District, string> = {
   "highway strip": "#a04f78",
   civic: "#4f75c0",
   industrial: "#77797c",
+  outskirts: "#7a8a52",
 };
 
 export const STREET_STROKE: Record<StreetKind, string> = {
@@ -40,6 +54,7 @@ export const STREET_STROKE: Record<StreetKind, string> = {
   alley: "#33373a",
   wharf: "#7a6240",
   rail: "#bdbdbd",
+  stair: "#f0e8c8",
 };
 
 const KIND_FILL: Partial<Record<BuildingKind, string>> & { default: string } = {
@@ -61,6 +76,9 @@ const KIND_FILL: Partial<Record<BuildingKind, string>> & { default: string } = {
   "gas station": "#e07aa8",
   motel: "#d870a0",
   restaurant: "#e890b8",
+  "fire hall": "#e05050",
+  "shake mill": "#c09060",
+  junkyard: "#8a8078",
   "big-box store": "#c05088",
   church: "#f4f4f4",
   school: "#78a8f0",
@@ -106,7 +124,19 @@ export function footprint(b: Building): { x: number; z: number }[] {
 /** Everything of the plan's extent worth drawing: the plan's bounds, padded, and the whole shoreline within them. */
 function view(plan: TownPlan, site: TownSite): { x0: number; z0: number; x1: number; z1: number } {
   const pad = 90;
-  const b = plan.bounds;
+  // The town's own extent: its blocks and the water side of the quay (the highway runs the whole site and is not part of it).
+  const pts = [...plan.blocks.flatMap((bl) => bl.polygon), ...plan.fill.flatMap((fl) => fl.polygon), ...plan.woods.flatMap((w) => w.polygon), plan.quay.a, plan.quay.b];
+  let bx0 = Infinity;
+  let bz0 = Infinity;
+  let bx1 = -Infinity;
+  let bz1 = -Infinity;
+  for (const p of pts) {
+    bx0 = Math.min(bx0, p.x);
+    bz0 = Math.min(bz0, p.z);
+    bx1 = Math.max(bx1, p.x);
+    bz1 = Math.max(bz1, p.z);
+  }
+  const b = { x0: bx0, z0: bz0, x1: bx1, z1: bz1 };
   let x0 = b.x0 - pad;
   const x1 = b.x1 + pad;
   // Include some sea on the left, so that the shoreline is seen to be a shore.
@@ -175,6 +205,46 @@ function harbourSvg(plan: TownPlan, out: string[], X: (x: number) => number, Y: 
   for (const l of h.lights) out.push(`<circle cx="${X(l.x)}" cy="${Y(l.z)}" r="3" fill="${l.kind === "harbour light" ? "#ffffff" : l.kind === "day beacon" ? "#e04040" : "#ffe070"}" stroke="#101010" stroke-width="0.6"/>`);
 }
 
+/** The land's cells as runs along z, by class (buildable, held out, steep, very steep), clipped to the view. */
+function landSvg(site: TownSite, v: { x0: number; z0: number; x1: number; z1: number }, out: string[], X: (x: number) => number, Y: (z: number) => number): void {
+  const land = landOf(site);
+  const st = land.step;
+  const ix0 = Math.max(0, Math.floor((v.x0 - land.x0) / st));
+  const ix1 = Math.min(land.nx - 1, Math.ceil((v.x1 - land.x0) / st));
+  const iz0 = Math.max(0, Math.floor((v.z0 - land.z0) / st));
+  const iz1 = Math.min(land.nz - 1, Math.ceil((v.z1 - land.z0) / st));
+  const classOf = (k: number): keyof typeof LAND_SHADE | null => {
+    if ((land.h[k] as number) <= 0) return null;
+    if (land.ok[k] === 1) return "buildable";
+    const s = land.slope[k] as number;
+    if (s <= LAND_SLOPE) return "held";
+    return s <= 0.3 ? "steep" : "cliff";
+  };
+  const runs: Record<keyof typeof LAND_SHADE, string[]> = { buildable: [], held: [], steep: [], cliff: [] };
+  for (let ix = ix0; ix <= ix1; ix++) {
+    let start = -1;
+    let cls: keyof typeof LAND_SHADE | null = null;
+    const flush = (end: number): void => {
+      if (cls === null || start < 0) return;
+      const x = land.x0 + ix * st - st / 2;
+      const z0 = land.z0 + start * st - st / 2;
+      const z1 = land.z0 + end * st - st / 2;
+      runs[cls].push(`<rect x="${X(x)}" y="${Y(z1)}" width="${st}" height="${r2(z1 - z0)}"/>`);
+    };
+    for (let iz = iz0; iz <= iz1 + 1; iz++) {
+      const c = iz > iz1 ? null : classOf(ix * land.nz + iz);
+      if (c !== cls) {
+        flush(iz);
+        cls = c;
+        start = iz;
+      }
+    }
+  }
+  for (const k of ["steep", "cliff", "held", "buildable"] as const) {
+    if (runs[k].length > 0) out.push(`<g fill="${LAND_SHADE[k]}" fill-opacity="${k === "buildable" ? 0.75 : 0.85}">${runs[k].join("")}</g>`);
+  }
+}
+
 export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}): string {
   const v = view(plan, site);
   const W = v.x1 - v.x0;
@@ -186,7 +256,9 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   const pt = (p: { x: number; z: number }): string => `${X(p.x)},${Y(p.z)}`;
   const poly = (ps: readonly { x: number; z: number }[]): string => ps.map(pt).join(" ");
   const out: string[] = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" width="${px}" height="${pxH}" font-family="ui-monospace, monospace">`);
+  const M = Math.max(W, H);
+  const box = options.square ? `${f((W - M) / 2)} ${f((H - M) / 2)} ${f(M)} ${f(M)}` : `0 0 ${f(W)} ${f(H)}`;
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box}" width="${px}" height="${options.square ? px : pxH}" font-family="ui-monospace, monospace">`);
   out.push(`<title>${esc(plan.name)}</title>`);
   out.push(
     `<defs><pattern id="vacant" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="3" fill="#2a2a2e"/><line x1="0" y1="0" x2="0" y2="3" stroke="#e8c050" stroke-width="1.2"/></pattern>` +
@@ -200,6 +272,9 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   const land = [{ x: shore[0]!.x, z: v.z0 - 10 }, ...shore, { x: shore[shore.length - 1]!.x, z: v.z1 + 10 }];
   out.push(`<polygon points="${poly([...land, { x: v.x1, z: v.z1 + 10 }, { x: v.x1, z: v.z0 - 10 }])}" fill="#1c201b"/>`);
   out.push(`<polyline points="${poly(land)}" fill="none" stroke="#5fa8c8" stroke-width="2.2"/>`);
+
+  // The land's own shape under the town: where the ground can be built on, and where it climbs too steeply.
+  if (options.land !== false) landSvg(site, v, out, X, Y);
 
   // The made ground: fill the old plat stands on, drawn differently from natural land, and the quay.
   for (const f of plan.fill) out.push(`<polygon points="${poly(f.polygon)}" fill="#3a3a30" stroke="none"/>`);
@@ -219,9 +294,10 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   const order: Street[] = plan.streets.slice().sort((a, b) => b.width - a.width || a.id - b.id);
   for (const s of order) {
     const col = STREET_STROKE[s.kind];
-    if (s.kind === "rail") {
-      out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="#555" stroke-width="${s.width}"/>`);
-      out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="${col}" stroke-width="3" stroke-dasharray="9 4"/>`);
+    if (s.kind === "stair") {
+      // A flight of steps: its right of way faintly, the steps as short bars across it.
+      out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="#4a4e52" stroke-opacity="0.5" stroke-width="${s.width}"/>`);
+      out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="${col}" stroke-width="${Math.max(s.roadway, 5)}" stroke-dasharray="1.2 1.2"/>`);
       continue;
     }
     out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="${col}" stroke-width="${s.width}"/>`);
@@ -249,11 +325,47 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
     out.push(`<line x1="${X(sm.a.x)}" y1="${Y(sm.a.z)}" x2="${X(sm.b.x)}" y2="${Y(sm.b.z)}" stroke="#ff8c2a" stroke-width="3" stroke-dasharray="14 6"/>`);
   }
 
+  // The blocks the grid would have had that were left as woods: where the land would not bear them (rust), and where the budget ran out (green).
+  for (const w of plan.woods) {
+    const land = w.why === "land";
+    out.push(`<polygon points="${poly(w.polygon)}" fill="${land ? "#6a3a1a" : "#2a5a2a"}" fill-opacity="0.35" stroke="${land ? "#d08848" : "#78b878"}" stroke-width="1.2" stroke-dasharray="5 4"/>`);
+  }
+  // The railroad's main line: its corridor (kept clear of every block, lot and building), the line, and where streets cross it at grade; and the town's own spur.
+  {
+    const zs = [v.z0, v.z1];
+    const line: { x: number; z: number }[] = [];
+    for (let i = 0; i < site.roadX.length; i++) {
+      const z = site.z0 + i * site.step;
+      if (z >= zs[0]! - 20 && z <= zs[1]! + 20) line.push({ x: site.roadX[i]! - RAIL_OFFSET, z });
+    }
+    if (line.length > 1) {
+      out.push(`<polyline points="${poly(line)}" fill="none" stroke="#e0c040" stroke-opacity="0.22" stroke-width="${RAIL_CORRIDOR_HALF * 2}" stroke-linejoin="round"/>`);
+      out.push(`<polyline points="${poly(line)}" fill="none" stroke="#f0e0a0" stroke-width="2" stroke-dasharray="7 3" stroke-linejoin="round"/>`);
+    }
+    for (const sp of plan.rail.spurs) {
+      out.push(`<polyline points="${poly(sp.points)}" fill="none" stroke="#555" stroke-width="5" stroke-linejoin="round"/><polyline points="${poly(sp.points)}" fill="none" stroke="#e8e8e8" stroke-width="2.5" stroke-dasharray="8 3" stroke-linejoin="round"/>`);
+      // A trestle where it crosses open water: a timber deck under the track.
+      for (const r of sp.wet) out.push(`<polyline points="${poly(sp.points.slice(r.from, r.to + 1))}" fill="none" stroke="#a8743a" stroke-width="6" stroke-linejoin="round" stroke-opacity="0.9"/>`);
+      // The turnout where it leaves the main line: a ring at its first point.
+      const t = sp.points[0]!;
+      out.push(`<circle cx="${X(t.x)}" cy="${Y(t.z)}" r="7" fill="none" stroke="#ffffff" stroke-width="1.6"/>`);
+    }
+    // The power line: a pole every 45 m or so beside the highway.
+    if (options.seed !== undefined) for (const pl of polesIn(options.seed, v.z0 - 20, v.z1 + 20)) out.push(`<circle cx="${X(pl.x - site.anchor.x)}" cy="${Y(pl.z - site.anchor.z)}" r="1.6" fill="#c8b090" stroke="#201408" stroke-width="0.4"/>`);
+    for (const c of plan.rail.crossings) out.push(`<rect x="${X(c.x) - 4}" y="${Y(c.z) - 4}" width="8" height="8" fill="#ff9a30" stroke="#201000" stroke-width="0.8"/>`);
+  }
+
   // Buildings.
   for (const b of plan.buildings) {
     const fill = b.state === "vacant" ? "url(#vacant)" : b.state === "ruin" ? "url(#ruin)" : buildingFill(b.kind);
     const stroke = b.state === "ruin" ? "#d04040" : b.state === "vacant" ? "#e8c050" : "#101010";
     out.push(`<polygon points="${poly(footprint(b))}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
+  }
+
+  // The thinning edge: a ring about each outlying building.
+  for (const o of plan.outskirts) {
+    const b = plan.buildings[o.building]!;
+    out.push(`<circle cx="${X(b.centre.x)}" cy="${Y(b.centre.z)}" r="${Math.max(b.halfAlong, b.halfAcross) + 5}" fill="none" stroke="#ffd24a" stroke-width="1.2"/>`);
   }
 
   // The harbour: floats and gangways, the pond, pilings, the yard, boats by kind and state, the barge, the lights.
@@ -309,21 +421,25 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
 }
 
 /** The towns of a contact sheet: each a thumbnail with its name, what it was founded for and its bearings under it. */
-export function sheetCaption(plan: TownPlan): string[] {
+export function sheetCaption(plan: TownPlan, site?: TownSite, worldSeed?: number): string[] {
   const h = plan.history;
+  const stairs = plan.streets.filter((st) => st.kind === "stair").length;
+  const land = site === undefined ? "" : `, ${landOf(site).hectares.toFixed(0)} ha buildable`;
+  const bay = worldSeed === undefined ? "" : `bay ends ${Math.round(bayOf(worldSeed).end)} m inland`;
   const seam = plan.seams[0];
   return [
     `${plan.name} (seed ${plan.seed})`,
     `founded: ${h.founding.purpose} ${h.founding.year}`,
     `old grid ${plan.plats[0]!.bearing.deg}deg (${h.firstPlat.basis}), company grid 0deg${seam ? `, seam ${Math.round(seam.angle)}deg` : ""}`,
     `${h.fire ? `fire ${h.fire.year}` : "no fire"}, ${h.railroad ? "rail" : "no rail"}, mill ${h.mill.fate}${h.countySeat.isSeat ? ", county seat" : ""}`,
-    `${plan.counts.blocks} blocks, ${plan.counts.buildings} buildings`,
+    `${bay}${land}`,
+    `${plan.counts.blocks} blocks, ${stairs} stairs, ${plan.counts.outskirts} outlying, ${plan.counts.buildings} buildings`,
   ];
 }
 
 /** One SVG with several towns side by side, `columns` to a row. */
-export function sheetSvg(entries: readonly { plan: TownPlan; site: TownSite }[], columns: number, cell = 560): string {
-  const capH = 96;
+export function sheetSvg(entries: readonly { plan: TownPlan; site: TownSite; seed?: number }[], columns: number, cell = 560): string {
+  const capH = 112;
   const rows = Math.ceil(entries.length / columns);
   const cellH = Math.round(cell * 1.25) + capH;
   const W = columns * cell;
@@ -341,7 +457,7 @@ export function sheetSvg(entries: readonly { plan: TownPlan; site: TownSite }[],
       .replace(/^<svg /, `<svg x="${cx + 6}" y="${cy + 6}" preserveAspectRatio="xMidYMid meet" `)
       .replace(/ width="\d+" height="\d+"/, ` width="${boxW}" height="${boxH}"`);
     out.push(inner);
-    const cap = sheetCaption(e.plan);
+    const cap = sheetCaption(e.plan, e.site, e.seed);
     cap.forEach((line, i) => {
       out.push(`<text x="${cx + 10}" y="${cy + cellH - capH + 16 + i * 16}" font-size="${i === 0 ? 14 : 11}" fill="${i === 0 ? "#eaf1f1" : "#aab8b8"}" font-weight="${i === 0 ? 700 : 400}">${esc(line)}</text>`);
     });

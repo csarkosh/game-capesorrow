@@ -14,7 +14,10 @@ import type { TownSite } from "../sim/town/site.js";
 import { realSite } from "./realSite.js";
 import { syntheticSite } from "./syntheticSite.js";
 import { harbourSummary } from "../sim/town/port/harbour.js";
-import { BOAT_FILL, DISTRICT_FILL, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
+import { blockBudget } from "../sim/town/port/growth.js";
+import { bayOf } from "../sim/town/blend.js";
+import { landOf } from "../sim/town/land.js";
+import { BOAT_FILL, DISTRICT_FILL, LAND_SHADE, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
 
 const STYLE = `
   body { font-family: ui-monospace, monospace; }
@@ -174,6 +177,19 @@ function legend(): HTMLElement {
   swatch("#6aa4de", "the terminal's yard (barge grey)");
   swatch("#ffffff", "harbour light (beacon red, pier light yellow)");
   swatch("#3affa0", "spawn and its facing");
+  swatch(LAND_SHADE.buildable, "land: buildable (gentle, land, off the corridors)");
+  swatch(LAND_SHADE.held, "land: gentle but held out (the highway, the rail corridor, a headland, the tideflat)");
+  swatch(LAND_SHADE.steep, "land: steeper than 14 percent");
+  swatch(LAND_SHADE.cliff, "land: steeper than 30 percent");
+  swatch("#d08848", "a block left as woods: the land said no");
+  swatch("#78b878", "a block left as woods: the budget ran out");
+  swatch("#e0c040", "the railroad's main line and its corridor");
+  swatch("#e8e8e8", "the town's spur (a ring at its turnout)");
+  swatch("#a8743a", "a spur trestle over open water");
+  swatch("#c8b090", "a pole of the power line");
+  swatch("#ff9a30", "a street crossing the main line");
+  swatch("#f0e8c8", "a public stair");
+  swatch("#ffd24a", "an outlying building (a ring about it)");
   swatch("#7d8084", "a road out, paved");
   swatch("#b09a68", "a road out, gravel");
   swatch("#8a5c34", "a road out, two wheel tracks");
@@ -191,7 +207,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
   const ms = performance.now() - t0;
   root.replaceChildren();
   const map = el("div", { class: "map" });
-  map.innerHTML = planSvg(plan, site, { width: 1600, lots: opts.lots, labels: opts.labels ? "all" : "fbi" });
+  map.innerHTML = planSvg(plan, site, { width: 1600, lots: opts.lots, labels: opts.labels ? "all" : "fbi", ...(params().get("site") === "synthetic" ? {} : { seed }) });
   const aside = el("aside");
 
   const input = el("input", { type: "number", value: String(seed) });
@@ -234,7 +250,11 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
     ["made ground", `${plan.fill.length} fill pieces behind a ${Math.round(Math.sqrt((plan.quay.b.x - plan.quay.a.x) ** 2 + (plan.quay.b.z - plan.quay.a.z) ** 2))} m quay`],
     ["company grid", "0 deg (the compass)"],
     ["seam", seam ? `${Math.round(seam.angle)} deg` : "none"],
-    ["blocks", `${plan.counts.blocks} (the old plat ${plan.plats[0]!.columns} x ${plan.plats[0]!.rows})`],
+    ["the bay", `the climb ends ${Math.round(bayOf(seed).end)} m inland, over ${Math.round(2 * bayOf(seed).half)} m of coast centred ${Math.round(bayOf(seed).centre)} m ${bayOf(seed).centre >= 0 ? "north" : "south"} of the cove; ${landOf(site).hectares.toFixed(1)} ha buildable`],
+    ["blocks", `${plan.counts.blocks} (the old plat ${plan.plats[0]!.columns} x ${plan.plats[0]!.rows}; the history's budget ${blockBudget(h)}), ${plan.woods.length} places left as woods`],
+    ["stairs", String(plan.streets.filter((st) => st.kind === "stair").length)],
+    ["railroad", `${plan.rail.crossings.length} crossings of the main line; ${plan.rail.spurs.length === 0 ? "no spur" : `a spur of ${plan.rail.spurs[0]!.points.length} points, least radius ${Math.round(plan.rail.spurs[0]!.radius)} m`}`],
+    ["outlying", `${plan.counts.outskirts} buildings past the last blocks`],
     ["lots", String(plan.counts.lots)],
     ["buildings", `${plan.counts.buildings}: ${plan.counts.open} open, ${plan.counts.vacant} vacant, ${plan.counts.ruin} ruin`],
     ["streets", `${plan.counts.streets}, ${plan.ends.length} made ends`],
@@ -276,7 +296,7 @@ function showSheet(root: HTMLElement, count: number, from: number): void {
   for (let i = 0; i < count; i++) {
     const seed = from + i;
     const { plan, site } = makePlan(seed);
-    const cap = sheetCaption(plan);
+    const cap = sheetCaption(plan, site, params().get("site") === "synthetic" ? undefined : seed);
     const a = el("a", { href: `?seed=${seed}` });
     a.innerHTML = planSvg(plan, site, { width: 480, labels: "fbi", furniture: false, bare: true });
     a.querySelector("svg")?.removeAttribute("height");

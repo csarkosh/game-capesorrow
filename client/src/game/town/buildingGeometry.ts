@@ -57,6 +57,9 @@ const PROFILE: Record<BuildingKind, Profile> = {
   silo: "industrial",
   garage: "industrial",
   restaurant: "shop",
+  "fire hall": "industrial",
+  "shake mill": "industrial",
+  junkyard: "industrial",
   pier: "industrial",
 };
 

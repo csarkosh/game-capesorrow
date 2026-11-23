@@ -8,17 +8,18 @@
  * Everything here is the simulation's arithmetic: the shore is found by a scan and then a fixed
  * number of bisection steps, so every machine finds the same bits.
  */
-import { SEA_LEVEL, COVE_Z, coastGround, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { SEA_LEVEL, COVE_Z, coastGround, roadCenterX, roadGradeAt } from "@csarkosh/engine/sim/olympic";
+import { whileReadingSite } from "./reading.js";
 import type { GroundGrid, TownSite } from "./site.js";
 
 /** The spacing of the site's samples along z, metres. */
 export const SITE_STEP = 16;
 /** How far the samples reach south and north of the anchor, metres. */
-export const SITE_HALF = 512;
+export const SITE_HALF = 1008;
 /** The number of samples: one at the anchor and one each step either side of it. */
 export const SITE_SAMPLES = (2 * SITE_HALF) / SITE_STEP + 1;
 /** How far inland of the highway the made ground reaches, metres. */
-export const SITE_INLAND = 320;
+export const SITE_INLAND = 480;
 /** The grid of the coast's own heights roads are routed over: its spacing, and how far it reaches seaward, inland of the highway and along the shore either way of the anchor, metres. */
 export const GROUND_STEP = 8;
 export const GROUND_SEA = 340;
@@ -78,17 +79,23 @@ function readGround(worldSeed: number, anchor: { x: number; z: number }): Ground
 
 /** The town's site for a world's seed, read off the coast now: what `siteFor` caches. */
 export function readSite(worldSeed: number): TownSite {
+  return whileReadingSite(() => readSiteNow(worldSeed));
+}
+
+function readSiteNow(worldSeed: number): TownSite {
   const anchor = { x: roadCenterX(worldSeed, COVE_Z), z: COVE_Z };
   const z0 = -SITE_HALF;
   const shoreX: number[] = [];
   const roadX: number[] = [];
+  const grade: number[] = [];
   for (let i = 0; i < SITE_SAMPLES; i++) {
     const z = anchor.z + z0 + i * SITE_STEP;
     const road = roadCenterX(worldSeed, z);
     roadX.push(road - anchor.x);
+    grade.push(roadGradeAt(worldSeed, z).h);
     shoreX.push(shoreAt(worldSeed, road, z) - anchor.x);
   }
-  return { seed: townSeedOf(worldSeed), anchor, step: SITE_STEP, z0, shoreX, roadX, inland: SITE_INLAND, ground: readGround(worldSeed, anchor) };
+  return { seed: townSeedOf(worldSeed), anchor, step: SITE_STEP, z0, shoreX, roadX, grade, inland: SITE_INLAND, ground: readGround(worldSeed, anchor) };
 }
 
 const SITES = new Map<number, TownSite>();

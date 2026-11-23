@@ -42,21 +42,56 @@ import {
 } from "../geom.js";
 import { ordinal, type TownNames } from "../names.js";
 import { chance, int, pick, range, type Rng } from "../rng.js";
+import { groundUnder, gradedHeight, landOf, buildableAt, LAND_FIT, type Land } from "../land.js";
+import { RAIL_CORRIDOR_HALF, RAIL_OFFSET } from "../rail.js";
+import { RAIL_BENCH_HALF, bankWidthD } from "../railBank.js";
+import { QUAY_HEIGHT } from "../levels.js";
 import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
 import { ALLEY_WIDTH, wayOf } from "../ways.js";
 import { pruneStreets } from "./ends.js";
-import type { Block, District, History, Plat, Quay, Seam, Street, StreetKind } from "../types.js";
+import { densify, relaxed, roundedPath, leastRadius, SPUR_MIN_RADIUS } from "./spur.js";
+import { splitAtStairs } from "./stairs.js";
+import { GROW_MAX_SLOPE, GROW_MIN_SHARE, blockBudget, eligible, grow, neighbours, type GrowCell } from "./growth.js";
+import type { Block, District, History, Plat, Quay, Seam, Spur, Street, StreetKind, Woods } from "../types.js";
 
 const FT = 0.3048;
 export const HIGHWAY_WIDTH = 24;
 const RAIL_WIDTH = 8;
-/** The made ground reaches this far north and south of the anchor at most (the terrain's footprint is 480 m). */
+/** The old plat's quay stands within this far north and south of the anchor (the made ground's footprint is 480 m). */
 const Z_HALF_MAX = 480;
+/** The compass plat is laid over the land this far north and south of the anchor, and the town takes only the blocks the land and the budget allow. */
+const Z_REACH = 600;
+/** Blocks keep this far clear of the highway's centre line on its seaward side: the rail's offset and half its corridor, and 3 m of margin. */
+/** The spur leaves the main line where it stands no higher than this over the sea, metres. */
+const JUNCTION_HEIGHT = 4.5;
+/** The spur's points are at most this far apart, metres. */
+const SPUR_POINT_STEP = 8;
+/** ... and where the main line stands higher than this at both ends within 800 m of the town (it climbs a headland there), the town has no spur: a train cannot come down to the shore strip. */
+const JUNCTION_HEIGHT_MAX = 10;
+const RAIL_CLEAR = RAIL_OFFSET + RAIL_CORRIDOR_HALF + 3;
+
+/**
+ * How far from the highway's centre line, seaward, blocks keep clear at a z: the main line's bench and the bank the ground makes down to the town's
+ * (`railBank.ts`; the bank's width grows with how far the grade line stands over the made ground at the line, which the plane makes `QUAY_HEIGHT`
+ * at the water and the grade line at the highway), and 1.5 m more; never under `RAIL_CLEAR`.
+ */
+export function railClear(site: TownSite, z: number): number {
+  if (site.grade === undefined) return RAIL_CLEAR;
+  const f = Math.max(0, Math.min(site.grade.length - 1, (z - site.z0) / site.step));
+  const i = Math.min(site.grade.length - 2, Math.floor(f));
+  const g = (site.grade[i] as number) + ((site.grade[i + 1] as number) - (site.grade[i] as number)) * (f - i);
+  const d = roadAt(site, z) - shoreAt(site, z);
+  if (!(d > 20)) return RAIL_CLEAR;
+  const m = ((g - QUAY_HEIGHT) * RAIL_OFFSET) / d;
+  return Math.max(RAIL_CLEAR, RAIL_OFFSET + RAIL_BENCH_HALF + bankWidthD(m < 0 ? -m : m).v + 1.5);
+}
+/** A street cut back from the railroad's corridor is dropped if under this long, metres. */
+const LEAST_STREET = 8;
 const MIN_BLOCK_AREA = 900;
 const MIN_BLOCK_WIDTH = 16;
 /** The rail's corridor on the quay, seaward of the old plat's quay street. */
-const RAIL_CORRIDOR = 8;
+const RAIL_CORRIDOR = 6;
 
 /** What a block is, in its plat's own grid; the lot and building stages read it. */
 export type BlockMeta = {
@@ -115,6 +150,10 @@ export type Layout = {
   fill: { polygon: Poly }[];
   quay: Quay;
   pierSpots: PierSpot[];
+  /** The town's own track, from the main line along the waterfront (none where the history has no railroad). */
+  spurs: Spur[];
+  /** The grid's blocks near the town that the land or the budget left as woods. */
+  woods: Woods[];
   coreCentre: Vec;
   millCentre: Vec;
   terminalCentre: Vec;
@@ -218,7 +257,11 @@ function aroundHighway(site: TownSite, poly: Poly): { poly: Poly; east: boolean 
     dev = Math.max(dev, Math.abs(site.roadX[i]! - chord));
   }
   const m = HIGHWAY_WIDTH / 2 + dev + 3;
-  if (bb.x1 < Math.min(xlo, xhi) - m) return [{ poly, east: false }];
+  // On the seaward side the main line's corridor lies between the blocks and the highway: they keep clear of it too.
+  let clear = RAIL_CLEAR;
+  for (let z = zlo; z <= zhi + 8; z += 16) clear = Math.max(clear, railClear(site, Math.min(z, zhi)));
+  const mW = clear + dev;
+  if (bb.x1 < Math.min(xlo, xhi) - mW) return [{ poly, east: false }];
   if (bb.x0 > Math.max(xlo, xhi) + m) return [{ poly, east: true }];
   let nx = 1;
   let nz = 0;
@@ -231,7 +274,7 @@ function aroundHighway(site: TownSite, poly: Poly): { poly: Poly; east: boolean 
   const n = { x: nx, z: nz };
   const d0 = xlo * nx + zlo * nz;
   const out: { poly: Poly; east: boolean }[] = [];
-  const west = clipHalfPlane(poly, { x: -nx, z: -nz }, -(d0 - m));
+  const west = clipHalfPlane(poly, { x: -nx, z: -nz }, -(d0 - mW));
   if (west.length >= 3) out.push({ poly: west, east: false });
   const east = clipHalfPlane(poly, n, d0 + m);
   if (east.length >= 3) out.push({ poly: east, east: true });
@@ -361,18 +404,44 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     return m;
   };
   const FILL_LIMIT = 100;
-  /** The most columns (down to four) whose quay, with the plat's seaward edge at `oV`, stays within the made ground's reach and under the fill limit. */
+  const MIN_FILL = 12;
+  const land: Land = landOf(site);
+  /** How much buildable land lies behind a window's quay, in 12 m cells over its three rows: the best landing is where there is most flat ground behind it. */
+  const windowLand = (us: number, c: number, oV: number): number => {
+    let n = 0;
+    for (let u = us + 6; u < us + c * pU; u += 12) {
+      for (let v = oV + 6; v < oV + 3 * pV; v += 12) {
+        const p = toWorld(prov, u, v);
+        if (buildableAt(land, p.x, p.z)) n++;
+      }
+    }
+    return n;
+  };
+  /**
+   * The most columns (down to four) whose quay, with the plat's seaward edge at `oV`, stays within the made ground's reach and under the fill limit;
+   * of the places along the cove such a window can stand, the one with the most buildable land behind it (a window set off the cove's middle costs three cells a column).
+   */
   const bestWindow = (oV: number): { C: number; us: number; depth: number; found: boolean } => {
     let best = { C: 4, us: coveL.u - 2 * pU, depth: Infinity, found: false };
     for (let c = C0; c >= 4; c--) {
+      let pick: { C: number; us: number; depth: number; found: boolean } | null = null;
+      let pickScore = -Infinity;
       for (const k of [0, 0.5, -0.5, 1, -1, 1.5, -1.5, 2, -2, 3, -3]) {
         const us = coveL.u - (c * pU) / 2 + k * pU;
         const zs = [toWorld(prov, us, oV).z, toWorld(prov, us + c * pU, oV).z, toWorld(prov, us, oV + 3 * pV).z, toWorld(prov, us + c * pU, oV + 3 * pV).z];
         if (Math.max(...zs.map((z) => Math.abs(z))) > Z_HALF_MAX - 20) continue;
         const depth = vReach(shoreProv, us - hwQ, us + c * pU + hwQ) - oV;
-        if (depth <= FILL_LIMIT) return { C: c, us, depth, found: true };
+        if (depth <= FILL_LIMIT) {
+          // A landing with no water beyond its quay has no harbour: a window with under `MIN_FILL` metres of fill is chosen only where there is none better.
+          const score = windowLand(us, c, oV) - 60 * Math.abs(k) - (depth < MIN_FILL ? 100000 : 0);
+          if (score > pickScore) {
+            pickScore = score;
+            pick = { C: c, us, depth, found: true };
+          }
+        }
         if (c === 4 && depth < best.depth) best = { C: 4, us, depth, found: false };
       }
+      if (pick !== null) return pick;
     }
     return best;
   };
@@ -440,6 +509,24 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
       }
     }
   }
+  const woods: Woods[] = [];
+  // The old plat takes only as many blocks as the land takes: a block of it stands where the ground is gentle enough (the fill behind the quay is level, and counts), or is left as woods.
+  const madeGround = (p: Vec): boolean => p.x < shoreAt(site, p.z);
+  {
+    const stats = oldPieces.map((p) => groundUnder(land, p.poly, madeGround));
+    const fit = (k: number): boolean => {
+      const c = centroid(oldPieces[k]!.poly);
+      return stats[k]!.share >= GROW_MIN_SHARE && stats[k]!.slope <= GROW_MAX_SLOPE && Math.abs(stats[k]!.hMean - gradedHeight(site, land, c.x, c.z)) <= LAND_FIT;
+    };
+    let kept = oldPieces.filter((_, k) => fit(k));
+    // However steep the cove's back, a town needs a core: where the land takes fewer than four blocks of the old plat, the four best stand.
+    if (kept.length < 4) {
+      const best = oldPieces.map((_, k) => k).sort((a, b) => stats[b]!.share * (1 - stats[b]!.slope) - stats[a]!.share * (1 - stats[a]!.slope) || a - b).slice(0, 4);
+      kept = oldPieces.filter((_, k) => best.includes(k));
+    }
+    for (let k = 0; k < oldPieces.length; k++) if (!kept.includes(oldPieces[k]!)) woods.push({ polygon: oldPieces[k]!.poly, why: "land" });
+    oldPieces = kept;
+  }
 
   // ---- The fill: the water between the quay and the natural shore, in columns across the plat.
   const shoreOld = shoreLine(site).map((p) => toLocal(oldFrame, p));
@@ -499,7 +586,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
   };
 
   // ---- The flats' limits: the west boundary of the compass plat, the shore's envelope or the rail's line.
-  const shoreMargin = railPresent ? 7 : 6;
+  const shoreMargin = railPresent ? 17 : 16;
   const pUcDraw = FT * 5 * int(rngP, 60, 92);
   const pVcDraw = FT * 5 * int(rngP, 52, 75);
   const longAlongZ = chance(rngP, 0.5);
@@ -512,7 +599,6 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
   const zOff = range(rngP, 0, pUc);
   const avenueAt = range(rngP, -pUc, pUc);
   const xOff = range(rngP, 0, pVc);
-  const target = int(rngP, 40, 54);
 
   type CompassResult = {
     zo: number;
@@ -579,18 +665,54 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     return { zo, N, J, xo, frame, pieces, knots, iAv, zh };
   };
 
-  let zh = Z_HALF_MAX;
+  const zh = Z_REACH;
   let comp = buildCompass(zh);
-  while (zh > 240 && oldPieces.length + comp.pieces.length > Math.min(target + 4, 54)) {
-    zh -= 40;
-    comp = buildCompass(zh);
+  // ---- The town grows from the old plat over the land: the budget the history gives, spent on the cheapest cells first (`growth.ts`).
+  const coreAt = O(wharfCol * pU, lineV(mainLine));
+  {
+    const nearOf = (poly: Poly): { hw: number; shore: number } => {
+      let hw = Infinity;
+      let sh = Infinity;
+      for (let k = 0; k < poly.length; k++) {
+        const a = poly[k]!;
+        const b = poly[(k + 1) % poly.length]!;
+        for (const q of [a, lerpVec(a, b, 0.5)]) {
+          hw = Math.min(hw, Math.abs(q.x - roadAt(site, q.z)));
+          sh = Math.min(sh, q.x - shoreAt(site, q.z));
+        }
+      }
+      return { hw, shore: Math.max(0, sh) };
+    };
+    const cellOf = (poly: Poly, also?: (p: Vec) => boolean): GrowCell => {
+      const g = groundUnder(land, poly, also);
+      const n = nearOf(poly);
+      const centre = centroid(poly);
+      return { poly, centre, share: g.share, slope: g.slope, fit: also !== undefined ? 0 : g.hMean - gradedHeight(site, land, centre.x, centre.z), hwGap: n.hw, shoreGap: n.shore };
+    };
+    const cells: GrowCell[] = [...oldPieces.map((p) => cellOf(p.poly, madeGround)), ...comp.pieces.map((p) => cellOf(p.poly))];
+    const taken = oldPieces.map((_, k) => k);
+    const { order } = grow(cells, neighbours(cells), taken, coreAt, blockBudget(history));
+    const chosen: boolean[] = comp.pieces.map(() => false);
+    for (const idx of order) chosen[idx - oldPieces.length] = true;
+    // What the grid would have had here and the town did not take is woods, if it lies near the town: the land's, or the budget's.
+    for (let k = 0; k < comp.pieces.length; k++) {
+      if (chosen[k]) continue;
+      const c = cells[oldPieces.length + k] as GrowCell;
+      let nearTown = false;
+      for (const idx of [...taken, ...order]) if (dist((cells[idx] as GrowCell).centre, c.centre) < 260) nearTown = true;
+      if (nearTown) woods.push({ polygon: c.poly, why: eligible(c) ? "budget" : "land" });
+    }
+    comp = { ...comp, pieces: comp.pieces.filter((_, k) => chosen[k]) };
   }
   const { zo, N, J, xo, frame: coFrame, knots, iAv } = comp;
 
   // ---- Streets.
   const raw: RawStreet[] = [];
   const oldGone = (p: Vec): boolean => contains(oldExcl, p, -0.05);
-  const hwBand = (p: Vec, hw: number): boolean => Math.abs(p.x - roadAt(site, p.z)) < HIGHWAY_WIDTH / 2 + hw + 2;
+  const hwBand = (p: Vec, hw: number): boolean => {
+    const off = p.x - roadAt(site, p.z);
+    return off < HIGHWAY_WIDTH / 2 + hw + 2 && off > -(railClear(site, p.z) + hw);
+  };
   const westX = (z: number): number => {
     // The knots' polyline, extended flat beyond its ends.
     const f = (z - zo) / pUc;
@@ -650,15 +772,6 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
       }
     }
   }
-  // The rail: along the quay, and along the flats' shore, ending at the old plat.
-  if (railPresent) {
-    raw.push({ a: O(uLo, -RAIL_WIDTH / 2), b: O(uHi, -RAIL_WIDTH / 2), width: RAIL_WIDTH, kind: "rail", plat: "old", name: `${names.railroad} line` });
-    for (let k = 0; k < N; k++) {
-      const a = { x: knots[k]!.x, z: knots[k]!.z };
-      const b = { x: knots[k + 1]!.x, z: knots[k + 1]!.z };
-      for (const [p, q] of runsOf(a, b, (pt) => Math.abs(pt.z) <= zh && !oldGone(pt), [], 12)) raw.push({ a: p, b: q, width: RAIL_WIDTH, kind: "rail", plat: "company", name: `${names.railroad} line` });
-    }
-  }
   // The company's streets: E-W lines (along v, numbered) and N-S lines (along u, named).
   for (let i = 0; i <= N; i++) {
     const z = zo + i * pUc;
@@ -687,6 +800,60 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     raw.push(...kept);
   }
 
+  // A street that ends inside the railroad's corridor (it reaches the line and stops: the old plat's back street, or a cross street ending on it) is cut back to the corridor's edge: a street meets the line only by crossing it.
+  {
+    const corridor = RAIL_CORRIDOR_HALF + 1;
+    const offOf = (q: Vec): number => Math.abs(q.x - (roadAt(site, q.z) - RAIL_OFFSET));
+    const trimmed: RawStreet[] = [];
+    for (const st of raw) {
+      if (st.kind === "highway" || st.kind === "wharf" || st.kind === "rail") {
+        trimmed.push(st);
+        continue;
+      }
+      const len = dist(st.a, st.b);
+      const n = Math.max(2, -Math.floor(-len / 1));
+      const inside = (k: number): boolean => offOf(lerpVec(st.a, st.b, k / n)) <= corridor;
+      let lo = 0;
+      let hi = n;
+      // From each end inward while inside the corridor; a street that crosses has the corridor's middle inside, not an end.
+      while (lo < n && inside(lo) && inside(lo + 1) && lo < hi) lo++;
+      while (hi > 0 && inside(hi) && inside(hi - 1) && hi > lo) hi--;
+      const endsOutside = !inside(0) && !inside(n);
+      if (endsOutside) {
+        trimmed.push(st);
+        continue;
+      }
+      // Cut back to the corridor's edge, unless the street can run on across it to the highway (it then crosses the line, and the plan records the crossing).
+      let a = lerpVec(st.a, st.b, lo / n);
+      let b = lerpVec(st.a, st.b, hi / n);
+      /** Where the street's line, run on from `end` away from `other`, meets the highway's centre within 70 m, or null. */
+      const reachTo = (end: Vec, other: Vec): Vec | null => {
+        const d = dist(end, other);
+        if (!(d > 1e-6)) return null;
+        const far = { x: end.x + ((end.x - other.x) / d) * 70, z: end.z + ((end.z - other.z) / d) * 70 };
+        const ts = highwayCrossings(site, end, far);
+        return ts.length > 0 ? lerpVec(end, far, ts[0] as number) : null;
+      };
+      if (inside(n) && !inside(0)) b = reachTo(st.b, st.a) ?? b;
+      if (inside(0) && !inside(n)) a = reachTo(st.a, st.b) ?? a;
+      if (dist(a, b) < LEAST_STREET) continue;
+      trimmed.push({ ...st, a, b });
+    }
+    raw.length = 0;
+    raw.push(...trimmed);
+  }
+
+  // A street that would climb more than 15 percent is a public stair there (`stairs.ts`).
+  if (site.ground !== undefined) {
+    const cut: RawStreet[] = [];
+    for (const st of raw) {
+      if (st.kind === "street" || st.kind === "avenue") cut.push(...splitAtStairs(st, site.ground, (p) => fill.some((f) => contains(f.polygon, p, 10))));
+      else cut.push(st);
+    }
+    raw.length = 0;
+    raw.push(...cut);
+  }
+
   // Streets cut off from the rest are dropped, and a block that touches none of those left goes with them.
   {
     const parent = raw.map((_, i) => i);
@@ -702,8 +869,18 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
         if (segSegDist(a.a, a.b, b.a, b.b) <= (a.width + b.width) / 2 + 0.5) parent[find(i)] = find(j2);
       }
     }
-    const root = find(0);
-    const keptRaw = raw.filter((_, i) => find(i) === root);
+    // The highway's network, or, where the town stands off it (a coast with the highway far inland of the water), the longest network there is.
+    let root = find(0);
+    if (!raw.some((s2, i) => s2.kind !== "highway" && find(i) === root)) {
+      const length: number[] = raw.map(() => 0);
+      for (let i = 0; i < raw.length; i++) if (raw[i]!.kind !== "highway") length[find(i)] = length[find(i)]! + dist(raw[i]!.a, raw[i]!.b);
+      let best = -1;
+      for (let i = 0; i < raw.length; i++) if (find(i) === i && length[i]! > best) {
+        best = length[i]!;
+        root = i;
+      }
+    }
+    const keptRaw = raw.filter((s2, i) => find(i) === root || s2.kind === "highway");
     raw.length = 0;
     raw.push(...keptRaw);
   }
@@ -735,6 +912,8 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
       side.filter(({ p }) => p.front && Math.abs(area(p.poly)) >= 1500),
       side.filter(({ p }) => p.front && Math.abs(area(p.poly)) >= 900),
       side.filter(({ p }) => gapOf(p.poly) < 120 && c_west(p.poly) && Math.abs(area(p.poly)) >= 900),
+      // Where the grown town has no block on the flats' shore, the block of that side nearest the water takes the mill (or the terminal), whatever its place.
+      side.slice().sort((a, b) => gapOf(a.p.poly) - gapOf(b.p.poly) || a.k - b.k).slice(0, 1),
     ];
     for (const cand of tiers) {
       if (cand.length === 0) continue;
@@ -784,7 +963,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     }
     return { x: x / run.length, z: z / run.length };
   };
-  const coreCentre = O(wharfCol * pU, lineV(mainLine));
+  const coreCentre = coreAt;
   const millCentre = centreOf(millRun, { x: coreCentre.x, z: coreCentre.z + (millNorth ? 300 : -300) });
   const terminalCentre = centreOf(termRun, { x: coreCentre.x, z: coreCentre.z + (millNorth ? -300 : 300) });
 
@@ -822,6 +1001,76 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     const cp = comp.pieces[k]!;
     blocks.push({ id: blocks.length, plat: "company", polygon: cp.poly, district: compassDistrict(cp, siteOf[k]!), cell: { col: cp.i, row: cp.j } });
     meta.push({ frame: coFrame, bearing: COMPASS, tag: "compass", col: cp.i, row: cp.j, d: 0, site: siteOf[k]!, shoreFront: cp.front });
+  }
+
+  // ---- The town's own track (`spur.ts`): it leaves the main line beyond the end of the town on the mill's side, curves to the shore's strip between the water and the
+  // blocks, runs along it, along the quay's track, and on along the other flats' strip, to end at the far end of the town.
+  const spurs: Spur[] = [];
+  if (railPresent) {
+    let zLo = Infinity;
+    let zHi = -Infinity;
+    for (const bl of blocks) {
+      for (const q of bl.polygon) {
+        zLo = Math.min(zLo, q.z);
+        zHi = Math.max(zHi, q.z);
+      }
+    }
+    const qa = O(uLo, quayV / 2);
+    const qb = O(uHi, quayV / 2);
+    const [qLow, qHigh] = qa.z <= qb.z ? [qa, qb] : [qb, qa];
+    const front: Vec[] = [];
+    for (const k of knots) if (k.z < qLow.z - 25 && k.z > zLo - 40) front.push({ x: k.x - shoreMargin / 2, z: k.z });
+    const back: Vec[] = [];
+    for (const k of knots) if (k.z > qHigh.z + 25 && k.z < zHi + 40) back.push({ x: k.x - shoreMargin / 2, z: k.z });
+    const line: Vec[] = [...front, qLow, qHigh, ...back];
+    // The spur leaves the main line where the line stands low enough to come down to the shore strip at a railroad's grade: beyond the end of the town on the mill's side if
+    // the line is no higher than `JUNCTION_HEIGHT` there within reach, else on the other side's (and then it serves the terminal first).
+    const zMax = site.z0 + (site.shoreX.length - 1) * site.step - 40;
+    const zMin = site.z0 + 40;
+    const lineHeight = (z: number): number => {
+      if (site.grade === undefined) return 0;
+      const f = Math.max(0, Math.min(site.grade.length - 1, (z - site.z0) / site.step));
+      const i = Math.min(site.grade.length - 2, Math.floor(f));
+      return (site.grade[i] as number) + ((site.grade[i + 1] as number) - (site.grade[i] as number)) * (f - i);
+    };
+    const bestJunction = (north: boolean): { z: number; h: number } => {
+      const sign = north ? 1 : -1;
+      const from = (north ? ordered0(true) : ordered0(false)).z;
+      let best = { z: clamp(from + sign * 220, zMin, zMax), h: Infinity };
+      for (let d = 80; d <= 800; d += 16) {
+        const z = clamp(from + sign * d, zMin, zMax);
+        const h = lineHeight(z);
+        if (h <= JUNCTION_HEIGHT) return { z, h };
+        if (h < best.h) best = { z, h };
+      }
+      return best;
+    };
+    const ordered0 = (north: boolean): Vec => (north ? (line[line.length - 1] as Vec) : (line[0] as Vec));
+    const millNorth = history.millSide === "north";
+    let fromNorth = millNorth;
+    let pick = bestJunction(fromNorth);
+    if (pick.h > JUNCTION_HEIGHT) {
+      const other = bestJunction(!fromNorth);
+      if (other.h < pick.h) {
+        fromNorth = !fromNorth;
+        pick = other;
+      }
+    }
+    if (pick.h <= JUNCTION_HEIGHT_MAX) {
+    const ordered = fromNorth ? line.slice().reverse() : line;
+    const sign = fromNorth ? 1 : -1;
+    const zJ = pick.z;
+    const mainAt = (z: number): Vec => ({ x: roadAt(site, z) - RAIL_OFFSET, z });
+    const junction = mainAt(zJ);
+    const beyond = mainAt(clamp(zJ + sign * 60, site.z0 + 8, site.z0 + (site.shoreX.length - 1) * site.step - 8));
+    const way: Vec[] = [beyond, junction, ...ordered];
+    const points = relaxed(densify(roundedPath(way), SPUR_POINT_STEP), SPUR_MIN_RADIUS, 4);
+    // The spur starts on the main line: its first point is the junction.
+    const trimmed = points.slice(1);
+    // It serves first what lies on the side it comes in from: the mill if that is the mill's side, else the terminal.
+    const serves: ("mill" | "quay" | "terminal")[] = fromNorth === millNorth ? ["mill", "quay", "terminal"] : ["terminal", "quay", "mill"];
+    spurs.push({ id: 0, name: `${names.railroad} spur`, points: trimmed, radius: leastRadius(trimmed), serves, wet: [] });
+    }
   }
 
   // ---- The plats as records, and the seam: where the old plat's edge meets the company's blocks.
@@ -968,6 +1217,8 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     fill,
     quay,
     pierSpots: clearSpots,
+    spurs,
+    woods,
     coreCentre,
     millCentre,
     terminalCentre,

@@ -7,7 +7,7 @@ import { planFor } from "../../src/sim/town/planFor.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 
 /** The seed the game is played on, and two more whose towns differ (a turned grid at the quay, a different coast). */
-export const WORLD_SEEDS: readonly number[] = [20261121, 1, 7];
+export const WORLD_SEEDS: readonly number[] = [20261121, 1, 6];
 
 const worlds = new Map<number, WalkWorld>();
 

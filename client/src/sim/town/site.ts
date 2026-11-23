@@ -22,6 +22,8 @@ export type TownSite = {
   readonly shoreX: readonly number[];
   /** The highway's centre line's x at each sample: 0 at the anchor's own sample. */
   readonly roadX: readonly number[];
+  /** The highway's grade line (the height of its bed, which the main line keeps) at each sample, metres; none for a site made by hand. */
+  readonly grade?: readonly number[];
   /** How far inland of the highway the made ground reaches, metres. */
   readonly inland: number;
   /** The coast's own ground over and beyond the town, for routing roads out of it. A site made without one (the synthetic coast) has no roads out. */

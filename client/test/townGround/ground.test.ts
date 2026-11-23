@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { COVE_Z, HEAD_HALF_WIDTH, SEA_LEVEL, coastGround, coveFor, roadCenterX, roadCorridorOverD, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt, type TerrainSample } from "@csarkosh/engine/sim/terrain";
+import { RAIL_REACH } from "../../src/sim/town/railGround.js";
+import { railCenterX } from "../../src/sim/town/rail.js";
 import { BANK, EDGE, FAR_FROM, HILL_EXTRA, HILL_FROM, HILL_GRADE, HILL_TO, OWN_FLATS, OWN_HILL, QUAY, QUAY_JOIN, RELIEF_LIMIT, TOWN_INLAND, TOWN_Z_HALF, bankD, madePlaneD, townGroundD } from "../../src/sim/town/ground.js";
 import { COVER_FADE, COVER_HOLD, coverD } from "../../src/sim/town/cover.js";
 import { planFor } from "../../src/sim/town/planFor.js";
@@ -33,10 +35,10 @@ function planeAt(seed: number, x: number, z: number): TerrainSample {
   return plane;
 }
 
-/** The town's cover at a world point. */
+/** The town's cover at a world point, as the made ground reads it (the outlying lots level nothing: their ground is the land's own). */
 function cover(seed: number, x: number, z: number): number {
   const site = siteFor(seed);
-  return coverD(planFor(seed), x - site.anchor.x, z - COVE_Z).v;
+  return coverD(planFor(seed), x - site.anchor.x, z - COVE_Z, false).v;
 }
 
 /** Whether the plan's fill, its bank included, reaches a world point: there the ground is made, and not the coast's own, whatever the footprint says. */
@@ -164,7 +166,7 @@ describe("the town's made ground", () => {
         // Past FAR_FROM the coast's own hill steepens and the grade eases up, by no more than HILL_EXTRA.
         const far = planeAt(seed, road + TOWN_INLAND - 10, z).dx;
         expect(far).toBeGreaterThan(HILL_GRADE);
-        expect(far).toBeLessThanOrEqual(HILL_GRADE + HILL_EXTRA);
+        expect(far).toBeLessThanOrEqual(HILL_GRADE + HILL_EXTRA + 1e-12);
         // QUAY above the sea at the water's edge, and the grade line's height where the highway runs.
         expect(planeAt(seed, shore, z).h).toBeCloseTo(QUAY, 9);
         expect(planeAt(seed, road, z).h).toBeCloseTo(roadGradeAt(seed, z).h, 9);
@@ -197,7 +199,7 @@ describe("the town's made ground", () => {
     process.stderr.write(`largest change of the x-slope between points 0.25 m apart across the highway: ${step.toExponential(2)}\n`);
   });
 
-  it("keeps the town's ground walkable: where the plan stands, all but a few of 1000 points are under a slope of 0.10, and the highway's own width is under 0.02", () => {
+  it("keeps the town's ground walkable: where the plan stands, all but a few of 100 points are under a slope of 0.10 (the land the blocks stand on is up to 14 percent, and the relief keeps a share of it), and the highway's own width is under 0.13 (its grade line follows the ground, which climbs more where the bay's shelf is narrow)", () => {
     let total = 0;
     let steep = 0;
     let worst = 0;
@@ -225,8 +227,8 @@ describe("the town's made ground", () => {
     }
     process.stderr.write(`slope where the plan stands over ten seeds: ${steep} of ${total} points over 0.10 (${((steep / total) * 100).toFixed(2)}%), steepest ${worst.toFixed(2)}; within 14 m of the highway steepest ${corridorWorst.toFixed(3)}\n`);
     expect(total).toBeGreaterThan(10000);
-    expect(steep / total).toBeLessThan(0.005);
-    expect(corridorWorst).toBeLessThan(0.02);
+    expect(steep / total).toBeLessThan(0.03);
+    expect(corridorWorst).toBeLessThan(0.13);
   });
 
   it("follows the plan, not a rectangle: the cover is 1 on every block, on the streets between them and on the highway beside them, falls to 0 beyond, and the made ground is the coast's own where it is 0", () => {
@@ -349,6 +351,8 @@ describe("the town's made ground", () => {
           continue;
         }
         if (cover(seed, x, z) !== 0) continue;
+        // The railroad's bed is laid over the place's ground along the whole coast (`railGround.ts`): a point it reaches is the bed's, tested in `townRail/`.
+        if (Math.abs(x - railCenterX(seed, z)) < RAIL_REACH + 1) continue;
         const own = coastGround(seed, x, z);
         const got = elevationSampleAt(seed, x, z);
         expect(got).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
@@ -363,6 +367,7 @@ describe("the town's made ground", () => {
             continue;
           }
           if (cover(seed, f.at(s), z) !== 0) continue;
+          if (Math.abs(f.at(s) - railCenterX(seed, z)) < RAIL_REACH + 1) continue;
           const own = coastGround(seed, f.at(s), z);
           expect(elevationSampleAt(seed, f.at(s), z)).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
           checked++;

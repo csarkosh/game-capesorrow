@@ -21,15 +21,16 @@
  *
  * The cliff bands are still kept off the old rectangle (the engine hands `cliffKeepD` no seed, so no plan): see `townKeepD`.
  */
-import { COVE_Z } from "@csarkosh/engine/sim/olympic";
+import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { UNIT_KEEP } from "@csarkosh/engine/sim/cliffs";
 import type { FeatureMask } from "@csarkosh/engine/sim/features";
 import { bearingU, bearingV } from "./bearings.js";
 import { coverD } from "./cover.js";
-import { alongD, inlandD, smootherstepD } from "./ground.js";
-import { fillWindowD, type FillArea } from "./fill.js";
+import { smootherstepD } from "./ground.js";
+import { QUAY_BANK, fillWindowD, type FillArea } from "./fill.js";
 import { orient } from "./geom.js";
 import { planFor } from "./planFor.js";
+import { readingSite } from "./reading.js";
 import { siteFor } from "./siteFor.js";
 import type { District, TownPlan } from "./types.js";
 
@@ -58,6 +59,14 @@ export const YARD_LIFT = 12;
 /** A block's own window falls over this many metres outside its edges. */
 export const BLOCK_MARGIN = 4;
 
+/** While the site is read (before there is a plan) the cliff bands are kept off this rectangle: this far along the shore either way of the cove and this far inland of the highway, metres, the bands returning over `READ_KEEP_EDGE`. It holds everything the plan builds on and the roads out of it, which the world then keeps clear of the bands too (`ROAD_KEEP_*`). */
+export const READ_KEEP_Z = 1000;
+export const READ_KEEP_INLAND = 1000;
+export const READ_KEEP_EDGE = 40;
+/** The cliff bands are kept off a road out of town to this far from its centre line, and return over `ROAD_KEEP_RAMP` more, metres. */
+export const ROAD_KEEP_HALF = 8;
+export const ROAD_KEEP_RAMP = 14;
+
 /** What the clearing declares of itself for the level id. */
 export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   TREE_JITTER,
@@ -73,19 +82,129 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   YARD_MEADOW,
   YARD_LIFT,
   BLOCK_MARGIN,
+  READ_KEEP_Z,
+  READ_KEEP_INLAND,
+  READ_KEEP_EDGE,
+  ROAD_KEEP_HALF,
+  ROAD_KEEP_RAMP,
 };
 
 /**
- * How much of the cliff bands the coast keeps at a place in the road's frame: none inside the old rectangle (480 m along
- * the shore, 320 m inland of the highway), the bands returning over a blend of 40 m.
+ * How much of the cliff bands the coast keeps at a place in the road's frame, 1 all of them and 0 none. It follows what the
+ * town covers: the bands are gone where the plan's cover is whole (its blocks, the quay and the fill) and along the roads out
+ * of town, and return as the cover falls away, so a hillside the town did not build on keeps its cliffs. While the site is read
+ * there is no plan yet, and the bands are kept off the rectangle `READ_KEEP_*` instead, so the roads are routed over ground
+ * with no bands and the world lays them over ground with none.
  */
-export function townKeepD(u: number, uDz: number, z: number): { v: number; dx: number; dz: number } {
-  const wi = inlandD(u);
-  if (wi.v === 0) return UNIT_KEEP;
-  const wz = alongD(z - COVE_Z);
-  const c = wz.v * wi.v;
+export function townKeepD(u: number, uDz: number, z: number, seed: number): { v: number; dx: number; dz: number } {
+  if (readingSite()) {
+    const wi = smootherstepD(READ_KEEP_INLAND, READ_KEEP_INLAND + READ_KEEP_EDGE, u);
+    if (wi.v === 1) return UNIT_KEEP;
+    const az = z - COVE_Z < 0 ? COVE_Z - z : z - COVE_Z;
+    const wz = smootherstepD(READ_KEEP_Z, READ_KEEP_Z + READ_KEEP_EDGE, az);
+    if (wz.v === 1) return UNIT_KEEP;
+    const iv = 1 - wi.v;
+    const zv = 1 - wz.v;
+    const sz = z - COVE_Z < 0 ? -1 : 1;
+    return { v: 1 - iv * zv, dx: zv * wi.d, dz: zv * wi.d * uDz + iv * wz.d * sz };
+  }
+  const plan = planFor(seed);
+  const site = siteFor(seed);
+  const xf = roadCenterX(seed, z) + u - site.anchor.x;
+  const zr = z - COVE_Z;
+  const cov = coverD(plan, xf, zr);
+  const box = fillBoxOf(plan);
+  const rd = roadWeightD(plan, xf, zr);
+  if (cov.v === 0 && rd.v === 0 && (xf < box.x0 || xf > box.x1 || zr < box.z0 || zr > box.z1)) return UNIT_KEEP;
+  const f = xf < box.x0 || xf > box.x1 || zr < box.z0 || zr > box.z1 ? NO_WEIGHT : fillWindowD(plan.fill, xf, zr);
+  // The cover united with the fill's window: the town covers a point if either does.
+  const town = { v: 1 - (1 - cov.v) * (1 - f.v), dx: (1 - f.v) * cov.dx + (1 - cov.v) * f.dx, dz: (1 - f.v) * cov.dz + (1 - cov.v) * f.dz };
+  // And the corridors of the roads out: the bands are kept off a road's own width.
+  const c = 1 - (1 - town.v) * (1 - rd.v);
   if (c === 0) return UNIT_KEEP;
-  return { v: 1 - c, dx: -wz.v * wi.du, dz: -(wz.dz * wi.v + wz.v * wi.du * uDz) };
+  return { v: 1 - c, dx: -((1 - rd.v) * town.dx + (1 - town.v) * rd.dx), dz: -((1 - rd.v) * town.dz + (1 - town.v) * rd.dz) };
+}
+
+type RoadBox = { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number; readonly segs: readonly (readonly [number, number, number, number])[] };
+const ROAD_BOXES = new WeakMap<TownPlan, readonly RoadBox[]>();
+
+function roadBoxesOf(plan: TownPlan): readonly RoadBox[] {
+  let boxes = ROAD_BOXES.get(plan);
+  if (boxes === undefined) {
+    const reach = ROAD_KEEP_HALF + ROAD_KEEP_RAMP;
+    boxes = plan.roads.map((road) => {
+      const segs: [number, number, number, number][] = [];
+      let x0 = Infinity;
+      let z0 = Infinity;
+      let x1 = -Infinity;
+      let z1 = -Infinity;
+      for (let i = 1; i < road.points.length; i++) {
+        const a = road.points[i - 1] as { x: number; z: number };
+        const b = road.points[i] as { x: number; z: number };
+        segs.push([a.x, a.z, b.x, b.z]);
+        x0 = Math.min(x0, a.x, b.x);
+        z0 = Math.min(z0, a.z, b.z);
+        x1 = Math.max(x1, a.x, b.x);
+        z1 = Math.max(z1, a.z, b.z);
+      }
+      return { x0: x0 - reach, z0: z0 - reach, x1: x1 + reach, z1: z1 + reach, segs };
+    });
+    ROAD_BOXES.set(plan, boxes);
+  }
+  return boxes;
+}
+
+/** How much the roads out of town hold a place, 0 to 1 with its gradient: 1 within `ROAD_KEEP_HALF` of a road's line, falling to 0 over `ROAD_KEEP_RAMP`. */
+function roadWeightD(plan: TownPlan, x: number, z: number): { v: number; dx: number; dz: number } {
+  let rest = 1;
+  let restDx = 0;
+  let restDz = 0;
+  for (const box of roadBoxesOf(plan)) {
+    if (x < box.x0 || x > box.x1 || z < box.z0 || z > box.z1) continue;
+    for (const seg of box.segs) {
+      const abx = seg[2] - seg[0];
+      const abz = seg[3] - seg[1];
+      const l2 = abx * abx + abz * abz;
+      let t = l2 === 0 ? 0 : ((x - seg[0]) * abx + (z - seg[1]) * abz) / l2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = x - (seg[0] + abx * t);
+      const ez = z - (seg[1] + abz * t);
+      const d = Math.sqrt(ex * ex + ez * ez);
+      if (d >= ROAD_KEEP_HALF + ROAD_KEEP_RAMP) continue;
+      let w = 1;
+      let wdx = 0;
+      let wdz = 0;
+      if (d > ROAD_KEEP_HALF) {
+        const sm = smootherstepD(ROAD_KEEP_HALF, ROAD_KEEP_HALF + ROAD_KEEP_RAMP, d);
+        w = 1 - sm.v;
+        wdx = (-sm.d * ex) / d;
+        wdz = (-sm.d * ez) / d;
+      }
+      if (w === 1) return { v: 1, dx: 0, dz: 0 };
+      restDx = (1 - w) * restDx - rest * wdx;
+      restDz = (1 - w) * restDz - rest * wdz;
+      rest *= 1 - w;
+    }
+  }
+  return { v: 1 - rest, dx: 0 - restDx, dz: 0 - restDz };
+}
+
+const NO_WEIGHT = { v: 0, dx: 0, dz: 0 };
+const FILL_BOXES = new WeakMap<TownPlan, { x0: number; z0: number; x1: number; z1: number }>();
+
+/** The box the plan's fill (its bank included) lies in, found once per plan. */
+function fillBoxOf(plan: TownPlan): { x0: number; z0: number; x1: number; z1: number } {
+  let box = FILL_BOXES.get(plan);
+  if (box === undefined) {
+    box = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
+    for (const area of plan.fill) {
+      for (const p of area.polygon) {
+        box = { x0: Math.min(box.x0, p.x - QUAY_BANK), z0: Math.min(box.z0, p.z - QUAY_BANK), x1: Math.max(box.x1, p.x + QUAY_BANK), z1: Math.max(box.z1, p.z + QUAY_BANK) };
+      }
+    }
+    FILL_BOXES.set(plan, box);
+  }
+  return box;
 }
 
 /** How much the town covers a world point, 0 to 1: the plan's cover (its blocks and the quay) united with the plan's fill, its bank included. */
@@ -107,6 +226,7 @@ const PAVED: Readonly<Record<District, boolean>> = {
   "highway strip": true,
   civic: false,
   industrial: true,
+  outskirts: false,
 };
 
 /** Whether a district's blocks are paved (its lots' ground is the town's surface) and not yards. */

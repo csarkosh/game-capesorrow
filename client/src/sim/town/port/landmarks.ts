@@ -11,6 +11,7 @@ import type { TownNames } from "../names.js";
 import { chance, int, pick, type Rng } from "../rng.js";
 import type { Block, Building, History, Landmark, LandmarkRole, Lot, Spawn } from "../types.js";
 import type { BlockMeta, Layout } from "./layout.js";
+import { RAIL_OFFSET } from "../rail.js";
 import { roadAt } from "../shore.js";
 import type { TownSite } from "../site.js";
 
@@ -89,12 +90,30 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
     }
   }
 
-  // The working waterfront: the depot where the railroad meets the wharf street, at the quay; the public port's terminal on the flats.
+  // The depot stands beside the railroad's main line (`rail.ts`), which runs seaward of the highway: the block beside it, on its seaward side, nearest the core.
   if (history.railroad) {
-    let s = ids((b, x) => isOld(b.id) && x.row === 0 && Math.abs(x.d) < 1.5);
-    if (s.length === 0) s = ids((b, x) => isOld(b.id) && x.row === 0);
-    if (s.length === 0) s = ids((b) => isOld(b.id));
-    if (s.length > 0) reserve(nearest(blocks, s, layout.wharfFoot), "depot", "lo", 24);
+    const railX = (z: number): number => roadAt(site, z) - RAIL_OFFSET;
+    const beside = (b: Block): number => {
+      let d = Infinity;
+      for (const q of b.polygon) d = Math.min(d, railX(q.z) - q.x);
+      return d;
+    };
+    // A plain four-cornered block, so that the depot's lot is a plain one.
+    const cand = ids((b) => b.district !== "civic" && b.polygon.length === 4 && b.polygon.every((q) => q.x < railX(q.z)) && Math.abs(area0(b)) >= 1500);
+    const pool = cand.length > 0 ? cand : ids((b, x) => isOld(b.id) && x.row === 0);
+    const pick1 = pool.length > 0 ? pool : ids(() => true);
+    let best = -1;
+    let bestScore = Infinity;
+    for (const id of pick1) {
+      // A yard of houses is no place for a depot: the town's working districts are preferred.
+      const houses = blocks[id]!.district === "residential" || blocks[id]!.district === "mill housing";
+      const score = beside(blocks[id]!) + 0.25 * dist(centroid(blocks[id]!.polygon), layout.coreCentre) + (houses ? 150 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+    if (best >= 0) reserve(best, "depot", "hi", 24);
   }
   const term = ids((b, x) => x.site === "terminal");
   if (term.length > 0) {

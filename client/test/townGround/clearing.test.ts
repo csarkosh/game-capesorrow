@@ -234,19 +234,40 @@ describe("the forest by the lot", () => {
     }
   });
 
-  it("keeps the cliff bands off the old rectangle and returns them over the blend, with an exact slope", () => {
-    expect(townKeepD(50, 0.1, 0).v).toBe(0);
-    expect(townKeepD(TOWN_INLAND + 80, 0, 0).v).toBe(1);
-    expect(townKeepD(50, 0, TOWN_Z_HALF + 80).v).toBe(1);
-    const H = 0.0005;
-    for (const [u, z] of [[TOWN_INLAND + 10, 0], [50, TOWN_Z_HALF + 15], [TOWN_INLAND + 30, TOWN_Z_HALF + 30]] as const) {
-      const uDz = 0.2;
-      const k = townKeepD(u, uDz, z);
-      // The road's frame: u moves with x, and with z by uDz.
-      const fdx = (townKeepD(u + H, uDz, z).v - townKeepD(u - H, uDz, z).v) / (2 * H);
-      const fdz = (townKeepD(u + uDz * H, uDz, z + H).v - townKeepD(u - uDz * H, uDz, z - H).v) / (2 * H);
-      expect(k.dx).toBeCloseTo(fdx, 6);
-      expect(k.dz).toBeCloseTo(fdz, 6);
+  it("keeps the cliff bands off where the town covers and returns them as the cover falls away, with an exact slope", () => {
+    for (const seed of SEEDS) {
+      const plan = planFor(seed);
+      const site = siteFor(seed);
+      const road = (z: number): number => roadCenterX(seed, z);
+      const block = plan.blocks[0] as (typeof plan.blocks)[number];
+      const c = block.polygon.reduce((acc, p) => ({ x: acc.x + p.x / block.polygon.length, z: acc.z + p.z / block.polygon.length }), { x: 0, z: 0 });
+      const z = c.z + COVE_Z;
+      const u = site.anchor.x + c.x - road(z);
+      // On a block the bands are all gone; far from the town they are all kept.
+      expect(townKeepD(u, 0.1, z, seed).v).toBe(0);
+      expect(townKeepD(u + 3000, 0, z, seed).v).toBe(1);
+      expect(townKeepD(0, 0, z + 5000, seed).v).toBe(1);
+      // In between the keep is a smooth fall: its slope in x and in z (at a fixed x) is the derivative of its value. The road's frame: u = x - the road's x at z, so uDz = -(the road's slope).
+      const H = 0.0005;
+      const keepAtX = (x: number, zz: number): number => townKeepD(x - road(zz), -(road(zz + 0.01) - road(zz - 0.01)) / 0.02, zz, seed).v;
+      let tested = 0;
+      // Points ringed about the town's blocks, 30 to 140 m off their centres: some lie on the cover's fall.
+      for (let k = 0; k < 600 && tested < 12; k++) {
+        const bl = plan.blocks[(k * 7) % plan.blocks.length] as (typeof plan.blocks)[number];
+        const cc = bl.polygon.reduce((acc, p) => ({ x: acc.x + p.x / bl.polygon.length, z: acc.z + p.z / bl.polygon.length }), { x: 0, z: 0 });
+        const dir = k % 4;
+        const reach = 30 + ((k * 13) % 110);
+        const x = site.anchor.x + cc.x + (dir === 0 ? reach : dir === 1 ? -reach : 0);
+        const zz = COVE_Z + cc.z + (dir === 2 ? reach : dir === 3 ? -reach : 0);
+        const uu = x - road(zz);
+        const uDz = -(road(zz + 0.01) - road(zz - 0.01)) / 0.02;
+        const kp = townKeepD(uu, uDz, zz, seed);
+        if (kp.v <= 0.02 || kp.v >= 0.98) continue;
+        tested++;
+        expect(kp.dx).toBeCloseTo((keepAtX(x + H, zz) - keepAtX(x - H, zz)) / (2 * H), 5);
+        expect(kp.dz).toBeCloseTo((keepAtX(x, zz + H) - keepAtX(x, zz - H)) / (2 * H), 5);
+      }
+      expect(tested, `seed ${seed}: a point on the cover's fall`).toBeGreaterThan(3);
     }
   });
 });

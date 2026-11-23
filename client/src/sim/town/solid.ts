@@ -22,6 +22,7 @@
  */
 import { bearingU } from "./bearings.js";
 import { constrainRails } from "./decks.js";
+import { constrainTrestle } from "./railDeck.js";
 import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
@@ -231,6 +232,8 @@ export function townConstrain(world: { readonly forest: { readonly seed: number 
     }
     // The harbour's rails, after the walls: a hull on a deck is held to it (`decks.ts`).
     if (constrainRails(world.forest.seed, pos, vel)) moved = true;
+    // And a trestle's guard rails (`railDeck.ts`).
+    if (constrainTrestle(world.forest.seed, pos, vel)) moved = true;
     if (!moved) return;
   }
 }

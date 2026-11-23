@@ -99,7 +99,7 @@ export type Plat = {
   readonly avenue: { readonly line: number; readonly width: number } | null;
 };
 
-export type StreetKind = "highway" | "avenue" | "main" | "street" | "alley" | "wharf" | "rail";
+export type StreetKind = "highway" | "avenue" | "main" | "street" | "alley" | "wharf" | "rail" | "stair";
 
 export type Street = {
   readonly id: number;
@@ -171,7 +171,8 @@ export type District =
   | "residential"
   | "highway strip"
   | "civic"
-  | "industrial";
+  | "industrial"
+  | "outskirts";
 
 export type Block = {
   readonly id: number;
@@ -221,6 +222,9 @@ export type BuildingKind =
   | "silo"
   | "garage"
   | "restaurant"
+  | "fire hall"
+  | "shake mill"
+  | "junkyard"
   | "pier";
 
 export type Roof = "flat" | "gable" | "hip" | "shed";
@@ -433,6 +437,55 @@ export type Harbour = {
   readonly events: readonly HistoryEvent[];
 };
 
+/** The town's own track: a polyline from the main line to where it ends, its bends no tighter than `radius` metres, and what it serves. */
+export type Spur = {
+  readonly id: number;
+  readonly name: string;
+  /** From the main line (the first point lies on it) to the end of the track. */
+  readonly points: readonly Vec[];
+  /** The least radius of curvature along it, metres. */
+  readonly radius: number;
+  /** Where along it it serves: the mill, the quay (and its depot), the public port's terminal, in the order it reaches them. */
+  readonly serves: readonly ("mill" | "quay" | "terminal")[];
+  /** The stretches of it that cross open water (indices of the first and last point, inclusive): they are carried on a trestle. */
+  readonly wet: readonly { readonly from: number; readonly to: number }[];
+};
+
+/**
+ * A way crossing the railroad's main line at grade, in the town's frame: where (on the line's centre), which street (`road` false: an
+ * index into `plan.streets`) or road out (`road` true: its id), the way's unit direction there (running seaward, so `dx` is not
+ * positive), its roadway and whole right of way, and whether it is paved. The drawing (`railCrossings.ts`) reads these.
+ */
+export type RailCrossing = {
+  readonly x: number;
+  readonly z: number;
+  readonly way: number;
+  readonly road: boolean;
+  readonly dx: number;
+  readonly dz: number;
+  readonly roadway: number;
+  readonly width: number;
+  readonly paved: boolean;
+};
+
+/** What the plan says of the railroad (the main line itself, `rail.ts`, is the world's): the streets that cross it and the town's own spur. */
+export type TownRail = {
+  readonly crossings: readonly RailCrossing[];
+  readonly spurs: readonly Spur[];
+};
+
+/** A block's place the town did not take, left as woods: because the land would not bear it (too steep, too wet, a hump or a gully) or because the history's budget of blocks was spent. */
+export type Woods = { readonly polygon: Poly; readonly why: "land" | "budget" };
+
+/** A building of the town's thinning edge, past the last full blocks, and why it stands where it does. */
+export type Outskirt = {
+  readonly building: number;
+  /** One plain sentence: what it is there for. */
+  readonly reason: string;
+  /** Where it lies: beside the highway north or south of the town, or on a road out of it. */
+  readonly where: "north" | "south" | "road";
+};
+
 export type Spawn = { readonly x: number; readonly z: number; readonly yaw: number };
 
 export type TownPlan = {
@@ -453,6 +506,12 @@ export type TownPlan = {
   readonly lots: readonly Lot[];
   readonly buildings: readonly Building[];
   readonly landmarks: readonly Landmark[];
+  /** The railroad: where streets cross the main line, and the town's own spur. */
+  readonly rail: TownRail;
+  /** The scattered buildings of the town's thinning edge: each on its own lot (a block of one lot, in `blocks`), with its reason. */
+  readonly outskirts: readonly Outskirt[];
+  /** The blocks the grid would have had that the land or the budget left as woods, near the town. */
+  readonly woods: readonly Woods[];
   readonly spawn: Spawn;
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
   readonly fill: readonly { readonly polygon: Poly }[];
@@ -466,7 +525,9 @@ export type TownPlan = {
   readonly counts: {
     readonly plats: number;
     readonly streets: number;
+    /** The town's blocks: the outskirts' lots, each a block of its own, are counted apart. */
     readonly blocks: number;
+    readonly outskirts: number;
     readonly lots: number;
     readonly buildings: number;
     readonly open: number;

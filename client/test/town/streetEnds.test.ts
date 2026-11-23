@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ADJACENT, PAST_LAST_LOT } from "../../src/sim/town/port/ends.js";
+
+/** A street cut back from the railroad's corridor stands up to this much farther from its last lot: the blocks keep a bank's width off the line, and the street ends at the corridor's edge. */
+const RAIL_CUT_BACK = 20;
 import { segDist } from "../../src/sim/town/geom.js";
 import type { TownPlan } from "../../src/sim/town/types.js";
 import { SEEDS, townFor } from "./sites.js";
@@ -74,7 +77,7 @@ describe("streets end the way streets end", () => {
         // The street ends `PAST_LAST_LOT` m past where a block last stands beside it (the block's corner is up to a half width and a little more off).
         const d = distanceToBlocks(plan, e);
         worst = Math.max(worst, d - st.width / 2);
-        expect(d, `seed ${seed} ${st.name} ${e.at}`).toBeLessThanOrEqual(st.width / 2 + ADJACENT + PAST_LAST_LOT + 1);
+        expect(d, `seed ${seed} ${st.name} ${e.at}`).toBeLessThanOrEqual(st.width / 2 + ADJACENT + PAST_LAST_LOT + 1 + RAIL_CUT_BACK);
       }
     }
     process.stderr.write(`made ends: the nearest block is at most ${worst.toFixed(1)} m beyond the street's right of way\n`);

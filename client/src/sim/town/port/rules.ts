@@ -18,4 +18,6 @@ export const LOT_RULES: Record<District, LotRule> = {
   "highway strip": { rows: 2, widths: [30, 40, 60], alley: false },
   civic: { rows: 0, widths: [60], alley: false },
   industrial: { rows: 2, widths: [30, 45, 60], alley: false },
+  // The outskirts' parcels are single lots made by `outskirts.ts`, not cut from a block.
+  outskirts: { rows: 1, widths: [40], alley: false },
 };
