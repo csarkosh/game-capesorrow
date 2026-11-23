@@ -72,7 +72,7 @@ export function solveJunction(rays: readonly Ray[], radiusFor: (i: number, j: nu
       // A straight wedge: a through street's far side. The curb and the verge and sidewalk run on, unbroken.
       const sa = Math.max(0, a.from);
       const sb = Math.max(0, b.from);
-      corners.push({ from: i, to: j, shape: "straight", radius: 0, nominal, reach: 0, v: null, ta: onLeg(a, sa, a.half), tb: onLeg(b, sb, -b.half), c: null, lot: null });
+      corners.push({ from: i, to: j, shape: "straight", radius: 0, nominal, reach: 0, v: null, ta: onLeg(a, sa, a.half), tb: onLeg(b, sb, -b.half), c: null, lot: null, curb: true, walk: true });
       continue;
     }
     const pa = onLeg(a, 0, a.half);
@@ -81,7 +81,7 @@ export function solveJunction(rays: readonly Ray[], radiusFor: (i: number, j: nu
     const lot = meet(onLeg(a, 0, a.outer), da, onLeg(b, 0, -b.outer), db);
     if (cross <= 1e-3) {
       // Reflex (a wedge over a half turn) or parallel: a sharp corner of the pavement, with no return.
-      corners.push({ from: i, to: j, shape: "sharp", radius: 0, nominal, reach: 0, v, ta: v, tb: v, c: null, lot });
+      corners.push({ from: i, to: j, shape: "sharp", radius: 0, nominal, reach: 0, v, ta: v, tb: v, c: null, lot, curb: true, walk: true });
       bandLeft[i] = Math.max(bandLeft[i] as number, along(a, v));
       bandRight[j] = Math.max(bandRight[j] as number, along(b, v));
       continue;
@@ -94,7 +94,7 @@ export function solveJunction(rays: readonly Ray[], radiusFor: (i: number, j: nu
     const tb = { x: v.x + db.x * reach, z: v.z + db.z * reach };
     const k = radius / cross;
     const c = { x: v.x + (da.x + db.x) * k, z: v.z + (da.z + db.z) * k };
-    corners.push({ from: i, to: j, shape: "arc", radius, nominal, reach, v, ta, tb, c, lot });
+    corners.push({ from: i, to: j, shape: "arc", radius, nominal, reach, v, ta, tb, c, lot, curb: true, walk: true });
     bandLeft[i] = Math.max(bandLeft[i] as number, along(a, ta));
     bandRight[j] = Math.max(bandRight[j] as number, along(b, tb));
   }
@@ -259,14 +259,18 @@ export type Ramp = {
  * the middle of the crosswalk, which begins at the leg's mouth. None where the corners were not rebuilt, nor on the highway's
  * edge (no sidewalk there) nor on a closed leg.
  */
-export function rampsOf(legs: readonly { readonly mouth: number; readonly marked: boolean; readonly engine: boolean; readonly closed: boolean; readonly walk: number }[], ramps: boolean, crosswalk: { marked: number; unmarked: number }): Ramp[] {
+export function rampsOf(legs: readonly { readonly mouth: number; readonly marked: boolean; readonly engine: boolean; readonly closed: boolean; readonly walk: number; readonly walkLeft: boolean; readonly walkRight: boolean; readonly curbLeft: boolean; readonly curbRight: boolean }[], ramps: boolean, crosswalk: { marked: number; unmarked: number }): Ramp[] {
   if (!ramps) return [];
   const out: Ramp[] = [];
   for (let i = 0; i < legs.length; i++) {
     const l = legs[i] as (typeof legs)[number];
     if (l.engine || l.closed || !(l.walk > 0)) continue;
     const mid = l.mouth + (l.marked ? crosswalk.marked : crosswalk.unmarked) / 2;
-    for (const side of [1, -1] as const) out.push({ leg: i, side, s0: mid - RAMP_WIDTH / 2, s1: mid + RAMP_WIDTH / 2 });
+    // A ramp is cut only where the side has a curb and a sidewalk to climb to.
+    for (const side of [1, -1] as const) {
+      if (side === 1 ? !(l.walkLeft && l.curbLeft) : !(l.walkRight && l.curbRight)) continue;
+      out.push({ leg: i, side, s0: mid - RAMP_WIDTH / 2, s1: mid + RAMP_WIDTH / 2 });
+    }
   }
   return out;
 }

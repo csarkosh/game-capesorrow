@@ -228,7 +228,7 @@ describe("junctions: the plan's records", () => {
         }
         const ramps = rampsOf(j.legs, j.ramps, { marked: CROSSWALK_WIDTH, unmarked: UNMARKED_CROSSWALK });
         // Two ramps (one a crossing direction) for each leg that has a sidewalk: eight at a four-way of streets.
-        if (j.ramps && j.legs.length === 4 && j.legs.every((l) => !l.engine && l.walk > 0)) expect(ramps.length).toBe(8);
+        if (j.ramps && j.legs.length === 4 && j.legs.every((l) => !l.engine && l.walkLeft && l.walkRight && l.curbLeft && l.curbRight)) expect(ramps.length).toBe(8);
         for (const r of ramps) {
           const l = j.legs[r.leg] as JunctionLeg;
           const crosswalk = l.marked ? CROSSWALK_WIDTH : UNMARKED_CROSSWALK;

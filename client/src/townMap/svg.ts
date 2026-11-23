@@ -317,6 +317,32 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
     }
     out.push(`<line x1="${X(s.a.x)}" y1="${Y(s.a.z)}" x2="${X(s.b.x)}" y2="${Y(s.b.z)}" stroke="${col}" stroke-width="${s.width}"/>`);
   }
+  // The sidewalks, side by side (`plan.edges`, `port/edges.ts`): each pour a cyan bar along its side of the street (the paler, the older its decade), a curb a thin white line at the roadway's edge, and a side with neither is left plain, so a street with a sidewalk on one side only, or none, shows.
+  for (const s of plan.streets) {
+    const e = plan.edges[s.id];
+    if (e === undefined || (s.kind !== "street" && s.kind !== "main" && s.kind !== "avenue")) continue;
+    const L = Math.sqrt((s.b.x - s.a.x) * (s.b.x - s.a.x) + (s.b.z - s.a.z) * (s.b.z - s.a.z));
+    if (!(L > 0.1)) continue;
+    const tx = (s.b.x - s.a.x) / L;
+    const tz = (s.b.z - s.a.z) / L;
+    const P = (d: number, t: number): [number, number] => [s.a.x + tx * d - tz * t, s.a.z + tz * d + tx * t];
+    e.sides.forEach((side, k) => {
+      const sg = k === 0 ? 1 : -1;
+      if (side.curb) {
+        const [x0, z0] = P(0, sg * (s.roadway / 2));
+        const [x1, z1] = P(L, sg * (s.roadway / 2));
+        out.push(`<line x1="${X(x0)}" y1="${Y(z0)}" x2="${X(x1)}" y2="${Y(z1)}" stroke="#ffffff" stroke-opacity="0.7" stroke-width="0.8"/>`);
+      }
+      for (const run of side.runs) {
+        const t = sg * (s.width / 2 - side.walk / 2);
+        const [x0, z0] = P(run.s0, t);
+        const [x1, z1] = P(run.s1, t);
+        const age = Math.min(1, Math.max(0, (run.decade - 1900) / 120));
+        const g = Math.round(150 + 90 * age);
+        out.push(`<line x1="${X(x0)}" y1="${Y(z0)}" x2="${X(x1)}" y2="${Y(z1)}" stroke="rgb(${Math.round(40 + 60 * age)},${g},255)" stroke-opacity="0.95" stroke-width="${Math.max(1.4, side.walk * 0.7)}"/>`);
+      }
+    });
+  }
   // The made ends of streets: a gravel bulb for a turnaround, a red bar for a barricade, a blue one for a landing at the water.
   for (const e of plan.ends) {
     const nx = e.dz;

@@ -39,7 +39,8 @@ import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { segDist, type Vec } from "./geom.js";
 import { chance, type Rng } from "./rng.js";
 import { areaOf, onLeg, pavementPolygon, polygonsOverlap, solveJunction, type Solved } from "./junctionShape.js";
-import type { Block, Building, Junction, JunctionControl, JunctionCorner, JunctionKind, JunctionLeg, Landmark, RailCrossing, Road, Street, StreetEnd, StreetKind } from "./types.js";
+import { walkAt } from "./port/edges.js";
+import type { Block, Building, Junction, JunctionControl, JunctionCorner, JunctionKind, JunctionLeg, Landmark, RailCrossing, Road, SideEdge, Street, StreetEdge, StreetEnd, StreetKind } from "./types.js";
 
 // ---- Figures from the research, with the section that gives each.
 /** Corner radius where two neighbourhood streets meet, 10 ft (section 1, Seattle). */
@@ -136,6 +137,8 @@ export type JunctionInput = {
   readonly blocks: readonly Block[];
   readonly buildings: readonly Building[];
   readonly landmarks: readonly Landmark[];
+  /** What stands beside each street (`port/edges.ts`), by street id: which legs have a curb and a sidewalk on which side. */
+  readonly edges: readonly StreetEdge[];
   readonly rng: Rng;
 };
 
@@ -176,8 +179,34 @@ type Built = {
   hasEngine: boolean;
 };
 
+/**
+ * Which sides of a leg have a curb and a sidewalk just beyond its mouth (`port/edges.ts` says where each street's side has its
+ * pours). The highway's edge is the engine's, and counts as having both so a street's own side decides the corner. A leg that is
+ * not a street of the grid has none.
+ */
+function sidesOf(inp: JunctionInput, l: RawLeg, mouth: number): { curbLeft: boolean; curbRight: boolean; walkLeft: boolean; walkRight: boolean } {
+  if (l.engine) return { curbLeft: true, curbRight: true, walkLeft: true, walkRight: true };
+  const st = inp.streets[l.street];
+  const edge = inp.edges[l.street];
+  if (st === undefined || edge === undefined || l.street < 0) return { curbLeft: false, curbRight: false, walkLeft: false, walkRight: false };
+  const dx = st.b.x - st.a.x;
+  const dz = st.b.z - st.a.z;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  if (!(len > 0.1)) return { curbLeft: false, curbRight: false, walkLeft: false, walkRight: false };
+  const tx = dx / len;
+  const tz = dz / len;
+  const fwd = l.dx * tx + l.dz * tz > 0;
+  const so = (l.x - st.a.x) * tx + (l.z - st.a.z) * tz;
+  // Just beyond the mouth along the leg, and at the junction's own middle: a sidewalk counts if it is at either.
+  const sBeyond = so + (fwd ? 1 : -1) * (mouth + 1.5);
+  const has = (side: SideEdge): boolean => side.walk > 0 && (walkAt(side, sBeyond) !== null || walkAt(side, so) !== null);
+  const left = edge.sides[fwd ? 0 : 1];
+  const right = edge.sides[fwd ? 1 : 0];
+  return { curbLeft: left.curb, curbRight: right.curb, walkLeft: has(left), walkRight: has(right) };
+}
+
 function legPlain(l: RawLeg): JunctionLeg {
-  return { ...l, mouth: 0, bandLeft: 0, bandRight: 0, marked: false, stops: false, stopLine: null, holdBack: 0, centreEnd: 0, deadEnd: false, closed: false };
+  return { ...l, mouth: 0, bandLeft: 0, bandRight: 0, marked: false, stops: false, stopLine: null, holdBack: 0, centreEnd: 0, deadEnd: false, closed: false, curbLeft: false, curbRight: false, walkLeft: false, walkRight: false };
 }
 
 export function findJunctions(inp: JunctionInput): Junction[] {
@@ -607,12 +636,16 @@ function finish(b: Built, inp: JunctionInput, core: readonly (readonly Vec[])[],
   const closed = b.shut;
   if (closed.length > 0) legacy = "planter";
   const cutLegs: JunctionLeg[] = b.cuts.map((c) => ({ ...legPlain(c.leg), mouth: c.mouth, bandLeft: c.mouth, bandRight: c.mouth, closed: true }));
-  const legs: JunctionLeg[] = raw.map((l, i) => ({
-    ...legPlain(l),
-    mouth: solved.mouth[i] as number,
-    bandLeft: solved.bandLeft[i] as number,
-    bandRight: solved.bandRight[i] as number,
-  }));
+  const legs: JunctionLeg[] = raw.map((l, i) => {
+    const mouth = solved.mouth[i] as number;
+    return { ...legPlain(l), mouth, bandLeft: solved.bandLeft[i] as number, bandRight: solved.bandRight[i] as number, ...sidesOf(inp, l, mouth) };
+  });
+  // A corner has its curb return and its sidewalk only where both legs it joins have them on the sides that meet there; else the pavement turns in a plain radius into gravel.
+  const corners = solved.corners.map((k): JunctionCorner => {
+    const a = legs[k.from] as JunctionLeg;
+    const c = legs[k.to] as JunctionLeg;
+    return { ...k, curb: k.shape === "straight" ? a.curbLeft && c.curbRight : a.curbLeft && c.curbRight, walk: a.walkLeft && c.walkRight };
+  });
   const closedLegs: JunctionLeg[] = closed.map((q) => ({ ...legPlain(q.leg), mouth: q.mouth, bandLeft: q.left, bandRight: q.right, closed: true }));
   // The stem of a three-way junction: the leg the other two lie most nearly in a line across.
   let stem = -1;
@@ -633,7 +666,7 @@ function finish(b: Built, inp: JunctionInput, core: readonly (readonly Vec[])[],
   const weightSum = raw.reduce((s, l) => s + (l.engine ? 0 : weight(l.kind)), 0);
   const streetsIds = b.streets.slice();
   if (cutLegs.length > 0) legacy = "planter";
-  return { x, z, legs, corners: solved.corners, closed: [...closedLegs, ...cutLegs], streets: streetsIds, kind, stem, skew, legacy, core: inCore, civic: near, weight: weightSum, hasEngine: b.hasEngine, tight: b.tight };
+  return { x, z, legs, corners, closed: [...closedLegs, ...cutLegs], streets: streetsIds, kind, stem, skew, legacy, core: inCore, civic: near, weight: weightSum, hasEngine: b.hasEngine, tight: b.tight };
 }
 
 /** Where a leg's curb line (offset `side` from its centre) leaves the pavement polygon, from the leg's reference point. */
