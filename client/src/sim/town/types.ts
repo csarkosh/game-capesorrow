@@ -242,6 +242,11 @@ export type Quay = {
   readonly wet: readonly { readonly a: Vec; readonly b: Vec }[];
   /** The unit vector from the quay out over the water. */
   readonly seaward: Vec;
+  /**
+   * What the wall is built of: timber cribwork under a timber cap (the quay the port built in its first years, and kept), or steel
+   * sheet piling under a concrete cap (where a fire after 1921 took the waterfront and it was rebuilt in concrete).
+   */
+  readonly wall: "timber" | "sheet";
 };
 
 export type DeckKind = "apron" | "pier" | "wharf" | "shed" | "float" | "gangway";

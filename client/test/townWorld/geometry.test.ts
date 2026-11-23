@@ -3,8 +3,9 @@ import { finish } from "@csarkosh/engine/game/syncJobs";
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { buildingGeometry, PROUD } from "../../src/game/town/buildingGeometry.js";
 import { MeshBuilder, hash01, type MeshArrays } from "../../src/game/town/meshBuilder.js";
-import { GLASS, PLYWOOD, DECK, PILE, QUAY_FACE } from "../../src/game/town/palette.js";
-import { APRON, FACE_DEPTH, deckGeometry, quayGeometry, wharfGeometry } from "../../src/game/town/pileGeometry.js";
+import { GLASS, PLYWOOD, DECK, PILE } from "../../src/game/town/palette.js";
+import { FACE_DEPTH, deckGeometry, wharfGeometry } from "../../src/game/town/pileGeometry.js";
+import { APRON, quayGeometry } from "../../src/game/town/quayGeometry.js";
 import { ASPHALT_OVER, RANK_LIFT, SLOT_LIFT, STREET_LIFT, streetGeometry } from "../../src/game/town/streetGeometry.js";
 import { CELL, townGeometry, townGround } from "../../src/game/town/townGeometry.js";
 import { SEA, type TownGround } from "../../src/game/town/townTypes.js";
@@ -141,7 +142,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 74, flat: 38, vertices: 127929, triangles: 63771 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 74, flat: 38, vertices: 145379, triangles: 72693 });
   });
 });
 
@@ -475,19 +476,20 @@ describe("the piers, the wharf and the quay", () => {
       let wet = 0;
       for (const w of q.wet) wet += Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
       expect(wet).toBeGreaterThan(100);
-      // The seaward side: negative x.
+      // The wall's face: upright triangles that look out to sea and go down under it.
+      const sea = q.seaward;
       let faceTriangles = 0;
-      eachTriangle(a, (p, n, c) => {
-        const faceColour = Math.abs(c[0] - QUAY_FACE[0]) < 1e-6 && Math.abs(c[2] - QUAY_FACE[2]) < 1e-6;
-        if (faceColour) {
-          faceTriangles++;
-          expect(Math.abs(n[1])).toBeLessThan(0.01);
-          expect(n[0]).toBeLessThan(0);
-          expect(Math.min(...p.map((q) => q[1]))).toBeLessThanOrEqual(SEA - FACE_DEPTH + 1e-4);
-        }
+      eachTriangle(a, (p, n) => {
+        if (Math.abs(n[1]) < 0.01 && n[0] * sea.x + n[2] * sea.z > 0.9 && Math.min(...p.map((v) => v[1])) <= SEA - FACE_DEPTH + 1e-4) faceTriangles++;
       });
       // A wall of two triangles for every 4 m of the stretch, less what the piers and the wharf take.
       expect(faceTriangles).toBeGreaterThanOrEqual(Math.floor(wet / 4));
+      // And nothing of the wall stands under the apron's edge: its face is a hand beyond the deck's own edge.
+      eachTriangle(a, (p, n) => {
+        if (n[0] * sea.x + n[2] * sea.z > 0.9 && Math.abs(n[1]) < 0.01 && Math.min(...p.map((v) => v[1])) < SEA - 3) {
+          for (const v of p) expect(Math.abs((v[0] - g.anchor.x - q.a.x) * sea.x + (v[2] - g.anchor.z - q.a.z) * sea.z)).toBeGreaterThan(APRON - 1e-3);
+        }
+      });
       // The apron lies at the apron deck's height.
       const top = g.plan.decks.find((d) => d.kind === "apron")?.top as number;
       eachTriangle(apron, (p, n) => {

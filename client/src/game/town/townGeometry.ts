@@ -15,7 +15,8 @@ import { siteFor } from "../../sim/town/siteFor.js";
 import type { LandmarkRole } from "../../sim/town/types.js";
 import { buildingGeometry } from "./buildingGeometry.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
-import { deckGeometryAll, quayGeometry, railGeometry, wharfGeometry } from "./pileGeometry.js";
+import { deckGeometryAll, railGeometry, wharfGeometry } from "./pileGeometry.js";
+import { quayGeometry } from "./quayGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import type { Detail, TownGround } from "./townTypes.js";
 

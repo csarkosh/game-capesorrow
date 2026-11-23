@@ -490,7 +490,10 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     }
     flush(cols);
   }
-  const quay = { a: O(uLo, quayV), b: O(uHi, quayV), wet: quayWet, seaward: { x: -oldFrame.V.x, z: -oldFrame.V.z } };
+  const quay = { a: O(uLo, quayV), b: O(uHi, quayV), wet: quayWet,
+    seaward: { x: -oldFrame.V.x, z: -oldFrame.V.z },
+    wall: history.fire !== null && history.fire.burned === "both" && history.fire.year >= 1922 ? ("sheet" as const) : ("timber" as const),
+  };
 
   // ---- The flats' limits: the west boundary of the compass plat, the shore's envelope or the rail's line.
   const shoreMargin = railPresent ? 7 : 6;

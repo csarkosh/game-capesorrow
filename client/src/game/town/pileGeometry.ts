@@ -1,23 +1,19 @@
 /**
- * What stands over the water or against it: the quay's apron and wall, the decks (piers, the platforms the terminal's sheds
+ * What stands over the water: the decks (piers, the platforms the terminal's sheds
  * stand on, floats, gangways), the wharf street's skirts and piles, and the bull rails along every railed edge.
  *
  * - **Decks** are `plan.decks`, the one list the simulation walks on (`sim/town/decks.ts`): each is drawn with its top at
  *   exactly the height `deckTopAt` gives there (a gangway's tilted), with a skirt `SKIRT` m deep round its edges, and a pier,
  *   a shed's platform and the wharf on piles every `PILE_STEP` m along each side, from the sea floor up, wherever the ground
  *   is more than half a metre under the deck. The wharf's surface is the street's own (`streetGeometry`).
- * - **The quay** (`plan.quay`): along each wet stretch of the line, an apron `QUAY_APRON` m wide at the deck's height
- *   (a deck of the plan, so it is walked on), and a wall at its seaward edge down into the water. The apron is left out where a
- *   pier or the wharf leaves the quay, which draws its own deck there.
+ * - **The quay** is `quayGeometry.ts`.
  * - **Rails** (`TownGround.rails`): a timber bull rail along every edge the simulation holds a walker back from.
  */
 import { type Vec3 } from "./meshBuilder.js";
-import { DECK, PILE, QUAY_CONCRETE, QUAY_FACE } from "./palette.js";
+import { DECK, PILE } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
-import { QUAY_APRON } from "../../sim/town/levels.js";
 import type { Deck, Street } from "../../sim/town/types.js";
 
-export const APRON = QUAY_APRON;
 export const RAIL_HEIGHT = 0.3;
 export const RAIL_WIDTH = 0.28;
 export const SKIRT = 0.45;
@@ -25,8 +21,6 @@ export const PILE_HALF = 0.18;
 export const PILE_STEP = 4;
 /** How far under the sea's level the quay's face and the piles go, at the least, metres. */
 export const FACE_DEPTH = 1.6;
-/** How far under the sea's level the quay wall's foot goes, metres. */
-export const WALL_FOOT = 4;
 
 const UP: Vec3 = [0, 1, 0];
 
@@ -39,80 +33,6 @@ function pile(sink: Sink, g: TownGround, x: number, z: number, top: number): voi
 export function deckTop(d: Deck, a: number): number {
   const t = (Math.min(d.halfAlong, Math.max(-d.halfAlong, a)) + d.halfAlong) / (2 * d.halfAlong);
   return d.top + (d.topEnd - d.top) * t;
-}
-
-/** The quay: the apron along each wet stretch, and the wall at its edge. */
-export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
-  const { quay } = g.plan;
-  const sx = quay.seaward.x;
-  const sz = quay.seaward.z;
-  // The decks that leave the quay, as intervals of the line (along the quay): the apron is not drawn under them.
-  const leaving = g.plan.decks.filter((d) => d.kind === "pier" || d.kind === "wharf" || d.kind === "gangway");
-  for (const w of quay.wet) {
-    const ax = g.anchor.x + w.a.x;
-    const az = g.anchor.z + w.a.z;
-    const len = Math.sqrt((w.b.x - w.a.x) * (w.b.x - w.a.x) + (w.b.z - w.a.z) * (w.b.z - w.a.z));
-    const tx = (w.b.x - w.a.x) / len;
-    const tz = (w.b.z - w.a.z) / len;
-    const at = (s: number, off: number): [number, number] => [ax + tx * s + sx * off, az + tz * s + sz * off];
-    // The stretch's own pieces, with each crossing deck's interval taken out.
-    let pieces: [number, number][] = [[0, len]];
-    for (const d of leaving) {
-      // The deck's corners in the stretch's own coordinates: if it reaches into the apron, its interval along the line.
-      let lo = Infinity;
-      let hi = -Infinity;
-      let nearest = Infinity;
-      for (const su of [-1, 1]) {
-        for (const sv of [-1, 1]) {
-          const px = g.anchor.x + d.centre.x + d.axis.x * d.halfAlong * su - d.axis.z * d.halfAcross * sv;
-          const pz = g.anchor.z + d.centre.z + d.axis.z * d.halfAlong * su + d.axis.x * d.halfAcross * sv;
-          const s = (px - ax) * tx + (pz - az) * tz;
-          const off = (px - ax) * sx + (pz - az) * sz;
-          lo = Math.min(lo, s);
-          hi = Math.max(hi, s);
-          nearest = Math.min(nearest, off);
-        }
-      }
-      // It leaves the apron if one end of it is beyond the apron's edge and the other is on the quay's line or landward of it.
-      if (!(nearest < QUAY_APRON - 0.5)) continue;
-      const out: [number, number][] = [];
-      for (const [p0, p1] of pieces) {
-        if (hi <= p0 || lo >= p1) out.push([p0, p1]);
-        else {
-          if (lo > p0) out.push([p0, lo]);
-          if (hi < p1) out.push([hi, p1]);
-        }
-      }
-      pieces = out;
-    }
-    for (const [p0, p1] of pieces) {
-      const n = Math.max(1, Math.ceil((p1 - p0) / 4));
-      for (let i = 0; i < n; i++) {
-        const s0 = p0 + ((p1 - p0) * i) / n;
-        const s1 = p0 + ((p1 - p0) * (i + 1)) / n;
-        const y = g.plan.decks.find((d) => d.kind === "apron")?.top ?? 0;
-        const p = (s: number, off: number, h: number): Vec3 => {
-          const [x, z] = at(s, off);
-          return [x, h, z];
-        };
-        const mid = at((s0 + s1) / 2, QUAY_APRON / 2);
-        flat(mid[0], mid[1]).poly([p(s0, 0, y), p(s1, 0, y), p(s1, QUAY_APRON, y), p(s0, QUAY_APRON, y)], UP, QUAY_CONCRETE);
-      }
-    }
-    // The wall's face along the same pieces, from the apron down to the foot.
-    const y = g.plan.decks.find((d) => d.kind === "apron")?.top ?? 0;
-    for (const [p0, p1] of pieces) {
-      const n = Math.max(1, Math.ceil((p1 - p0) / 4));
-      for (let i = 0; i < n; i++) {
-        const s0 = p0 + ((p1 - p0) * i) / n;
-        const s1 = p0 + ((p1 - p0) * (i + 1)) / n;
-        const [x0, z0] = at(s0, QUAY_APRON);
-        const [x1, z1] = at(s1, QUAY_APRON);
-        const mid = at((s0 + s1) / 2, QUAY_APRON);
-        solid(mid[0], mid[1]).poly([[x0, y, z0], [x1, y, z1], [x1, SEA - WALL_FOOT, z1], [x0, SEA - WALL_FOOT, z0]], [sx, 0, sz], QUAY_FACE);
-      }
-    }
-  }
 }
 
 /** A rectangular deck (a pier's, a shed's platform, a float, a gangway), its skirt and, on piles, its piles. */
