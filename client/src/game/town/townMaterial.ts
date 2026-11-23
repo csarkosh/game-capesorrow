@@ -89,6 +89,8 @@ const RUST_COLOUR: readonly [number, number, number] = [1.35, 0.8, 0.5];
 const LOW_MOSS = 0.65;
 /** The soft edge of a worn patch, as a share of the noise's range. */
 const WEAR_EDGE = 0.1;
+/** How metallic bare metal sheet is, 0 to 1: a painted or weathered sheet is not a mirror. */
+const METAL_AMOUNT = 0.5;
 
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
@@ -102,7 +104,7 @@ export function townDefinitions(low: boolean): string {
     `const TOWN_RUST:i32=${layerIndex(WEAR_OVERLAY.rust)};`,
     // The overlay layer and the grade of each wear kind: moss, rust, peel, algae, grime (xyz the colour's multiplier, w how much of it is laid).
     `var<private> townOver:array<i32,5>=array<i32,5>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
-    `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.0,0.97,0.92,1.0),vec4<f32>(0.62,0.9,0.5,0.55),vec4<f32>(0.5,0.45,0.4,0.85));`,
+    `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(1.05,1.3,0.9,0.4),vec4<f32>(0.8,0.74,0.66,0.7));`,
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
     "var<private> townSignA:f32=1.0;",
@@ -136,6 +138,7 @@ function wearSlot(amountExpr: string, kindExpr: string, low: boolean, n: string)
     `var tsWp${n}=input.worldPos;`,
     `if(fract(tsKf${n})>0.25){tsWp${n}=vec3<f32>(tsWp${n}.x*2.6,tsWp${n}.y*0.32,tsWp${n}.z*2.6);}`,
     `let tsW${n}=townWear(tsWp${n},tsA${n})*townGrade[tsK${n}].w;`,
+    `tsWm=max(tsWm,tsW${n});`,
     `if(tsW${n}>0.004){`,
     `let tsOver${n}=townOver[tsK${n}];`,
     `let tsScale${n}=tsInfo.xy/townInfo[tsOver${n}].xy;`,
@@ -163,6 +166,7 @@ export function townSurfaceCode(low: boolean): string {
     "var tsN=vec2<f32>(tsData.x*2.0-1.0,tsData.y*2.0-1.0);",
     "var tsRough=tsData.z;var tsAo=clamp(tsData.w*2.0-1.0,0.0,1.0);",
     `var tsRgb=input.${TOWN_TINT_VARYING}.rgb*tsCol;`,
+    "var tsWm=0.0;",
     wearSlot("tsSurf.y", "tsSurf.z", low, "1"),
     wearSlot("tsWearV.x", "tsWearV.y", low, "2"),
     `tsN*=${f(NORMAL_STRENGTH)};`,
@@ -173,6 +177,8 @@ export function townSurfaceCode(low: boolean): string {
     "N=normalize(tsT*tsInv*tsN.x+tsB*tsInv*tsN.y+N*tsNz);",
     `baseColor=tsRgb*mix(1.0,tsAo,${f(AO_STRENGTH)});`,
     "roughness=clamp(tsRough,0.05,1.0);",
+    // Bare metal is metal: sheet that is not rusted or painted over shines as the conductor it is, and the wear takes it away.
+    `if(tsLayer==${layerIndex("metal_aged")}||tsLayer==${layerIndex("metal_painted")}||tsLayer==${layerIndex("roof_metal")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`,
     "}",
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
     "if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));}",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PAINT_GAIN, TOWN_LAYERS, layerIndex } from "../../src/game/town/townLayers.js";
-import { TOWN_ATTRIBUTE, TOWN_TINT_ATTRIBUTE, TOWN_VERTEX_FLOATS, emptyTownReady, townDefinitions, townSurfaceCode, townSurfacePlugin } from "../../src/game/town/townMaterial.js";
+import { TOWN_ATTRIBUTE, TOWN_TINT_ATTRIBUTE, TOWN_VERTEX_FLOATS, TOWN_WEAR_ATTRIBUTE, emptyTownReady, townDefinitions, townSurfaceCode, townSurfacePlugin } from "../../src/game/town/townMaterial.js";
 import { SURFACE_FLOATS } from "../../src/game/town/meshBuilder.js";
 import { townTextureBytes, townTextureSize } from "../../src/game/town/townTextures.js";
 
@@ -8,11 +8,12 @@ describe("the town's material plugin", () => {
   it("writes the layer table from the manifest: a row of tile size and gain for each layer, and the overlays' indices", () => {
     const defs = townDefinitions(false);
     expect(defs).toContain(`array<vec4<f32>,${TOWN_LAYERS.length}>`);
-    expect(defs.match(/vec4<f32>\(/g)?.length).toBe(TOWN_LAYERS.length);
+    // The layer table, and the five rows of the wear kinds' grades.
+    expect(defs.match(/vec4<f32>\(/g)?.length).toBe(TOWN_LAYERS.length + 5);
     expect(defs).toContain(`TOWN_MOSS:i32=${layerIndex("moss")}`);
     expect(defs).toContain(`TOWN_RUST:i32=${layerIndex("rust")}`);
     // A paintable layer's gain is the paint gain; the others' is one.
-    const rows = defs.slice(defs.indexOf("=array<vec4<f32>")).split("vec4<f32>(").slice(1, TOWN_LAYERS.length + 1);
+    const rows = defs.slice(defs.indexOf("=array<vec4<f32>", defs.indexOf("townInfo"))).split("vec4<f32>(").slice(1, TOWN_LAYERS.length + 1);
     TOWN_LAYERS.forEach((l, i) => expect(rows[i]).toContain(`,${l.paintable ? PAINT_GAIN.toFixed(1) : "1.0"},0.0)`));
     expect(defs).not.toContain("${");
   });
@@ -29,12 +30,12 @@ describe("the town's material plugin", () => {
     expect(townSurfaceCode(false)).toContain("vTownTint");
   });
 
-  it("declares its vertex data as the builder lays it out: eight floats, the surface then the tint", () => {
+  it("declares its vertex data as the builder lays it out: twelve floats, the surface, the tint, then the second wear", () => {
     expect(TOWN_VERTEX_FLOATS).toBe(SURFACE_FLOATS);
     const ready = emptyTownReady();
     const plugin = townSurfacePlugin({ color: {} as never, data: {} as never }, ready, false);
     const attributes = plugin.getVertexAttributes?.() ?? [];
-    expect(attributes.map((a) => [a.name, a.offset, a.stride])).toEqual([[TOWN_ATTRIBUTE, 0, 32], [TOWN_TINT_ATTRIBUTE, 16, 32]]);
+    expect(attributes.map((a) => [a.name, a.offset, a.stride])).toEqual([[TOWN_ATTRIBUTE, 0, 48], [TOWN_TINT_ATTRIBUTE, 16, 48], [TOWN_WEAR_ATTRIBUTE, 32, 48]]);
     expect(plugin.priority).toBe(200);
     expect(plugin.getSamplers?.().map((s) => s.texture)).toEqual(["townColor", "townData"]);
     const out: { texture: unknown; sampler?: false }[] = [];

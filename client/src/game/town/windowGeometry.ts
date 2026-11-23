@@ -12,15 +12,16 @@
  * decade in the owner's own lifetime, drawn from the building's id and the window's.
  */
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
-import { TRIM_WHITE, pane, pickOf, reveal, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
+import { TRIM_WHITE, pane, pickOf, reveal, wat, wquad, type WallRef } from "./buildingKit.js";
 import type { WindowCover, WindowTreatment } from "../../sim/town/types.js";
 import type { Surface } from "./townSurface.js";
-import type { Detail } from "./townTypes.js";
+import { sillStreak } from "./buildingWear.js";
+import type { Detail, FillReport } from "./townTypes.js";
 
 /** The wall's surface (its texture frame, wear), for a part laid in the same material as the wall. */
 export type SurfaceMaker = (w: WallRef) => Surface;
 
-export type WinCtx = { out: MeshBuilder; glass: MeshBuilder; detail: Detail; id: number; era: number; surface: SurfaceMaker; trim: Rgb; wall: Rgb };
+export type WinCtx = { report?: FillReport; out: MeshBuilder; glass: MeshBuilder; detail: Detail; id: number; era: number; surface: SurfaceMaker; trim: Rgb; wall: Rgb };
 
 const CURTAINS: readonly Rgb[] = [
   [0.7, 0.66, 0.55], [0.55, 0.2, 0.18], [0.25, 0.35, 0.5], [0.78, 0.78, 0.74], [0.3, 0.42, 0.3], [0.5, 0.4, 0.55], [0.85, 0.7, 0.35], [0.35, 0.3, 0.27],
@@ -43,7 +44,6 @@ function shallowBox(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: nu
   void back;
   out.poly([wat(w, sa, y0, -depth), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [w.nx, 0, w.nz], colour, undefined, fx);
   if (!full) return;
-  out.poly([wat(w, sa, y0, -0.1), wat(w, sb, y0, -0.1), wat(w, sb, y0, -depth), wat(w, sa, y0, -depth)], [0, 1, 0], scaled(colour, 0.6), undefined, fx);
   out.poly([wat(w, sa, y1, -0.1), wat(w, sb, y1, -0.1), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], scaled(colour, 0.9), undefined, fx);
   out.poly([wat(w, sa, y0, -0.1), wat(w, sa, y0, -depth), wat(w, sa, y1, -depth), wat(w, sa, y1, -0.1)], [w.tx, 0, w.tz], scaled(colour, 0.75), undefined, fx);
   out.poly([wat(w, sb, y0, -0.1), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sb, y1, -0.1)], [-w.tx, 0, -w.tz], scaled(colour, 0.75), undefined, fx);
@@ -51,7 +51,7 @@ function shallowBox(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: nu
 
 /** A curtain: a panel from `sa` to `sb` down from `top` to `bottom`, in vertical strips of two tones (folds) or bands (stripes). */
 function curtain(out: MeshBuilder, w: WallRef, sa: number, sb: number, top: number, bottom: number, off: number, col: Rgb, style: number, glow: number): void {
-  const n = Math.max(2, Math.round((sb - sa) / 0.09));
+  const n = style === 0 ? 1 : Math.max(2, Math.min(5, Math.round((sb - sa) / 0.14)));
   for (let i = 0; i < n; i++) {
     const a = sa + ((sb - sa) * i) / n;
     const b = sa + ((sb - sa) * (i + 1)) / n;
@@ -63,7 +63,7 @@ function curtain(out: MeshBuilder, w: WallRef, sa: number, sb: number, top: numb
 
 function blinds(out: MeshBuilder, w: WallRef, sa: number, sb: number, top: number, drop: number, off: number, col: Rgb, glow: number, detail: Detail): void {
   const bottom = top - drop;
-  const n = detail === "low" ? 1 : Math.max(2, Math.round(drop / 0.16));
+  const n = detail === "low" ? 1 : Math.max(2, Math.min(5, Math.round(drop / 0.22)));
   for (let i = 0; i < n; i++) {
     const a = top - (drop * i) / n;
     const b = top - (drop * (i + 1)) / n;
@@ -84,6 +84,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   const width = sb - sa;
   const height = y1 - y0;
   const rv = full ? 0.16 : 0.08;
+  if (c.report !== undefined) c.report.windows.push({ pane: state !== "boarded" && cover !== "boarded", behind: state === "boarded" || cover === "boarded" ? "cover" : shop ? "room" : "box" });
   if (state === "boarded" || cover === "boarded") {
     // Plywood over the hole, in sheets, each its own shade.
     const n = Math.max(1, Math.round(width / 1.2));
@@ -96,6 +97,13 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     return;
   }
   reveal(out, w, sa, sb, y0, y1, rv, scaled(c.wall, 0.8), scaled(c.trim, 0.9));
+  // Under the sill the rain that runs off it leaves a streak of dirt down the wall (its own decal, in the wall's material); more on an older wall.
+  if (full && hash01(seed, 423) < 0.35 + 0.5 * Math.min(1, (2026 - c.era) / 120)) {
+    const base = c.surface(w);
+    const cw = Math.min(width * (0.5 + hash01(seed, 424) * 0.5), width);
+    const mid = (sa + sb) / 2 + (hash01(seed, 425) - 0.5) * width * 0.25;
+    wquad(out, w, mid - cw / 2, y0 - 1.3, mid + cw / 2, y0, 0.012, c.wall, sillStreak(base, 0.7, y0, 1.3));
+  }
   if (full) {
     // Trim boards round it, the sill under it (a replaced window has none: it was fitted in the old opening).
     if (!replaced) {
@@ -103,7 +111,8 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
       wquad(out, w, sa - bar, y1, sb + bar, y1 + bar, 0.025, c.trim);
       wquad(out, w, sa - bar, y0, sa, y1, 0.025, c.trim);
       wquad(out, w, sb, y0, sb + bar, y1, 0.025, c.trim);
-      wbox(out, w, sa - 0.1, sb + 0.1, y0 - 0.07, y0, 0, 0.07, c.trim, c.trim, true);
+      wquad(out, w, sa - 0.1, y0 - 0.07, sb + 0.1, y0, 0.07, c.trim);
+      out.poly([wat(w, sa - 0.1, y0, 0), wat(w, sb + 0.1, y0, 0), wat(w, sb + 0.1, y0, 0.07), wat(w, sa - 0.1, y0, 0.07)], [0, 1, 0], c.trim);
     } else {
       wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.01, fr);
       wquad(out, w, sa - 0.03, y0 - 0.03, sb + 0.03, y0, 0.01, fr);
@@ -168,7 +177,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     const s = (sa + sb) / 2 + (hash01(seed, 418) - 0.5) * width * 0.4;
     const p = wat(w, s, y0, -rv * 0.6);
     out.cylinder(p[0], p[2], y0, 0.07, 0.13, 6, [0.5, 0.25, 0.15], [0.2, 0.12, 0.08]);
-    for (let k = 0; k < 4; k++) out.cylinder(p[0] + (hash01(seed + k, 419) - 0.5) * 0.08, p[2] + (hash01(seed + k, 420) - 0.5) * 0.08, y0 + 0.12, 0.05 + hash01(seed + k, 421) * 0.03, 0.14 + k * 0.06, 5, [0.12, 0.3, 0.1], [0.2, 0.42, 0.14], 0);
+    for (let k = 0; k < 4; k++) out.cylinder(p[0] + (hash01(seed + k, 419) - 0.5) * 0.08, p[2] + (hash01(seed + k, 420) - 0.5) * 0.08, y0 + 0.12, 0.05 + hash01(seed + k, 421) * 0.03, 0.14 + k * 0.06, 5, [0.12, 0.3, 0.1], [0.2, 0.42, 0.14], 0.012);
   } else if (sill === "lamp") {
     const s = (sa + sb) / 2 + (hash01(seed, 422) - 0.5) * width * 0.4;
     const p = wat(w, s, y0, -rv * 0.6);

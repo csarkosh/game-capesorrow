@@ -60,7 +60,7 @@ export function signsGeometry(i: SignIn): void {
 }
 
 function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
-  const { solid, face, b, xf, atlas, g } = i;
+  const { solid, b, xf, atlas, g } = i;
   const pl = placeOf(xf, sign.place);
   const seed = (b.id * 131 + (unit?.id ?? 9) * 17 + k * 7 + sign.place.s * 3) | 0;
   const col = coloursOf(sign.style, sign.kind, seed);

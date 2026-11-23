@@ -17,10 +17,11 @@ import { TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hol
 import { displayWindow, roomGeometry, xp, type Xf } from "./roomGeometry.js";
 import { drawWindow, frameColour, type WinCtx } from "./windowGeometry.js";
 import type { Building, BuildingUse, Unit } from "../../sim/town/types.js";
-import type { Detail } from "./townTypes.js";
+import type { Detail, FillReport } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
 
 export type FrontIn = {
+  readonly report?: FillReport;
   readonly out: MeshBuilder;
   readonly glass: MeshBuilder;
   readonly w: WallRef;
@@ -64,8 +65,7 @@ export function planFront(i: FrontIn): FrontPlan {
   const drawers: (() => void)[] = [];
   const tallest = use.units.reduce((m, u) => Math.max(m, u.fascia), 3.2);
   const groundStoreyTop = tallest + 0.45;
-  const trim = brick ? scaled(i.wall, 1.25) : scaled(i.wall, 1.1);
-  const winCtx: WinCtx = { out, glass, detail, id: b.id, era: b.era, surface: i.surface, trim: old ? [0.55, 0.52, 0.46] : TRIM_WHITE, wall: i.wall };
+  const winCtx: WinCtx = { ...(i.report === undefined ? {} : { report: i.report }), out, glass, detail, id: b.id, era: b.era, surface: i.surface, trim: old ? [0.55, 0.52, 0.46] : TRIM_WHITE, wall: i.wall };
 
   // ---- the units
   use.units.forEach((u) => {
@@ -75,6 +75,7 @@ export function planFront(i: FrontIn): FrontPlan {
     const bulk = pickOf(BULKHEAD, b.id * 7 + u.id, 430);
     const widenedAt = u.remodel?.what === "widened window" ? u.openings.findIndex((o) => o.widened) : -1;
     u.openings.forEach((o, k) => {
+      i.report?.openings.push({ unit: u.id, s0: o.s0, s1: o.s1, sill: o.sill, head: o.head, cover: o.cover });
       const [sa, sb] = ends(o.s0, o.s1);
       const y0 = floorY + o.sill;
       const y1 = floorY + o.head;
@@ -93,6 +94,7 @@ export function planFront(i: FrontIn): FrontPlan {
         const frameC = unitFrame(b, u, k === widenedAt);
         const rep = k === widenedAt && (u.remodel?.decade ?? 0) >= 1960;
         const wc: WinCtx = { ...winCtx, trim: scaled(frameC, 1), era: rep ? u.remodel?.decade ?? b.era : b.era };
+        if (o.cover === "bricked") return;
         if (o.cover === "boarded") {
           drawWindow(wc, w, sa, sb, y0, y1, "boarded", "none", u.id * 5 + k, false, "boarded");
         } else {
@@ -178,7 +180,19 @@ export function planFront(i: FrontIn): FrontPlan {
     });
     // The room behind the glass, for a unit the street can look into (a boarded one is shut up, and has none).
     if (!boardedUnit && u.interior.type !== undefined) {
-      drawers.push(() => roomGeometry(out, xf, floorY, u.s0 + 0.04, u.s1 - 0.04, u.interior, u.state, lit, u.tenant?.trade ?? null, b.id * 31 + u.id, b.era, detail));
+      drawers.push(() => {
+        const from = out.vertices;
+        roomGeometry(out, xf, floorY, u.s0 + 0.04, u.s1 - 0.04, u.interior, u.state, lit, u.tenant?.trade ?? null, b.id * 31 + u.id, b.era, detail);
+        if (i.report !== undefined) {
+          const ext = { s0: Infinity, s1: -Infinity, d0: Infinity, d1: -Infinity, y0: Infinity, y1: -Infinity };
+          out.forEachPosition(from, (x, y, z) => {
+            const s = (x - xf.ox) * xf.tx + (z - xf.oz) * xf.tz;
+            const d = -((x - xf.ox) * xf.nx + (z - xf.oz) * xf.nz);
+            ext.s0 = Math.min(ext.s0, s); ext.s1 = Math.max(ext.s1, s); ext.d0 = Math.min(ext.d0, d); ext.d1 = Math.max(ext.d1, d); ext.y0 = Math.min(ext.y0, y); ext.y1 = Math.max(ext.y1, y);
+          });
+          i.report.rooms.push({ unit: u.id, trade: u.tenant?.trade ?? "", extent: ext, furnishings: u.interior.furnishings.length, hash: out.hashFrom(from) });
+        }
+      });
     }
     // A canopy or an awning over the glass, by the tenant's taste.
     const roll = hash01(b.id * 19 + u.id, 433);

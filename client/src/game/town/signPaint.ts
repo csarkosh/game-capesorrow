@@ -143,7 +143,7 @@ export function paintRequest(surface: Surface2, req: SignRequest): void {
       if (spec.clear && spec.kind === "glass") ink = spec.style === "hand-painted" ? [214, 176, 70] : [244, 244, 240];
       if (spec.kind === "ghost" || (spec.clear && spec.kind === "wall")) ink = spec.style === "hand-painted" ? [236, 228, 206] : [230, 226, 214];
       const arc = spec.kind === "glass" && spec.style === "hand-painted" ? size * 3 + w * 0.6 : 0;
-      lay.chars.forEach((c, ci) => {
+      lay.chars.forEach((c) => {
         // A dead letter: a tube out, a letter of a box fallen off.
         if (cond < 0.5 && (neon || box) && r() < (0.5 - cond) * 0.9) {
           if (neon) {

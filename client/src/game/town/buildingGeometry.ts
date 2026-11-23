@@ -1,16 +1,16 @@
 /**
- * A building as arrays: a shell on its oriented rectangle (`centre`, `halfAlong`, `halfAcross`, `bearing`).
+ * A building as arrays: a shell on its oriented rectangle (`centre`, `halfAlong`, `halfAcross`, `bearing`), and what the plan says is in it.
  *
  * - **Walls** go from below the lowest ground under the footprint (so no gap shows on a slope) up to the eave, four
- *   flat quads facing outward. A building standing on piles (no lot) starts at its deck.
+ *   flat faces facing outward, cut around their openings (`openingsGeometry.ts`, `buildingKit.ts`): a commercial front is its
+ *   units (`frontGeometry.ts`), a house its windows and door (`windowGeometry.ts`), the other walls few and uneven openings. A
+ *   building standing on piles (no lot) starts at its deck.
  * - **Roofs** by kind: `flat` has a roof surface and a low parapet round it; `gable` has its ridge along the longer
- *   side and a gable end on each short wall; `hip` is a true hip, four faces with a short ridge; `shed` is a single
+ *   side and a gable end on each short wall (the ridge of an old wooden one sags); `hip` is a true hip, four faces with a short ridge; `shed` is a single
  *   slope, high at the back, with trapezoid side walls. The pitched roofs overhang the walls by `EAVE` m. A `ruin` is
  *   roofless, lower, and its walls are broken at the top in runs of about a metre, with inner faces and a little rubble.
- * - **Windows** are rows of dark rectangles per storey on the street-facing wall and the sides, laid `PROUD` m off the
- *   wall (a light frame under the glass on the full detail), a house with a door and a few windows, a storefront with
- *   one wide band of glass at street level and a door, a warehouse, mill, cannery or shed with a big door and few windows.
- *   A vacant building is duller, its ground-floor glass and door boarded in plywood.
+ * - **Behind the glass** of each unit the plan's room (`roomGeometry.ts`); **signs** from the plan (`shopSigns.ts`); **parts** (`buildingParts.ts`) and
+ *   **wear** (`buildingWear.ts`) by kind, age and history.
  * - **Colour** from `material` and the building's id (`vary`): no random call anywhere.
  * - **A landmark** carries one touch: the FBI office a flagpole, a portico and a cornice; a church a steeple; the tsunami
  *   refuge is an open platform on legs with stairs; the mill a smokestack.
@@ -18,14 +18,16 @@
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingKind, LandmarkRole } from "../../sim/town/types.js";
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { roofStyle, roofTint, wallStyle, wallTint, wallWearAt, wallWearBase } from "./buildingSurfaces.js";
+import { roofStyle, roofTint, wallStyle, wallTint } from "./buildingSurfaces.js";
 import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.js";
 import { wallRef, type WallRef } from "./buildingKit.js";
-import { cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
+import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
+import { blockedWalls, cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
+import { lotDepthOut, partsGeometry } from "./buildingParts.js";
 import type { Xf } from "./roomGeometry.js";
 import { signsGeometry } from "./shopSigns.js";
 import {
-  BIG_DOOR, DOOR, FLAG_POLE, FLAG_RED, FRAME, GLASS, PLYWOOD, ROOF_METAL, ROOF_SHINGLE, ROOF_TAR, STONE_TRIM, vary, wallColour,
+  FLAG_POLE, FLAG_RED, ROOF_METAL, ROOF_SHINGLE, ROOF_TAR, STONE_TRIM, vary, wallColour,
 } from "./palette.js";
 import type { BuildingExtras, Detail, Sink, TownGround } from "./townTypes.js";
 
@@ -194,7 +196,6 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // ---- Surfaces: the walls' texture, from the plan's material; its frame runs along the wall and up from the base, the
   // walls end to end round the building (a, b, c, d in the order round) so the courses meet at the corners.
   const style = wallStyle(b);
-  const wearBase = wallWearBase(b);
   const around = [0, 2, 1, 3];
   const alongAt: number[] = [0, 0, 0, 0];
   let run = 0;
@@ -206,13 +207,15 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const w = walls[i] as Wall;
     return wallFrame(w.ax, w.az, (w.bx - w.ax) / w.length, (w.bz - w.az) / w.length, baseY, alongAt[i] as number, turned);
   };
-  const wallSurface = (i: number): Surface => {
+  const wears: (WallWear | undefined)[] = [];
+  const wallSurface = (i: number, band: 0 | 1 = 1): Surface => {
+    const w = walls[i] as Wall;
+    const wear = (wears[i] ??= wallWear(b, style, w.nx, w.nz, baseY));
     return {
       layer: style.layer,
       frame: frameOf(i, style.turned),
       ...(style.paint ? {} : { tint: wallTint(b) }),
-      wear: (p: Vec3): number => wallWearAt(wearBase, baseY, p[1]),
-      wearKind: style.wearKind,
+      ...(band === 0 ? wear.foot : wear.upper),
     };
   };
 
@@ -227,8 +230,8 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const uf = use?.frame ?? null;
   const xf: Xf | null = uf === null || uf === undefined ? null : { ox: g.anchor.x + uf.origin.x, oz: g.anchor.z + uf.origin.z, nx: uf.n.x, nz: uf.n.z, tx: uf.t.x, tz: uf.t.z, width: uf.width, depth: uf.depth };
   const planCtx: PlanCtx = {
-    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY: floorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind],
-    surfaceOf: (r) => wallSurface(refs.indexOf(r)),
+    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY: floorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }),
+    surfaceOf: (r, band) => wallSurface(refs.indexOf(r), band), bandY: baseY + FOOT,
   };
   // The floor at the street door: the building stands on the highest ground under it, but a front on a slope is entered from the sidewalk.
   const fw = refs[frontAt] as WallRef;
@@ -249,8 +252,9 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // A roof's texture: shingles and ribs run along the eave and down the slope; a flat roof's lies on the world's x and z.
   const roofLook = roofKind === "ruin" ? null : roofStyle(b, roofKind);
   const roofPaint = roofLook?.layer === "roof_shingle";
-  const roofSurface = (frame: Surface["frame"]): Surface | undefined =>
-    roofLook === null ? undefined : { layer: roofLook.layer, frame, ...(roofPaint ? {} : { tint: roofTint(b) }), wear: roofLook.wear, wearKind: roofLook.wearKind };
+  // A roof's wear follows the slope: mossy on the north side, dry on the south, rusting in streaks where it is metal (`buildingWear.ts`).
+  const roofSurface = (frame: Surface["frame"], nx = 0, nz = 0): Surface | undefined =>
+    roofLook === null || roofKind === "ruin" ? undefined : { layer: roofLook.layer, frame, ...(roofPaint ? {} : { tint: roofTint(b) }), ...roofWear(b, roofKind, roofLook.layer === "roof_metal", nx, nz) };
   if (roofKind === "flat") {
     const inset = 0.3;
     out.poly([P(-L + inset, -S + inset, H), P(L - inset, -S + inset, H), P(L - inset, S - inset, H), P(-L + inset, S - inset, H)], [0, 1, 0], roofColour, roofSurface(groundFrame(g.anchor)));
@@ -274,7 +278,16 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const he = wallTop - 0.15;
     for (const side of [-1, 1]) {
       const a = P(-Le, side * Se, he);
-      out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-Le, 0, H))));
+      const fr = roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-Le, 0, H)), e2[0] * side, e2[1] * side);
+      if (b.era < 1925 && b.material === "wood") {
+        // The ridge of a roof of a hundred years sags between its walls: an old frame's own settling.
+        const sag = 0.08 + hash01(b.id, 65) * 0.14;
+        const mid = P(0, 0, H - sag);
+        const eaveMid = P(0, side * Se, he - sag * 0.35);
+        const hint: Vec3 = [e2[0] * side * 0.6, 1, e2[1] * side * 0.6];
+        out.poly([a, eaveMid, mid, P(-Le, 0, H)], hint, roofColour, fr);
+        out.poly([eaveMid, P(Le, side * Se, he), P(Le, 0, H), mid], hint, roofColour, fr);
+      } else out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, fr);
     }
     // The gable ends, on the short walls: the wall's own texture, carried up from the wall below.
     for (const end of [-1, 1]) {
@@ -288,18 +301,27 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const r = Math.max(0.2, L - S);
     for (const side of [-1, 1]) {
       const a = P(-Le, side * Se, he);
-      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H))));
+      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H)), e2[0] * side, e2[1] * side));
     }
     for (const end of [-1, 1]) {
       const a = P(end * Le, -Se, he);
-      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H))));
+      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H)), e1[0] * end, e1[1] * end));
     }
   } else if (roofKind === "shed") {
     const Le = L + EAVE;
     const Se = S + EAVE;
     const low0 = P(-Le, -shedSign * Se, H - shedDrop - 0.1);
     out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour,
-      roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1))));
+      roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1)), -e2[0] * shedSign, -e2[1] * shedSign));
+  }
+
+  // ---- the parts that are not the shell: porches, chimneys, additions, rooftop units, canopies, by the building's kind and its own history (`buildingParts.ts`)
+  if (!ruin && !onPiles) {
+    partsGeometry({
+      g, b, role, out, glass, detail, refs, frontAt, use, xf, floorY, frontFloorY: planCtx.frontFloorY, baseY, wallTop, H,
+      roofKind: roofKind as "flat" | "gable" | "hip" | "shed", rise, P, L, S, e2, wall, blocked: blockedWalls(planCtx), vacant, wallSurface,
+      lotOut: xf === null ? 0 : lotDepthOut(g, b, xf),
+    });
   }
 
   // ---- ruins: rubble inside the walls
@@ -318,12 +340,6 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // ---- (the doors and windows are drawn with the walls: a ruin keeps its broken wall and the sky through it)
 
   landmarkTouch(g, role, f, b, out, walls, frontAt, e1, e2, L, S, wallTop, H, floorY, baseY);
-}
-
-/** The top of a ruin's wall at `s` along it (the runs of `brokenWall`). */
-function wallRunTop(id: number, w: Wall, s: number, floorY: number, H: number): number {
-  const run = Math.floor(s / 1.2);
-  return floorY + (H - floorY) * (0.45 + 0.55 * hash01(id * 31 + Math.floor(w.ax * 3) + run, 80));
 }
 
 /** A ruin's wall: runs of about a metre, each to its own height, an inner face, and the top of each run left open. */

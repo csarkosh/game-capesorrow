@@ -54,7 +54,7 @@ export type Hole = { readonly s0: number; readonly s1: number; readonly y0: numb
  * gives a piece its surface (so the texture runs on across the holes as one wall) and `wearFrom` its wear gradient.
  */
 export function cutWall(
-  out: MeshBuilder, w: WallRef, baseY: number, topA: number, topB: number, holes: readonly Hole[], colour: Rgb, surfaceOf: () => Surface,
+  out: MeshBuilder, w: WallRef, baseY: number, topA: number, topB: number, holes: readonly Hole[], colour: Rgb, surfaceOf: (band: 0 | 1) => Surface, bandY?: number,
 ): void {
   const topAt = (s: number): number => topA + ((topB - topA) * s) / w.length;
   // Drop a hole that overlaps an earlier one, and clamp the rest to the wall.
@@ -72,7 +72,17 @@ export function cutWall(
   const piece = (x0: number, x1: number, ya: number, yb0: number, yb1: number): void => {
     // From height `ya` (flat) up to the top edge, which is `yb0` at x0 and `yb1` at x1.
     if (Math.min(yb0, yb1) - ya < 0.005 && Math.max(yb0, yb1) - ya < 0.01) return;
-    out.poly([wat(w, x0, ya, 0), wat(w, x1, ya, 0), wat(w, x1, yb1, 0), wat(w, x0, yb0, 0)], hint, colour, surfaceOf());
+    // The wall's foot is a band of its own (its wear has its own kinds): a piece that crosses the band's line is cut along it.
+    if (bandY !== undefined && ya < bandY - 0.01 && Math.min(yb0, yb1) > bandY + 0.01) {
+      out.poly([wat(w, x0, ya, 0), wat(w, x1, ya, 0), wat(w, x1, bandY, 0), wat(w, x0, bandY, 0)], hint, colour, surfaceOf(0));
+      out.poly([wat(w, x0, bandY, 0), wat(w, x1, bandY, 0), wat(w, x1, yb1, 0), wat(w, x0, yb0, 0)], hint, colour, surfaceOf(1));
+      return;
+    }
+    // A top edge that meets the base at one end makes the piece a triangle: no corner is listed twice (a zero-area triangle in the fan).
+    const pts: Vec3[] = [wat(w, x0, ya, 0), wat(w, x1, ya, 0)];
+    if (yb1 - ya > 0.004) pts.push(wat(w, x1, yb1, 0));
+    if (yb0 - ya > 0.004) pts.push(wat(w, x0, yb0, 0));
+    out.poly(pts, hint, colour, surfaceOf(bandY !== undefined && Math.max(yb0, yb1) <= bandY + 0.01 ? 0 : 1));
   };
   for (let i = 0; i + 1 < stops.length; i++) {
     const x0 = stops[i] as number;

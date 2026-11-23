@@ -9,7 +9,6 @@
  * from 2000 in sans, narrow, block and a few serifs), and the colour tables. Each is rolled from the sign's own number.
  */
 import { hash01 } from "./meshBuilder.js";
-import type { SignSpec } from "./townTypes.js";
 
 export type Face = "serif" | "block" | "script" | "sans" | "slab" | "narrow" | "mono";
 export const FACE_STACKS: Readonly<Record<Face, string>> = {

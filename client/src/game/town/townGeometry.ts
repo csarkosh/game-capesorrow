@@ -107,6 +107,6 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
     const dz = (b.cz + 0.5) * CELL - from.z;
     return dx * dx + dz * dz;
   };
-  batches.sort((a, b) => distance(a) - distance(b) || a.cx - b.cx || a.cz - b.cz || (a.layer === b.layer ? 0 : a.layer === "flat" ? -1 : 1));
+  batches.sort((a, b) => distance(a) - distance(b) || a.cx - b.cx || a.cz - b.cz || LAYER_ORDER[a.layer] - LAYER_ORDER[b.layer]);
   return batches;
 }

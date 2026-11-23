@@ -17,7 +17,7 @@ import { cutWall, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRe
 import { planFront } from "./frontGeometry.js";
 import type { Xf } from "./roomGeometry.js";
 import { drawWindow, type WinCtx } from "./windowGeometry.js";
-import type { Detail, TownGround } from "./townTypes.js";
+import type { Detail, FillReport, TownGround } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
 
 export type WallPlan = { holes: Hole[]; draws: (() => void)[] };
@@ -37,9 +37,12 @@ export type PlanCtx = {
   readonly glass: MeshBuilder;
   readonly detail: Detail;
   readonly wall: Rgb;
+  readonly report?: FillReport;
   readonly vacant: boolean;
   readonly profile: "shop" | "house" | "civic" | "industrial" | "church";
-  readonly surfaceOf: (w: WallRef) => Surface;
+  readonly surfaceOf: (w: WallRef, band?: 0 | 1) => Surface;
+  /** The height of the wall's foot band over its base, or undefined for no band. */
+  readonly bandY?: number;
 };
 
 // ---- Which walls stand against a neighbour (nothing is built there that could not be seen).
@@ -86,7 +89,7 @@ export function insideOther(plan: TownPlan, self: number, x: number, z: number):
 }
 
 /** The walls that look out on nothing: they stand within 0.7 m of another building, at the middle and a quarter along. */
-function blockedWalls(c: PlanCtx): boolean[] {
+export function blockedWalls(c: PlanCtx): boolean[] {
   const a = c.g.anchor;
   return c.walls.map((w) => {
     let hit = 0;
@@ -109,13 +112,13 @@ export function planWalls(c: PlanCtx): WallPlan[] {
   const storeys = Math.max(1, b.storeys);
   const fh = (wallTop - floorY) / storeys;
   const old = b.era < 1940;
-  const ctxW: WinCtx = { out, glass, detail, id: b.id, era: b.era, surface: c.surfaceOf, trim: old ? [0.55, 0.52, 0.46] : [0.68, 0.68, 0.65], wall: c.wall };
+  const ctxW: WinCtx = { ...(c.report === undefined ? {} : { report: c.report }), out, glass, detail, id: b.id, era: b.era, surface: c.surfaceOf, trim: old ? [0.55, 0.52, 0.46] : [0.68, 0.68, 0.65], wall: c.wall };
   const front = walls[c.frontAt] as WallRef;
   const groundAt = (w: WallRef, s: number): number => c.g.heightAt(w.ax + w.tx * s, w.az + w.tz * s);
   const units = use !== undefined && use.units.length > 0 && c.xf !== null;
 
   if (units && use !== undefined && c.xf !== null) {
-    const f = planFront({ out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
+    const f = planFront({ ...(c.report === undefined ? {} : { report: c.report }), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
     const p = plans[c.frontAt] as WallPlan;
     p.holes.push(...f.holes);
     p.draws.push(() => f.draw());
@@ -153,7 +156,7 @@ export function planWalls(c: PlanCtx): WallPlan[] {
       if (p.holes.some((h) => h.s0 < hole.s1 + 0.3 && h.s1 > hole.s0 - 0.3)) continue;
       p.holes.push(hole);
       const state = c.vacant ? "boarded" : pickOf(["blinds", "curtained", "dark", "lit", "blinds"] as const, seed * 17 + k, 467);
-      p.draws.push(() => drawWindow(ctxW, w, hole.s0, hole.s1, hole.y0, hole.y1, c.profile === "industrial" && !c.vacant ? "dark" : state, "none", seed * 19 + k, hash01(seed + k, 468) < 0.25 && b.era > 1960));
+      p.draws.push(() => drawWindow({ ...ctxW, detail: "low" }, w, hole.s0, hole.s1, hole.y0, hole.y1, c.profile === "industrial" && !c.vacant ? "dark" : state, "none", seed * 19 + k, hash01(seed + k, 468) < 0.25 && b.era > 1960));
     }
     if (rear && w.length > 3) backDoor(c, w, p, seed, floorY);
   });
@@ -294,7 +297,7 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
     if (g.heightAt(w.ax + w.tx * s, w.az + w.tz * s) > y0 - 0.25) return;
     const hole: Hole = { s0: s - ww / 2, s1: s + ww / 2, y0, y1: y0 + wh };
     (plans[i] as WallPlan).holes.push(hole);
-    (plans[i] as WallPlan).draws.push(() => drawWindow({ ...ctxW, era: replaced ? 2005 : b.era }, w, hole.s0, hole.s1, hole.y0, hole.y1, wd.state, wd.sill, k, replaced));
+    (plans[i] as WallPlan).draws.push(() => drawWindow({ ...ctxW, era: replaced ? 2005 : b.era, detail: i === c.frontAt ? ctxW.detail : "low" }, w, hole.s0, hole.s1, hole.y0, hole.y1, wd.state, wd.sill, k, replaced));
   });
   if (use.door !== null) {
     const fi = c.frontAt;
@@ -326,7 +329,7 @@ export function cutWalls(c: PlanCtx, plans: readonly WallPlan[], tops: readonly 
   c.walls.forEach((w, i) => {
     const p = plans[i] as WallPlan;
     const t = tops[i] as [number, number];
-    cutWall(c.out, w, baseY, t[0], t[1], p.holes, c.wall, () => c.surfaceOf(w));
+    cutWall(c.out, w, baseY, t[0], t[1], p.holes, c.wall, (band) => c.surfaceOf(w, band), c.bandY);
     for (const d of p.draws) d();
   });
 }

@@ -108,8 +108,8 @@ function shelfRun(c: Ctx, f: Furnishing, i: number): void {
   const frame: Rgb = [0.5, 0.5, 0.5];
   fbox(c, f.s, f.d, 0, f.h, f.sx / 2, f.sd / 2, dir, [0.22, 0.2, 0.18], frame);
   if (c.detail === "low") return;
-  const tiers = Math.max(2, Math.min(5, Math.floor(f.h / 0.42)));
-  const cap = c.detail === "full" ? 9 : 5;
+  const tiers = Math.max(2, Math.min(4, Math.floor(f.h / 0.5)));
+  const cap = c.detail === "full" ? 7 : 4;
   const items = Math.max(2, Math.min(cap, Math.floor(f.sx / 0.26)));
   const vx = dir.x;
   const vd = dir.z;
@@ -146,6 +146,8 @@ function table(c: Ctx, f: Furnishing, i: number): void {
   for (const sg of [-1, 1]) {
     const cs = f.s + dir.z * sg * (f.sd / 2 + 0.3);
     const cd = f.d - dir.x * sg * (f.sd / 2 + 0.3);
+    // A chair that would stand in the window (or through the front wall) is left out; so is one that would stand behind the back wall.
+    if (cd < 0.55 || cd > c.xf.depth - 0.5 || cs < 0.3 || cs > c.xf.width - 0.3) continue;
     fbox(c, cs, cd, 0.04, 0.42, 0.2, 0.2, AX, chair, shade(chair, 1.15), c.glow, false);
     fbox(c, cs, cd + sg * 0.19, 0.46, 0.45, 0.2, 0.03, AX, chair, chair, c.glow, false);
   }
@@ -280,10 +282,11 @@ function ladder(c: Ctx, f: Furnishing): void {
 
 function paintCans(c: Ctx, f: Furnishing, i: number): void {
   const cols: Rgb[] = [[0.85, 0.85, 0.8], [0.6, 0.55, 0.4], [0.7, 0.3, 0.2], [0.8, 0.8, 0.75]];
-  c.out.poly([xp(c.xf, f.s - 0.5, f.d - 0.5, c.floorY + 0.01), xp(c.xf, f.s + 0.5, f.d - 0.5, c.floorY + 0.01), xp(c.xf, f.s + 0.5, f.d + 0.5, c.floorY + 0.01), xp(c.xf, f.s - 0.5, f.d + 0.5, c.floorY + 0.01)], [0, 1, 0], [0.7, 0.7, 0.66], undefined, { glow: c.glow });
+  const dc = Math.max(0.2, f.d - 0.5);
+  c.out.poly([xp(c.xf, f.s - 0.5, dc, c.floorY + 0.01), xp(c.xf, f.s + 0.5, dc, c.floorY + 0.01), xp(c.xf, f.s + 0.5, f.d + 0.5, c.floorY + 0.01), xp(c.xf, f.s - 0.5, f.d + 0.5, c.floorY + 0.01)], [0, 1, 0], [0.7, 0.7, 0.66], undefined, { glow: c.glow });
   const n = 3 + Math.floor(hash01(c.seed + i, 322) * 3);
   for (let k = 0; k < n; k++) {
-    const p = xp(c.xf, f.s + (hash01(c.seed + i * 9 + k, 323) - 0.5) * 0.8, f.d + (hash01(c.seed + i * 9 + k, 324) - 0.5) * 0.8, c.floorY);
+    const p = xp(c.xf, f.s + (hash01(c.seed + i * 9 + k, 323) - 0.5) * 0.8, Math.max(0.3, f.d + (hash01(c.seed + i * 9 + k, 324) - 0.5) * 0.8), c.floorY);
     c.out.cylinder(p[0], p[2], c.floorY + 0.01, 0.1, 0.2, 6, cols[k % 4] as Rgb, [0.5, 0.5, 0.5]);
   }
 }

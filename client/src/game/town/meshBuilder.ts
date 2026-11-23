@@ -39,6 +39,21 @@ export class MeshBuilder {
     return this.pos.length / 3;
   }
 
+  /** Calls `fn` with the position of each vertex from vertex number `from` on (for a part that wants its own extent or a fingerprint). */
+  forEachPosition(from: number, fn: (x: number, y: number, z: number) => void): void {
+    for (let i = from * 3; i < this.pos.length; i += 3) fn(this.pos[i] as number, this.pos[i + 1] as number, this.pos[i + 2] as number);
+  }
+
+  /** A fingerprint of the geometry from vertex `from` on: positions to a centimetre, folded in order (FNV-1a), as an unsigned 32-bit number. */
+  hashFrom(from: number): number {
+    let h = 0x811c9dc5;
+    for (let i = from * 3; i < this.pos.length; i++) {
+      h ^= Math.round((this.pos[i] as number) * 100) | 0;
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  }
+
   get triangles(): number {
     return this.idx.length / 3;
   }
