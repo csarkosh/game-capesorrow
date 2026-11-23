@@ -21,7 +21,8 @@ import { sliceDue, type Slices } from "@csarkosh/engine/game/syncJobs";
 import { RAIL_BED_HALF, RAIL_GAUGE } from "../../sim/town/rail.js";
 import { RAIL_BENCH_HALF } from "../../sim/town/railGround.js";
 import type { RailCrossing } from "../../sim/town/railCrossings.js";
-import { TRESTLE_RAMP, type RailSpan } from "../../sim/town/railSpans.js";
+import { TRESTLE_END, TRESTLE_HALF } from "../../sim/town/railDeck.js";
+import type { RailSpan } from "../../sim/town/railSpans.js";
 import { POLE_HEIGHT, poleAt, type Pole } from "../../sim/town/powerLine.js";
 
 /** The side of a cell along z, metres. */
@@ -44,11 +45,8 @@ export const TIE_PITCH = 0.55;
 /** The cut of the path at each level of detail, metres. */
 export const LOD_STEP: Readonly<Record<RailLod, number>> = { 0: 4, 1: 16, 2: 32 };
 
-/** A trestle's deck: half width, the top of its planks over the bench, and the distance between bents, metres. */
-export const TRESTLE_HALF = 1.8;
+/** The distance between a trestle's bents, metres. Its deck's width and ends are the simulation's (`railDeck.ts`). */
 export const TRESTLE_BENT = 3;
-/** The trestle's draw goes this far past a span's ends along z. */
-export const TRESTLE_END = TRESTLE_RAMP * 0.6;
 
 /** A crossing's panel: half width across the track where its top is flat, where its ramps end, and their heights, metres. */
 export const PANEL_FLAT = 1.1;
