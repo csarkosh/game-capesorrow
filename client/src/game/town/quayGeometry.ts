@@ -161,10 +161,11 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
       const foot = SEA - 1.5;
       const top = y - 0.1;
       for (const side of [-0.3, 0.3]) {
-        const [x, z] = at(s + side, faceOff + 0.1);
+        // Out from the face past the wales (which stand 8 cm proud of it), so a pile's sides and a wale's ends are not in one plane.
+        const [x, z] = at(s + side, faceOff + 0.16);
         solid(x, z).box(x, z, foot, tx, tz, 0.05, 0.05, top - foot, STEEL, STEEL);
       }
-      const [cx, cz] = at(s, faceOff + 0.1);
+      const [cx, cz] = at(s, faceOff + 0.16);
       const rungs = Math.round((top - foot) / 0.3);
       for (let k = 0; k < rungs; k++) solid(cx, cz).box(cx, cz, foot + 0.15 + k * 0.3, tx, tz, 0.3, 0.02, 0.04, STEEL, STEEL);
     }

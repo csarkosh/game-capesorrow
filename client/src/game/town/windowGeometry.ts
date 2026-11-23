@@ -223,7 +223,8 @@ function acUnit(out: MeshBuilder, w: WallRef, s: number, y0: number, wid: number
 /** A box fan in the window, behind the glass: a square frame and a round face. */
 function boxFan(b: Behind, s: number, y0: number, wid: number, seed: number): void {
   const { out, w } = b;
-  const off = b.glass - STEP * 4;
+  // Five steps behind the glass: a curtain hangs at two, so the fan's ring (3 cm in front of its plate) is over 4 cm from it.
+  const off = b.glass - STEP * 5;
   const y = y0 + 0.08;
   const a = s - wid / 2;
   const c = s + wid / 2;

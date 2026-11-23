@@ -25,19 +25,37 @@ const RAIL_OUT = 0.035;
 export type PostBook = Map<string, [number, number][]>;
 
 /** Whether a post stands within 20 cm of (x, z) already; if not, it is entered. */
-function postTaken(book: PostBook, x: number, z: number): boolean {
+function postTaken(book: PostBook, x: number, z: number, ns = ""): boolean {
   const cx = Math.floor(x / 0.4);
   const cz = Math.floor(z / 0.4);
   for (let i = -1; i <= 1; i++) {
     for (let j = -1; j <= 1; j++) {
-      for (const q of book.get(`${cx + i},${cz + j}`) ?? []) if ((q[0] - x) * (q[0] - x) + (q[1] - z) * (q[1] - z) < 0.04) return true;
+      for (const q of book.get(`${ns}${cx + i},${cz + j}`) ?? []) if ((q[0] - x) * (q[0] - x) + (q[1] - z) * (q[1] - z) < 0.04) return true;
     }
   }
-  const key = `${cx},${cz}`;
+  const key = `${ns}${cx},${cz}`;
   const list = book.get(key);
   if (list === undefined) book.set(key, [[x, z]]);
   else list.push([x, z]);
   return false;
+}
+
+/**
+ * The upright faces fences have laid, by the book of posts: a post's end face and a board fence's boards. Two that look the same way, lie within
+ * 3 cm of one plane and overlap are two faces for the depth buffer to tell apart; the later one is drawn without the part the earlier covers.
+ */
+type Plane = { readonly nx: number; readonly nz: number; readonly d: number; t0: number; t1: number; readonly y0: number; readonly y1: number };
+const PLANES = new WeakMap<PostBook, Plane[]>();
+
+/** The faces laid so far that a face of this plane, `t0` to `t1` along it and `y0` to `y1` high, lies within 3 cm of. */
+function clashing(book: PostBook, nx: number, nz: number, d: number, t0: number, t1: number, y0: number, y1: number): Plane[] {
+  return (PLANES.get(book) ?? []).filter((q) => q.nx * nx + q.nz * nz > 0.9998 && Math.abs(q.d - d) < 0.03 && q.t0 < t1 && t0 < q.t1 && q.y0 < y1 && y0 < q.y1);
+}
+
+function lay(book: PostBook, p: Plane): void {
+  const list = PLANES.get(book);
+  if (list === undefined) PLANES.set(book, [p]);
+  else list.push(p);
 }
 
 /** Whether a place is at a building's wall or under it (a run of fence laid along a wall lies in the wall's plane: its faces are the wall's, drawn twice). */
@@ -76,12 +94,23 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
     const p = at(s);
     if (low && (f.kind === "wire" || f.kind === "chain")) return;
     if (atWall(p.x, p.z) || postTaken(book, p.x, p.z)) return;
-    const tx = p.x + nx * lean;
-    const tz = p.z + nz * lean;
+    // A post of a wire fence leans along the fence, in its own plane, so that no strand crosses the plane of a leaning face; the others lean out of it.
+    const lx = f.kind === "wire" ? dx : nx;
+    const lz = f.kind === "wire" ? dz : nz;
+    const tx = p.x + lx * lean;
+    const tz = p.z + lz * lean;
     m.poly([[p.x - dx * w, p.y, p.z - dz * w], [p.x + dx * w, p.y, p.z + dz * w], [tx + dx * w, p.y + h, tz + dz * w], [tx - dx * w, p.y + h, tz - dz * w]], [nx, 0, nz], c);
     m.poly([[p.x + dx * w, p.y, p.z + dz * w], [p.x - dx * w, p.y, p.z - dz * w], [tx - dx * w, p.y + h, tz - dz * w], [tx + dx * w, p.y + h, tz + dz * w]], [-nx, 0, -nz], c);
     if (!low) {
-      m.poly([[p.x - nx * w, p.y, p.z - nz * w], [p.x + nx * w, p.y, p.z + nz * w], [tx + nx * w, p.y + h, tz + nz * w], [tx - nx * w, p.y + h, tz - nz * w]], [dx, 0, dz], c);
+      // The post's end face is left out where a board of another fence already lies across its place (a fence that turns at the post).
+      const t = (x: number, z: number): number => -dz * x + dx * z;
+      const t0 = Math.min(t(p.x, p.z), t(tx, tz)) - w;
+      const t1 = Math.max(t(p.x, p.z), t(tx, tz)) + w;
+      const dd = dx * p.x + dz * p.z;
+      if (clashing(book, dx, dz, dd, t0, t1, p.y, p.y + h).length === 0) {
+        lay(book, { nx: dx, nz: dz, d: dd, t0, t1, y0: p.y, y1: p.y + h });
+        m.poly([[p.x - nx * w, p.y, p.z - nz * w], [p.x + nx * w, p.y, p.z + nz * w], [tx + nx * w, p.y + h, tz + nz * w], [tx - nx * w, p.y + h, tz - nz * w]], [dx, 0, dz], c);
+      }
     }
   };
   // Posts.
@@ -106,9 +135,35 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       const lean = down ? 0.4 + rnd(f.seed, 130 + k) * 0.8 : missing < old * 0.4 ? 0.1 + rnd(f.seed, 131 + k) * 0.2 : 0;
       const sg = rnd(f.seed, 160 + k) < 0.5 ? 1 : -1;
       const top = (p: { x: number; z: number; y: number }, side: number): Vec3 => [p.x + nx * lean * side * sg * (down ? 1.3 : 1), p.y + H * (down ? 0.55 : 1 - lean * 0.3), p.z + nz * lean * side * sg * (down ? 1.3 : 1)];
+      const a2 = a;
+      const b2 = b;
       const face = (hint: Vec3, off: number): void => {
         const o = off;
-        m.poly([[a.x + nx * o, a.y, a.z + nz * o], [b.x + nx * o, b.y, b.z + nz * o], top({ x: b.x + nx * o, z: b.z + nz * o, y: b.y }, 1), top({ x: a.x + nx * o, z: a.z + nz * o, y: a.y }, 1)], hint, [0.3, 0.28, 0.25], surfBoard([a.x, a.y, a.z]));
+        // Along the fence, from the first board's end to the last; a post's end face that another fence laid across it takes its part of the boards (the post is there).
+        const k = hint[0] * nx + hint[2] * nz > 0 ? 1 : -1;
+        // Along the plane: its own axis, turned from its normal.
+        const tc = (x: number, z: number): number => -k * nz * x + k * nx * z;
+        const ta = tc(a2.x, a2.z);
+        const tb = tc(b2.x, b2.z);
+        const dFace = k * (nx * (a2.x + nx * o) + nz * (a2.z + nz * o));
+        let u0 = 0;
+        let u1 = 1;
+        if (Math.abs(tb - ta) > 1e-6) {
+          for (const q of clashing(book, k * nx, k * nz, dFace, Math.min(ta, tb), Math.max(ta, tb), Math.min(a2.y, b2.y), Math.max(a2.y, b2.y) + H)) {
+            const f0 = (q.t0 - ta) / (tb - ta);
+            const f1 = (q.t1 - ta) / (tb - ta);
+            const near = Math.min(f0, f1);
+            const far = Math.max(f0, f1);
+            if (near <= u0 + 1e-6) u0 = Math.max(u0, far);
+            else if (far >= u1 - 1e-6) u1 = Math.min(u1, near);
+          }
+        }
+        if (u1 - u0 < 0.02) return;
+        const lp = (u: number): { x: number; z: number; y: number } => ({ x: a2.x + (b2.x - a2.x) * u, z: a2.z + (b2.z - a2.z) * u, y: a2.y + (b2.y - a2.y) * u });
+        const p0 = lp(u0);
+        const p1 = lp(u1);
+        lay(book, { nx: k * nx, nz: k * nz, d: dFace, t0: Math.min(tc(p0.x, p0.z), tc(p1.x, p1.z)), t1: Math.max(tc(p0.x, p0.z), tc(p1.x, p1.z)), y0: Math.min(a2.y, b2.y), y1: Math.max(a2.y, b2.y) + H });
+        m.poly([[p0.x + nx * o, p0.y, p0.z + nz * o], [p1.x + nx * o, p1.y, p1.z + nz * o], top({ x: p1.x + nx * o, z: p1.z + nz * o, y: p1.y }, 1), top({ x: p0.x + nx * o, z: p0.z + nz * o, y: p0.y }, 1)], hint, [0.3, 0.28, 0.25], surfBoard([a.x, a.y, a.z]));
       };
       face([nx, 0.2 * lean * sg, nz], 0.045);
       if (!low) face([-nx, 0.2 * lean * sg, -nz], -0.045);
@@ -142,7 +197,8 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
         if (rnd(f.seed, 200 + k * 3 + Math.floor(y * 10)) < old * 0.15) continue;
         const pts: Vec3[] = [];
         for (let i = 0; i <= 1; i++) {
-          const t = i;
+          // The strand stops 3 cm short of each post, so its end is not a face in the post's own plane.
+          const t = 0.03 / Math.max(0.01, s1 - s0) + i * (1 - 0.06 / Math.max(0.01, s1 - s0));
           pts.push([a.x + (b.x - a.x) * t + nx * 0.05, a.y + (b.y - a.y) * t + y - 0.05 * Math.sin(t * Math.PI), a.z + (b.z - a.z) * t + nz * 0.05]);
         }
         tube(m, pts, 0.018, [0.18, 0.17, 0.16], 3);
@@ -159,7 +215,8 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
     }
   }
   // The gate.
-  if (gate !== null && !atWall(ax + dx * gate.at, az + dz * gate.at)) {
+  // Two lots' fences along one lot line each hang a gate in the same gap: one is drawn.
+  if (gate !== null && !atWall(ax + dx * gate.at, az + dz * gate.at) && !postTaken(book, ax + dx * gate.at, az + dz * gate.at, "gate")) {
     const s0 = gate.at - gate.width / 2;
     const hinge = at(s0);
     const th = gate.open * 1.3;

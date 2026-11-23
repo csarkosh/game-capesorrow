@@ -14,6 +14,9 @@ import { DECK, PILE } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 import type { Deck, Street } from "../../sim/town/types.js";
 
+/** How far over the deck a rail's sides and posts begin: the quay's cap under them stands 2 cm over it, and its end faces end there. */
+const CAP_CLEAR = 0.025;
+
 export const RAIL_HEIGHT = 0.3;
 export const RAIL_WIDTH = 0.28;
 export const SKIRT = 0.45;
@@ -113,8 +116,9 @@ export function railGeometry(g: TownGround, solid: Sink): void {
       const inn: Vec3 = [r.nx, 0, r.nz];
       const P = (x: number, z: number, y: number): Vec3 => [x, y, z];
       s.poly([P(x0, z0, y0 + RAIL_HEIGHT), P(x1, z1, y1 + RAIL_HEIGHT), P(x1 + ox, z1 + oz, y1 + RAIL_HEIGHT), P(x0 + ox, z0 + oz, y0 + RAIL_HEIGHT)], UP, PILE);
-      s.poly([P(x0, z0, y0), P(x1, z1, y1), P(x1, z1, y1 + RAIL_HEIGHT), P(x0, z0, y0 + RAIL_HEIGHT)], out, PILE);
-      s.poly([P(x0 + ox, z0 + oz, y0), P(x1 + ox, z1 + oz, y1), P(x1 + ox, z1 + oz, y1 + RAIL_HEIGHT), P(x0 + ox, z0 + oz, y0 + RAIL_HEIGHT)], inn, PILE);
+      // The rail's sides begin over the cap that runs under it (its top is 2 cm over the deck), so they are not faces in the cap's end planes.
+      s.poly([P(x0, z0, y0 + CAP_CLEAR), P(x1, z1, y1 + CAP_CLEAR), P(x1, z1, y1 + RAIL_HEIGHT), P(x0, z0, y0 + RAIL_HEIGHT)], out, PILE);
+      s.poly([P(x0 + ox, z0 + oz, y0 + CAP_CLEAR), P(x1 + ox, z1 + oz, y1 + CAP_CLEAR), P(x1 + ox, z1 + oz, y1 + RAIL_HEIGHT), P(x0 + ox, z0 + oz, y0 + RAIL_HEIGHT)], inn, PILE);
     }
     // A post at the end of each rail and every 3 m.
     const posts = Math.max(1, Math.round(len / 3));
@@ -122,7 +126,7 @@ export function railGeometry(g: TownGround, solid: Sink): void {
       const k = i / posts;
       const [x, z] = o(k);
       const y = r.topA + (r.topB - r.topA) * k;
-      solid(x, z).box(x + r.nx * RAIL_WIDTH * 0.5, z + r.nz * RAIL_WIDTH * 0.5, y, tx, tz, 0.07, 0.07, 0.8, PILE, PILE);
+      solid(x, z).box(x + r.nx * RAIL_WIDTH * 0.5, z + r.nz * RAIL_WIDTH * 0.5, y + CAP_CLEAR, tx, tz, 0.07, 0.07, 0.8 - CAP_CLEAR, PILE, PILE);
     }
   }
 }

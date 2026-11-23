@@ -14,6 +14,7 @@
  *
  * Authored, not researched: every size, the glow strengths, the sag and the loose corner of a banner, the colours (`signStyle.ts`).
  */
+import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
 import { xp, type Xf } from "./roomGeometry.js";
@@ -153,7 +154,11 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     if (at === null) return offAsked;
     const sg = back ? -1 : 1;
     // A face laid where another already is (a new board over an old, two records of one place) stands a step in front of it: never within 3 cm of another.
-    const off = stepOff(i, pl, cx, y0, ww, hh, sg, offAsked, behind);
+    let off = stepOff(i, pl, cx, y0, ww, hh, sg, offAsked, behind);
+    // And a step further out than any face of the wall's own that lies within 2.45 cm of it (`faceLedger.ts`).
+    const ea = pl.x + pl.rx * (cx - ww / 2) + pl.nx * off;
+    const eb = pl.x + pl.rx * (cx + ww / 2) + pl.nx * off;
+    off += sg * standOff(pl.nx * sg, pl.nz * sg, ea, pl.z + pl.rz * (cx - ww / 2) + pl.nz * off, eb, pl.z + pl.rz * (cx + ww / 2) + pl.nz * off, y0, y0 + hh);
     const c = (dr: number, yy: number): Vec3 => [pl.x + pl.rx * (cx + sg * dr) + pl.nx * off, yy, pl.z + pl.rz * (cx + sg * dr) + pl.nz * off];
     i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx * sg, 0, pl.nz * sg], [1, 1, 1], { glow });
     return off;
@@ -173,7 +178,10 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       const top = Math.min(y + h / 2, i.wallTop - 0.15);
       const y0 = top - h;
       // The board's front stands 3 cm behind the face on it, and clear of any other face on the wall.
-      const off = quad(0, y0, w, h, 0.21, false, { ww: w + 0.1, hh: h + 0.1, y0: y0 - 0.03, d: 0.03 });
+      // The board's front is where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`).
+      const bw = (w + 0.1) / 2;
+      const front = 0.18 + standOff(pl.nx, pl.nz, pl.x - pl.rx * bw + pl.nx * 0.18, pl.z - pl.rz * bw + pl.nz * 0.18, pl.x + pl.rx * bw + pl.nx * 0.18, pl.z + pl.rz * bw + pl.nz * 0.18, y0 - 0.03, y0 + h + 0.07);
+      const off = quad(0, y0, w, h, front + 0.03, false, { ww: w + 0.1, hh: h + 0.1, y0: y0 - 0.03, d: 0.03 });
       obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, off - 0.03, ink, scaled(ink, 1.6));
       break;
     }
@@ -225,7 +233,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "wall":
     case "ghost": {
-      quad(0, y - h / 2, w, h, 0.03);
+      // 9 cm out: over the plywood on a boarded window (6 cm) and a streak's decal (3 cm) by more than the 2.5 cm a face must stand from another, whatever a millimetre or so of the sign's reading of the wall's plane.
+      quad(0, y - h / 2, w, h, 0.09);
       break;
     }
     case "pole": {
@@ -278,7 +287,10 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.08, true);
       } else {
         const y0 = y - h / 2;
-        const off = quad(0, y0, w, h, 0.12, false, { ww: w + 0.12, hh: h + 0.08, y0: y0 - 0.04, d: 0.03 });
+        // The board's front stands where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`), and the lettering 3 cm in front of that.
+        const bw = (w + 0.12) / 2;
+        const front = 0.13 + standOff(pl.nx, pl.nz, pl.x - pl.rx * bw + pl.nx * 0.13, pl.z - pl.rz * bw + pl.nz * 0.13, pl.x + pl.rx * bw + pl.nx * 0.13, pl.z + pl.rz * bw + pl.nz * 0.13, y0 - 0.04, y0 + h + 0.04);
+        const off = quad(0, y0, w, h, front + 0.03, false, { ww: w + 0.12, hh: h + 0.08, y0: y0 - 0.04, d: 0.03 });
         obox(0, y0 - 0.04, w + 0.12, h + 0.08, 0, off - 0.03, ink, scaled(ink, 1.4));
       }
       break;
@@ -312,7 +324,8 @@ function windowLife(i: SignIn): void {
     const spec: SignSpec = { kind: "board", style: "vinyl", lines, decade: 2020, condition: cond, lit: false, seed, bg, fg, accent: fg, clear: false, w: ww * k, h: hh * k };
     const at = atlas.place(ww * k, hh * k, spec);
     if (at === null) return;
-    const o = stepOff(i, front, cx, y0, ww, hh, 1, off);
+    const so = stepOff(i, front, cx, y0, ww, hh, 1, off);
+    const o = so + standOff(front.nx, front.nz, front.x + front.rx * (cx - ww / 2) + front.nx * so, front.z + front.rz * (cx - ww / 2) + front.nz * so, front.x + front.rx * (cx + ww / 2) + front.nx * so, front.z + front.rz * (cx + ww / 2) + front.nz * so, y0, y0 + hh);
     const mx = cx;
     const my = y0 + hh / 2;
     const rot = (dr: number, dy: number): Vec3 => {

@@ -1,4 +1,5 @@
 import "../../src/terrain.js";
+import { resetLedger } from "../../src/game/town/faceLedger.js";
 import { describe, expect, it } from "vitest";
 import { finish } from "@csarkosh/engine/game/syncJobs";
 import { buildingGeometry } from "../../src/game/town/buildingGeometry.js";
@@ -26,6 +27,7 @@ function layersOf(a: MeshArrays): Map<string, number> {
 
 function buildingArrays(b: Building): MeshArrays {
   const builder = new MeshBuilder();
+  resetLedger();
   buildingGeometry(ground, b, null, () => builder, "full");
   return builder.finish();
 }

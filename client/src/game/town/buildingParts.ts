@@ -17,6 +17,7 @@
 import type { Building, BuildingUse, LandmarkRole } from "../../sim/town/types.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
+import { isClear, noteFace } from "./faceLedger.js";
 import { agingOf } from "./buildingWear.js";
 import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
@@ -124,6 +125,9 @@ function housePart(i: PartsIn, full: boolean): void {
       for (let k = 0; k < n; k++) wbox(out, front, sw - 0.6, sw + 0.6, k === 0 ? i.frontFloorY - n * (rise / n) - 0.02 : i.frontFloorY - (n - k) * (rise / n), i.frontFloorY - (n - k - 1) * (rise / n), 0, 0.3 * (n - k) + 0.1, timber ? [0.34, 0.25, 0.16] : CONCRETE, timber ? [0.4, 0.3, 0.2] : [0.45, 0.45, 0.43]);
     }
   }
+  // What the years added or mended, before the machines that stand against the walls: an addition's walls are faces they are then put clear of.
+  addition(i);
+  repairs(i, age, neglect);
   // A chimney, on a pitched roof of a house built before 1980 (a flue: a stove, a furnace): brick, off the ridge's middle.
   if (i.roofKind !== "flat" && i.roofKind !== "shed" && b.era < 1980 && hash01(b.id, 505) < 0.7) {
     const at = (hash01(b.id, 506) - 0.5) * i.L * 1.1;
@@ -137,7 +141,17 @@ function housePart(i: PartsIn, full: boolean): void {
     if (side >= 0) {
       const w = refs[side] as WallRef;
       if (hash01(b.id, 509) < 0.35) {
-        const s = w.length * (0.25 + 0.5 * hash01(b.id, 510));
+        let s = w.length * (0.25 + 0.5 * hash01(b.id, 510));
+        // Along the wall until its faces are clear of those of an addition or a repair (`faceLedger.ts`).
+        const y0 = i.g.heightAt(wat(w, s, 0, 0.5)[0], wat(w, s, 0, 0.5)[2]);
+        const clear = (at: number): boolean => {
+          const e0 = wat(w, at - 0.4, 0, 0.28);
+          const e0b = wat(w, at - 0.4, 0, 0.72);
+          const e1 = wat(w, at + 0.4, 0, 0.28);
+          const e1b = wat(w, at + 0.4, 0, 0.72);
+          return isClear(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y0 + 0.75) && isClear(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y0 + 0.75) && isClear(w.nx, w.nz, e0b[0], e0b[2], e1b[0], e1b[2], y0, y0 + 0.75);
+        };
+        for (let tries = 0; tries < 12 && !clear(s); tries++) s += 0.1;
         const p = wat(w, s, 0, 0.5);
         i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
         i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
@@ -145,14 +159,11 @@ function housePart(i: PartsIn, full: boolean): void {
         const s = w.length * (0.2 + 0.6 * hash01(b.id, 512));
         const p = wat(w, s, 0, 1.2);
         const y = i.g.heightAt(p[0], p[2]);
-        i.out.prism([p[0] - w.tx * 0.9, y + 0.45, p[2] - w.tz * 0.9], [p[0] + w.tx * 0.9, y + 0.45, p[2] + w.tz * 0.9], 0.4, 6, [0.85, 0.85, 0.82], [0.8, 0.8, 0.78]);
-        i.out.box(p[0], p[2], y, w.tx, w.tz, 0.5, 0.04, 0.2, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
+        i.out.prism([p[0] - w.tx * 0.9, y + 0.5, p[2] - w.tz * 0.9], [p[0] + w.tx * 0.9, y + 0.5, p[2] + w.tz * 0.9], 0.4, 6, [0.85, 0.85, 0.82], [0.8, 0.8, 0.78]);
+        i.out.box(p[0], p[2], y + 0.05, w.tx, w.tz, 0.5, 0.04, 0.2, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
       }
     }
   }
-  // What the years added or mended.
-  addition(i);
-  repairs(i, age, neglect);
 }
 
 /** The station on a wall (from its start) of the front's station `s`. */
@@ -213,11 +224,48 @@ function addition(i: PartsIn): void {
   const carport = hash01(b.id, 527) < 0.4 && k !== i.frontAt;
   const rc: Rgb = hash01(b.id, 528) < 0.6 ? [0.3, 0.34, 0.38] : [0.2, 0.2, 0.2];
   const roofSurf: Surface = { layer: "roof_metal", frame: sf.frame, tint: [1, 1, 1], wear: 0.25 * age + 0.1, wearKind: "rust", streaks: true };
-  const quad = (p: Vec3[], hint: Vec3, col: Rgb, s?: Surface): void => out.poly(p, hint, col, s);
+  // Each wall of the addition is a face on the ledger (`faceLedger.ts`), so what is put against the house afterwards is put clear of it.
+  const quad = (p: Vec3[], hint: Vec3, col: Rgb, s?: Surface): void => {
+    out.poly(p, hint, col, s);
+    noteFace(hint[0], hint[2], (p[0] as Vec3)[0], (p[0] as Vec3)[2], (p[1] as Vec3)[0], (p[1] as Vec3)[2], Math.min(...p.map((q) => q[1])), Math.max(...p.map((q) => q[1])));
+  };
   const g = (s: number, off: number): number => i.g.heightAt(w.ax + w.tx * s + w.nx * off, w.az + w.tz * s + w.nz * off) - 0.3;
   if (carport) {
     // Posts and a roof: open on three sides, at the side of the house.
-    for (const [s, off] of [[s0, depth], [s1, depth], [s1, 0]] as const) {
+    for (const [s0p, off0] of [[s0, depth], [s1, depth], [s1, 0]] as const) {
+      // Moved out from the wall (and along it) until the post's faces are clear of the wall's own and the house's (`faceLedger.ts`).
+      let off = off0;
+      let s = s0p;
+      const sides = (o: number, at: number): boolean => {
+        const y = g(at, o);
+        const f0 = wat(w, at - 0.08, 0, o + 0.08);
+        const f1 = wat(w, at + 0.08, 0, o + 0.08);
+        const b0 = wat(w, at - 0.08, 0, o - 0.08);
+        const b1 = wat(w, at + 0.08, 0, o - 0.08);
+        return isClear(w.nx, w.nz, f0[0], f0[2], f1[0], f1[2], y, low + 0.2) && isClear(-w.nx, -w.nz, b0[0], b0[2], b1[0], b1[2], y, low + 0.2);
+      };
+      const ends = (o: number, at: number): boolean => {
+        const y = g(at, o);
+        const l0 = wat(w, at - 0.08, 0, o - 0.08);
+        const l1 = wat(w, at - 0.08, 0, o + 0.08);
+        const r0 = wat(w, at + 0.08, 0, o - 0.08);
+        const r1 = wat(w, at + 0.08, 0, o + 0.08);
+        return isClear(-w.tx, -w.tz, l0[0], l0[2], l1[0], l1[2], y, low + 0.2) && isClear(w.tx, w.tz, r0[0], r0[2], r1[0], r1[2], y, low + 0.2);
+      };
+      for (let tries = 0; tries < 6 && !sides(off, s); tries++) off += 0.03;
+      for (let tries = 0; tries < 6 && !ends(off, s); tries++) s += 0.03;
+      {
+        // The post's faces are on the ledger for what is laid after it.
+        const y = g(s, off);
+        const f0 = wat(w, s - 0.08, 0, off + 0.08);
+        const f1 = wat(w, s + 0.08, 0, off + 0.08);
+        const b0 = wat(w, s - 0.08, 0, off - 0.08);
+        const b1 = wat(w, s + 0.08, 0, off - 0.08);
+        noteFace(w.nx, w.nz, f0[0], f0[2], f1[0], f1[2], y, low + 0.2);
+        noteFace(-w.nx, -w.nz, b0[0], b0[2], b1[0], b1[2], y, low + 0.2);
+        noteFace(-w.tx, -w.tz, b0[0], b0[2], f0[0], f0[2], y, low + 0.2);
+        noteFace(w.tx, w.tz, b1[0], b1[2], f1[0], f1[2], y, low + 0.2);
+      }
       const p = wat(w, s, 0, off);
       i.out.box(p[0], p[2], g(s, off), w.tx, w.tz, 0.08, 0.08, low - g(s, off) + 0.2, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
     }

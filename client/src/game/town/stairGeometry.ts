@@ -18,6 +18,10 @@ export const RAIL_THICK = 0.04;
 export const RAIL_OUT = 0.12;
 /** A tread stands this far down below its top, so it never floats over a dip in the ground, metres. */
 const FOOTING = 0.6;
+/** The middle of the heights flat ground lies at over the ground, and how near it a tread's top may not come, metres. */
+const FLAT_MID = 0.02;
+const FLAT_TOP = 0.03;
+const FLAT_CLEAR = 0.05;
 
 const TREAD: Rgb = SIDEWALK;
 const RISER: Rgb = CURB;
@@ -46,7 +50,16 @@ export function stairGeometry(g: TownGround, sink: Sink): void {
       const cx = ax + ux * s;
       const cz = az + uz * s;
       // The tread's top: its step of the climb, from the flight's foot to its head.
-      const top = ha + (rise * (i + 1)) / n;
+      let top = ha + (rise * (i + 1)) / n;
+      // A tread whose top lies within a few centimetres of the flat ground anywhere over its footprint (a junction's pavement, a sidewalk laid 1 to 3 cm over the ground) is a face against it: it stands that much over the highest of it.
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const [a, b] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
+        const h = g.heightAt(cx + ux * (run / 2) * a - uz * half * b, cz + uz * (run / 2) * a + ux * half * b);
+        lo = Math.min(lo, h);
+        hi = Math.max(hi, h);
+      }
+      if (top > lo + FLAT_MID - FLAT_CLEAR && top < hi + FLAT_TOP + FLAT_CLEAR) top = hi + FLAT_TOP + FLAT_CLEAR;
       const sinkAt = sink(cx, cz);
       sinkAt.box(cx, cz, top - FOOTING, ux, uz, run / 2, half, FOOTING, RISER, TREAD);
     }

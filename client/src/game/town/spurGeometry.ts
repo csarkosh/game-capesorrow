@@ -38,6 +38,21 @@ const SPUR_BALLAST: Profile = [
   [RAIL_BED_HALF, -SPUR_SKIRT],
 ];
 
+/** The highest the flat ground lies over the ground at a place (a sidewalk's heave: `walkGeometry.ts`), and how far over it a ballast's top stands, metres. */
+const FLAT_TOP = 0.03;
+/** The middle of the heights flat ground lies at over the ground. */
+const FLAT_MID = 0.02;
+const BALLAST_OVER = 0.05;
+
+function onTrestleAt(track: SpurTrack, d: number): boolean {
+  for (const r of track.trestles) {
+    const a = (track.points[r.from] as { s: number }).s;
+    const b = (track.points[r.to] as { s: number }).s;
+    if (d >= a && d <= b) return true;
+  }
+  return false;
+}
+
 /** The frames along a track every `STEP` metres, the ends exact; `g` the bed's height there. */
 export function spurFrames(track: SpurTrack): { frames: Frame[]; at: number[] } {
   const pts = track.points;
@@ -83,7 +98,19 @@ function byCell(frames: readonly Frame[]): Frame[][] {
 export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
   const track = spurOf(g.seed);
   if (track === null) return;
-  const { frames, at } = spurFrames(track);
+  const { frames: bed, at } = spurFrames(track);
+  // Where the bed lies under the flat ground (a street or a sidewalk crossing it, laid a centimetre or two over the ground), the ballast's top would be
+  // a face a few millimetres from theirs: the bed is lifted so that its top stands `BALLAST_OVER` over the highest flat ground there.
+  const frames = bed.map((f, i): Frame => {
+    if (onTrestleAt(track, at[i] as number)) return f;
+    let need = f.g;
+    for (const side of [-BALLAST_TOP_HALF, 0, BALLAST_TOP_HALF]) {
+      const ground = g.heightAt(f.x + f.nx * side, f.z + f.nz * side);
+      // Flat ground that lies within a few centimetres of the ballast's top is a face against it; ground that is far under it or far over it is not.
+      if (Math.abs(ground + FLAT_MID - (f.g + BALLAST_TOP)) < BALLAST_OVER) need = Math.max(need, ground + FLAT_TOP + BALLAST_OVER - BALLAST_TOP);
+    }
+    return need > f.g ? { ...f, g: need } : f;
+  });
   // Which frames are on a trestle (the stretch and a little beyond each end, as the main line's trestle is drawn).
   const onTrestle = (d: number): boolean => {
     for (const r of track.trestles) {
@@ -129,15 +156,16 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
     }
   }
   for (const r of wet) {
-    for (const part of byCell(r)) {
-      if (part.length < 2) continue;
+    byCell(r).forEach((part, at) => {
+      if (part.length < 2) return;
       const mid = frameAlong(part, runLength(part) / 2);
       const b = solid(mid.x, mid.z);
       const rails = detail === "low" ? RAIL_PLAIN : RAIL_PROFILE;
       sweep(b, part, rails, -RAIL_GAUGE / 2, RAIL, true);
       sweep(b, part, rails, RAIL_GAUGE / 2, RAIL, true);
-      trestleOver(g.heightAt, b, part, detail === "low" ? 1 : 0);
-    }
+      // A part's first frame is the last of the one before: its bent is drawn once.
+      trestleOver(g.heightAt, b, part, detail === "low" ? 1 : 0, at === 0 ? 0 : 1);
+    });
   }
   turnout(frames, solid);
 }
