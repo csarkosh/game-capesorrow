@@ -40,9 +40,9 @@ export default mergeConfig(
       tags: [
         {
           // Tests whose assertion is a bar on elapsed time, meaningful only on a quiet machine.
-          // None carries it yet, but the engine's push gate runs named files with
-          // `--tags-filter=!wall-clock` (tools/gate.mjs), which vitest refuses for a tag no
-          // config defines.
+          // The cloud's test job leaves them out (`--tags-filter=!wall-clock`, .github/workflows/test.yml),
+          // as the engine's push gate does for the files it names (tools/gate.mjs); a local `npm test`
+          // runs them.
           name: "wall-clock",
           description: "asserts on elapsed time; meaningful only on a quiet machine",
         },
