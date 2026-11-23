@@ -14,6 +14,7 @@ import { siteFor } from "../../sim/town/siteFor.js";
 import type { LandmarkRole } from "../../sim/town/types.js";
 import { buildingGeometry } from "./buildingGeometry.js";
 import { endsGeometry } from "./endsGeometry.js";
+import { groundGeometry } from "./groundGeometry.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
 import { pierGeometry, quayDeck, quayGeometry, wharfGeometry } from "./pileGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
@@ -57,6 +58,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
 
   streetGeometry(g, sinks.flat);
   endsGeometry(g, sinks.flat, sinks.solid);
+  groundGeometry(g, sinks.flat);
   yield;
   quayGeometry(g, sinks.solid, sinks.flat);
   for (const street of g.plan.streets) if (street.kind === "wharf") wharfGeometry(g, street, sinks.solid);
