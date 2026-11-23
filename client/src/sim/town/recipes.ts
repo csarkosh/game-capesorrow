@@ -10,7 +10,7 @@ import type { TownNames } from "./names.js";
 import type { Rng } from "./rng.js";
 import type { ShoreFacts } from "./shore.js";
 import type { TownSite } from "./site.js";
-import type { Block, Building, BuildingUse, Deck, District, Harbour, History, Landmark, Lot, Spawn, Street, TownKind } from "./types.js";
+import type { Block, Building, BuildingUse, Deck, District, Gap, Harbour, History, Landmark, Lot, Spawn, Street, TownKind } from "./types.js";
 import type { BlockMeta, Layout } from "./port/layout.js";
 import { makeHistory } from "./port/history.js";
 import { layoutPort } from "./port/layout.js";
@@ -42,7 +42,8 @@ export type Recipe = {
   layout(site: TownSite, history: History, names: TownNames, s: Streams): Layout;
   landmarkPlan(site: TownSite, layout: Layout, history: History, rng: Rng): LandmarkPlanOut;
   lotRule(block: Block, meta: BlockMeta, layout: Layout): LotRule;
-  buildings(input: { site: TownSite; history: History; layout: Layout; blocks: readonly Block[]; lots: readonly Lot[]; drafts: readonly LotDraft[] }, rng: Rng): Building[];
+  /** The buildings on the lots, and why each lot left empty is. */
+  buildings(input: { site: TownSite; history: History; layout: Layout; blocks: readonly Block[]; lots: readonly Lot[]; drafts: readonly LotDraft[] }, rng: Rng): { buildings: Building[]; gaps: Gap[] };
   bindLandmarks(history: History, names: TownNames, townName: string, lots: readonly Lot[], buildings: readonly Building[]): Landmark[];
   spawn(fbi: Building): Spawn;
   /** The decks of the old harbour: the quay's apron, the piers, the sheds' platforms and the wharf. */

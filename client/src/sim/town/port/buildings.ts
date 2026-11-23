@@ -15,8 +15,9 @@ import { COMPASS, bearingU, bearingV } from "../bearings.js";
 import { fitRect, lotExtents, type LotDraft, type Want } from "../lots.js";
 import { chance, int, next, pick, range, shuffled, weighted, type Rng } from "../rng.js";
 import type { TownSite } from "../site.js";
-import type { Block, Building, BuildingKind, BuildingState, History, Lot, Material, Roof } from "../types.js";
+import type { Block, Building, BuildingKind, BuildingState, Gap, History, Lot, Material, Roof } from "../types.js";
 import { onMadeGround, type BlockMeta, type Layout } from "./layout.js";
+import { SIZING } from "./sizing.js";
 
 const dec = (y: number): number => Math.floor(y / 10) * 10;
 
@@ -60,6 +61,17 @@ const ROLE_KIND: Record<string, BuildingKind> = {
   refuge: "tsunami refuge",
 };
 
+/**
+ * HOW MANY BUILDINGS THE TOWN HOLDS. AUTHORED, NOT RESEARCHED. The plan's blocks are taken until their lots come to about the buildings the town holds
+ * (`growth.ts`), and the town's fill raises every district's chance of being built on until `MIN_BUILDINGS` stand on the grid's lots (a town of few
+ * blocks is built fuller). Past a cap the houses thin out, one a lot, to keep the map small: the owner's rule is a condensed map, but the cap is
+ * set above what the blocks hold (it was 330 to 430 over a town that held 300 and fewer shops) so that it is a safety, not what shapes the town.
+ */
+export const MIN_BUILDINGS = SIZING.MIN_BUILDINGS;
+/** ... and, where the blocks hold more lots than that, this share of the lots (a town whose history gave it room is built as full as the rest, not emptier). */
+export const FILL = SIZING.FILL;
+export const HOUSE_CAP: readonly [number, number] = SIZING.HOUSE_CAP;
+
 const SHOP_KINDS: readonly BuildingKind[] = ["storefront", "tavern", "office"];
 const HOUSE_KINDS: readonly BuildingKind[] = ["house", "apartment"];
 
@@ -72,9 +84,10 @@ export type BuildInput = {
   drafts: readonly LotDraft[];
 };
 
-export function buildPort(input: BuildInput, rng: Rng): Building[] {
+export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[]; gaps: Gap[] } {
   const { site, history, layout, blocks, lots, drafts } = input;
   const out: Draft[] = [];
+  const gaps: Gap[] = [];
   const fire = history.fire;
   const bust = history.boom.bust1893;
   const millClosed = history.mill.fate === "closed";
@@ -175,9 +188,9 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
     const cannery = history.founding.purpose === "cannery";
     switch (district) {
       case "core":
-        return weighted<BuildingKind>(rng, [["storefront", 78], ["tavern", 6], ["office", 8], ["storefront", 8]]);
+        return weighted<BuildingKind>(rng, [["storefront", 78], ["tavern", SIZING.TAVERN_CORE], ["office", 8], ["storefront", 8]]);
       case "dock":
-        return weighted<BuildingKind>(rng, [["tavern", 25], ["boarding house", 22], ["storefront", 33], ["warehouse", 20], ["cannery", cannery ? 25 : 4]]);
+        return weighted<BuildingKind>(rng, [["tavern", SIZING.TAVERN_DOCK], ["boarding house", 22], ["storefront", 33], ["warehouse", 20], ["cannery", cannery ? 25 : 4]]);
       case "waterfront":
         return weighted<BuildingKind>(rng, [["port terminal shed", 55], ["warehouse", 30], ["silo", history.port.handles === "grain" ? 25 : 0], ["garage", 5]]);
       case "mill":
@@ -187,7 +200,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
       case "residential":
         return lotW >= 15 && chance(rng, 0.06) ? "apartment" : "house";
       case "highway strip":
-        return weighted<BuildingKind>(rng, [["motel", 26], ["gas station", 24], ["restaurant", 18], ["storefront", 14], ["big-box store", lotW >= 40 ? 10 : 0], ["garage", 8]]);
+        return weighted<BuildingKind>(rng, [["motel", SIZING.STRIP_MOTEL], ["gas station", SIZING.STRIP_GAS], ["restaurant", 18], ["storefront", SIZING.STRIP_SHOPS], ["big-box store", lotW >= 40 ? 10 : 0], ["garage", 8]]);
       case "industrial":
         return weighted<BuildingKind>(rng, [["warehouse", 70], ["garage", 30]]);
       default:
@@ -459,7 +472,10 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
     let fit = fitRect(draft, want);
     // A landmark's place is held for it: if the building wanted will not fit, a smaller one will.
     if (!fit && forced) fit = fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 });
-    if (!fit) continue;
+    if (!fit) {
+      gaps.push({ lot: lot.id, why: "poor corner" });
+      continue;
+    }
     const st = stockFor(kind, district, m, role);
     const storeys = storeysFor(kind, st.era, st.material);
     const roof = roofFor(kind, st.era);
@@ -505,12 +521,16 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
   // Nothing stands in the sea but what belongs there: drop any building that is not landward of the shoreline.
   const polyOf = (d: Draft): Vec[] => orientedRect(d.centre, d.halfAlong, d.halfAcross, bearingU(d.bearing), bearingV(d.bearing));
   const onLand = out.filter((d) => onMadeGround(site, layout.fill, polyOf(d)) || d.keep);
+  for (const d of out) if (!onLand.includes(d)) gaps.push({ lot: d.lot, why: "shore" });
 
   // The town's fill: the chance of each district is raised, together, until enough of the plan is built (a plan of few blocks is built fuller).
-  const MIN_BUILT = 285;
+  const MIN_BUILT = MIN_BUILDINGS;
   let boost = 0;
-  while (boost < 0.6 && onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost)).length < MIN_BUILT) boost += 0.03;
+  const wanted = Math.max(MIN_BUILT, Math.floor(FILL * lots.length));
+  while (boost < 0.6 && onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost)).length < wanted) boost += 0.03;
   let kept = onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost));
+  // A lot the town did not build is a house taken down (or a plot never built) and left to brush; the terminal's open yard is the harbour's, not a gap.
+  for (const d of onLand) if (!kept.includes(d) && !d.yard) gaps.push({ lot: d.lot, why: "demolished" });
 
   // The core's vacancy, exactly: the share of its storefronts the present layer says stand empty.
   const shops = kept.filter((d) => !d.keep && SHOP_KINDS.includes(d.kind) && blocks[lots[d.lot]!.block]!.district === "core");
@@ -519,7 +539,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
   for (let i = 0; i < order.length; i++) order[i]!.state = i < nVacant ? "vacant" : "open";
 
   // The town is condensed: past a cap, the houses thin out (they are what a map can lose without losing the story).
-  const cap = int(rng, 330, 430);
+  const cap = int(rng, HOUSE_CAP[0], HOUSE_CAP[1]);
   if (kept.length > cap) {
     const houses = shuffled(rng, kept.filter((d) => !d.keep && HOUSE_KINDS.includes(d.kind)));
     let excess = kept.length - cap;
@@ -530,6 +550,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
       excess--;
     }
     kept = kept.filter((d) => !dropped.includes(d));
+    for (const d of dropped) gaps.push({ lot: d.lot, why: "demolished" });
   }
 
   // ---- Piers, and the sheds on piles at their ends, where the layout found water for them: from the quay and from the flats' shore.
@@ -577,7 +598,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
   }
 
   const all = [...kept, ...piers];
-  return all.map((d, id) => ({
+  const buildings: Building[] = all.map((d, id) => ({
     id,
     lot: d.lot,
     centre: d.centre,
@@ -593,4 +614,5 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
     state: d.state,
     front: d.front,
   }));
+  return { buildings, gaps: gaps.sort((p, q) => p.lot - q.lot) };
 }

@@ -177,13 +177,28 @@ export function planUses(input: BizInput, townRng: Rng): BuildingUse[] {
     for (const d of drafts) {
       for (let k = 0; k < d.geos.length; k++) {
         const cur = d.trades[k];
-        if (d.slots[k] === "vacant" || !cur || d.fixed !== null || d.b.kind === "hotel") continue;
+        // (A bay that holds another essential is never the one displaced: in a town of few shops one essential could take another's place.)
+        if (d.slots[k] === "vacant" || !cur || d.fixed !== null || d.b.kind === "hotel" || essentials.includes(cur)) continue;
         if (!def.at.split("").some((c) => d.cls.includes(c))) continue;
         const g = d.geos[k]!;
         // Prefer the district the trade belongs in, a bay it fits, and a bay whose trade is common (so a rare one is never displaced).
         const score = fit(def, g.s1 - g.s0) * (def.mul[d.district === "core" ? 0 : d.district === "dock" ? 1 : d.district === "highway strip" ? 2 : 3] ?? 0) + (counts[cur] ?? 0) * 0.01 + range(townRng, 0, 0.05);
         if (best === null || score > best.score) best = { d, k, score };
       }
+    }
+    // Where no bay suits it (a short business street has few), the widest bay of a building that holds such a trade takes it all the same: an essential is never left out.
+    if (best === null || best.score <= 0.05) {
+      let widestBay: { d: Draft; k: number; w: number } | null = null;
+      for (const d of drafts) {
+        for (let k = 0; k < d.geos.length; k++) {
+          const cur = d.trades[k];
+          if (d.slots[k] === "vacant" || !cur || d.fixed !== null || d.b.kind === "hotel" || essentials.includes(cur)) continue;
+          if (!def.at.split("").some((c) => d.cls.includes(c))) continue;
+          const w = d.geos[k]!.s1 - d.geos[k]!.s0;
+          if (widestBay === null || w > widestBay.w) widestBay = { d, k, w };
+        }
+      }
+      if (widestBay !== null) best = { d: widestBay.d, k: widestBay.k, score: 1 };
     }
     if (best !== null && best.score > 0.05) {
       bump(best.d.trades[best.k]!, -1);

@@ -32,6 +32,7 @@ import {
   orient,
   overlapDepth,
   segCross,
+  segDist,
   segSegDist,
   simplifyTo,
   toLocal,
@@ -50,9 +51,10 @@ import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
 import { ALLEY_WIDTH, wayOf } from "../ways.js";
 import { pruneStreets } from "./ends.js";
+import { SIZING } from "./sizing.js";
 import { densify, relaxed, roundedPath, leastRadius, SPUR_MIN_RADIUS } from "./spur.js";
 import { splitAtStairs } from "./stairs.js";
-import { GROW_MAX_SLOPE, GROW_MIN_SHARE, blockBudget, eligible, grow, neighbours, type GrowCell } from "./growth.js";
+import { GROW_MAX_SLOPE, GROW_MIN_SHARE, LOT_AREA, blockBudget, eligible, grow, lotBudget, neighbours, type GrowCell } from "./growth.js";
 import type { Block, District, History, Plat, Quay, Seam, Spur, Street, StreetKind, Woods } from "../types.js";
 
 const FT = 0.3048;
@@ -357,6 +359,28 @@ function waterReach(site: TownSite, origin: Vec, dir: Vec, width: number, maxLen
   }
   return reach;
 }
+
+/**
+ * HOW LONG THE BUSINESS STREET RUNS AND HOW BIG THE DOCK DISTRICT IS. AUTHORED, NOT RESEARCHED: the owner found the shops sized for
+ * several thousand and the houses for about five hundred, so the business street is scaled down from what it was (the two blocks
+ * either side of the wharf street, along the main street, in both of its rows).
+ * A town the panic of 1893 stopped built its main street one block long: the block on the dock side of the wharf street when the
+ * founding year is even and on the other side when it is odd, in each of the two rows. A town that kept its boom built it a block longer
+ * in the row nearer the main street (two blocks there, one in the other row). The dock district, the rough waterfront by the quay, is
+ * the one block of the quay's row that lies a block or two past the wharf street, toward the dock end (it was every such block). The
+ * blocks the business street no longer takes are houses.
+ */
+const BUSINESS_STREET = {
+  /** Is the block `d` columns from the wharf street (a half-integer, positive toward the dock end), in core row `k` (0 nearest the main street, -1 not a core row), on the business street? */
+  core: (history: History, d: number, k: number): boolean => {
+    if (k < 0) return false;
+    if (k === 0 && !history.boom.bust1893) return Math.abs(d) < 1;
+    return d === (history.founding.year % 2 === 0 ? 0.5 : -0.5);
+  },
+  dock: (d: number): boolean => d >= SIZING.DOCK_FROM && d < SIZING.DOCK_TO,
+};
+/** The share of the compass plat's blocks beside the highway that become the highway strip (motels, gas, a big-box store): it was 0.65. AUTHORED (`sizing.ts`). */
+export const STRIP_SHARE = SIZING.STRIP_SHARE;
 
 type OldPiece = { poly: Poly; row: number; col: number; d: number };
 type CompassPiece = { poly: Poly; i: number; j: number; front: boolean };
@@ -687,13 +711,34 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
       const g = groundUnder(land, poly, also);
       const n = nearOf(poly);
       const centre = centroid(poly);
-      return { poly, centre, share: g.share, slope: g.slope, fit: also !== undefined ? 0 : g.hMean - gradedHeight(site, land, centre.x, centre.z), hwGap: n.hw, shoreGap: n.shore };
+      return { poly, centre, share: g.share, slope: g.slope, fit: also !== undefined ? 0 : g.hMean - gradedHeight(site, land, centre.x, centre.z), hwGap: n.hw, shoreGap: n.shore, lots: Math.floor(Math.abs(area(poly)) / LOT_AREA) };
     };
     const cells: GrowCell[] = [...oldPieces.map((p) => cellOf(p.poly, madeGround)), ...comp.pieces.map((p) => cellOf(p.poly))];
     const taken = oldPieces.map((_, k) => k);
-    const { order } = grow(cells, neighbours(cells), taken, coreAt, blockBudget(history));
+    const { order } = grow(cells, neighbours(cells), taken, coreAt, blockBudget(history), lotBudget(history));
     const chosen: boolean[] = comp.pieces.map(() => false);
     for (const idx of order) chosen[idx - oldPieces.length] = true;
+    // The public port's terminal needs a block of the flats' shore on the side away from the mill: where the budgets were spent before the town reached it, the best such block the land allows is taken as well.
+    {
+      const termNorth = history.millSide !== "north";
+      const onSide = (k: number): boolean => (centroid((comp.pieces[k] as { poly: Poly }).poly).z > facts.coveZ) === termNorth;
+      let have = false;
+      for (let k = 0; k < comp.pieces.length; k++) if (chosen[k] && onSide(k)) have = true;
+      if (!have) {
+        let bestK = -1;
+        let bestScore = Infinity;
+        for (let k = 0; k < comp.pieces.length; k++) {
+          const c = cells[oldPieces.length + k] as GrowCell;
+          if (chosen[k] || !onSide(k) || !eligible(c) || Math.abs(area(c.poly)) < 1500) continue;
+          const score = dist(c.centre, coreAt) + (comp.pieces[k]!.front ? 0 : 400);
+          if (score < bestScore) {
+            bestScore = score;
+            bestK = k;
+          }
+        }
+        if (bestK >= 0) chosen[bestK] = true;
+      }
+    }
     // What the grid would have had here and the town did not take is woods, if it lies near the town: the land's, or the budget's.
     for (let k = 0; k < comp.pieces.length; k++) {
       if (chosen[k]) continue;
@@ -795,7 +840,28 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
 
   // A grid street runs only as far as the last block it serves (`ends.ts`).
   {
+    const all = raw.slice();
     const kept = pruneStreets(raw, [...oldPieces.map((p) => p.poly), ...comp.pieces.map((p) => p.poly)]);
+    // The town is joined to the highway: where the blocks the town took stand off it (a short town, the highway strip not made) and no grid street reaches it any more, the
+    // street of the grid nearest the core that did reach it runs on to it again, from the last block it serves.
+    const meetsHighway = (s2: RawStreet): boolean => kept.some((h) => h.kind === "highway" && segSegDist(s2.a, s2.b, h.a, h.b) <= (s2.width + h.width) / 2 + 0.5);
+    if (kept.some((k) => k.kind !== "highway") && !kept.some((k) => k.kind !== "highway" && k.kind !== "wharf" && meetsHighway(k))) {
+      let best: { k: number; far: Vec; reach: Vec; d: number } | null = null;
+      for (const full of all) {
+        if (full.kind !== "street" && full.kind !== "main" && full.kind !== "avenue") continue;
+        if (!meetsHighway(full)) continue;
+        const k = kept.findIndex((q) => q.name === full.name && q.plat === full.plat && q.kind === full.kind && segDist(q.a, full.a, full.b) < 0.5 && segDist(q.b, full.a, full.b) < 0.5);
+        if (k < 0) continue;
+        const q = kept[k] as RawStreet;
+        // The end of the original that stands at the highway, and the kept street's end that is farther from it.
+        const hw = (p: Vec): number => Math.abs(p.x - roadAt(site, p.z));
+        const reach = hw(full.a) <= hw(full.b) ? full.a : full.b;
+        const far = dist(q.a, reach) >= dist(q.b, reach) ? q.a : q.b;
+        const d = dist(centroid([q.a, q.b, reach]), coreAt);
+        if (best === null || d < best.d) best = { k, far, reach, d };
+      }
+      if (best !== null) kept[best.k] = { ...(kept[best.k] as RawStreet), a: best.far, b: best.reach };
+    }
     raw.length = 0;
     raw.push(...kept);
   }
@@ -974,12 +1040,17 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
   for (const p of oldPieces) if (!rowsHere.includes(p.row)) rowsHere.push(p.row);
   rowsHere.sort((a, b) => Math.abs(a - (mainLine - 0.5)) - Math.abs(b - (mainLine - 0.5)) || a - b);
   const coreRows = rowsHere.slice(0, 2);
+  // Where the land took the blocks the business street was to have (a single block, in a short one), the block of the core's rows nearest the wharf street is the core.
+  const coreBlock = ((): OldPiece | null => {
+    const inRows = oldPieces.filter((p) => coreRows.includes(p.row));
+    if (inRows.some((p) => BUSINESS_STREET.core(history, p.d, coreRows.indexOf(p.row)))) return null;
+    return inRows.slice().sort((p, q) => Math.abs(p.d) - Math.abs(q.d) || coreRows.indexOf(p.row) - coreRows.indexOf(q.row))[0] ?? null;
+  })();
   const oldDistrict = (p: OldPiece): District => {
-    const ad = Math.abs(p.d);
     const c = centroid(p.poly);
-    if (ad < 1.5 && coreRows.includes(p.row)) return "core";
+    if (p === coreBlock || BUSINESS_STREET.core(history, p.d, coreRows.indexOf(p.row))) return "core";
     if (dist(c, millCentre) <= 260) return "mill housing";
-    if (p.row === 0 && p.d >= 1.5) return "dock";
+    if (p.row === 0 && BUSINESS_STREET.dock(p.d)) return "dock";
     return "residential";
   };
   for (const p of oldPieces) {
@@ -992,7 +1063,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     const c = centroid(cp.poly);
     let nearHwy = Infinity;
     for (const q of cp.poly) nearHwy = Math.min(nearHwy, Math.abs(q.x - roadAt(site, q.z)));
-    if (nearHwy <= 40 && history.present.highwayStrip && chance(rngP, 0.65)) return "highway strip";
+    if (nearHwy <= 40 && history.present.highwayStrip && chance(rngP, STRIP_SHARE)) return "highway strip";
     if (dist(c, millCentre) <= 280) return "mill housing";
     if (c.x < roadAt(site, c.z) && dist(c, terminalCentre) <= 260) return "industrial";
     return "residential";
