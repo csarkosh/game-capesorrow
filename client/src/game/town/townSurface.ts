@@ -20,7 +20,16 @@
 import { TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 
-export type WearKind = "moss" | "rust";
+/**
+ * What a worn patch is: moss and grime, rust, peeling paint over bare boards, a green algae film, or dirt (splash at a wall's foot,
+ * streaks under a sill). The kind picks the overlay layer and its colour grade in the material (`townMaterial.ts`).
+ */
+export type WearKind = "moss" | "rust" | "peel" | "algae" | "grime";
+/** The kinds' numbers in a vertex (a streak adds one half). */
+export const WEAR_KIND_NUMBER: Readonly<Record<WearKind, number>> = { moss: 0, rust: 1, peel: 2, algae: 3, grime: 4 };
+
+/** Beside a polygon's colour: how much of it the renderer lights from itself (a lit sign, a room's light), and how see-through it is. */
+export type Fx = { /** 0 is lit by the scene, 1 and more is lit by itself (its colour times this is added; 1 replaces the scene's light). */ readonly glow?: number; /** 0 opaque, 1 invisible; for the blended layers. */ readonly clear?: number };
 
 /** Where a texture lies on a polygon: a point of its plane, and the directions of the texture's across (u) and up (v). */
 export type UvFrame = { readonly origin: Vec3; readonly u: Vec3; readonly v: Vec3 };
@@ -34,12 +43,12 @@ export type Surface = {
   readonly wear?: number | ((p: Vec3) => number);
   /** Moss and grime (the default), or rust. */
   readonly wearKind?: WearKind;
-  /**
-   * A second wear, of dirt (the `mud` layer laid over the surface where its own noise is under the amount): earth, leaves and needles
-   * in the joints and along the edges, gravel and mud tracked on to pavement. A share 0 to 1 of the surface, a number or a function
-   * of a vertex's position, in patches as `wear` is; it lies over the moss. None when absent.
-   */
-  readonly dirt?: number | ((p: Vec3) => number);
+  /** The wear is drawn in streaks that run down the surface rather than in patches. */
+  readonly streaks?: boolean;
+  /** A second wear on the same surface, laid over the first (algae low and rust under a bracket, say). */
+  readonly wear2?: number | ((p: Vec3) => number);
+  readonly wearKind2?: WearKind;
+  readonly streaks2?: boolean;
 };
 
 /** A direction made unit length (a direction of no length is left as it is). */

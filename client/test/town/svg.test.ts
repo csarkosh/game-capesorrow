@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JUNCTION_FILL, planSvg, sheetSvg } from "../../src/townMap/svg.js";
+import { JUNCTION_FILL, UNIT_STROKE, labelLines, planSvg, sheetSvg } from "../../src/townMap/svg.js";
 import { hasPavement } from "../../src/sim/town/junctions.js";
 import { townFor } from "./sites.js";
 
@@ -81,6 +81,22 @@ describe("the plan's SVG", () => {
     expect((svg.match(/fill="#d02020" stroke="#ffffff"/g) ?? []).length).toBe(paved.reduce((n, j) => n + j.legs.filter((l) => l.stops).length, 0));
     expect((svg.match(/r="12" fill="none" stroke="#d02020"/g) ?? []).length).toBe(paved.filter((j) => j.control === "all-way").length);
     expect((svg.match(/stroke="#ffffff" stroke-width="2.2" stroke-dasharray="1.2 0.9"/g) ?? []).length).toBe(paved.reduce((n, j) => n + j.legs.filter((l) => l.marked && !l.engine).length, 0));
+  });
+
+  it("draws each unit's frontage in the colour of its state, its door, and its name and trade when zoomed", () => {
+    const units = plan.uses.flatMap((u) => u.units);
+    expect(units.length).toBeGreaterThan(40);
+    for (const colour of Object.values(UNIT_STROKE)) expect(svg).toContain(`stroke="${colour}" stroke-width="1.1"`);
+    expect((svg.match(/stroke="#ffffff" stroke-width="0.7"/g) ?? []).length).toBeGreaterThanOrEqual(units.length);
+    const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    expect(svg).toContain(".zoomed .unit-names");
+    expect(svg).toContain('<g class="unit-names">');
+    for (const u of units.slice(0, 40)) if (u.tenant) expect(svg).toContain(esc(labelLines(u.tenant.name)[0]!));
+    // A thumbnail leaves them out.
+    expect(planSvg(plan, site, { bare: true })).not.toContain("unit-names");
+    expect(wellFormed(svg)).toBe(true);
+    expect(labelLines("Halvorsen Hardware")).toEqual(["Halvorsen", "Hardware"]);
+    expect(labelLines("LAUNDROMAT")).toEqual(["LAUNDROMAT"]);
   });
 
   it("escapes names", () => {

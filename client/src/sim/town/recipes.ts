@@ -10,7 +10,7 @@ import type { TownNames } from "./names.js";
 import type { Rng } from "./rng.js";
 import type { ShoreFacts } from "./shore.js";
 import type { TownSite } from "./site.js";
-import type { Block, Building, Deck, District, History, Landmark, Lot, Spawn, Street, TownKind } from "./types.js";
+import type { Block, Building, BuildingUse, Deck, District, Harbour, History, Landmark, Lot, Spawn, Street, TownKind } from "./types.js";
 import type { BlockMeta, Layout } from "./port/layout.js";
 import { makeHistory } from "./port/history.js";
 import { layoutPort } from "./port/layout.js";
@@ -19,6 +19,8 @@ import { portDecks } from "./port/decks.js";
 import { planHarbour, type HarbourOut } from "./port/harbour.js";
 import { bindLandmarks, planLandmarks, spawnAt } from "./port/landmarks.js";
 import { LOT_RULES } from "./port/rules.js";
+import { planUses } from "./port/business/index.js";
+import type { BizInput } from "./port/business/ctx.js";
 
 export type Streams = {
   readonly history: Rng;
@@ -47,6 +49,8 @@ export type Recipe = {
   decks(layout: Layout, buildings: readonly Building[], streets: readonly Street[]): Deck[];
   /** The boat basin, boats, pilings, the mill's water, the terminal and the lights, and the floats' and gangways' decks. */
   harbour(input: { site: TownSite; layout: Layout; history: History; buildings: readonly Building[]; streets: readonly Street[]; decks: readonly Deck[] }, rng: Rng): HarbourOut;
+  /** What is in each building: its units, tenants, names, signs, rooms and windows. Made last, from the finished plan and a stream of its own. */
+  uses(input: BizInput, rng: Rng): BuildingUse[];
 };
 
 const PORT: Recipe = {
@@ -62,8 +66,9 @@ const PORT: Recipe = {
   spawn: spawnAt,
   decks: (layout, buildings, streets) => portDecks(layout.quay, buildings, streets),
   harbour: (input, rng) => planHarbour(input, rng),
+  uses: planUses,
 };
 
 export const RECIPES: Record<TownKind, Recipe> = { port: PORT };
 
-export type { District };
+export type { District, Harbour };

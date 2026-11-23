@@ -162,6 +162,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     else if (b.state === "vacant") vacant++;
     else ruin++;
   }
+  // What is in the buildings, from the finished plan and the business stream alone: nothing above it changes.
+  const uses = recipe.uses({ history: fullHistory, townName, names, buildings, lots, blocks, streets, landmarks, harbour: harbourOut.harbour }, stageRng(seed, "business"));
   const crossings = railCrossings(site, streets, roads);
   // What stands beside each street's roadway (sidewalks, curbs, repaving), then the junctions that follow it, then each lot's yard.
   const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges") });
@@ -181,6 +183,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     blocks,
     lots,
     buildings,
+    uses,
     landmarks,
     rail: { crossings, spurs },
     outskirts: edge.outskirts,

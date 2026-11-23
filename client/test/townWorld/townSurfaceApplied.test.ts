@@ -142,7 +142,8 @@ describe("the town's first surfaces", () => {
     const vacant = ground.plan.buildings.find((b) => b.state === "vacant" && b.kind === "storefront");
     expect(vacant).toBeDefined();
     expect(layersOf(buildingArrays(vacant as Building)).get("plywood") ?? 0).toBeGreaterThan(0);
-    const warehouse = ground.plan.buildings.find((b) => b.state === "open" && (b.kind === "warehouse" || b.kind === "garage" || b.kind === "mill shed"));
+    // One with no units of its own (a warehouse that is just stock): its front is a big door.
+    const warehouse = ground.plan.buildings.find((b) => b.state === "open" && (b.kind === "warehouse" || b.kind === "garage" || b.kind === "mill shed") && (ground.plan.uses[b.id]?.units.length ?? 0) === 0);
     expect(warehouse).toBeDefined();
     expect(layersOf(buildingArrays(warehouse as Building)).get("shutter") ?? 0).toBeGreaterThan(0);
   });

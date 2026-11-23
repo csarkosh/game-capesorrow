@@ -17,7 +17,7 @@ import { harbourSummary } from "../sim/town/port/harbour.js";
 import { blockBudget } from "../sim/town/port/growth.js";
 import { bayOf } from "../sim/town/blend.js";
 import { landOf } from "../sim/town/land.js";
-import { BOAT_FILL, DISTRICT_FILL, JUNCTION_FILL, LAND_SHADE, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
+import { BOAT_FILL, DISTRICT_FILL, JUNCTION_FILL, LAND_SHADE, STREET_STROKE, UNIT_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
 import { hasPavement } from "../sim/town/junctions.js";
 
 const STYLE = `
@@ -57,6 +57,14 @@ const STYLE = `
   .sheet figcaption { font-size: 0.72rem; line-height: 1.35; color: #9fb4b4; padding-top: 0.3rem; }
   .sheet figcaption b { display: block; font-size: 0.85rem; color: #eaf1f1; }
   a.plain { color: #8fd0e8; }
+  h3 { margin: 0.7rem 0 0.2rem; font-size: 0.78rem; color: #eaf1f1; }
+  table.biz { font-size: 0.72rem; border-collapse: collapse; width: 100%; }
+  table.biz td { padding: 0.05rem 0.5rem 0.05rem 0; vertical-align: top; }
+  table.biz td:first-child { color: #eaf1f1; }
+  table.biz tr.open td:nth-child(3) { color: #2fe06a; }
+  table.biz tr.closed td:nth-child(3) { color: #f0a030; }
+  table.biz tr.lease td, table.biz tr.boarded td { color: #c88080; }
+  table.biz tr.lease td:first-child, table.biz tr.boarded td:first-child { color: #c88080; font-style: italic; }
 `;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -94,7 +102,11 @@ function panZoom(host: HTMLElement): void {
   const vb: [number, number, number, number] = [...vb0];
   svg.removeAttribute("width");
   svg.removeAttribute("height");
-  const apply = (): void => svg.setAttribute("viewBox", vb.join(" "));
+  // The unit names show once the view is under 170 m across (about six wheel clicks in): below that they are legible.
+  const apply = (): void => {
+    svg.setAttribute("viewBox", vb.join(" "));
+    svg.classList.toggle("zoomed", vb[2] < 170);
+  };
   /** Metres per screen pixel (the viewBox is fitted to the element, so the larger ratio rules). */
   const perPx = (): number => {
     const r = svg.getBoundingClientRect();
@@ -159,6 +171,36 @@ function junctionSummary(plan: TownPlan): string {
   return `${n("four-way")} four-way, ${n("tee")} tee, ${n("skew")} skew, ${n("bend")} bend, ${n("highway")} on the highway, ${n("alley")} alley mouths, ${n("rail")} rail; ${p.filter((j) => j.control !== "none").length} controlled (${p.filter((j) => j.control === "all-way").length} all-way), ${p.filter((j) => j.control === "none").length} not; ${marked} marked crosswalks; ${p.filter((j) => j.legacy !== null).length} with a closed leg`;
 }
 
+/** The town's businesses, by street: name, trade, state and the decade it opened (a vacant bay says since when). */
+function businessList(plan: TownPlan): HTMLElement {
+  const box = el("div");
+  const byStreet: { street: string; rows: { key: number; tr: HTMLTableRowElement }[] }[] = [];
+  let n = 0;
+  for (const use of plan.uses) {
+    const b = plan.buildings[use.building]!;
+    for (const u of use.units) {
+      let g = byStreet.find((x) => x.street === use.street);
+      if (!g) {
+        g = { street: use.street, rows: [] };
+        byStreet.push(g);
+      }
+      n++;
+      const cls = u.state === "open" ? "open" : u.state === "closed for the day" ? "closed" : u.state === "vacant for lease" ? "lease" : "boarded";
+      const tr = el("tr", { class: cls }, el("td", { textContent: u.tenant ? u.tenant.name : "(vacant)" }), el("td", { textContent: u.tenant ? u.tenant.trade : u.past.length > 0 ? `was ${u.past[u.past.length - 1]!.trade}` : "" }), el("td", { textContent: u.state }), el("td", { textContent: u.tenant ? `${u.tenant.opened}s` : `since ${u.vacantSince}` }));
+      g.rows.push({ key: b.centre.z * 1e4 + b.centre.x + u.s0 * 1e-3, tr });
+    }
+  }
+  byStreet.sort((p, q) => (p.street === "" ? 1 : q.street === "" ? -1 : p.street.localeCompare(q.street)));
+  box.append(el("div", { class: "sub", textContent: `${n} units in ${plan.uses.filter((u) => u.units.length > 0).length} buildings; zoom the map in (or tick business names) to read them` }));
+  for (const g of byStreet) {
+    g.rows.sort((p, q) => p.key - q.key);
+    const table = el("table", { class: "biz" });
+    for (const r of g.rows) table.append(r.tr);
+    box.append(el("h3", { textContent: g.street === "" ? "(no street)" : g.street }), table);
+  }
+  return box;
+}
+
 function legend(): HTMLElement {
   const box = el("div", { class: "legend" });
   const swatch = (colour: string, label: string, extra = ""): void => {
@@ -172,6 +214,7 @@ function legend(): HTMLElement {
   for (const k of kinds) swatch(buildingFill(k), k);
   swatch("repeating-linear-gradient(45deg, #2a2a2e 0 2px, #e8c050 2px 3px)", "vacant");
   swatch("repeating-linear-gradient(-45deg, #1a0e0e 0 2px, #d04040 2px 3px)", "ruin");
+  for (const [state, colour] of Object.entries(UNIT_STROKE)) swatch(colour, `unit: ${state} (a bar at its frontage; a white tick at its door; the name when zoomed in)`);
   for (const s of Object.keys(STREET_STROKE) as (keyof typeof STREET_STROKE)[]) swatch(STREET_STROKE[s], `${s} (street)`);
   swatch("#ff8c2a", "the seam street");
   swatch("#3a3a30", "made ground (fill)");
@@ -244,13 +287,15 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
   lots.onchange = () => showTown(root, seed, { ...opts, lots: lots.checked });
   const labels = el("input", { type: "checkbox", checked: opts.labels });
   labels.onchange = () => showTown(root, seed, { ...opts, labels: labels.checked });
+  const names = el("input", { type: "checkbox" });
+  names.onchange = () => map.querySelector("svg")?.classList.toggle("names", names.checked);
 
   const h = plan.history;
   aside.append(
     el("h1", { textContent: plan.name }),
     el("div", { class: "sub", textContent: `a large port - world seed ${seed} - generator ${plan.version}${params().get("site") === "synthetic" ? " - synthetic site" : ""}` }),
     el("div", { class: "bar" }, prev, input, nextB, sheetB),
-    el("div", { class: "bar" }, el("label", {}, lots, " lots"), el("label", {}, labels, " all labels")),
+    el("div", { class: "bar" }, el("label", {}, lots, " lots"), el("label", {}, labels, " all labels"), el("label", {}, names, " business names")),
   );
 
   aside.append(el("h2", { textContent: "history" }));
@@ -284,6 +329,8 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
 
   aside.append(el("h2", { textContent: "landmarks" }));
   for (const l of plan.landmarks) aside.append(el("p", { class: "lm" }, el("b", { textContent: l.name }), ` - ${l.text}`));
+
+  aside.append(el("h2", { textContent: "businesses" }), businessList(plan));
 
   aside.append(el("h2", { textContent: "legend" }), legend());
   root.append(el("div", { class: "town" }, map, aside));

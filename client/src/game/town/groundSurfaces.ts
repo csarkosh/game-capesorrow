@@ -81,8 +81,9 @@ export function withOver(base: Surface | undefined, colour: Rgb, anchor: { reado
   }
   void colour;
   const wear = over.wear ?? base?.wear;
-  const dirt = over.dirt ?? base?.dirt;
+  // Dirt is the second wear, of the grime kind (the mud layer), laid over the first (moss): one mechanism with the buildings' (`townSurface.ts`, `townMaterial.ts`).
+  const wear2 = over.dirt ?? base?.wear2;
   const tint = over.tint ?? base?.tint;
   const wearKind = over.wearKind ?? base?.wearKind;
-  return { layer, frame, ...(tint === undefined ? {} : { tint }), ...(wear === undefined ? {} : { wear }), ...(wearKind === undefined ? {} : { wearKind }), ...(dirt === undefined ? {} : { dirt }) };
+  return { layer, frame, ...(tint === undefined ? {} : { tint }), ...(wear === undefined ? {} : { wear }), ...(wearKind === undefined ? {} : { wearKind }), ...(wear2 === undefined ? {} : { wear2, wearKind2: "grime" as const }) };
 }

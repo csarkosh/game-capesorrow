@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
-import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
+import { SURFACE_FLOATS, type MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { SPACINGS, WALK_TOP, HEAVE_MAX, stations } from "../../src/game/town/walkGeometry.js";
 import { townGeometry, townGround } from "../../src/game/town/townGeometry.js";
 import { rampsOf } from "../../src/sim/town/junctionShape.js";
@@ -253,7 +253,7 @@ describe("the junctions follow the sidewalks and the curbs", () => {
           if (b.layer !== "flat") continue;
           const a = b.arrays;
           for (let v = 0; v < a.positions.length / 3; v++) {
-            if (Math.abs((a.positions[v * 3] as number) - px) < 0.2 && Math.abs((a.positions[v * 3 + 2] as number) - pz) < 0.2 && (a.surface[v * 8] as number) === 15) sidewalk++;
+            if (Math.abs((a.positions[v * 3] as number) - px) < 0.2 && Math.abs((a.positions[v * 3 + 2] as number) - pz) < 0.2 && (a.surface[v * SURFACE_FLOATS] as number) === 15) sidewalk++;
           }
         }
         expect(sidewalk, `junction ${j.id}: sidewalk vertices at a plain corner`).toBe(0);

@@ -4,7 +4,7 @@
  *
  * North is up and the sea is to the left, as in the plan's own frame: x to the right, z up.
  */
-import type { Building, BuildingKind, District, JunctionKind, Street, StreetKind, TownPlan } from "../sim/town/types.js";
+import type { Building, BuildingKind, District, JunctionKind, Street, StreetKind, TownPlan, UnitState } from "../sim/town/types.js";
 import type { TownSite } from "../sim/town/site.js";
 import { LAND_SLOPE, landOf } from "../sim/town/land.js";
 import { bayOf } from "../sim/town/blend.js";
@@ -30,7 +30,61 @@ export type SvgOptions = {
   readonly seed?: number;
   /** Shade the land under the town: the buildable ground, and the steep (default: shaded). */
   readonly land?: boolean;
+  /** Draw each unit's frontage and name (default: yes, but not on a bare thumbnail). The names show only when the drawing is zoomed in (the page marks the root `zoomed`) or marked `names`. */
+  readonly units?: boolean;
 };
+
+/** How a unit's frontage is drawn, by its state. */
+export const UNIT_STROKE: Record<UnitState, string> = {
+  open: "#2fe06a",
+  "closed for the day": "#f0a030",
+  "vacant for lease": "#ff5a5a",
+  "vacant boarded": "#8a2a2a",
+};
+
+/** A name broken into at most two lines at a space, for a label that must fit its bay. */
+export function labelLines(name: string): string[] {
+  if (name.length <= 11) return [name];
+  let best = -1;
+  for (let i = 1; i < name.length - 1; i++) if (name[i] === " " && (best < 0 || Math.abs(i - name.length / 2) < Math.abs(best - name.length / 2))) best = i;
+  return best < 0 ? [name] : [name.slice(0, best), name.slice(best + 1)];
+}
+
+/** Each unit's frontage as a bar along the building's front in the colour of its state, a tick at its door, and its name and trade inside, turned to run along the front. */
+function unitsSvg(plan: TownPlan, out: string[], X: (x: number) => number, Y: (z: number) => number): void {
+  const at = (u: { origin: { x: number; z: number }; t: { x: number; z: number }; n: { x: number; z: number } }, s: number, d: number): { x: number; z: number } => ({ x: u.origin.x + u.t.x * s - u.n.x * d, z: u.origin.z + u.t.z * s - u.n.z * d });
+  out.push('<style>.unit-names{display:none}.zoomed .unit-names,.names .unit-names{display:inline}</style>');
+  const names: string[] = [];
+  for (const use of plan.uses) {
+    const fr = use.frame;
+    if (fr === null) continue;
+    for (const u of use.units) {
+      const a = at(fr, u.s0 + 0.15, -0.5);
+      const b = at(fr, u.s1 - 0.15, -0.5);
+      out.push(`<line x1="${X(a.x)}" y1="${Y(a.z)}" x2="${X(b.x)}" y2="${Y(b.z)}" stroke="${UNIT_STROKE[u.state]}" stroke-width="1.1" stroke-linecap="butt"/>`);
+      const d0 = at(fr, u.door.s, -0.5);
+      const d1 = at(fr, u.door.s, -2);
+      out.push(`<line x1="${X(d0.x)}" y1="${Y(d0.z)}" x2="${X(d1.x)}" y2="${Y(d1.z)}" stroke="#ffffff" stroke-width="0.7"/>`);
+      if (u.s0 > 0) {
+        const c0 = at(fr, u.s0, 0);
+        const c1 = at(fr, u.s0, Math.min(8, u.interior.depth));
+        out.push(`<line x1="${X(c0.x)}" y1="${Y(c0.z)}" x2="${X(c1.x)}" y2="${Y(c1.z)}" stroke="#101010" stroke-width="0.35"/>`);
+      }
+      const label = u.tenant ? [...labelLines(u.tenant.name), `(${u.tenant.trade})`] : ["vacant", `since ${String(u.vacantSince)}`];
+      const w = u.s1 - u.s0;
+      const longest = Math.max(...label.map((l) => l.length));
+      const fs = Math.max(0.9, Math.min(2.2, (w - 0.3) / (longest * 0.6)));
+      const mid = at(fr, (u.s0 + u.s1) / 2, Math.min(5, fr.depth * 0.25));
+      // Text runs along the front, turned upright.
+      let ang = (Math.atan2(-fr.t.z, fr.t.x) * 180) / Math.PI;
+      if (ang > 90) ang -= 180;
+      if (ang < -90) ang += 180;
+      const tspans = label.map((l, i) => `<tspan x="0" dy="${i === 0 ? -((label.length - 1) * fs * 0.55) : fs * 1.1}">${esc(l)}</tspan>`).join("");
+      names.push(`<text transform="translate(${X(mid.x)},${Y(mid.z)}) rotate(${r2(ang)})" font-size="${r2(fs)}" text-anchor="middle" fill="${u.tenant ? "#111111" : "#7a2a2a"}" stroke="#ffffff" stroke-width="${r2(fs * 0.18)}" paint-order="stroke">${tspans}</text>`);
+    }
+  }
+  out.push(`<g class="unit-names">${names.join("")}</g>`);
+}
 
 /** How the land is shaded: buildable ground, ground that is gentle but held out (the highway, the rail's corridor, a headland, too low), steep ground, and very steep ground. */
 export const LAND_SHADE = { buildable: "#2f6a3a", held: "#5a5a2a", steep: "#5a3a26", cliff: "#3a2018" } as const;
@@ -436,6 +490,9 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
     const stroke = b.state === "ruin" ? "#d04040" : b.state === "vacant" ? "#e8c050" : "#101010";
     out.push(`<polygon points="${poly(footprint(b))}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
   }
+
+  // What is in the buildings: each unit's frontage, its door and its name (the names show when zoomed in).
+  if (options.units ?? !options.bare) unitsSvg(plan, out, X, Y);
 
   // The thinning edge: a ring about each outlying building.
   for (const o of plan.outskirts) {

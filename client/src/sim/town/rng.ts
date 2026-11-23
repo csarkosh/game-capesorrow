@@ -22,6 +22,7 @@ export const STAGE = {
   junctions: 0x6a756e63,
   edges: 0x65646765,
   yards: 0x79617264,
+  business: 0x62697a6e,
 } as const;
 
 export type Stage = keyof typeof STAGE;

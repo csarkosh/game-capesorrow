@@ -694,6 +694,165 @@ export type Junction = {
   readonly rail: { readonly crossbuck: number; readonly stopLine: number } | null;
 };
 
+/**
+ * What is in the buildings, as data for the drawing. It is drawn by `game/town/` (fronts, rooms, signs, windows). Every trade, name, sign, room and window state
+ * is authored or drawn by `port/business/`, from the building's own random stream, so that a seed gives the same shops on every
+ * machine. Units are metres, in a building's own frame (`FrontFrame`): `s` runs along the front wall from its left end as a
+ * person on the street sees it, `d` runs from the front wall into the building, and heights are above the ground.
+ */
+
+/** The trades. The shops and offices are those the OSM extracts of real coastal towns hold (see `port/business/trades.ts`); a few follow only from the town's history. */
+export type Trade =
+  | "diner" | "restaurant" | "cafe" | "espresso stand" | "pizza and burgers" | "tavern"
+  | "grocery" | "convenience store" | "bakery" | "gift shop" | "gallery" | "kite shop" | "candy shop"
+  | "bank" | "credit union" | "hair salon" | "barber" | "tattoo parlor"
+  | "real estate office" | "insurance office" | "law office" | "tax office" | "title company" | "bail bonds"
+  | "medical clinic" | "dentist" | "veterinarian" | "pharmacy"
+  | "auto repair" | "auto parts" | "tire shop" | "saw and chain shop"
+  | "hardware" | "garden and feed" | "clothing" | "variety store" | "jeweler" | "bookstore" | "game shop"
+  | "post office" | "cannabis shop" | "liquor store" | "smoke shop" | "food bank"
+  | "bait and tackle" | "marine supply" | "fish market" | "boat yard"
+  | "antiques" | "thrift store" | "pawn shop" | "sporting goods" | "laundromat" | "furniture store" | "funeral home"
+  | "newspaper office" | "print shop" | "movie theater" | "union hall" | "self storage"
+  | "gas station" | "motel" | "hotel" | "rooming house" | "lodge"
+  // Trades of the past only (a ghost sign, an earlier tenant): none of these is open now.
+  | "dry goods" | "five and dime" | "shoe repair" | "cigar store" | "photo studio" | "video store" | "feed store" | "hat shop";
+
+/** A unit is open now; shut for the day (a Sunday, a lunch hour: lights off, kept up); vacant with a notice in the glass; or vacant and boarded. A ruin has no units. */
+export type UnitState = "open" | "closed for the day" | "vacant for lease" | "vacant boarded";
+export type InteriorType = "retail aisles" | "counter service" | "dining room" | "bar" | "office" | "laundromat" | "workshop" | "lobby" | "empty";
+export type FurnishingKind =
+  | "shelf run" | "counter" | "table" | "booth" | "stool row" | "display case" | "cooler" | "washer row" | "desk"
+  | "rack" | "stacked crates" | "ladder" | "paint cans" | "bench" | "pool table" | "lift";
+export type SignKind = "fascia" | "blade" | "glass" | "wall" | "pole" | "sandwich" | "banner" | "open" | "lease" | "ghost" | "board";
+/** Hand-painted wood or paint (before 1950), neon and porcelain enamel (1950s and 60s), backlit plastic boxes (1970 to 1999), vinyl (2000 on). */
+export type SignStyle = "hand-painted" | "neon and porcelain" | "backlit box" | "vinyl";
+export type WindowCover = "none" | "display" | "blinds" | "papered" | "boarded" | "bricked";
+export type WindowTreatment = "curtained" | "blinds" | "lit" | "dark" | "boarded" | "broken";
+
+/** A building's front wall as a frame: `origin` is the ground at the wall's left end (seen from the street), `n` points out of the front, `t` along the wall to the right. */
+export type FrontFrame = { readonly origin: Vec; readonly n: Vec; readonly t: Vec; readonly width: number; readonly depth: number };
+
+/** Where a sign goes. `wall` "front", "left", "right" or "back" is a wall of the building (left and right as seen from the street): `s` is metres along the front or back wall from its left end, or along a side wall from the front corner. "sidewalk" and "lot edge" stand free: `s` along the front line, `out` metres out from the front wall. `door` is which side of the unit's door a front sign is on, or "over" it. */
+export type SignPlace = {
+  readonly wall: "front" | "left" | "right" | "back" | "sidewalk" | "lot edge";
+  readonly s: number;
+  readonly h: number;
+  readonly out: number;
+  readonly door: "over" | "left" | "right" | "none";
+};
+
+export type Sign = {
+  readonly kind: SignKind;
+  /** The words, a line each. */
+  readonly lines: readonly string[];
+  readonly style: SignStyle;
+  /** The decade the sign was made in. */
+  readonly decade: number;
+  /** 0 is gone to ghost, 1 as new. */
+  readonly condition: number;
+  /** Lit now (neon, a backlit box, an OPEN sign); never true for a sign that is out of repair or of a shut unit. */
+  readonly lit: boolean;
+  /** What it advertises: the unit's own trade, or an earlier tenant's when the sign no longer matches. */
+  readonly trade: Trade | null;
+  readonly mismatch: boolean;
+  readonly place: SignPlace;
+};
+
+export type Opening = {
+  readonly s0: number;
+  readonly s1: number;
+  readonly sill: number;
+  readonly head: number;
+  readonly cover: WindowCover;
+  /** A later tenant cut this opening wider than the first builder's. */
+  readonly widened: boolean;
+};
+
+export type Furnishing = {
+  readonly kind: FurnishingKind;
+  /** Its centre in the building's frame. */
+  readonly s: number;
+  readonly d: number;
+  /** Its length along `dir`, its width across it, and its height. */
+  readonly sx: number;
+  readonly sd: number;
+  readonly h: number;
+  /** The unit vector of its length in the (s, d) plane: an axis, or a skew one from a Pythagorean triple. */
+  readonly dir: Vec;
+};
+
+export type RoomLight = { readonly s: number; readonly d: number; readonly h: number; readonly on: boolean; readonly kind: "tube" | "pendant" | "neon" | "lamp" };
+
+/** The room behind a unit's front: it runs from `d` 0 to `depth` and across the unit's own `s0` to `s1`. */
+export type Interior = {
+  readonly type: InteriorType;
+  readonly depth: number;
+  readonly ceiling: number;
+  readonly furnishings: readonly Furnishing[];
+  readonly lights: readonly RoomLight[];
+};
+
+export type Tenant = { readonly trade: Trade; readonly name: string; /** The decade it opened (never before the building's era). */ readonly opened: number };
+export type PastTenant = { readonly trade: Trade; readonly name: string; readonly from: number; /** The year it left. */ readonly to: number };
+
+/** One bay of a building's street front: a shop, an office, a lobby. The units of a building tile its front wall exactly (`s0` of the first is 0, `s1` of the last is the frame's width). */
+export type Unit = {
+  readonly id: number;
+  readonly s0: number;
+  readonly s1: number;
+  readonly door: { readonly s: number; readonly width: number; /** How far the door is set back from the wall's face. */ readonly recess: number };
+  /** The windows of its front, left to right. */
+  readonly openings: readonly Opening[];
+  /** The height of the board over the windows, which differs from a neighbour's with the age and the storey height of each. */
+  readonly fascia: number;
+  readonly state: UnitState;
+  /** Null when vacant. */
+  readonly tenant: Tenant | null;
+  readonly lit: boolean;
+  /** The year the last tenant left, for a vacant unit. */
+  readonly vacantSince: number | null;
+  /** Earlier tenants, oldest first. */
+  readonly past: readonly PastTenant[];
+  /** A change made to the front since it was built, which is why it differs from the first plan. */
+  readonly remodel: { readonly decade: number; readonly what: "widened window" | "bricked window" | "dropped fascia" | "new door" } | null;
+  readonly interior: Interior;
+  readonly signs: readonly Sign[];
+};
+
+export type UpperUse = {
+  readonly storey: number;
+  readonly use: "apartments" | "offices" | "lodge hall" | "storage" | "hotel rooms" | "empty";
+  /** The windows of that storey's front. */
+  readonly windows: readonly WindowState[];
+};
+
+/** A window of a house, an apartment or an upper floor, as a drawing can use it. */
+export type WindowState = {
+  readonly wall: "front" | "left" | "right";
+  readonly storey: number;
+  readonly s: number;
+  readonly state: WindowTreatment;
+  readonly sill: "none" | "plant" | "lamp";
+};
+
+export type BuildingUse = {
+  readonly building: number;
+  /** The street it fronts, or "". */
+  readonly street: string;
+  /** Null for a pier. */
+  readonly frame: FrontFrame | null;
+  readonly units: readonly Unit[];
+  /** The street door to the stairs of the upper floors, which lies inside one unit's frontage. */
+  readonly stair: { readonly s: number; readonly width: number } | null;
+  readonly upper: readonly UpperUse[];
+  /** The signs of the building as a whole: a church's board, the school's name, the fire hall's district. */
+  readonly signs: readonly Sign[];
+  /** Every window of a dwelling (a house, an apartment house, a rooming house), and its front door. */
+  readonly windows: readonly WindowState[];
+  readonly door: { readonly s: number; readonly width: number } | null;
+};
+
 export type TownPlan = {
   /** TOWN_GEN: the generator's version. */
   readonly version: number;
@@ -711,6 +870,8 @@ export type TownPlan = {
   readonly blocks: readonly Block[];
   readonly lots: readonly Lot[];
   readonly buildings: readonly Building[];
+  /** What is in each building (its trades, names, signs, rooms and windows), one entry a building, by building id. */
+  readonly uses: readonly BuildingUse[];
   readonly landmarks: readonly Landmark[];
   /** The railroad: where streets cross the main line, and the town's own spur. */
   readonly rail: TownRail;
