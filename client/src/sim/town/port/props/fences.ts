@@ -7,7 +7,7 @@
  */
 import { chance, next, range, weighted, type Rng } from "../../rng.js";
 import type { Fence, FenceKind } from "../../types.js";
-import { boxAt, inside } from "./boxes.js";
+import { boxAt, inside, overlap, type Box } from "./boxes.js";
 import { sub, type Context, type LotInfo } from "./context.js";
 import type { Out } from "./out.js";
 import * as T from "./tuning.js";
@@ -48,6 +48,20 @@ function edgesOf(info: LotInfo): Edge[] {
     out.push({ ax: p.x, az: p.z, bx: q.x, bz: q.z, kind: i === frontIdx ? "front" : i === backIdx ? "back" : "side", len });
   }
   return out;
+}
+
+/**
+ * Whether a panel stands in the mouth of a drive of another lot (its own lot's drive is a gap in its run): where two lots meet with no street between
+ * them (a block the old plat's edge cut in two), one lot's fence along the line would cross the other's drive.
+ */
+function inAnotherDrive(ctx: Context, info: LotInfo, panel: Box): boolean {
+  for (const o of ctx.lots) {
+    const d = o.shape.drive;
+    if (o === info || d === null) continue;
+    if (Math.abs(d.x - panel.cx) > 14 || Math.abs(d.z - panel.cz) > 14) continue;
+    if (overlap(panel, boxAt(d.x - d.dx * 3, d.z - d.dz * 3, d.dx, d.dz, 6, 2 * d.half)) > 0.02) return true;
+  }
+  return false;
 }
 
 /** Cuts a run along an edge (inset into the lot) at the gaps, and makes a Fence of each piece. */
@@ -93,7 +107,7 @@ function runs(ctx: Context, out: Out, info: LotInfo, rng: Rng, e: Edge, kind: Fe
       const mx = x0 + dx * (s + s1) / 2;
       const mz = z0 + dz * (s + s1) / 2;
       const panel = boxAt(mx, mz, dx, dz, s1 - s, 0.2);
-      const hit = keepAway && (ctx.bocc.hits(panel, 0.05) || ctx.occ.hits(panel, 0.3, "keep:spawn"));
+      const hit = keepAway && (ctx.bocc.hits(panel, 0.05) || ctx.occ.hits(panel, 0.3, "keep:spawn") || inAnotherDrive(ctx, info, panel));
       if (!hit) {
         if (ok0 < 0) ok0 = s;
         a = s1;

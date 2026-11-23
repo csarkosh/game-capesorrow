@@ -170,14 +170,22 @@ describe("form follows history", () => {
   it("a cleared mill site has fewer buildings than an untouched one", () => {
     let cleared = 0;
     let untouched = 0;
+    let clearedTowns = 0;
+    let untouchedTowns = 0;
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       if (plan.history.mill.fate !== "closed") continue;
       const n = plan.buildings.filter((b) => b.kind === "mill shed" || (b.lot >= 0 && plan.lots[b.lot]!.district === "mill")).length;
-      if (plan.history.mill.cleanup) cleared += n;
-      else untouched += n;
+      if (plan.history.mill.cleanup) {
+        cleared += n;
+        clearedTowns++;
+      } else {
+        untouched += n;
+        untouchedTowns++;
+      }
     }
-    expect(cleared).toBeLessThan(untouched * 2); // loosely: per town, cleanup leaves far less; both sums are over unequal counts
+    // Per town (the sums were over unequal counts of towns, which the smaller town size left a coin toss): cleanup leaves fewer than an untouched site does.
+    expect(cleared / clearedTowns).toBeLessThan(untouched / untouchedTowns);
   });
 
   it("the seam exists whenever two plats do and their bearings differ by at least 25 degrees, and is where they actually touch", () => {

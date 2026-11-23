@@ -16,6 +16,7 @@
 import { LAND_FIT } from "../land.js";
 import { dist, segSegDist, type Poly, type Vec } from "../geom.js";
 import type { History } from "../types.js";
+import { SIZING } from "./sizing.js";
 
 export const GROW_MIN_SHARE = 0.6;
 export const GROW_MAX_SLOPE = 0.14;
@@ -31,6 +32,22 @@ export const GROW_NEIGHBOUR = 130;
 /** The least and the most blocks the history can give a large port. */
 export const BUDGET_MIN = 26;
 export const BUDGET_MAX = 55;
+
+/**
+ * The town's size is also held to its houses (the owner's check, 2026-11: the grid reached further than the houses did). Growth stops
+ * when the lots the blocks taken would hold reach a budget the history sets (`lotBudget`), whatever the block budget still allows: a
+ * block of the grid is a place for about `LOT_AREA` square metres of block a lot, and the budget is `LOTS_BASE` lots and, for each block
+ * the history's budget stands over `BUDGET_MIN`, `LOTS_PER_BLOCK` more. The numbers are authored, not researched (`sizing.ts`): they were
+ * set so that a town's lots come to about the buildings it holds (a lot in ten stands empty).
+ */
+export const LOT_AREA = SIZING.LOT_AREA;
+export const LOTS_BASE = SIZING.LOTS_BASE;
+export const LOTS_PER_BLOCK = SIZING.LOTS_PER_BLOCK;
+
+/** The lots the history lets the town's blocks hold in all. */
+export function lotBudget(history: History): number {
+  return LOTS_BASE + (blockBudget(history) - BUDGET_MIN) * LOTS_PER_BLOCK;
+}
 
 /**
  * The block budget the history gives the town: 28 blocks and, for how long the town had to grow, up to 14 more (a founding in
@@ -58,6 +75,8 @@ export type GrowCell = {
   /** How far its nearest corner is from the highway's centre line and from the shore, metres. */
   readonly hwGap: number;
   readonly shoreGap: number;
+  /** The lots the block would hold, by its area (`LOT_AREA`). */
+  readonly lots: number;
 };
 
 /** May the town grow into this cell at all? */
@@ -101,11 +120,11 @@ export function neighbours(cells: readonly GrowCell[]): number[][] {
 }
 
 /**
- * Spends the budget. `taken` are the cells already there (the old plat's), `core` where the town began; the result is the order
+ * Spends the budgets. `taken` are the cells already there (the old plat's), `core` where the town began; the result is the order
  * the other cells were taken in (indices into `cells`) and each one's distance on foot from the core. Growth stops when the
- * budget is spent (`taken` counted) or when no eligible cell touches the town.
+ * block budget is spent (`taken` counted), when the lots the cells hold reach `lotsBudget`, or when no eligible cell touches the town.
  */
-export function grow(cells: readonly GrowCell[], near: readonly (readonly number[])[], taken: readonly number[], core: Vec, budget: number): { order: number[]; walk: number[] } {
+export function grow(cells: readonly GrowCell[], near: readonly (readonly number[])[], taken: readonly number[], core: Vec, budget: number, lotsBudget: number): { order: number[]; walk: number[] } {
   const walk: number[] = cells.map(() => Infinity);
   const have: boolean[] = cells.map(() => false);
   for (const t of taken) {
@@ -114,7 +133,9 @@ export function grow(cells: readonly GrowCell[], near: readonly (readonly number
   }
   const order: number[] = [];
   let count = taken.length;
-  while (count < budget) {
+  let lots = 0;
+  for (const t of taken) lots += (cells[t] as GrowCell).lots;
+  while (count < budget && lots < lotsBudget) {
     let best = -1;
     let bestPrice = Infinity;
     let bestWalk = Infinity;
@@ -141,6 +162,7 @@ export function grow(cells: readonly GrowCell[], near: readonly (readonly number
     walk[best] = bestWalk;
     order.push(best);
     count++;
+    lots += (cells[best] as GrowCell).lots;
   }
   return { order, walk };
 }

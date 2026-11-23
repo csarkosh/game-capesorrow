@@ -545,6 +545,9 @@ export type TownRail = {
 /** A block's place the town did not take, left as woods: because the land would not bear it (too steep, too wet, a hump or a gully) or because the history's budget of blocks was spent. */
 export type Woods = { readonly polygon: Poly; readonly why: "land" | "budget" };
 
+/** Why a lot of the town's blocks has no building: a house taken down and the ground left to brush, a lot at a block's corner or end too small or too awkward to build on, or one at the water's edge. */
+export type Gap = { readonly lot: number; readonly why: "demolished" | "poor corner" | "shore" };
+
 /** A building of the town's thinning edge, past the last full blocks, and why it stands where it does. */
 export type Outskirt = {
   readonly building: number;
@@ -1001,6 +1004,8 @@ export type TownPlan = {
   readonly edges: readonly StreetEdge[];
   /** How each lot's ground is kept, by lot id (`port/yards.ts`). */
   readonly yards: readonly Yard[];
+  /** Why each lot of the town's blocks that has no building has none (`port/buildings.ts`): every empty lot but the harbour's yards and the outskirts' parcels is here. */
+  readonly gaps: readonly Gap[];
   /** The vehicles, poles and wires, fences, bins, mailboxes and gear (`port/props/`). */
   readonly props: PlanProps;
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */

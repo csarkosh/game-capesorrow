@@ -16,10 +16,11 @@ import { roadAt, shoreAt } from "../shore.js";
 import type { TownSite } from "../site.js";
 import { segDist, type Poly, type Vec } from "../geom.js";
 import { polyGap } from "./growth.js";
+import { SIZING } from "./sizing.js";
 import type { Block, Building, Street, BuildingKind, BuildingState, History, Lot, Material, Outskirt, Road, Roof } from "../types.js";
 
-/** How far past the town's last block the highway's buildings reach, metres, and the spacing of the places along it. */
-export const OUT_REACH = 560;
+/** How far past the town's last block the highway's buildings reach, metres (it was 560: the town is condensed, so this is about half, and the single buildings of its thin edge stand nearer it; AUTHORED), and the spacing of the places along it. */
+export const OUT_REACH = SIZING.OUT_REACH;
 export const OUT_START = 70;
 export const OUT_STEP = 34;
 /** The chance of a place at the town's edge having a building, falling to nothing at `OUT_REACH` as the fraction left to the power 1.25. */

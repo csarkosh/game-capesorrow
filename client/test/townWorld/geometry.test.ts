@@ -153,7 +153,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 135, flat: 40, vertices: 1052814, triangles: 627242 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 125, flat: 37, vertices: 929998, triangles: 529132 });
   });
 });
 
@@ -199,7 +199,8 @@ describe("the streets", () => {
       });
       // The lowest is a joint's groove or a roadway's own lift; the highest a curb's top, which stands the curb's face over the ground cut down beside it.
       // (Beside a curb the ground is read 30 cm out, so on a hillside a corner of a slab or a curb's top stands the ground's fall over that, a few centimetres, 10 at the steepest street of three worlds, and the curb's top that much over it on the other side, under the ground at the corner itself.)
-      expect(least).toBeGreaterThan(-0.04);
+      // (Over the town made to fit its houses, the streets stand on other hillsides: -0.065 at the steepest, a grade the exclusion above lets through. It was -0.04.)
+      expect(least).toBeGreaterThan(-0.07);
       expect(most).toBeLessThan(CURB_REBUILT + WALK_LIFT + 0.06);
       expect(faces).toBeGreaterThan(100);
       console.log(`street lifts for ${seed}: ${least.toFixed(4)} to ${most.toFixed(4)} m`);
@@ -523,7 +524,8 @@ describe("the streets", () => {
         }
       }
       expect(tees).toBeGreaterThan(10);
-      expect(mouths).toBeGreaterThan(30);
+      // (Fewer alleys: an alley with no building near is cut away, `port/trim.ts`. It was 30.)
+      expect(mouths).toBeGreaterThan(15);
     });
 
     it("stand a STOP sign beside the road before the crosswalk on each leg that stops, and none elsewhere; each blade names its two streets", () => {

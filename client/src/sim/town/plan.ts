@@ -15,6 +15,7 @@ import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
 import { findEnds } from "./port/ends.js";
+import { remapSeams, trimStreets } from "./port/trim.js";
 import { planOutskirts } from "./port/outskirts.js";
 import { landOf } from "./land.js";
 import { findJunctions } from "./junctions.js";
@@ -98,7 +99,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   // Lots, and the alleys between them.
   const lots: Lot[] = [];
   const drafts: LotDraft[] = [];
-  const streets: Street[] = layout.streets.slice();
+  let streets: Street[] = layout.streets.slice();
   for (const block of blocks) {
     const meta = layout.meta[block.id]!;
     const plat = layout.plats.find((p) => p.id === block.plat)!;
@@ -122,11 +123,16 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     }
   }
 
+  // The buildings stand on the lots (nothing in them reads the streets' ends or the roads out), and then the streets are cut back to what they serve (`trim.ts`).
+  const { buildings, gaps } = recipe.buildings({ site, history, layout, blocks, lots, drafts }, streams.buildings);
+  const trimmed = trimStreets(streets, buildings, lots, blocks);
+  streets = trimmed.streets;
+  const seams = remapSeams(layout.seams, trimmed.map);
+
   const madeEnds = findEnds(streets, site, layout.quay, layout.fill, stageRng(seed, "ends"));
   // The roads out of town continue some of those ends from the grid; where a road leaves, the street has no end to make.
   const rngRoads = stageRng(seed, "roads");
   const { roads, ends } = planRoads(site, streets, madeEnds, blocks.map((b) => b.polygon), names, townName, rngRoads);
-  const buildings = recipe.buildings({ site, history, layout, blocks, lots, drafts }, streams.buildings);
   const bound = recipe.bindLandmarks(history, names, townName, lots, buildings);
   // The roads out: a sentence of the history for each, and each destination among the landmarks.
   const described = describeRoads(roads, streets, names, townName, history.founding.year, rngRoads);
@@ -167,7 +173,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   const uses = recipe.uses({ history: fullHistory, townName, names, buildings, lots, blocks, streets, landmarks, harbour: harbourOut.harbour }, stageRng(seed, "business"));
   const crossings = railCrossings(site, streets, roads);
   // What stands beside each street's roadway (sidewalks, curbs, repaving), then the junctions that follow it, then each lot's yard.
-  const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges") });
+  const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges"), uses });
   const junctions = findJunctions({ streets, roads, ends, rail: crossings, blocks, buildings, landmarks, edges, rng: stageRng(seed, "junctions") });
   const yards = planYards({ blocks, lots, buildings, rng: stageRng(seed, "yards") });
   const base: Omit<TownPlan, "props"> = {
@@ -177,7 +183,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     name: townName,
     history: fullHistory,
     plats: layout.plats,
-    seams: layout.seams,
+    seams,
     streets,
     ends,
     roads,
@@ -193,6 +199,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     junctions,
     edges,
     yards,
+    gaps,
     decks,
     harbour: harbourOut.harbour,
     fill: layout.fill,

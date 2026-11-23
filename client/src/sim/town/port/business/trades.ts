@@ -11,6 +11,7 @@
  * the tourist road) is authored, and so are the widths, the earliest decades and the multipliers by district.
  */
 import type { BuildingKind, InteriorType, Trade } from "../../types.js";
+import { SIZING } from "../sizing.js";
 
 export type Group =
   | "restaurant" | "grocery" | "cafe" | "medical" | "auto" | "fast food" | "bank" | "office" | "gift" | "hair" | "hardware" | "tavern" | "clothing"
@@ -85,7 +86,7 @@ export const TRADES: readonly TradeDef[] = [
   t("cafe", "cafe", "Cafe", "CAFE", 73, "counter service", 5, 11, 1900, "sf", { m: [1.2, 0.7, 0.6, 0.7], tagline: ["Soup - Sandwiches", "Pie", "Coffee"], specials: ["Morning Glory", "The Daily"] }),
   t("espresso stand", "fast food", "Espresso", "COFFEE", 20, "counter service", 3.6, 6, 1990, "sf", { m: [0.7, 0.4, 2.5, 0.8], tagline: ["Drive Thru", "Lattes - Smoothies"] }),
   t("pizza and burgers", "fast food", "Pizza", "PIZZA", 31, "counter service", 6, 12, 1960, "sf", { m: [0.8, 0.5, 2.2, 0.7], tagline: ["Pizza - Burgers", "We Deliver"] }),
-  t("tavern", "tavern", "Tavern", "TAVERN", 31, "bar", 7, 18, 1880, "st", { m: [0.2, 1.5, 0.3, 0.3], tagline: ["Cold Beer", "Pool - Pull Tabs", "Live Music Fri"], specials: ["The Anchor", "Wet Boot", "The Net Loft", "Last Call", "Dry Dock"] }),
+  t("tavern", "tavern", "Tavern", "TAVERN", 31, "bar", 7, 18, 1880, "st", { m: [0.2, SIZING.TAVERN_TRADE_DOCK, 0.2, 0.2], tagline: ["Cold Beer", "Pool - Pull Tabs", "Live Music Fri"], specials: ["The Anchor", "Wet Boot", "The Net Loft", "Last Call", "Dry Dock"] }),
   // food and general stores
   t("grocery", "grocery", "Grocery", "GROCERY", 52, "retail aisles", 9, 30, 1880, "sb", { m: [1, 0.5, 0.8, 0.9], tagline: ["Meat - Produce", "Groceries - Beer & Wine"] }),
   t("convenience store", "grocery", "Mini Mart", "MINI MART", 36, "retail aisles", 6, 14, 1970, "s", { m: [0.7, 0.8, 2, 1], tagline: ["Open Late", "Ice - Snacks"] }),

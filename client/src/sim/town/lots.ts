@@ -99,7 +99,13 @@ export function cutBlock(
     let last: { lo: number; hi: number; role: string | null } | null = null;
     if (reserved && reserved.side === side) {
       const w = Math.min(reserved.width, sb - sa);
-      if (reserved.at === "start") {
+      // A block cut oblique is thin at one end: the landmark takes the other end where the end the draw gave would leave it a sliver (under 60 percent of the other's ground).
+      let at = reserved.at;
+      const aStart = Math.abs(area(clipS(region, sa, sa + w)));
+      const aEnd = Math.abs(area(clipS(region, sb - w, sb)));
+      if (at === "start" && aStart < aEnd * 0.6) at = "end";
+      else if (at === "end" && aEnd < aStart * 0.6) at = "start";
+      if (at === "start") {
         first = { lo: sa, hi: sa + w, role: reserved.role };
         sa += w;
       } else {

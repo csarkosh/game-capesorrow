@@ -23,6 +23,23 @@ export type LandmarkPlan = {
 
 const area0 = (b: Block): number => area(b.polygon);
 
+/** Is a four-cornered polygon one of right angles (every corner within about 8 degrees of square)? */
+function squarish(poly: readonly Vec[]): boolean {
+  if (poly.length !== 4) return false;
+  for (let i = 0; i < 4; i++) {
+    const a = poly[i] as Vec;
+    const b = poly[(i + 1) % 4] as Vec;
+    const c = poly[(i + 2) % 4] as Vec;
+    const ux = b.x - a.x;
+    const uz = b.z - a.z;
+    const vx = c.x - b.x;
+    const vz = c.z - b.z;
+    const l = Math.sqrt((ux * ux + uz * uz) * (vx * vx + vz * vz));
+    if (l < 1e-6 || Math.abs(ux * vx + uz * vz) / l > 0.14) return false;
+  }
+  return true;
+}
+
 /** The block, among candidates, whose centroid is nearest a target point. */
 function nearest(blocks: readonly Block[], ids: readonly number[], target: Vec): number {
   let best = -1;
@@ -70,18 +87,22 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
   const fbi = fbiBlocks.length > 0 ? pick(rng, plain.length > 0 ? plain : fbiBlocks) : -1;
   reserve(fbi, fbiVariant === "federal" ? "fbi-federal" : "fbi-office", "lo", fbiVariant === "federal" ? int(rng, 26, 30) : int(rng, 22, 26));
 
-  // The boom-era hotel, the bank and the lodge hall, on the blocks that face the main street.
+  // The boom-era hotel, the bank and the lodge hall, on the blocks that face the main street. The business street is short (`layout.ts`), so where the core has
+  // fewer blocks than these three want, the next blocks along the main street, nearest the wharf street, take the rest: the main street's own blocks of houses.
   const coreAny = ids((b) => b.district === "core");
   const facing = ids((b) => isOld(b.id) && b.district === "core");
-  const hotel = facing.length > 0 ? nearest(blocks, facing, layout.wharfFoot) : coreAny.length > 0 ? nearest(blocks, coreAny, layout.wharfFoot) : -1;
+  const mainStreet = (): number[] => {
+    const here = ids((b, x) => isOld(b.id) && coreRows.includes(x.row));
+    return here.sort((p, q) => dist(centroid(blocks[p]!.polygon), layout.wharfFoot) - dist(centroid(blocks[q]!.polygon), layout.wharfFoot) || p - q);
+  };
+  const hotel = facing.length > 0 ? nearest(blocks, facing, layout.wharfFoot) : coreAny.length > 0 ? nearest(blocks, coreAny, layout.wharfFoot) : (mainStreet()[0] ?? -1);
   if (hotel >= 0) reserve(hotel, "hotel", toMain(hotel), int(rng, 26, 32));
   const rest = facing.filter((id) => !used[id]);
-  if (rest.length > 0) {
-    const b = pick(rng, rest);
-    reserve(b, "bank", toMain(b), 15);
-  }
+  const bankAt = rest.length > 0 ? pick(rng, rest) : (mainStreet()[0] ?? -1);
+  if (bankAt >= 0) reserve(bankAt, "bank", toMain(bankAt), 15);
   const lodges = ids((b) => b.district === "core");
-  if (lodges.length > 0) reserve(pick(rng, lodges), "lodge", "hi", 15);
+  const lodgeAt = lodges.length > 0 ? pick(rng, lodges) : (mainStreet()[0] ?? -1);
+  if (lodgeAt >= 0) reserve(lodgeAt, "lodge", "hi", 15);
   if (history.founding.purpose === "customs") {
     const c = ids((b) => isOld(b.id) && b.district === "core");
     if (c.length > 0) {
@@ -99,9 +120,14 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
       return d;
     };
     // A plain four-cornered block, so that the depot's lot is a plain one.
-    const cand = ids((b) => b.district !== "civic" && b.polygon.length === 4 && b.polygon.every((q) => q.x < railX(q.z)) && Math.abs(area0(b)) >= 1500);
+    const cand0 = ids((b, x) => b.district !== "civic" && x.site !== "terminal" && b.polygon.length === 4 && b.polygon.every((q) => q.x < railX(q.z)) && Math.abs(area0(b)) >= 1500);
+    // A block cut oblique by the shore or the highway can give the depot's lot only a sliver: a block of right angles is preferred.
+    // The old plat's quay row, where the track meets the wharf street, is the first choice; then the blocks of right angles seaward of the line.
+    const quayOnes = ids((b, x) => isOld(b.id) && x.row === 0 && x.site !== "terminal" && b.district !== "core" && squarish(b.polygon));
+    const squareOnes = cand0.filter((id) => squarish(blocks[id]!.polygon));
+    const cand = quayOnes.length > 0 ? quayOnes : squareOnes.length > 0 ? squareOnes : cand0;
     const pool = cand.length > 0 ? cand : ids((b, x) => isOld(b.id) && x.row === 0);
-    const pick1 = pool.length > 0 ? pool : ids(() => true);
+    const pick1 = pool.length > 0 ? pool : ids((_b, x) => x.site !== "terminal");
     let best = -1;
     let bestScore = Infinity;
     for (const id of pick1) {

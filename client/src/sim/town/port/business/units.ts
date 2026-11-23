@@ -12,6 +12,7 @@
  */
 import { chance, int, next, range, weighted, type Rng } from "../../rng.js";
 import type { Opening, Unit } from "../../types.js";
+import { SIZING } from "../sizing.js";
 import { dec, r1, r2 } from "./ctx.js";
 
 /** The narrowest bay (an espresso stand's), and the width of the stair strip at an end. */
@@ -49,7 +50,7 @@ export function cutFront(rng: Rng, total: number, n: number, minW: number): numb
 export function bayCount(rng: Rng, kind: string, district: string, W: number): number {
   if (kind === "storefront" && district === "highway strip") {
     // A strip of shops under one roof: a bay every 6 to 12 m.
-    if (W >= 30) return Math.max(2, Math.min(6, int(rng, Math.floor(W / 12), Math.floor(W / 6))));
+    if (W >= 30) return Math.max(2, Math.min(SIZING.STRIP_BAYS_MAX, int(rng, Math.floor(W / 14), Math.floor(W / 8))));
     if (W >= 18) return int(rng, 2, 3);
     return 1;
   }

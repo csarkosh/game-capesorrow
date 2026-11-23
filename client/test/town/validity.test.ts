@@ -121,7 +121,7 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
       }
     }
   }
-  // Every block touches a street (an outlying lot stands by the highway or a road out, and touches none of the town's grid).
+  // Every block with a building on it touches a street (an outlying lot stands by the highway or a road out, and touches none of the town's grid).
   for (const block of plan.blocks) {
     if (block.district === "outskirts") {
       let off = Infinity;
@@ -132,7 +132,8 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
     }
     let best = Infinity;
     for (const s of roads) best = Math.min(best, polySegDist(block.polygon, s.a, s.b) - s.width / 2);
-    if (best > 0.6) fail(`block ${block.id} (${block.district}) is ${best.toFixed(1)} m from any street`);
+    // A block with no building on it may stand past the last street: it is the plat the town never built on (`port/trim.ts`).
+    if (best > 0.6 && plan.buildings.some((b) => b.lot >= 0 && plan.lots[b.lot]!.block === block.id)) fail(`block ${block.id} (${block.district}) is ${best.toFixed(1)} m from any street`);
   }
   // The street network is one connected graph.
   const parent = plan.streets.map((_, i) => i);

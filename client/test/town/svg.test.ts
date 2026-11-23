@@ -85,7 +85,8 @@ describe("the plan's SVG", () => {
 
   it("draws each unit's frontage in the colour of its state, its door, and its name and trade when zoomed", () => {
     const units = plan.uses.flatMap((u) => u.units);
-    expect(units.length).toBeGreaterThan(40);
+    // The game's town holds fewer units since its business street was shortened: it was 40.
+    expect(units.length).toBeGreaterThan(30);
     for (const colour of Object.values(UNIT_STROKE)) expect(svg).toContain(`stroke="${colour}" stroke-width="1.1"`);
     expect((svg.match(/stroke="#ffffff" stroke-width="0.7"/g) ?? []).length).toBeGreaterThanOrEqual(units.length);
     const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

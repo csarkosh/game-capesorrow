@@ -51,21 +51,23 @@ describe("the plan is deterministic", () => {
 
   // Pinned digests of three named world seeds. A change here means the same site now gives a different plan:
   // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 6: junctions, where streets meet,
-  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 9: fewer blinds on offices' and bars' windows, so that the room shows. Version 10: what stands in the streets, yards and docks, `plan.props`. Version 11: the two together.)
+  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 9: fewer blinds on offices' and bars' windows, so that the room shows. Version 10: what stands in the streets, yards and docks, `plan.props`. Version 11: the two together. Version 13: the town made to fit its houses: the grid held to the lots the houses fill, a short business street, the streets cut back to what the buildings serve, a shop's door on a sidewalk, `plan.gaps`.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(11);
+    expect(TOWN_GEN).toBe(13);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "a9b85335",
-      1: "fc66375d",
-      7: "10ce5fb9",
+      20261121: "6b67eb01",
+      1: "a3d4f02a",
+      7: "09c026f4",
     });
   });
 
   // What the business stage and the ground's (edges, yards, the junctions' curb and sidewalk flags) added is added alone: the plan of a
-  // seed, with `version`, `uses`, `edges`, `yards`, `props` and the junctions' new flags taken out, is byte for byte what origin/main
-  // (f09b897, generator 6) made, which these digests were taken from before either existed.
-  it("changes nothing earlier in the plan: with its new fields removed it is what version 6 made", () => {
-    const BEFORE: Record<number, string> = { 20261121: "4674c34c", 1: "b46785b3", 7: "7e9ee956" };
+  // seed, with `version`, `uses`, `edges`, `yards`, `props` and the junctions' new flags taken out, is what the layout, lots and buildings
+  // made, whatever those stages added after. These digests were first taken at generator 6 (origin/main f09b897), before any of those existed,
+  // and were taken again at 13 (4674c34c, b46785b3, 7e9ee956 were version 6's): the town-size change moved the layout, the lots and the buildings
+  // themselves, so what they pin now is the plan's own part at 13, and the stages above it still add nothing to it.
+  it("changes nothing earlier in the plan: with its new fields removed it is what the layout, lots and buildings made", () => {
+    const BEFORE: Record<number, string> = { 20261121: "71a358e0", 1: "6099e3bb", 7: "00cfbfeb" };
     for (const seed of [20261121, 1, 7]) {
       const rest: Record<string, unknown> = { ...townFor(seed).plan };
       delete rest.version;
