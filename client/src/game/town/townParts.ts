@@ -29,6 +29,7 @@ import { PROP_ROUGHNESS } from "@csarkosh/engine/game/propBoxes";
 import type { Slices } from "@csarkosh/engine/game/syncJobs";
 import { WET_CAP } from "@csarkosh/engine/game/wetSurface";
 import { townStart } from "../../sim/town/start.js";
+import { createRailStream, type RailStream } from "./railParts.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 
 /** A cell's mesh with what the view's test needs of it. */
@@ -76,6 +77,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let standing: SceneContext | null = null;
   let seed: Mesh | null = null;
   let seedScene: SceneContext | null = null;
+  // The railroad and the power line, streamed along the coast by the camera's place (`railParts.ts`).
+  let rail: RailStream | null = null;
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
@@ -111,6 +114,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const materials = { flat: material(true), solid: material(false) };
       const worldSeed = forest.seed;
       const start = townStart(worldSeed);
+      rail = createRailStream(host, { engine, scene, materials, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
 
       function* build(): Slices {
         const ground = townGround(worldSeed);
@@ -135,10 +139,13 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
       building = true;
       host.jobs.begin(owner, build(), false, "town");
+      // The railroad's cells nearest the start, after the town's own job.
+      rail.prime(start.x, start.z);
     },
 
     seen(planes, cover) {
       base.side.seen(planes, cover);
+      rail?.seen(planes);
       for (const m of made) {
         let want = inView(planes, m);
         // The standing layer is cover for the rain: shown to the map's pass while it reaches into the map's square.
@@ -164,6 +171,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
     releaseBodies() {
       disposed = true;
+      rail?.dispose();
+      rail = null;
       host.jobs.cancel(owner);
       for (const m of made) {
         if (m.layer === "solid") hardCover?.remove(m.mesh);
