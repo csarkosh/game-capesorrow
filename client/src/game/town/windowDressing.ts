@@ -12,6 +12,7 @@
  */
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { wat, type WallRef } from "./buildingKit.js";
+import { standOff } from "./faceLedger.js";
 import type { Detail } from "./townTypes.js";
 
 /** The steps of depth, metres: a layer is this far behind the next in front of it (the depth buffer holds 2 cm apart at 60 m). */
@@ -52,7 +53,12 @@ export function slatBlinds(b: Behind, sa: number, sb: number, top: number, drop:
   // spare float, in millimetres): the gaps are cut out near and the stripes are averaged by the pixel's own footprint beyond, so a blind a pixel cannot resolve is one even panel, never a flicker.
   const tone = scaled(warm, 0.9);
   const ybot = y0 - n * pitch;
-  out.poly([wat(w, sa, ybot + bl0, off), wat(w, sb, ybot + br0, off), wat(w, sb, y0, off), wat(w, sa, y0, off)], [w.nx, 0, w.nz], tone, undefined, { glow, tilt: [Math.round(pitch * 1000), 0] });
+  // Behind the glass and clear of every face the wall's own builders have noted (`faceLedger.ts`): a transom bar or a frame's face is never within 2.45 cm of it.
+  const lowest = ybot + Math.min(bl0, br0);
+  const oa = wat(w, sa, 0, off);
+  const ob = wat(w, sb, 0, off);
+  const face = off - standOff(w.nx, w.nz, oa[0], oa[2], ob[0], ob[2], lowest, y0, -1);
+  out.poly([wat(w, sa, ybot + bl0, face), wat(w, sb, ybot + br0, face), wat(w, sb, y0, face), wat(w, sa, y0, face)], [w.nx, 0, w.nz], tone, undefined, { glow, tilt: [Math.round(pitch * 1000), 0] });
   // The pull cord and the bottom rail.
   const bottom = y0 - n * pitch;
   const bl = sag > 0 ? -Math.abs(sag) : 0;
