@@ -2,7 +2,7 @@
  * What is in the buildings: units, tenants, names, signs, rooms and windows (`plan.uses`, one `BuildingUse` a building). Made last,
  * from the finished plan, and only from the `business` stream (`rng.ts`): each building draws from a stream of its own (its id hashed
  * with the stage's), so that a change to one building's draws moves no other building's, and the town-wide choices (which trade
- * goes in which bay, the essentials every town has) from the stage's own stream. NOTHING OF IT IS DRAWN YET.
+ * goes in which bay, the essentials every town has) from the stage's own stream.
  *
  * Three passes. A: each building's front, its bays and their doors and windows, and which bays are open, shut for the day or vacant.
  * B: the trade of every bay that holds one, with the town's caps (one post office, two banks) and its essentials (a grocery, a post

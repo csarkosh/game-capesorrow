@@ -42,6 +42,20 @@
  * **Until the images land** `townReady` (a uniform) is 0 and the plugin does nothing: the town draws as flat vertex colour
  * with no flash of black, and the arrays are bound from the start as empty textures that are filled in place.
  *
+ * **Wear, second edition.** A vertex carries two wears (`townSurface`.y and z, and `townWear`.x and y, laid one over the other), each an
+ * amount and a kind: moss (the moss layer, lifted and turned green), rust, peel (the peeling-boards layer: bare wood and flaking paint),
+ * algae (the moss layer as a thin, pale green-grey film, half strength) and grime (the mud layer, dark brown, for splash at a wall's
+ * foot and the dirt that runs under a sill). A kind's fraction (half) says the wear runs in streaks: the noise is stretched down the
+ * surface (about four times finer across than along), which is how water drips down a wall. Where a surface is worn is the builder's
+ * (`buildingWear.ts`); the shader only breaks the amount into patches.
+ *
+ * **Glow and clear (the lit and the see-through).** `townSurface`.w is the glow g: the surface's own colour times g is added to the
+ * light before the fog, and the lit colour is scaled by one minus g (at most 1), so 0 is a surface the scene lights, 1 is one that lights
+ * itself (a room's walls, a sign's lettering), and more than 1 brightens (a tube, a lit cooler's front). `townTint`.w is how clear the
+ * surface is, 0 opaque to 1 invisible, for the blended glass layer: it scales the alpha, and adds the glass's own reflection of the
+ * overcast sky (Schlick's fresnel from the eye, so a window seen along its length is a mirror and one seen square-on shows the room).
+ * Both work whether or not the textures have landed.
+ *
  * **Tiers.** The low tier's arrays are 256 x 256 (a quarter of the memory and of the upload), its overlay takes only the
  * overlay's colour and roughness (no second normal), and its wear noise has two octaves.
  */
@@ -55,7 +69,9 @@ export const TOWN_VARYING = "vTownSurface";
 export const TOWN_TINT_ATTRIBUTE = "townTint";
 export const TOWN_TINT_VARYING = "vTownTint";
 /** Floats a vertex's plugin data holds (`SURFACE_FLOATS` in `meshBuilder.ts`). */
-export const TOWN_VERTEX_FLOATS = 8;
+export const TOWN_VERTEX_FLOATS = 12;
+export const TOWN_WEAR_ATTRIBUTE = "townWear";
+export const TOWN_WEAR_VARYING = "vTownWear";
 
 /** How much of the occlusion map darkens the colour: all of it would shade the sun's light by a crevice that a map made for ambient light. */
 const AO_STRENGTH = 0.85;
@@ -73,6 +89,8 @@ const RUST_COLOUR: readonly [number, number, number] = [1.35, 0.8, 0.5];
 const LOW_MOSS = 0.65;
 /** The soft edge of a worn patch, as a share of the noise's range. */
 const WEAR_EDGE = 0.1;
+/** How metallic bare metal sheet is, 0 to 1: a painted or weathered sheet is not a mirror. */
+const METAL_AMOUNT = 0.5;
 
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
@@ -84,6 +102,12 @@ export function townDefinitions(low: boolean): string {
   return [
     `const TOWN_MOSS:i32=${layerIndex(WEAR_OVERLAY.moss)};`,
     `const TOWN_RUST:i32=${layerIndex(WEAR_OVERLAY.rust)};`,
+    // The overlay layer and the grade of each wear kind: moss, rust, peel, algae, grime (xyz the colour's multiplier, w how much of it is laid).
+    `var<private> townOver:array<i32,5>=array<i32,5>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
+    `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(1.05,1.3,0.9,0.4),vec4<f32>(0.8,0.74,0.66,0.7));`,
+    "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
+    "var<private> townGlassA:f32=0.0;",
+    "var<private> townSignA:f32=1.0;",
     `var<private> townInfo:array<vec4<f32>,${TOWN_LAYERS.length}>=array<vec4<f32>,${TOWN_LAYERS.length}>(${table});`,
     "fn townHash(c:vec3<i32>)->f32{",
     "var h=bitcast<u32>(c.x)*374761393u+bitcast<u32>(c.y)*668265263u+bitcast<u32>(c.z)*2147483647u;",
@@ -102,13 +126,37 @@ export function townDefinitions(low: boolean): string {
   ].join("");
 }
 
+/** The WGSL of one wear slot: `amountExpr` and `kindExpr` are the vertex's; it changes tsRgb, tsN, tsRough and tsAo. */
+function wearSlot(amountExpr: string, kindExpr: string, low: boolean, n: string): string {
+  const overData = low
+    ? `tsRough=mix(tsRough,tsOd${n}.z,tsW${n});`
+    : `tsN=mix(tsN,vec2<f32>(tsOd${n}.x*2.0-1.0,tsOd${n}.y*2.0-1.0),tsW${n});tsRough=mix(tsRough,tsOd${n}.z,tsW${n});tsAo=mix(tsAo,clamp(tsOd${n}.w*2.0-1.0,0.0,1.0),tsW${n});`;
+  return [
+    `let tsA${n}=${amountExpr};`,
+    `if(tsA${n}>0.001){`,
+    `let tsKf${n}=${kindExpr}+0.01;let tsK${n}=clamp(i32(floor(tsKf${n})),0,4);`,
+    `var tsWp${n}=input.worldPos;`,
+    `if(fract(tsKf${n})>0.25){tsWp${n}=vec3<f32>(tsWp${n}.x*2.6,tsWp${n}.y*0.32,tsWp${n}.z*2.6);}`,
+    `let tsW${n}=townWear(tsWp${n},tsA${n})*townGrade[tsK${n}].w;`,
+    `tsWm=max(tsWm,tsW${n});`,
+    `if(tsW${n}>0.004){`,
+    `let tsOver${n}=townOver[tsK${n}];`,
+    `let tsScale${n}=tsInfo.xy/townInfo[tsOver${n}].xy;`,
+    `let tsUvO${n}=input.uv*tsScale${n};let tsDxO${n}=tsDx*tsScale${n};let tsDyO${n}=tsDy*tsScale${n};`,
+    `let tsOc${n}=textureSampleGrad(townColor,townSmp,tsUvO${n},tsOver${n},tsDxO${n},tsDyO${n}).rgb;`,
+    `let tsOd${n}=textureSampleGrad(townData,townSmp,tsUvO${n},tsOver${n},tsDxO${n},tsDyO${n});`,
+    `tsRgb=mix(tsRgb,tsOc${n}*townGrade[tsK${n}].xyz,tsW${n});`,
+    overData,
+    "}",
+    "}",
+  ].join("");
+}
+
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
 export function townSurfaceCode(low: boolean): string {
-  const overData = low
-    ? "tsRough=mix(tsRough,tsOd.z,tsWear);"
-    : "tsN=mix(tsN,vec2<f32>(tsOd.x*2.0-1.0,tsOd.y*2.0-1.0),tsWear);tsRough=mix(tsRough,tsOd.z,tsWear);tsAo=mix(tsAo,clamp(tsOd.w*2.0-1.0,0.0,1.0),tsWear);";
   return [
     `let tsSurf=input.${TOWN_VARYING};`,
+    `let tsWearV=input.${TOWN_WEAR_VARYING};`,
     "let tsLayer=i32(floor(tsSurf.x+0.5));",
     "let tsDx=dpdx(input.uv);let tsDy=dpdy(input.uv);let tsPx=dpdx(input.worldPos);let tsPy=dpdy(input.worldPos);",
     "if(material.townReady>0.5&&tsLayer>=0){",
@@ -118,17 +166,9 @@ export function townSurfaceCode(low: boolean): string {
     "var tsN=vec2<f32>(tsData.x*2.0-1.0,tsData.y*2.0-1.0);",
     "var tsRough=tsData.z;var tsAo=clamp(tsData.w*2.0-1.0,0.0,1.0);",
     `var tsRgb=input.${TOWN_TINT_VARYING}.rgb*tsCol;`,
-    "var tsWear=0.0;",
-    "if(tsSurf.y>0.001){tsWear=townWear(input.worldPos,tsSurf.y);}",
-    "if(tsWear>0.004){",
-    "let tsOver=select(TOWN_MOSS,TOWN_RUST,tsSurf.z>0.5);",
-    "let tsScale=tsInfo.xy/townInfo[tsOver].xy;",
-    "let tsUvO=input.uv*tsScale;let tsDxO=tsDx*tsScale;let tsDyO=tsDy*tsScale;",
-    "let tsOc=textureSampleGrad(townColor,townSmp,tsUvO,tsOver,tsDxO,tsDyO).rgb;",
-    "let tsOd=textureSampleGrad(townData,townSmp,tsUvO,tsOver,tsDxO,tsDyO);",
-    `tsRgb=mix(tsRgb,tsOc*select(vec3<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")}),vec3<f32>(${RUST_COLOUR.map(f).join(",")}),tsSurf.z>0.5),tsWear);`,
-    overData,
-    "}",
+    "var tsWm=0.0;",
+    wearSlot("tsSurf.y", "tsSurf.z", low, "1"),
+    wearSlot("tsWearV.x", "tsWearV.y", low, "2"),
     `tsN*=${f(NORMAL_STRENGTH)};`,
     "let tsNz=sqrt(max(1.0-dot(tsN,tsN),0.0));",
     "let tsDp2=cross(tsPy,N);let tsDp1=cross(N,tsPx);",
@@ -137,9 +177,35 @@ export function townSurfaceCode(low: boolean): string {
     "N=normalize(tsT*tsInv*tsN.x+tsB*tsInv*tsN.y+N*tsNz);",
     `baseColor=tsRgb*mix(1.0,tsAo,${f(AO_STRENGTH)});`,
     "roughness=clamp(tsRough,0.05,1.0);",
+    // Bare metal is metal: sheet that is not rusted or painted over shines as the conductor it is, and the wear takes it away.
+    `if(tsLayer==${layerIndex("metal_aged")}||tsLayer==${layerIndex("metal_painted")}||tsLayer==${layerIndex("roof_metal")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`,
+    "}",
+    // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
+    "if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));}",
+  ].join("");
+}
+
+/**
+ * A sign's face: the lettering atlas read by the UV as given (v from the top), its colour times the tint, its alpha the atlas's (carried to the
+ * alpha term in `townSignA`). Added to the surface code of the sign layer's material alone.
+ */
+const SIGN_CODE = "let tsSg=textureSample(townSign,townSignSmp,input.uv,0);baseColor=tsSg.rgb*input.vTownTint.rgb;townSignA=tsSg.a;";
+
+/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_LIGHTS`: a see-through surface's alpha, with the reflection of the sky added to it. */
+export function townAlphaCode(): string {
+  return [
+    `let tsClear=input.${TOWN_TINT_VARYING}.w;`,
+    "if(tsClear>0.001){",
+    "let tsVe=normalize(scene.vEyePosition.xyz-input.worldPos);",
+    "let tsFr=0.04+0.96*pow(1.0-clamp(abs(dot(N,tsVe)),0.0,1.0),5.0);",
+    "townGlassA=tsFr;",
+    "alpha=clamp(alpha*(1.0-tsClear)+tsFr*0.9,0.0,1.0);",
     "}",
   ].join("");
 }
+
+/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: the glow, and a glass's sky. */
+export const TOWN_COMPOSE_CODE = "color=color+townGlowC+vec3<f32>(0.5,0.56,0.62)*(townGlassA*1.3);";
 
 /** What the plugin draws with: the two arrays (the colour's read as sRGB, the data as data), filled in place when the images land. */
 export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Texture2DArray };
@@ -154,9 +220,9 @@ export function emptyTownReady(): TownReady {
 const READY_FIELDS: readonly UniformField[] = uniformFields(emptyTownReady());
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. */
-export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean): MaterialPlugin {
+export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray): MaterialPlugin {
   const definitions = townDefinitions(low);
-  const surface = townSurfaceCode(low);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low);
   return {
     name: "TownSurface",
     priority: 200,
@@ -164,26 +230,30 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"
-        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface }
-        : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};` },
+        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode() + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
+        : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};` },
     getVertexAttributes: () => [
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 0 },
       { name: TOWN_TINT_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 16 },
+      { name: TOWN_WEAR_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 32 },
     ],
-    getVaryings: () => [{ name: TOWN_VARYING, type: "vec4<f32>" }, { name: TOWN_TINT_VARYING, type: "vec4<f32>" }],
+    getVaryings: () => [{ name: TOWN_VARYING, type: "vec4<f32>" }, { name: TOWN_TINT_VARYING, type: "vec4<f32>" }, { name: TOWN_WEAR_VARYING, type: "vec4<f32>" }],
     getUniforms: () => ({ ubo: [...READY_FIELDS] }),
     getSamplers: () => [
       { texture: "townColor", sampler: "townSmp", textureType: "texture_2d_array<f32>" },
       { texture: "townData", textureType: "texture_2d_array<f32>" },
+      ...(signAtlas === undefined ? [] : [{ texture: "townSign", sampler: "townSignSmp", textureType: "texture_2d_array<f32>" as const }]),
     ],
     writeUbo(data, offsets) {
       writeUniforms(data, offsets, ready);
     },
     bindTextures(out) {
       out.push({ texture: textures.color }, { texture: textures.data, sampler: false });
+      if (signAtlas !== undefined) out.push({ texture: signAtlas });
     },
     getActiveTextures(out) {
       out.push(textures.color, textures.data);
+      if (signAtlas !== undefined) out.push(signAtlas);
     },
   };
 }

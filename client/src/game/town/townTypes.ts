@@ -39,3 +39,39 @@ export type Detail = "low" | "full";
 
 /** The world's sea level: nothing is drawn on ground below it. */
 export const SEA = 0;
+
+/** Where a building's see-through parts and its lettering go, beside its solid ones: the blended glass layer and the signs' layer (each by cell), and the atlas the signs are lettered on. */
+export type BuildingExtras = { readonly glass: Sink; readonly sign: Sink; readonly atlas: SignAtlasLike; readonly report?: FillReport };
+
+/** What a building's fronts record of what they drew, for a test to hold them to the plan: filled in by the builders when a report is given. */
+export type FillReport = {
+  /** Every opening of a unit's front as drawn (the frame's stations and heights over the floor). */
+  readonly openings: { unit: number; s0: number; s1: number; sill: number; head: number; cover: string }[];
+  /** Every window the builders drew, and what is behind its glass: a unit's room, a shallow box of its own, or a cover (boards, brick, paper). */
+  readonly windows: { pane: boolean; behind: "room" | "box" | "cover" }[];
+  /** Each unit's room: its extent in the frame (s, d, up from the floor), the furnishings the plan gave it, and a fingerprint of its geometry. */
+  readonly rooms: { unit: number; trade: string; extent: { s0: number; s1: number; d0: number; d1: number; y0: number; y1: number }; furnishings: number; hash: number }[];
+};
+
+/** What the builders need of the lettering atlas (`signAtlas.ts`): a place for each sign's face, which the renderer's side paints. */
+export type SignAtlasLike = { place(widthM: number, heightM: number, spec: SignSpec): { u0: number; v0: number; u1: number; v1: number } | null };
+
+/** What the renderer's side is asked to paint on a sign's face (`signAtlas.ts` says how it is read). Plain data. */
+export type SignSpec = {
+  readonly kind: string;
+  readonly style: string;
+  readonly lines: readonly string[];
+  readonly decade: number;
+  readonly condition: number;
+  readonly lit: boolean;
+  /** A number of the sign's own (its building and place), from which its face, weight and layout are drawn. */
+  readonly seed: number;
+  /** The face's colours, 0 to 255, and whether the ground is transparent (lettering on glass, paint on a wall). */
+  readonly bg: readonly [number, number, number];
+  readonly fg: readonly [number, number, number];
+  readonly accent: readonly [number, number, number];
+  readonly clear: boolean;
+  /** The face's size in metres, which sets its letters' size. */
+  readonly w: number;
+  readonly h: number;
+};

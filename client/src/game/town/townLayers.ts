@@ -49,7 +49,7 @@ export const LAYER_SIZE: number = manifest.size;
 export const PAINT_GAIN: number = manifest.paintGain;
 
 /** The wear overlays: moss and grime, and rust (`Surface.wearKind`). */
-export const WEAR_OVERLAY = { moss: "moss", rust: "rust" } as const satisfies Record<string, LayerName>;
+export const WEAR_OVERLAY = { moss: "moss", rust: "rust", peel: "planks_peeling", mud: "mud" } as const satisfies Record<string, LayerName>;
 
 /** The vertex's layer for "none": no texture, the vertex colour as it is. */
 export const NO_LAYER = -1;

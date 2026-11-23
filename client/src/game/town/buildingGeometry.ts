@@ -1,16 +1,16 @@
 /**
- * A building as arrays: a shell on its oriented rectangle (`centre`, `halfAlong`, `halfAcross`, `bearing`).
+ * A building as arrays: a shell on its oriented rectangle (`centre`, `halfAlong`, `halfAcross`, `bearing`), and what the plan says is in it.
  *
  * - **Walls** go from below the lowest ground under the footprint (so no gap shows on a slope) up to the eave, four
- *   flat quads facing outward. A building standing on piles (no lot) starts at its deck.
+ *   flat faces facing outward, cut around their openings (`openingsGeometry.ts`, `buildingKit.ts`): a commercial front is its
+ *   units (`frontGeometry.ts`), a house its windows and door (`windowGeometry.ts`), the other walls few and uneven openings. A
+ *   building standing on piles (no lot) starts at its deck.
  * - **Roofs** by kind: `flat` has a roof surface and a low parapet round it; `gable` has its ridge along the longer
- *   side and a gable end on each short wall; `hip` is a true hip, four faces with a short ridge; `shed` is a single
+ *   side and a gable end on each short wall (the ridge of an old wooden one sags); `hip` is a true hip, four faces with a short ridge; `shed` is a single
  *   slope, high at the back, with trapezoid side walls. The pitched roofs overhang the walls by `EAVE` m. A `ruin` is
  *   roofless, lower, and its walls are broken at the top in runs of about a metre, with inner faces and a little rubble.
- * - **Windows** are rows of dark rectangles per storey on the street-facing wall and the sides, laid `PROUD` m off the
- *   wall (a light frame under the glass on the full detail), a house with a door and a few windows, a storefront with
- *   one wide band of glass at street level and a door, a warehouse, mill, cannery or shed with a big door and few windows.
- *   A vacant building is duller, its ground-floor glass and door boarded in plywood.
+ * - **Behind the glass** of each unit the plan's room (`roomGeometry.ts`); **signs** from the plan (`shopSigns.ts`); **parts** (`buildingParts.ts`) and
+ *   **wear** (`buildingWear.ts`) by kind, age and history.
  * - **Colour** from `material` and the building's id (`vary`): no random call anywhere.
  * - **A landmark** carries one touch: the FBI office a flagpole, a portico and a cornice; a church a steeple; the tsunami
  *   refuge is an open platform on legs with stairs; the mill a smokestack.
@@ -18,12 +18,18 @@
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingKind, LandmarkRole } from "../../sim/town/types.js";
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { roofStyle, roofTint, wallStyle, wallTint, wallWearAt, wallWearBase } from "./buildingSurfaces.js";
+import { roofStyle, roofTint, wallStyle, wallTint } from "./buildingSurfaces.js";
 import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.js";
+import { wallRef, type WallRef } from "./buildingKit.js";
+import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
+import { blockedWalls, cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
+import { lotDepthOut, partsGeometry } from "./buildingParts.js";
+import type { Xf } from "./roomGeometry.js";
+import { signsGeometry } from "./shopSigns.js";
 import {
-  BIG_DOOR, DOOR, FLAG_POLE, FLAG_RED, FRAME, GLASS, PLYWOOD, ROOF_METAL, ROOF_SHINGLE, ROOF_TAR, STONE_TRIM, vary, wallColour,
+  FLAG_POLE, FLAG_RED, ROOF_METAL, ROOF_SHINGLE, ROOF_TAR, STONE_TRIM, vary, wallColour,
 } from "./palette.js";
-import type { Detail, Sink, TownGround } from "./townTypes.js";
+import type { BuildingExtras, Detail, Sink, TownGround } from "./townTypes.js";
 
 /** How far the windows and doors lie off the wall's face, metres. */
 export const PROUD = 0.03;
@@ -80,8 +86,6 @@ type Wall = {
   topB: number;
 };
 
-type Opening = { s0: number; s1: number; y0: number; y1: number; colour: Rgb; frame: boolean; layer?: "plywood" | "shutter"; shade?: number };
-
 /** The few numbers every part of one building is built from. */
 type Frame = {
   cx: number;
@@ -96,11 +100,12 @@ type Frame = {
 
 const dot = (ax: number, az: number, bx: number, bz: number): number => ax * bx + az * bz;
 
-export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole | null, sink: Sink, detail: Detail): void {
+export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole | null, sink: Sink, detail: Detail, extra?: BuildingExtras): void {
   const u = bearingU(b.bearing);
   const v = bearingV(b.bearing);
   const f: Frame = { cx: g.anchor.x + b.centre.x, cz: g.anchor.z + b.centre.z, ux: u.x, uz: u.z, vx: v.x, vz: v.z, hu: b.halfAlong, hv: b.halfAcross };
   const out = sink(f.cx, f.cz);
+  const glass = extra === undefined ? out : extra.glass(f.cx, f.cz);
   const ruin = b.state === "ruin";
   const vacant = b.state === "vacant";
   const onPiles = b.lot === -1;
@@ -191,7 +196,6 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // ---- Surfaces: the walls' texture, from the plan's material; its frame runs along the wall and up from the base, the
   // walls end to end round the building (a, b, c, d in the order round) so the courses meet at the corners.
   const style = wallStyle(b);
-  const wearBase = wallWearBase(b);
   const around = [0, 2, 1, 3];
   const alongAt: number[] = [0, 0, 0, 0];
   let run = 0;
@@ -203,13 +207,15 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const w = walls[i] as Wall;
     return wallFrame(w.ax, w.az, (w.bx - w.ax) / w.length, (w.bz - w.az) / w.length, baseY, alongAt[i] as number, turned);
   };
-  const wallSurface = (i: number): Surface => {
+  const wears: (WallWear | undefined)[] = [];
+  const wallSurface = (i: number, band: 0 | 1 = 1): Surface => {
+    const w = walls[i] as Wall;
+    const wear = (wears[i] ??= wallWear(b, style, w.nx, w.nz, baseY));
     return {
       layer: style.layer,
       frame: frameOf(i, style.turned),
       ...(style.paint ? {} : { tint: wallTint(b) }),
-      wear: (p: Vec3): number => wallWearAt(wearBase, baseY, p[1]),
-      wearKind: style.wearKind,
+      ...(band === 0 ? wear.foot : wear.upper),
     };
   };
 
@@ -218,13 +224,26 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     return;
   }
 
-  // ---- the walls
-  for (const w of walls) {
-    const hint: Vec3 = [w.nx, 0, w.nz];
-    if (ruin) {
-      brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
-    } else {
-      out.poly([[w.ax, baseY, w.az], [w.bx, baseY, w.bz], [w.bx, w.topB, w.bz], [w.ax, w.topA, w.az]], hint, wall, wallSurface(walls.indexOf(w)));
+  // ---- the walls, cut around their openings (`openingsGeometry.ts`); a ruin's are broken instead
+  const refs: WallRef[] = walls.map((w) => wallRef(w.ax, w.az, w.bx, w.bz, w.nx, w.nz));
+  const use = g.plan.uses[b.id];
+  const uf = use?.frame ?? null;
+  const xf: Xf | null = uf === null || uf === undefined ? null : { ox: g.anchor.x + uf.origin.x, oz: g.anchor.z + uf.origin.z, nx: uf.n.x, nz: uf.n.z, tx: uf.t.x, tz: uf.t.z, width: uf.width, depth: uf.depth };
+  const planCtx: PlanCtx = {
+    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY: floorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }),
+    surfaceOf: (r, band) => wallSurface(refs.indexOf(r), band), bandY: baseY + FOOT,
+  };
+  // The floor at the street door: the building stands on the highest ground under it, but a front on a slope is entered from the sidewalk.
+  const fw = refs[frontAt] as WallRef;
+  let frontGround = -Infinity;
+  for (let k = 0; k <= 6; k++) frontGround = Math.max(frontGround, g.heightAt(fw.ax + fw.tx * fw.length * (k / 6) + fw.nx * 1.2, fw.az + fw.tz * fw.length * (k / 6) + fw.nz * 1.2));
+  planCtx.frontFloorY = onPiles ? floorY : Math.max(baseY + 0.3, Math.min(floorY, frontGround + 0.12));
+  if (ruin) {
+    for (const w of walls) brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
+  } else {
+    cutWalls(planCtx, planWalls(planCtx), walls.map((w): [number, number] => [w.topA, w.topB]), baseY);
+    if (extra !== undefined && use !== undefined && xf !== null) {
+      signsGeometry({ solid: out, face: extra.sign(f.cx, f.cz), g, b, use, xf, atlas: extra.atlas, floorY: planCtx.frontFloorY, wallTop, detail });
     }
   }
 
@@ -233,8 +252,9 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // A roof's texture: shingles and ribs run along the eave and down the slope; a flat roof's lies on the world's x and z.
   const roofLook = roofKind === "ruin" ? null : roofStyle(b, roofKind);
   const roofPaint = roofLook?.layer === "roof_shingle";
-  const roofSurface = (frame: Surface["frame"]): Surface | undefined =>
-    roofLook === null ? undefined : { layer: roofLook.layer, frame, ...(roofPaint ? {} : { tint: roofTint(b) }), wear: roofLook.wear, wearKind: roofLook.wearKind };
+  // A roof's wear follows the slope: mossy on the north side, dry on the south, rusting in streaks where it is metal (`buildingWear.ts`).
+  const roofSurface = (frame: Surface["frame"], nx = 0, nz = 0): Surface | undefined =>
+    roofLook === null || roofKind === "ruin" ? undefined : { layer: roofLook.layer, frame, ...(roofPaint ? {} : { tint: roofTint(b) }), ...roofWear(b, roofKind, roofLook.layer === "roof_metal", nx, nz) };
   if (roofKind === "flat") {
     const inset = 0.3;
     out.poly([P(-L + inset, -S + inset, H), P(L - inset, -S + inset, H), P(L - inset, S - inset, H), P(-L + inset, S - inset, H)], [0, 1, 0], roofColour, roofSurface(groundFrame(g.anchor)));
@@ -258,7 +278,16 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const he = wallTop - 0.15;
     for (const side of [-1, 1]) {
       const a = P(-Le, side * Se, he);
-      out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-Le, 0, H))));
+      const fr = roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-Le, 0, H)), e2[0] * side, e2[1] * side);
+      if (b.era < 1925 && b.material === "wood") {
+        // The ridge of a roof of a hundred years sags between its walls: an old frame's own settling.
+        const sag = 0.08 + hash01(b.id, 65) * 0.14;
+        const mid = P(0, 0, H - sag);
+        const eaveMid = P(0, side * Se, he - sag * 0.35);
+        const hint: Vec3 = [e2[0] * side * 0.6, 1, e2[1] * side * 0.6];
+        out.poly([a, eaveMid, mid, P(-Le, 0, H)], hint, roofColour, fr);
+        out.poly([eaveMid, P(Le, side * Se, he), P(Le, 0, H), mid], hint, roofColour, fr);
+      } else out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, fr);
     }
     // The gable ends, on the short walls: the wall's own texture, carried up from the wall below.
     for (const end of [-1, 1]) {
@@ -272,18 +301,27 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const r = Math.max(0.2, L - S);
     for (const side of [-1, 1]) {
       const a = P(-Le, side * Se, he);
-      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H))));
+      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H)), e2[0] * side, e2[1] * side));
     }
     for (const end of [-1, 1]) {
       const a = P(end * Le, -Se, he);
-      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H))));
+      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H)), e1[0] * end, e1[1] * end));
     }
   } else if (roofKind === "shed") {
     const Le = L + EAVE;
     const Se = S + EAVE;
     const low0 = P(-Le, -shedSign * Se, H - shedDrop - 0.1);
     out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour,
-      roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1))));
+      roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1)), -e2[0] * shedSign, -e2[1] * shedSign));
+  }
+
+  // ---- the parts that are not the shell: porches, chimneys, additions, rooftop units, canopies, by the building's kind and its own history (`buildingParts.ts`)
+  if (!ruin && !onPiles) {
+    partsGeometry({
+      g, b, role, out, glass, detail, refs, frontAt, use, xf, floorY, frontFloorY: planCtx.frontFloorY, baseY, wallTop, H,
+      roofKind: roofKind as "flat" | "gable" | "hip" | "shed", rise, P, L, S, e2, wall, blocked: blockedWalls(planCtx), vacant, wallSurface,
+      lotOut: xf === null ? 0 : lotDepthOut(g, b, xf),
+    });
   }
 
   // ---- ruins: rubble inside the walls
@@ -299,51 +337,9 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     }
   }
 
-  // ---- doors and windows
-  if (!ruin) {
-    const open = openings(b, walls, frontAt, floorY, wallTop, H, vacant, detail, g);
-    for (const [i, list] of open.entries()) {
-      const w = walls[i] as Wall;
-      for (const o of list) {
-        const tx = (w.bx - w.ax) / w.length;
-        const tz = (w.bz - w.az) / w.length;
-        const at = (s: number, y: number, lift: number): Vec3 => [w.ax + tx * s + w.nx * lift, y, w.az + tz * s + w.nz * lift];
-        const hint: Vec3 = [w.nx, 0, w.nz];
-        if (o.frame && detail === "full") {
-          const m = 0.1;
-          out.poly([at(o.s0 - m, o.y0 - m, PROUD), at(o.s1 + m, o.y0 - m, PROUD), at(o.s1 + m, o.y1 + m, PROUD), at(o.s0 - m, o.y1 + m, PROUD)], hint, FRAME);
-        }
-        const lift = o.frame && detail === "full" ? PROUD + 0.015 : PROUD;
-        // Boarded openings are plywood and big doors roll-up shutters; glass and ordinary doors stay flat colour.
-        const shade = o.shade ?? 1;
-        const surface: Surface | undefined = o.layer === undefined ? undefined : {
-          layer: o.layer, frame: frameOf(i, false), tint: [shade, shade, shade],
-          wear: o.layer === "plywood" ? 0.15 : 0.2, wearKind: o.layer === "plywood" ? "moss" : "rust",
-        };
-        out.poly([at(o.s0, o.y0, lift), at(o.s1, o.y0, lift), at(o.s1, o.y1, lift), at(o.s0, o.y1, lift)], hint, o.colour, surface);
-      }
-    }
-  } else {
-    // A ruin keeps a few empty openings in its front wall, where the wall still stands.
-    const w = walls[frontAt] as Wall;
-    const tx = (w.bx - w.ax) / w.length;
-    const tz = (w.bz - w.az) / w.length;
-    for (let k = 0; k < 2; k++) {
-      const s = (w.length * (k + 1)) / 3;
-      const at = (ss: number, y: number): Vec3 => [w.ax + tx * ss + w.nx * PROUD, y, w.az + tz * ss + w.nz * PROUD];
-      const y0 = floorY + 0.9;
-      // Only under the run of broken wall that is high enough there.
-      if (wallRunTop(b.id, w, s, floorY, H) > y0 + 1.5) out.poly([at(s - 0.5, y0), at(s + 0.5, y0), at(s + 0.5, y0 + 1.3), at(s - 0.5, y0 + 1.3)], [w.nx, 0, w.nz], GLASS);
-    }
-  }
+  // ---- (the doors and windows are drawn with the walls: a ruin keeps its broken wall and the sky through it)
 
   landmarkTouch(g, role, f, b, out, walls, frontAt, e1, e2, L, S, wallTop, H, floorY, baseY);
-}
-
-/** The top of a ruin's wall at `s` along it (the runs of `brokenWall`). */
-function wallRunTop(id: number, w: Wall, s: number, floorY: number, H: number): number {
-  const run = Math.floor(s / 1.2);
-  return floorY + (H - floorY) * (0.45 + 0.55 * hash01(id * 31 + Math.floor(w.ax * 3) + run, 80));
 }
 
 /** A ruin's wall: runs of about a metre, each to its own height, an inner face, and the top of each run left open. */
@@ -365,88 +361,6 @@ function brokenWall(out: MeshBuilder, w: Wall, baseY: number, floorY: number, H:
     out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], out3, colour, surface);
     out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], in3, inner);
   }
-}
-
-/** The doors and windows of each wall (by the wall's index), for a building that is not a ruin. */
-function openings(b: Building, walls: readonly Wall[], frontAt: number, floorY: number, wallTop: number, H: number, vacant: boolean, detail: Detail, g: TownGround): Opening[][] {
-  const profile = PROFILE[b.kind];
-  const result: Opening[][] = walls.map(() => []);
-  const storeys = Math.max(1, b.storeys);
-  const fh = (wallTop - floorY) / storeys;
-  const lowStoreys = detail === "low" ? 1 : storeys;
-  const glassColour = (k: number): Rgb => scaled(GLASS, 0.8 + hash01(b.id * 7 + k, 90) * 0.7);
-  const boards = (s0: number, s1: number, y0: number, y1: number, frame: boolean, out: Opening[]): void => {
-    // Plywood in panels of about 1.2 m, each its own shade.
-    const n = Math.max(1, Math.round((s1 - s0) / 1.2));
-    for (let i = 0; i < n; i++) {
-      const shade = 0.85 + hash01(b.id * 13 + i, 95) * 0.3;
-      out.push({ s0: s0 + ((s1 - s0) * i) / n + 0.02, s1: s0 + ((s1 - s0) * (i + 1)) / n - 0.02, y0, y1, colour: scaled(PLYWOOD, shade), frame, layer: "plywood", shade });
-    }
-  };
-  walls.forEach((w, i) => {
-    const out = result[i] as Opening[];
-    const isFront = i === frontAt;
-    const back = !isFront && dot(w.nx, w.nz, (walls[frontAt] as Wall).nx, (walls[frontAt] as Wall).nz) < -0.5;
-    if (back && profile !== "civic") return;
-    if (w.length < 2.4) return;
-    const grounded = (s: number): number => {
-      const tx = (w.bx - w.ax) / w.length;
-      const tz = (w.bz - w.az) / w.length;
-      return g.heightAt(w.ax + tx * s, w.az + tz * s);
-    };
-    // Street level, and the door.
-    let doorAt = -1;
-    if (isFront) {
-      if (profile === "shop") {
-        const sx = 0.6;
-        const ex = w.length - 0.6;
-        const y0 = floorY + 0.45;
-        const y1 = floorY + Math.min(2.9, fh - 0.5);
-        const dw = 1.1;
-        doorAt = sx + 0.15 + dw / 2;
-        if (vacant) boards(sx + dw + 0.3, ex, y0, y1, false, out);
-        else out.push({ s0: sx + dw + 0.3, s1: ex, y0, y1, colour: glassColour(0), frame: false });
-        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + 2.2, colour: vacant ? PLYWOOD : DOOR, frame: false, ...(vacant ? { layer: "plywood" as const } : {}) });
-      } else if (profile === "industrial") {
-        const dw = Math.min(3.6, w.length * 0.6);
-        doorAt = w.length / 2;
-        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + Math.min(3.8, wallTop - floorY - 0.5), colour: vacant ? PLYWOOD : BIG_DOOR, frame: false, layer: vacant ? "plywood" : "shutter", shade: vacant ? 1 : 0.75 });
-      } else {
-        doorAt = w.length / 2;
-        const dw = profile === "church" ? 1.8 : 1.1;
-        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + (profile === "church" ? 3 : 2.2), colour: vacant ? PLYWOOD : DOOR, frame: false, ...(vacant ? { layer: "plywood" as const } : {}) });
-      }
-    }
-    if (profile === "industrial") {
-      // A few small high windows on the sides, none where a storey is too low.
-      if (!isFront && detail === "full" && wallTop - floorY > 4) {
-        const n = Math.min(3, Math.floor(w.length / 6));
-        for (let k = 0; k < n; k++) {
-          const s = (w.length * (k + 1)) / (n + 1);
-          out.push({ s0: s - 0.5, s1: s + 0.5, y0: floorY + 2.6, y1: floorY + 3.4, colour: glassColour(k), frame: true });
-        }
-      }
-      return;
-    }
-    const spacing = profile === "house" ? 3.2 : profile === "church" ? 3.6 : 3;
-    const n = Math.max(0, Math.floor((w.length - 1.6) / spacing) + 1);
-    const ww = profile === "church" ? 0.8 : 1;
-    const wh = Math.min(profile === "church" ? 2.2 : 1.4, fh * 0.55);
-    for (let k = 0; k < Math.min(storeys, lowStoreys); k++) {
-      // The shop's street level is the band and the door; its upper storeys are windows.
-      if (k === 0 && isFront && profile === "shop") continue;
-      for (let j = 0; j < n; j++) {
-        const s = w.length / 2 + (j - (n - 1) / 2) * spacing;
-        if (k === 0 && doorAt >= 0 && Math.abs(s - doorAt) < 1.3) continue;
-        const y0 = Math.max(floorY + k * fh + fh * 0.3, k === 0 ? grounded(s) + 0.9 : 0);
-        if (y0 + wh > wallTop - 0.25) continue;
-        if (vacant && k === 0 && isFront) boards(s - ww / 2, s + ww / 2, y0, y0 + wh, true, out);
-        else out.push({ s0: s - ww / 2, s1: s + ww / 2, y0, y1: y0 + wh, colour: glassColour(j + k * 5), frame: true });
-      }
-    }
-    void H;
-  });
-  return result;
 }
 
 /** The one distinguishing touch of a landmark's building. */

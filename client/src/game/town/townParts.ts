@@ -17,10 +17,10 @@
  *   (`Detail`); the geometry is otherwise the same on all three.
  */
 import {
-  addToScene, createMeshFromData, createPbrMaterial, disposeMeshGpu, markMaterialUboDirty, removeFromScene, setMeshVisible,
+  addToScene, createMeshFromData, createPbrMaterial, createTexture2DArray, disposeMeshGpu, updateTexture2DArrayFromPixels, markMaterialUboDirty, removeFromScene, setMeshVisible,
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
-import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
+import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import type { RenderGame, RenderHost, RenderPlayer, RenderSide, RenderState } from "@csarkosh/engine/game/lite/renderGame";
@@ -30,6 +30,8 @@ import type { Slices } from "@csarkosh/engine/game/syncJobs";
 import { WET_CAP } from "@csarkosh/engine/game/wetSurface";
 import { townStart } from "../../sim/town/start.js";
 import { createRailStream, type RailStream } from "./railParts.js";
+import { SignAtlas } from "./signAtlas.js";
+import { createPaintSurface, paintRequest } from "./signPaint.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 import { emptyTownReady, townSurfacePlugin } from "./townMaterial.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
@@ -137,6 +139,28 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       // The town's own draw before the railroad's, so where a crossing's panel lies flush with a street the panel is drawn last.
       const wearsTextures = textures !== null;
       const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
+      // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
+      const glassMaterial = (): PbrMaterialProps => {
+        const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, ready, low)] : []), air()];
+        if (textures !== null) textured.push(m);
+        return m;
+      };
+      // The lettering's atlas (`signAtlas.ts`): empty until it is painted, as the layers' arrays are until they land.
+      const atlas = new SignAtlas(low ? 2048 : 4096, low ? 1024 : 2048, low ? 36 : 56);
+      let atlasTexture: ReturnType<typeof createTexture2DArray> | null = null;
+      try {
+        atlasTexture = wearsTextures ? createTexture2DArray(engine, atlas.width, atlas.height, 1, { mipMaps: true, srgb: true }) : null;
+      } catch (error) {
+        console.warn("the town's lettering atlas could not be made; its signs are not drawn:", error);
+      }
+      const signMaterial = (tex: NonNullable<typeof atlasTexture>): PbrMaterialProps => {
+        const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.7, alphaBlend: true, usePhysicalLightFalloff: true });
+        m.plugins = [baseColourPlugin(), townSurfacePlugin(textures as NonNullable<typeof textures>, ready, low, tex), air()];
+        textured.push(m);
+        return m;
+      };
+      const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture) } : null;
       const materials = { flat: material(true, false), solid: material(false, false) };
       const worldSeed = forest.seed;
       const start = townStart(worldSeed);
@@ -144,15 +168,37 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
       function* build(): Slices {
         const ground = townGround(worldSeed);
-        const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start);
+        const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas);
+        // Paint the lettering, a few signs a slice, and upload the atlas once.
+        const surface = atlasTexture === null ? null : createPaintSurface(atlas.width, atlas.height);
+        if (surface !== null && atlasTexture !== null) {
+          for (let k = 0; k < atlas.requests.length; k++) {
+            paintRequest(surface, atlas.requests[k] as (typeof atlas.requests)[number]);
+            if (k % 24 === 23) yield;
+          }
+          const px = surface.ctx.getImageData(0, 0, atlas.width, atlas.height);
+          updateTexture2DArrayFromPixels(engine, atlasTexture, new Uint8Array(px.data.buffer));
+          host.uploads.count("textures", px.data.byteLength, 4);
+        }
         left = batches.length;
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
+          if ((batch.layer === "glass" && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null))) {
+            left--;
+            continue;
+          }
           const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
           if (wearsTextures) mesh.pluginVertexData = a.surface;
-          mesh.material = town[batch.layer];
-          mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
+          if (batch.layer === "glass" || batch.layer === "sign") {
+            // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
+            const set = seeThrough as NonNullable<typeof seeThrough>;
+            mesh.material = batch.layer === "glass" ? set.glass : (set.sign as PbrMaterialProps);
+            mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : SEE_THROUGH_ORDER.lettering;
+          } else {
+            mesh.material = town[batch.layer];
+            mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
+          }
           addToScene(scene, mesh);
           host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
           host.uploads.made();

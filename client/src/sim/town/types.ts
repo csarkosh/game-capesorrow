@@ -618,7 +618,7 @@ export type Junction = {
 };
 
 /**
- * What is in the buildings, as data for the drawing. NONE OF IT IS DRAWN YET. Every trade, name, sign, room and window state
+ * What is in the buildings, as data for the drawing. It is drawn by `game/town/` (fronts, rooms, signs, windows). Every trade, name, sign, room and window state
  * is authored or drawn by `port/business/`, from the building's own random stream, so that a seed gives the same shops on every
  * machine. Units are metres, in a building's own frame (`FrontFrame`): `s` runs along the front wall from its left end as a
  * person on the street sees it, `d` runs from the front wall into the building, and heights are above the ground.
@@ -793,7 +793,7 @@ export type TownPlan = {
   readonly blocks: readonly Block[];
   readonly lots: readonly Lot[];
   readonly buildings: readonly Building[];
-  /** What is in each building (its trades, names, signs, rooms and windows), one entry a building, by building id. Nothing of it is drawn yet. */
+  /** What is in each building (its trades, names, signs, rooms and windows), one entry a building, by building id. */
   readonly uses: readonly BuildingUse[];
   readonly landmarks: readonly Landmark[];
   /** The railroad: where streets cross the main line, and the town's own spur. */
