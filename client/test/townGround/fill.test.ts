@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import "../../src/terrain.js";
 import { COVE_Z, SEA_LEVEL, coastGround } from "@csarkosh/engine/sim/olympic";
 import { QUAY_BANK, fillWindowD, townFillFor, type FillArea } from "../../src/sim/town/fill.js";
@@ -10,6 +9,7 @@ import { coverD } from "../../src/sim/town/cover.js";
 import { planFor } from "../../src/sim/town/planFor.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { TEN_SEEDS } from "./seeds.js";
+import { madeGround } from "./made.js";
 
 function lcg(seed: number): () => number {
   let a = seed >>> 0;
@@ -264,7 +264,8 @@ describe("the plan's fill in the ground", () => {
         if (base < SEA_LEVEL && !landward) {
           seaward++;
           seedSeaward++;
-          expect(elevationSampleAt(seed, x, z).h, `seed ${seed} at ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`).toBeCloseTo(QUAY, 9);
+          const m = madeGround(seed, x, z);
+          if (m !== null) expect(m.h, `seed ${seed} at ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`).toBeCloseTo(QUAY, 9);
         }
       }
       rows.push(`seed ${seed}: ${fill.length} areas, ${seedSeaward} with their middle over the sea (all at QUAY)`);
@@ -370,7 +371,8 @@ describe("the plan's fill in the ground", () => {
         let low = Infinity;
         for (let x = minX; x <= maxX; x += 0.5) {
           const w = fillWindowD(fill, x, z).v;
-          const s = elevationSampleAt(seed, site.anchor.x + x, site.anchor.z + z);
+          const s = madeGround(seed, site.anchor.x + x, site.anchor.z + z);
+          if (s === null) continue;
           if (w === 1) {
             steepest = Math.max(steepest, Math.hypot(s.dx, s.dz));
             if (!Number.isNaN(lastIn) && x - lastIn > 0.5 && x - lastIn < 40) dip = Math.max(dip, QUAY - low);

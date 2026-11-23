@@ -138,7 +138,7 @@ function footD(y: number): { v: number; d: number } {
 
 /** What the made ground declares of itself for the level id: every constant that shapes it. */
 export const GROUND_TUNABLES: Readonly<Record<string, number>> = {
-  TOWN_GROUND: 6,
+  TOWN_GROUND: 7,
   QUAY,
   EDGE,
   TOWN_Z_HALF,

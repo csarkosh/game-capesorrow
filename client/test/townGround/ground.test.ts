@@ -11,6 +11,7 @@ import { fillWindowD, townFillFor } from "../../src/sim/town/fill.js";
 import { shoreSplineOf, shoreXAt } from "../../src/sim/town/shoreSpline.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { TEN_SEEDS } from "./seeds.js";
+import { madeGround } from "./made.js";
 
 /** A small deterministic generator for the points a test picks. */
 function lcg(seed: number): () => number {
@@ -214,7 +215,8 @@ describe("the town's made ground", () => {
         // From 14 m inland of the water's edge (the bank is tested apart), where the plan stands whole.
         for (let x = shore + 14; x <= road + TOWN_INLAND; x += 6) {
           if (cover(seed, x, z) < 0.999) continue;
-          const s = elevationSampleAt(seed, x, z);
+          const s = madeGround(seed, x, z);
+          if (s === null) continue;
           const g = Math.hypot(s.dx, s.dz);
           if (Math.abs(x - road) <= 14) corridorWorst = Math.max(corridorWorst, g);
           else {

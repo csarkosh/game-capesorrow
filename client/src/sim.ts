@@ -12,6 +12,7 @@ import { activeTerrainVariant } from "@csarkosh/engine/sim/terrain";
 import type { PlayerCore, Rules, SimState, SimWorld } from "@csarkosh/engine/sim/tick";
 import { baseGround, withDecks } from "./sim/town/decks.js";
 import { withTrestles } from "./sim/town/railDeck.js";
+import { withStreets } from "./sim/town/streetField.js";
 import { townConstrain } from "./sim/town/solid.js";
 import { townStart } from "./sim/town/start.js";
 
@@ -41,12 +42,12 @@ export const WALK_RULES: Rules<WalkWorld, Walker> = {
   hostStep: () => undefined,
 };
 
-/** A world on `forest`: the host's own, or a client's predicted copy. Its ground is the engine's with the harbour's decks and the railroad's trestles laid over it (`sim/town/decks.ts`, `railDeck.ts`), the same on every peer. */
+/** A world on `forest`: the host's own, or a client's predicted copy. Its ground is the engine's with the streets' trough filled (`streetField.ts`), the harbour's decks and the railroad's trestles laid over it (`sim/town/decks.ts`, `railDeck.ts`), the same on every peer. */
 export function createWalkWorld(forest: Forest, authoritative: boolean): WalkWorld {
   return {
     state: { tick: 0, players: new Map(), nextEntityId: 1, rngSeed: forest.seed | 0 },
     boxes: forest.grid,
-    ground: withTrestles(withDecks(baseGround(forest.seed), forest.seed), forest.seed),
+    ground: withTrestles(withDecks(withStreets(baseGround(forest.seed), forest.seed), forest.seed), forest.seed),
     forest,
     authoritative,
     waterLevel: activeTerrainVariant().waterLevel ?? null,
