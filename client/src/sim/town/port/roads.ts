@@ -25,17 +25,24 @@ import type { Destination, DestinationKind, HistoryEvent, Landmark, Road, RoadPo
 
 /** The step along a road, metres. */
 export const STEP = 12;
-/** The turns a step may take, as Pythagorean triples (cos, sin): 7.6, 16.3 and 22.6 degrees. */
+/** The turns a step may take, as Pythagorean triples (cos, sin): 7.6, 16.3 and 22.6 degrees, and the larger ones below. */
 const TURN_TRIPLES = [
   { c: 112 / 113, s: 15 / 113 },
   { c: 24 / 25, s: 7 / 25 },
   { c: 12 / 13, s: 5 / 13 },
+  // The larger turns, for ground too steep to climb straight: a road takes the slope at a slant, and turns back on itself.
+  { c: 4 / 5, s: 3 / 5 },
+  { c: 3 / 5, s: 4 / 5 },
+  { c: 5 / 13, s: 12 / 13 },
+  { c: 0, s: 1 },
 ] as const;
 /** The grade a step is held to, hard and soft (a soft grade costs, a hard one is not taken). */
-export const GRADE_HARD = 0.1;
-export const GRADE_SOFT = 0.06;
+export const GRADE_HARD = 0.09;
+/** Where the strict limits find no road of at least the least length, the relaxed ones are tried: a step may be this much steeper. */
+export const GRADE_RELAX = 0.01;
+export const GRADE_SOFT = 0.05;
 /** The grade a road is held to over any two steps (about 20 m): the coast's own ground is rougher between the grid's points than the grid says, and the limit leaves room for it. */
-export const GRADE_RUN = 0.08;
+export const GRADE_RUN = 0.07;
 /** A road keeps this far from a block, from the highway's centre line, from another road. */
 export const BLOCK_CLEAR = 10;
 /** Past the first steps a road keeps this far from every block: the made ground's fade lies about the town, and a road there would not lie on the ground it was stepped over. */
@@ -54,7 +61,7 @@ export const FLAT_ENOUGH = 0.08;
 /** Steps held out of the clearances at a road's start, where it leaves the town. */
 const FREE_STEPS = 14;
 
-export const ROAD_TUNABLES = { STEP, GRADE_HARD, GRADE_SOFT, GRADE_RUN, BLOCK_CLEAR, BLOCK_FAR, HIGHWAY_CLEAR, ROAD_CLEAR, SHORE_ROAD_FROM_HIGHWAY, SHORE_CLEAR, LAND_HEIGHT, LEAST_LENGTH, MOST_LENGTH, FLAT_ENOUGH };
+export const ROAD_TUNABLES = { STEP, GRADE_HARD, GRADE_SOFT, GRADE_RUN, GRADE_RELAX, BLOCK_CLEAR, BLOCK_FAR, HIGHWAY_CLEAR, ROAD_CLEAR, SHORE_ROAD_FROM_HIGHWAY, SHORE_CLEAR, LAND_HEIGHT, LEAST_LENGTH, MOST_LENGTH, FLAT_ENOUGH };
 
 type Box = { x0: number; z0: number; x1: number; z1: number };
 
@@ -111,6 +118,8 @@ type Course = {
   toward: Vec;
   climb: boolean;
   shore: boolean;
+  /** What the limits are loosened by (0, or `GRADE_RELAX`). */
+  relax: number;
 };
 
 function boxOf(poly: Poly): Box {
@@ -157,8 +166,9 @@ function inside(poly: Poly, p: Vec): boolean {
 function nextStep(c: Course, line: readonly Vec[], d: Vec, step: number): { p: Vec; d: Vec } | null {
   const t = c.terrain;
   const p = line[line.length - 1] as Vec;
-  const back = line[Math.max(0, line.length - 3)] as Vec;
-  const backLength = dist(back, p) + STEP;
+  // The point a step before this one: from it to the candidate is two steps of road, 24 m along it (the grade over 20 m is measured along the road).
+  const back = line[Math.max(0, line.length - 2)] as Vec;
+  const backLength = line.length >= 2 ? 2 * STEP : STEP;
   const here = t.h(p.x, p.z);
   const hBack = t.h(back.x, back.z);
   let best: { p: Vec; d: Vec } | null = null;
@@ -174,10 +184,10 @@ function nextStep(c: Course, line: readonly Vec[], d: Vec, step: number): { p: V
     const q = { x: p.x + nd.x * STEP, z: p.z + nd.z * STEP };
     const hq = t.h(q.x, q.z);
     const g = Math.abs(hq - here) / STEP;
-    if (g > GRADE_HARD) continue;
+    if (g > GRADE_HARD + c.relax) continue;
     if (hq < LAND_HEIGHT) continue;
     // Over the last 24 m as well: no 20 m of the road is steeper than the grade held to.
-    if (Math.abs(hq - hBack) / backLength > GRADE_RUN) continue;
+    if (Math.abs(hq - hBack) / backLength > GRADE_RUN + c.relax) continue;
     // A look further along the same heading: the road is not led up to a wall.
     const far = { x: q.x + nd.x * STEP * 2, z: q.z + nd.z * STEP * 2 };
     const gFar = Math.abs(t.h(far.x, far.z) - hq) / (STEP * 2);
@@ -200,11 +210,11 @@ function nextStep(c: Course, line: readonly Vec[], d: Vec, step: number): { p: V
       if (q.x > hwy - SHORE_ROAD_FROM_HIGHWAY) continue;
       if (q.x < shoreAt(c.site, q.z) + SHORE_CLEAR) continue;
     } else if (Math.abs(q.x - hwy) < HIGHWAY_CLEAR) continue;
-    const soft = g > GRADE_SOFT ? (g - GRADE_SOFT) * 120 : 0;
-    const softFar = gFar > GRADE_SOFT ? (gFar - GRADE_SOFT) * 40 : 0;
+    const soft = g > GRADE_SOFT + c.relax ? (g - GRADE_SOFT - c.relax) * 120 : 0;
+    const softFar = gFar > GRADE_SOFT + c.relax ? (gFar - GRADE_SOFT - c.relax) * 40 : 0;
     const signed = (hq - here) / STEP;
     const climb = c.climb ? -0.9 * Math.min(Math.max(signed, 0), 0.06) : 0;
-    const cost = 6 * g + soft + softFar + 3 * cross + 2.2 * (1 - (nd.x * c.toward.x + nd.z * c.toward.z)) + 0.05 * o.w + climb;
+    const cost = 6 * g + soft + softFar + 3 * cross + 2.2 * (1 - (nd.x * c.toward.x + nd.z * c.toward.z)) + 0.03 * o.w * o.w + climb;
     if (cost < bestCost - 1e-12) {
       bestCost = cost;
       best = { p: q, d: nd };
@@ -228,7 +238,7 @@ function route(c: Course, start: Vec, dir: Vec): Vec[] | null {
     line.push(p);
     if (k + 1 >= least && c.terrain.slope(p.x, p.z) < FLAT_ENOUGH) break;
   }
-  return line.length * STEP >= (c.shore ? 150 : LEAST_LENGTH * 0.6) ? line : null;
+  return line.length * STEP >= (c.shore || c.relax > GRADE_RELAX ? 150 : LEAST_LENGTH * 0.9) ? line : null;
 }
 
 const DESTINATION_RADIUS: Record<DestinationKind, number> = { cemetery: 28, landing: 22, "gravel pit": 18, "water tank": 9, gate: 7 };
@@ -253,8 +263,8 @@ export function planRoads(
   const usable = ends.filter((e) => e.kind !== "landing" && grid.includes((streets[e.street] as Street).kind));
   const named = names.named.length > 0 ? names.named : ["Back"];
 
-  const make = (kind: Road["kind"], end: StreetEnd, toward: Vec, dest: DestinationKind, label: string): boolean => {
-    const course: Course = { site, terrain, blocks, boxes, roads: lines, toward, climb: kind !== "shore", shore: kind === "shore" };
+  const make = (kind: Road["kind"], end: StreetEnd, toward: Vec, dest: DestinationKind, label: string, relax = 0): boolean => {
+    const course: Course = { site, terrain, blocks, boxes, roads: lines, toward, climb: kind !== "shore", shore: kind === "shore", relax };
     const line = route(course, { x: end.x, z: end.z }, { x: end.dx, z: end.dz });
     if (line === null) return false;
     const st = streets[end.street] as Street;
@@ -280,9 +290,15 @@ export function planRoads(
   // Inland: from the grid's ends that point inland, away from the highway, a county road to the cemetery on the hill.
   const east = shuffled(rng, usable.filter((e) => e.dx > 0.85 && e.x - roadAt(site, e.z) > 120));
   let made = 0;
+  // The county road to the cemetery: every end tried with the strict limits first, and only then with the relaxed, and on the steepest hills the most relaxed with a shorter road.
+  for (const relax of [0, GRADE_RELAX, 2.5 * GRADE_RELAX]) {
+    for (const e of east) {
+      if (made === 0 && make("county", e, { x: 1, z: 0 }, "cemetery", `${townName} Cemetery`, relax)) made++;
+    }
+    if (made > 0) break;
+  }
   for (const e of east) {
-    if (made === 0 && make("county", e, { x: 1, z: 0 }, "cemetery", `${townName} Cemetery`)) made++;
-    else if (made === 1 && Math.abs(e.z - (roads[0] as Road).points[0]!.z) > 120 && chance(rng, 0.75)) {
+    if (made === 1 && Math.abs(e.z - (roads[0] as Road).points[0]!.z) > 120 && chance(rng, 0.75)) {
       const kind = pick(rng, ["landing", "gravel pit", "water tank"] as const);
       const label = kind === "landing" ? `${pick(rng, named)} Landing` : kind === "gravel pit" ? `County gravel pit` : `${townName} Water Tank`;
       if (make("logging", e, { x: 1, z: 0 }, kind, label)) made++;

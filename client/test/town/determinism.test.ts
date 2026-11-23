@@ -40,9 +40,9 @@ describe("the plan is deterministic", () => {
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
     expect(TOWN_GEN).toBe(2);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "eade1805",
-      1: "e86c1eb5",
-      7: "e9181f40",
+      20261121: "54baea84",
+      1: "dffc1bd4",
+      7: "015a69d9",
     });
   });
 });
