@@ -130,7 +130,8 @@ export function streetGeometry(g: TownGround, sink: Sink, lift = STREET_LIFT): v
   const { plan, anchor } = g;
   const prepared: Prepared[] = [];
   for (const street of plan.streets) {
-    if (street.kind === "highway" || street.kind === "rail") continue;
+    // A flight of public steps is drawn by `stairGeometry.ts`, not as a strip of roadway.
+    if (street.kind === "highway" || street.kind === "rail" || street.kind === "stair") continue;
     const ax = anchor.x + street.a.x;
     const az = anchor.z + street.a.z;
     const bx = anchor.x + street.b.x;
