@@ -58,8 +58,8 @@ describe("the town's first surfaces", () => {
     const flat = new Map<string, number>();
     const solid = new Map<string, number>();
     for (const batch of town) for (const [name, n] of layersOf(batch.arrays)) (batch.layer === "flat" ? flat : solid).set(name, ((batch.layer === "flat" ? flat : solid).get(name) ?? 0) + n);
-    // The streets and ground now wear the new asphalt (utility cuts, cracks), the mud (dirt in the joints, worn ground, the gutter's band), the moss (weeds and grass over the edges) and the rust (covers, drains and lids).
-    expect([...flat.keys()].sort()).toEqual(["asphalt", "asphalt_dark", "gravel", "moss", "mud", "none", "rust", "sidewalk"]);
+    // The streets and ground now wear the new asphalt (utility cuts, cracks), the mud (dirt in the joints, worn ground, the gutter's band), the moss (weeds and grass over the edges) and the rust (covers, drains and lids), and the litter on the sidewalks (cups, cans and paper in metal and plywood).
+    expect([...flat.keys()].sort()).toEqual(["asphalt", "asphalt_dark", "gravel", "metal_aged", "metal_painted", "moss", "mud", "none", "plywood", "rust", "sidewalk"]);
     // Paint and verges are still the larger share of nothing: some of the flat layer is not textured.
     expect(flat.get("none") ?? 0).toBeGreaterThan(0);
     for (const layer of ["asphalt", "sidewalk"]) expect(flat.get(layer) ?? 0, layer).toBeGreaterThan(1000);
