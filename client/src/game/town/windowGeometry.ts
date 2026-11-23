@@ -85,7 +85,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
       const shade = 0.82 + hash01(seed + i, 402) * 0.3;
       const a = sa + (width * i) / n + 0.01;
       const b = sa + (width * (i + 1)) / n - 0.01;
-      wquad(out, w, a, y0, b, y1, 0.02, scaled(PLYWOOD, shade), { layer: "plywood", frame: c.surface(w).frame, tint: [shade, shade, shade], wear: 0.18, wearKind: "peel" });
+      wquad(out, w, a, y0, b, y1, 0.02, scaled(PLYWOOD, shade), { layer: "plywood", frame: c.surface(w).frame, tint: [shade * 2.4, shade * 2.4, shade * 2.4], wear: 0.18, wearKind: "peel" });
     }
     return;
   }

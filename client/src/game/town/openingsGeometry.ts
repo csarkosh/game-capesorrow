@@ -207,7 +207,7 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
   p.holes.push(hole);
   p.draws.push(() => {
     reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.2, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
-    if (vacant) wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [0.9, 0.9, 0.9], wear: 0.2, wearKind: "peel" });
+    if (vacant) wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
     else {
       const col = pickOf(DOORS, b.id, 481);
       const L = hole.s0 + 0.03;
@@ -260,7 +260,7 @@ function industrialFront(c: PlanCtx, plans: WallPlan[]): void {
     for (let k = 0; k < bays; k++) {
       const a = hole.s0 + ((hole.s1 - hole.s0) * k) / bays + 0.02;
       const e = hole.s0 + ((hole.s1 - hole.s0) * (k + 1)) / bays - 0.02;
-      if (vacant) wquad(out, w, a, hole.y0, e, hole.y1, -0.12, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [0.9, 0.9, 0.9], wear: 0.2, wearKind: "peel" });
+      if (vacant) wquad(out, w, a, hole.y0, e, hole.y1, -0.12, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
       else {
         const sc: Surface = { layer: "shutter", frame: c.surfaceOf(w).frame, tint: b.kind === "fire hall" ? [1.1, 0.5, 0.4] : [0.75, 0.75, 0.75], wear: 0.25, wearKind: "rust", streaks: true };
         wquad(out, w, a, hole.y0, e, hole.y1, -0.12, b.kind === "fire hall" ? [0.6, 0.12, 0.1] : [0.18, 0.2, 0.22], sc);
@@ -320,7 +320,7 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
     (plans[fi] as WallPlan).draws.push(() => {
       reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.14, scaled(c.wall, 0.8), [0.4, 0.38, 0.34]);
       if (c.vacant) {
-        wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [0.9, 0.9, 0.9], wear: 0.2, wearKind: "peel" });
+        wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
         return;
       }
       const col = other ? pickOf([[0.45, 0.45, 0.43], [0.62, 0.62, 0.6], [0.2, 0.25, 0.3]] as readonly Rgb[], b.id, 492) : pickOf(DOORS, b.id, 493);
