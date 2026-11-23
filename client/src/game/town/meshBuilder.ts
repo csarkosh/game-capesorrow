@@ -9,10 +9,23 @@
  * metres, and a wear. The colour is then the tint the texture is multiplied by. A polygon with no surface is exactly what it
  * was before surfaces existed: its vertices carry no layer (`NO_LAYER`) and the renderer draws them as flat colour.
  */
-import { NO_LAYER, layerIndex } from "./townLayers.js";
-import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Fx, type Surface } from "./townSurface.js";
+import { NO_LAYER, TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
+import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Fx, type Surface, type WearKind } from "./townSurface.js";
 
 export type Vec3 = readonly [number, number, number];
+
+/** How `MeshBuilder.grid` dresses a grid of points: colour per vertex, and optionally a texture layer with its tint, UV (metres) and two wears. */
+export type GridLook = {
+  readonly colour: Rgb | ((i: number, j: number) => Rgb);
+  readonly layer?: LayerName;
+  readonly tint?: Rgb | ((i: number, j: number) => Rgb);
+  readonly uv?: (i: number, j: number) => readonly [number, number];
+  readonly wear?: (i: number, j: number) => readonly [number, WearKind];
+  readonly wear2?: (i: number, j: number) => readonly [number, WearKind];
+  readonly streaks?: boolean;
+  readonly streaks2?: boolean;
+  readonly clear?: number;
+};
 export type Rgb = readonly [number, number, number];
 
 /**
@@ -251,6 +264,97 @@ export class MeshBuilder {
     if (cap !== null) {
       this.poly(Array.from({ length: sides }, (_, i) => ring(p1, i)), [ax, ay, az], cap);
       this.poly(Array.from({ length: sides }, (_, i) => ring(p0, i)), [-ax, -ay, -az], cap);
+    }
+  }
+
+
+  /**
+   * A smooth-shaded surface through a grid of points (`rows[i][j]`): vertices shared, normals averaged over the quads that meet at
+   * them, so a lofted body is round and not faceted. Wound to face away from `inside` (a point inside the shape). Per vertex: a flat colour,
+   * and (with `layer`) a tint, a UV in tiles' metres (divided by the layer's tile here) and up to two wears of a kind each. `skip(i, j)` leaves
+   * out the quad whose corner is (i, j). Returns nothing for a grid with no area.
+   */
+  grid(rows: readonly (readonly Vec3[])[], insideIn: Vec3 | readonly Vec3[], v: GridLook, skip?: (i: number, j: number) => boolean): void {
+    const nr = rows.length;
+    const nc = nr === 0 ? 0 : (rows[0] as readonly Vec3[]).length;
+    if (nr < 2 || nc < 2) return;
+    const insideOf = (i: number): Vec3 => (typeof (insideIn as readonly unknown[])[0] === "object" ? ((insideIn as readonly Vec3[])[Math.min(i, (insideIn as readonly Vec3[]).length - 1)] as Vec3) : (insideIn as Vec3));
+    const nor: number[] = new Array(nr * nc * 3).fill(0);
+    const quadN = (i: number, j: number): Vec3 => {
+      const a = (rows[i] as readonly Vec3[])[j] as Vec3;
+      const b = (rows[i] as readonly Vec3[])[j + 1] as Vec3;
+      const c = (rows[i + 1] as readonly Vec3[])[j + 1] as Vec3;
+      const d = (rows[i + 1] as readonly Vec3[])[j] as Vec3;
+      const ux = c[0] - a[0];
+      const uy = c[1] - a[1];
+      const uz = c[2] - a[2];
+      const wx = d[0] - b[0];
+      const wy = d[1] - b[1];
+      const wz = d[2] - b[2];
+      return [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
+    };
+    // Which way is out: the first quad that has area, against the way from `inside` to its corner.
+    let sign = 1;
+    let votes = 0;
+    for (let i = 0; i < nr - 1; i++) {
+      for (let j = 0; j < nc - 1; j++) {
+        const n = quadN(i, j);
+        const p = (rows[i] as readonly Vec3[])[j] as Vec3;
+        const inside = insideOf(i);
+        votes += Math.sign(n[0] * (p[0] - inside[0]) + n[1] * (p[1] - inside[1]) + n[2] * (p[2] - inside[2])) * Math.min(1, Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]));
+      }
+    }
+    if (votes < 0) sign = -1;
+    for (let i = 0; i < nr - 1; i++) {
+      for (let j = 0; j < nc - 1; j++) {
+        if (skip?.(i, j) === true) continue;
+        const n = quadN(i, j);
+        for (const [a, b] of [[i, j], [i, j + 1], [i + 1, j + 1], [i + 1, j]] as const) {
+          const k = (a * nc + b) * 3;
+          nor[k] = (nor[k] as number) + n[0] * sign;
+          nor[k + 1] = (nor[k + 1] as number) + n[1] * sign;
+          nor[k + 2] = (nor[k + 2] as number) + n[2] * sign;
+        }
+      }
+    }
+    const base = this.vertices;
+    const layer = v.layer === undefined ? NO_LAYER : layerIndex(v.layer);
+    const tile = v.layer === undefined ? [1, 1] : (TOWN_LAYERS[layerIndex(v.layer)]?.tile ?? [1, 1]);
+    for (let i = 0; i < nr; i++) {
+      for (let j = 0; j < nc; j++) {
+        const p = (rows[i] as readonly Vec3[])[j] as Vec3;
+        const k = (i * nc + j) * 3;
+        const l = Math.sqrt((nor[k] as number) * (nor[k] as number) + (nor[k + 1] as number) * (nor[k + 1] as number) + (nor[k + 2] as number) * (nor[k + 2] as number)) || 1;
+        this.pos.push(p[0], p[1], p[2]);
+        this.nor.push((nor[k] as number) / l, (nor[k + 1] as number) / l, (nor[k + 2] as number) / l);
+        const c = typeof v.colour === "function" ? v.colour(i, j) : v.colour;
+        this.col.push(c[0], c[1], c[2], 1);
+        if (layer === NO_LAYER) {
+          this.uv.push(0, 0);
+          this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, 0, 0);
+        } else {
+          const uv = v.uv === undefined ? [0, 0] : v.uv(i, j);
+          this.uv.push(uv[0] / (tile[0] as number), uv[1] / (tile[1] as number));
+          const t = typeof v.tint === "function" ? v.tint(i, j) : (v.tint ?? c);
+          const w1 = v.wear === undefined ? ([0, "moss"] as const) : v.wear(i, j);
+          const w2 = v.wear2 === undefined ? ([0, "moss"] as const) : v.wear2(i, j);
+          const k1 = (WEAR_KIND_NUMBER[w1[1]] ?? 0) + (v.streaks === true ? 0.5 : 0);
+          const k2 = (WEAR_KIND_NUMBER[w2[1]] ?? 0) + (v.streaks2 === true ? 0.5 : 0);
+          this.srf.push(layer, Math.min(1, Math.max(0, w1[0])), k1, 0, t[0], t[1], t[2], v.clear ?? 0, Math.min(1, Math.max(0, w2[0])), k2, 0, 0);
+        }
+      }
+    }
+    for (let i = 0; i < nr - 1; i++) {
+      for (let j = 0; j < nc - 1; j++) {
+        if (skip?.(i, j) === true) continue;
+        const a = base + i * nc + j;
+        const b = a + 1;
+        const c = a + nc + 1;
+        const d = a + nc;
+        // The sum of the quad's normal faces out when `sign` is 1; wind so the engine's front face looks out (as `poly` does).
+        if (sign > 0) this.idx.push(a, c, b, a, d, c);
+        else this.idx.push(a, b, c, a, c, d);
+      }
     }
   }
 

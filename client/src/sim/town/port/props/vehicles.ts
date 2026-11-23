@@ -213,8 +213,12 @@ export function scatter(ctx: Context, out: Out, info: LotInfo, rng: Rng, length:
   return null;
 }
 
+/** How far from a house a vehicle keeps: what an owner added to it (a lean-to or a carport reaches 3.5 m from a wall) is drawn, not planned. */
+export const HOUSE_KEEP = 3.6;
 function tryFree(ctx: Context, box: ReturnType<typeof boxAt>, info: LotInfo, margin: number, inset: number): boolean {
-  return boxInside(box, info.poly, inset) && !ctx.occ.hits(box, margin);
+  const b = info.building;
+  const house = b !== undefined && (b.kind === "house" || b.kind === "boarding house");
+  return boxInside(box, info.poly, inset) && !ctx.occ.hits(box, margin) && !ctx.bocc.hits(box, house ? HOUSE_KEEP : 1.0);
 }
 
 /** A heading along the way into the lot or back out, or across, each a few degrees crooked. */
