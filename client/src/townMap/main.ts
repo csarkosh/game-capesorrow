@@ -17,7 +17,8 @@ import { harbourSummary } from "../sim/town/port/harbour.js";
 import { blockBudget } from "../sim/town/port/growth.js";
 import { bayOf } from "../sim/town/blend.js";
 import { landOf } from "../sim/town/land.js";
-import { BOAT_FILL, DISTRICT_FILL, LAND_SHADE, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
+import { BOAT_FILL, DISTRICT_FILL, JUNCTION_FILL, LAND_SHADE, STREET_STROKE, buildingFill, planSvg, sheetCaption } from "./svg.js";
+import { hasPavement } from "../sim/town/junctions.js";
 
 const STYLE = `
   body { font-family: ui-monospace, monospace; }
@@ -151,6 +152,13 @@ function panZoom(host: HTMLElement): void {
   });
 }
 
+function junctionSummary(plan: TownPlan): string {
+  const n = (k: string): number => plan.junctions.filter((j) => j.kind === k).length;
+  const p = plan.junctions.filter((j) => hasPavement(j));
+  const marked = p.reduce((sum, j) => sum + j.legs.filter((l) => l.marked).length, 0);
+  return `${n("four-way")} four-way, ${n("tee")} tee, ${n("skew")} skew, ${n("bend")} bend, ${n("highway")} on the highway, ${n("alley")} alley mouths, ${n("rail")} rail; ${p.filter((j) => j.control !== "none").length} controlled (${p.filter((j) => j.control === "all-way").length} all-way), ${p.filter((j) => j.control === "none").length} not; ${marked} marked crosswalks; ${p.filter((j) => j.legacy !== null).length} with a closed leg`;
+}
+
 function legend(): HTMLElement {
   const box = el("div", { class: "legend" });
   const swatch = (colour: string, label: string, extra = ""): void => {
@@ -189,6 +197,12 @@ function legend(): HTMLElement {
   swatch("#c8b090", "a pole of the power line");
   swatch("#ff9a30", "a street crossing the main line");
   swatch("#f0e8c8", "a public stair");
+  for (const k of ["four-way", "bend", "tee", "skew", "highway"] as const) swatch(JUNCTION_FILL[k], `a junction: ${k} (dashed outline: ramp-less corners)`);
+  swatch("#d02020", "a STOP sign (a ring: stopped all ways)");
+  swatch("#ffffff", "a marked crosswalk");
+  swatch("#3ad06a", "a leg closed with a planter (a sharp crossing)");
+  swatch(JUNCTION_FILL.alley, "an alley's mouth (a driveway apron)");
+  swatch("#e8c020", "PAVEMENT ENDS");
   swatch("#ffd24a", "an outlying building (a ring about it)");
   swatch("#7d8084", "a road out, paved");
   swatch("#b09a68", "a road out, gravel");
@@ -258,6 +272,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
     ["lots", String(plan.counts.lots)],
     ["buildings", `${plan.counts.buildings}: ${plan.counts.open} open, ${plan.counts.vacant} vacant, ${plan.counts.ruin} ruin`],
     ["streets", `${plan.counts.streets}, ${plan.ends.length} made ends`],
+    ["junctions", junctionSummary(plan)],
     ["roads out", plan.roads.length === 0 ? "none" : plan.roads.map((r) => `${r.name} to ${r.destination.kind}`).join("; ")],
     ["harbour", harbourSummary(plan.harbour)],
     ["made in", `${ms.toFixed(1)} ms`],
