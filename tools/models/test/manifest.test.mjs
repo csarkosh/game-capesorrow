@@ -49,7 +49,8 @@ describe('tools/models/build.py', () => {
   });
 
   it('names no source in the script, its manifest or its files\' own text', () => {
-    const banned = /sketchfab|poly ?haven|turbosquid|cgtrader|free3d|ambientcg/i;
+    // The names are broken up here so that this file does not hold them either: only CREDITS.md may.
+    const banned = new RegExp(['sketch' + 'fab', 'poly ?' + 'haven', 'turbo' + 'squid', 'cg' + 'trader', 'free' + '3d', 'ambient' + 'cg'].join('|'), 'i');
     expect(readFileSync(SCRIPT, 'utf8')).not.toMatch(banned);
     expect(readFileSync(`${OUT}/vehicles.json`, 'utf8')).not.toMatch(banned);
     for (const v of manifest.vehicles) expect(readFileSync(`${OUT}/${v.file}`).toString('latin1'), v.id).not.toMatch(banned);

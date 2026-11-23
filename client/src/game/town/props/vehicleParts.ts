@@ -8,7 +8,7 @@
  *   (`begin`), each model is made into meshes as a patient job of the renderer's scheduler (a slice, so no frame stalls on it), and a
  *   model whose file does not load is left out, said once on the console. Until a model has landed its vehicles are not drawn (the dark of
  *   the ground under each stays, drawn with the town).
- * - **Culled here, since Lite culls no mesh.** Each frame `seen` takes the instances in the view's planes and within `REACH` of the eye and,
+ * - **Culled here, since Lite culls no mesh.** Each frame `seen` takes the instances in the view's planes and within `REACH` (160 m) of the eye and,
  *   only when that set has changed, writes them to the front of the model's buffers and sets the instances drawn. A vehicle that was
  *   behind the player costs nothing; a street of them costs their triangles, about 20,000 a vehicle.
  */
@@ -28,7 +28,7 @@ import { FLEET_DATA_FLOATS, type FleetInstance } from "./vehicleFleet.js";
 import { vehiclePlugin } from "./vehicleMaterial.js";
 
 /** How far from the eye a vehicle is drawn (m): past it a vehicle is a few pixels under the town's own fog. */
-export const REACH = 260;
+export const REACH = 160;
 
 /** What the parts are made with: the renderer's own. */
 export type VehiclePartsHost = {
