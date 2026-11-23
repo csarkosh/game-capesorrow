@@ -32,7 +32,7 @@ const CURTAINS: readonly Rgb[] = [
 ];
 const ROOM_WARM: Rgb = [0.95, 0.78, 0.48];
 const ROOM_DIM: Rgb = [0.2, 0.22, 0.26];
-const PLYWOOD: Rgb = [0.42, 0.31, 0.18];
+const PLYWOOD: Rgb = [0.6, 0.45, 0.28];
 
 /** The window's frame colour from the building's age (painted wood of the time, or aluminium after 1960); `replaced` is white vinyl. */
 export function frameColour(id: number, era: number, replaced: boolean): Rgb {

@@ -18,7 +18,7 @@ import type { Detail } from "./townTypes.js";
 export const STEP = 0.025;
 
 const SLAT_COLOURS: readonly Rgb[] = [[0.8, 0.77, 0.68], [0.86, 0.86, 0.83], [0.58, 0.48, 0.34], [0.7, 0.7, 0.72], [0.3, 0.3, 0.32]];
-const PAPER: readonly Rgb[] = [[0.72, 0.64, 0.48], [0.82, 0.8, 0.72], [0.66, 0.58, 0.42]];
+const PAPER: readonly Rgb[] = [[0.78, 0.66, 0.46], [0.84, 0.8, 0.7], [0.72, 0.6, 0.4]];
 
 export type Behind = { readonly out: MeshBuilder; readonly w: WallRef; readonly detail: Detail; readonly seed: number; /** The glass's own offset; things behind it are at `glass - STEP * k`. */ readonly glass: number; readonly lit: boolean };
 
@@ -123,7 +123,7 @@ export function paperSheets(b: Behind, sa: number, sb: number, y0: number, y1: n
   const base = PAPER[Math.floor(hash01(seed, 620) * PAPER.length) % PAPER.length] as Rgb;
   const wid = sb - sa;
   const n = Math.max(1, Math.round(wid / 0.95));
-  const seam = 0.025;
+  const seam = 0.05;
   const fade = Math.min(1, 0.4 + age * 0.5);
   const tone = (c: Rgb, y: number): Rgb => {
     // Sun fades the top most (toward bleached yellow-white), the foot keeps its colour and its dirt.

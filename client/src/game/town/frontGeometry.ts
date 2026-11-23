@@ -160,7 +160,7 @@ export function planFront(i: FrontIn): FrontPlan {
       }
       const leafTop = floorY + 2.05;
       if (boardedUnit) {
-        wquad(out, w, da, floorY, db, dHead, 0.03, scaled([0.42, 0.31, 0.18], 0.9), { layer: "plywood", frame: i.surface(w).frame, tint: [0.92, 0.9, 0.9], wear: 0.2, wearKind: "peel" });
+        wquad(out, w, da, floorY, db, dHead, 0.03, scaled([0.6, 0.45, 0.28], 0.9), { layer: "plywood", frame: i.surface(w).frame, tint: [0.92, 0.9, 0.9], wear: 0.2, wearKind: "peel" });
         return;
       }
       wquad(out, w, da + 0.03, floorY, db - 0.03, floorY + 0.8, leafOff, scaled(timber, 0.9), undefined, undefined);

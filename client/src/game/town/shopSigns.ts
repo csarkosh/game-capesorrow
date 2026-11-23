@@ -90,7 +90,10 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   const nLines = lines.length;
   const bay = unit === null ? xf.width : unit.s1 - unit.s0;
   const ground = pl.free ? g.heightAt(pl.x, pl.z) : i.floorY;
-  const y = (pl.free ? ground : i.floorY) + sign.place.h;
+  // A board of the building's own that would hang over a unit's sign on the same wall hangs a sign's height above it.
+  const over = unit === null ? i.use.units.flatMap((u) => u.signs).find((q) => q.place.wall === sign.place.wall && (q.kind === "fascia" || q.kind === "board" || q.kind === "banner") && Math.abs(q.place.s - sign.place.s) < 2.5 && Math.abs(q.place.h - sign.place.h) < 0.9) : undefined;
+  const lift = over === undefined ? 0 : over.place.h + 0.95 - sign.place.h;
+  const y = (pl.free ? ground : i.floorY) + sign.place.h + lift;
   const old = sign.style === "hand-painted";
   const neon = sign.style === "neon and porcelain";
   const box = sign.style === "backlit box";

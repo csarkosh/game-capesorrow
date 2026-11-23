@@ -46,7 +46,7 @@ export type RoomField = {
 };
 
 const SKY: Rgb = [0.62, 0.68, 0.76];
-const TUBE: Rgb = [0.93, 1.0, 1.0];
+const TUBE: Rgb = [1.0, 0.95, 0.84];
 const WARM: Rgb = [1.0, 0.8, 0.52];
 const NEON: readonly Rgb[] = [[1, 0.2, 0.15], [0.25, 0.55, 1], [1, 0.5, 0.15], [0.3, 1, 0.45]];
 
@@ -61,7 +61,7 @@ const lightColour = (l: RoomLight, seed: number, i: number): { c: Rgb; p: number
 
 /** The mean the room's lights are brought to (their sum on a floor, linear), by whether it is open. */
 const EXPOSURE_OPEN = 0.7;
-const AMBIENT_OPEN = 0.13;
+const AMBIENT_OPEN = 0.09;
 const AMBIENT_SHUT = 0.04;
 const AMBIENT_VACANT = 0.05;
 

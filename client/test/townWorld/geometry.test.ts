@@ -153,7 +153,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 128, flat: 40, vertices: 783717, triangles: 397123 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 128, flat: 40, vertices: 860338, triangles: 486867 });
   });
 });
 
@@ -597,10 +597,16 @@ describe("the buildings", () => {
     };
     const vacant = build(doctored, { ...shop, state: "vacant" });
     const ruin = build(g, { ...shop, state: "ruin" });
+    // The walls' colour: the vertices the scene lights (a room's walls are lit by their own baked light, `glow` 1, and a boarded unit has no room).
     const luma = (a: MeshArrays): number => {
       let s = 0;
-      for (let v = 0; v < a.colors.length / 4; v++) s += 0.2126 * (a.colors[v * 4] as number) + 0.7152 * (a.colors[v * 4 + 1] as number) + 0.0722 * (a.colors[v * 4 + 2] as number);
-      return s / (a.colors.length / 4);
+      let n = 0;
+      for (let v = 0; v < a.colors.length / 4; v++) {
+        if ((a.surface[v * SURFACE_FLOATS + 3] as number) !== 0) continue;
+        s += 0.2126 * (a.colors[v * 4] as number) + 0.7152 * (a.colors[v * 4 + 1] as number) + 0.0722 * (a.colors[v * 4 + 2] as number);
+        n++;
+      }
+      return s / n;
     };
     // Boards are the plywood layer's (the openings' covers, laid in the wall's own frame); count its triangles.
     const plywood = (a: MeshArrays): number => {

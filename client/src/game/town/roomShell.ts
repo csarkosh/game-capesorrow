@@ -253,7 +253,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
       const a = us[i] as number;
       const y = vs[j] as number;
       const [s, d] = where(a);
-      const wallK = wall === "back" ? 0.85 : 0.72;
+      const wallK = wall === "back" ? 0.72 : 0.6;
       let mod = 1 + noise(i * 3 + k, j, 3) * (0.1 + stain * 0.25);
       // Water stains under the ceiling of a vacant or an old room, and the foot's dirt.
       if (kind === "wall" && y > top - 0.9 && noise(i + k * 7, 0, 4) > 0.2 - stain * 0.3) mod *= 1 - 0.25 * stain - (vacant ? 0.12 : 0);
