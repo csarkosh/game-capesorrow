@@ -399,8 +399,9 @@ def build_model(sources, spec):
     low = min(p["pos"][:, 1].min() for p in wheel_prims)
     allp = np.vstack([p["pos"] for p in prims])
     cx = (allp[:, 0].min() + allp[:, 0].max()) / 2
-    # Centred across on the wheels' middle (open doors and mirrors may reach further on one side).
-    cz = float(np.mean([(p["pos"][:, 2].min() + p["pos"][:, 2].max()) / 2 for p in wheel_prims]))
+    # Centred across on the wheels' middle for a kit model (its mirrors reach a little further on one side); on the bounds for a worn one,
+    # whose doors hang open on one side and whose wheels are not in a line.
+    cz = float(np.mean([(p["pos"][:, 2].min() + p["pos"][:, 2].max()) / 2 for p in wheel_prims])) if kit else float((allp[:, 2].min() + allp[:, 2].max()) / 2)
     for p in prims:
         p["pos"] = p["pos"] - np.array([cx, low, cz])
     wheels = []

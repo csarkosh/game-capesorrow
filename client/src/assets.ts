@@ -3,7 +3,8 @@
  * the bark, moss and ground textures, the forest's and the shore's sound) and the game's own, merged (`mergeAssets`) and
  * registered with the engine by name (`assetUrls.ts`). Importing this registers them; the entry does.
  *
- * The game's own are the town's texture layers, `client/assets/textures/town.<layer>.{color,data}.webp`, which
+ * The game's own are the parked vehicles' models, `client/assets/models/vehicle.<id>.glb`, which `tools/models/build.py` writes (asked for as
+ * "models/vehicle.<id>.glb"), and the town's texture layers, `client/assets/textures/town.<layer>.{color,data}.webp`, which
  * `tools/textures/build.py` writes and `game/town/townLayers.ts` lists. Like the engine's, each glob's files are imported
  * with `?url`, so the build fingerprints them, and each is asked for by the name the manifest gives it
  * ("textures/town.brick.color.webp"). Nothing of Day Hike's own is asked for here: no ranger, no car, no sign, no voice, no
@@ -13,6 +14,7 @@ import { mergeAssets, registerAssets, type AssetAddresses } from "@csarkosh/engi
 import { ENGINE_ASSETS } from "@csarkosh/engine/game/engineAssets";
 
 const TEXTURES = import.meta.glob("../assets/textures/*.webp", { query: "?url", import: "default", eager: true }) as Record<string, string>;
+const MODELS = import.meta.glob("../assets/models/*.glb", { query: "?url", import: "default", eager: true }) as Record<string, string>;
 
 /** The folder the glob's keys start with, which is not part of a file's name. */
 const ASSETS = "../assets/";
@@ -24,7 +26,12 @@ export const CAPE_ASSETS: AssetAddresses = (() => {
     if (!key.startsWith(ASSETS)) throw new Error(`import.meta.glob returned an unexpected key "${key}"; expected it to start with "${ASSETS}".`);
     textures[key.slice(ASSETS.length)] = url;
   }
-  return { models: Object.create(null) as Record<string, string>, textures, audio: Object.create(null) as Record<string, string>, catalog: {} };
+  const models: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [key, url] of Object.entries(MODELS)) {
+    if (!key.startsWith(ASSETS)) throw new Error(`import.meta.glob returned an unexpected key "${key}"; expected it to start with "${ASSETS}".`);
+    models[key.slice(ASSETS.length)] = url;
+  }
+  return { models, textures, audio: Object.create(null) as Record<string, string>, catalog: {} };
 })();
 
 registerAssets(mergeAssets(ENGINE_ASSETS, CAPE_ASSETS));

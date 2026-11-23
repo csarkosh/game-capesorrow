@@ -1,6 +1,6 @@
 {
   "about": "Written by tools/models/build.py: do not edit. Metres; +x is the front, y up, the files stand on y = 0 and are centred on their footprint. Where a work came from is in CREDITS.md, under the credit id.",
-  "total_bytes": 11440088,
+  "total_bytes": 11440092,
   "vehicles": [
     {
       "id": "vehicle.pickup_a",
@@ -1518,42 +1518,42 @@
       },
       "footprint": {
         "length": 4.679,
-        "width": 3.929,
+        "width": 2.792,
         "height": 1.701,
         "x": [
           -2.339,
           2.339
         ],
         "z": [
-          -0.827,
-          1.965
+          -1.396,
+          1.396
         ]
       },
       "wheels": [
         {
           "x": 1.41,
-          "z": -0.502,
+          "z": -1.071,
           "y": 0.006,
           "r": 0.322,
           "inferred": false
         },
         {
           "x": 1.41,
-          "z": 1.004,
+          "z": 0.435,
           "y": 0.006,
           "r": 0.322,
           "inferred": true
         },
         {
           "x": -1.333,
-          "z": 1.009,
+          "z": 0.44,
           "y": 0.008,
           "r": 0.315,
           "inferred": false
         },
         {
           "x": -1.336,
-          "z": -0.507,
+          "z": -1.075,
           "y": 0.0,
           "r": 0.323,
           "inferred": false
@@ -1596,8 +1596,8 @@
         }
       },
       "removed": [],
-      "bytes": 1185180,
-      "sha256": "87c41e4fd5d0aa74b0be8494059889df88e5f5a9c521e50046bbc3352f524ef8"
+      "bytes": 1185184,
+      "sha256": "b68889f49e7d272851f5fb8352949fa222214f26c53c22db8b2c1973d70517a0"
     },
     {
       "id": "vehicle.derelict_truck",
@@ -1691,7 +1691,7 @@
       },
       "removed": [],
       "bytes": 1229936,
-      "sha256": "13d884e81c363e975983748199b0f7a764dec6754b8f4762942eac0d592afbb5"
+      "sha256": "108e17c5d4148ae39680f8529ab860156a8ccb0a3e786264b2a3e342049ca1cc"
     },
     {
       "id": "vehicle.covered",
@@ -1706,42 +1706,42 @@
       },
       "footprint": {
         "length": 4.38,
-        "width": 1.809,
+        "width": 1.789,
         "height": 1.411,
         "x": [
           -2.19,
           2.19
         ],
         "z": [
-          -0.884,
-          0.905
+          -0.894,
+          0.894
         ]
       },
       "wheels": [
         {
           "x": 1.323,
-          "z": -0.71,
-          "y": 0.0,
-          "r": 0.3,
-          "inferred": false
-        },
-        {
-          "x": 1.323,
-          "z": 0.71,
-          "y": 0.0,
-          "r": 0.3,
-          "inferred": false
-        },
-        {
-          "x": -1.257,
           "z": -0.72,
           "y": 0.0,
           "r": 0.3,
           "inferred": false
         },
         {
+          "x": 1.323,
+          "z": 0.7,
+          "y": 0.0,
+          "r": 0.3,
+          "inferred": false
+        },
+        {
           "x": -1.257,
-          "z": 0.72,
+          "z": -0.73,
+          "y": 0.0,
+          "r": 0.3,
+          "inferred": false
+        },
+        {
+          "x": -1.257,
+          "z": 0.71,
           "y": 0.001,
           "r": 0.299,
           "inferred": false
@@ -1785,7 +1785,7 @@
       },
       "removed": [],
       "bytes": 1416900,
-      "sha256": "acb4670522bfef87d0f9b5e86c18f0765d9590f06e50603420da41210d98e48a"
+      "sha256": "92162731265a41fbdd00e8a279e98c1832252754d61c4b35a48db2fffb7ae493"
     }
   ]
 }

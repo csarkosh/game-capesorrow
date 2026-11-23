@@ -14,6 +14,7 @@ import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
 import type { WearKind } from "../townSurface.js";
+import { drawnAsModel } from "./vehicleFleet.js";
 import { D, P, groundAt, lbox, lquadX, lquadZ, mix, mixC, placeOn, rnd, type Place } from "./kit.js";
 import { BUMPER, CABIN, CHROME, GLASS_CAR, LAMP, PAINT, PLATE, RIM, SEAT, SHAPES, TAIL, TARP_BLUE, TARP_SILVER, TYRE, UNDER, paintTint, type Shape, type Station } from "./vehicleStyle.js";
 
@@ -457,6 +458,8 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
     const c: Array<[number, number]> = [[hl, hw * 0.6], [hl * 0.8, hw], [-hl * 0.8, hw], [-hl, hw * 0.6], [-hl, -hw * 0.6], [-hl * 0.8, -hw], [hl * 0.8, -hw], [hl, -hw * 0.6]];
     sinks.flat(v.x, v.z).poly(c.map(([a, b]): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.012, pl.oz + pl.fz * a + pl.lz * b]), [0, 1, 0], [0.012, 0.012, 0.012]);
   }
+  // On the full tier a vehicle with a model is that model's (`vehicleFleet.ts`): what is left of it here is the dark of the ground under it.
+  if (drawnAsModel(v, detail)) return;
   if (camper) {
     camperGeometry(m, gl, pl, v, detail);
     return;
