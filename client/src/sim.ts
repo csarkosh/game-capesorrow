@@ -7,10 +7,10 @@
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { cloneVec3 } from "@csarkosh/engine/sim/core";
 import type { Forest } from "@csarkosh/engine/sim/forest";
-import { createGroundField } from "@csarkosh/engine/sim/ground";
 import { spiralSpawn } from "@csarkosh/engine/sim/spawnGround";
 import { activeTerrainVariant } from "@csarkosh/engine/sim/terrain";
 import type { PlayerCore, Rules, SimState, SimWorld } from "@csarkosh/engine/sim/tick";
+import { baseGround, withDecks } from "./sim/town/decks.js";
 import { townConstrain } from "./sim/town/solid.js";
 import { townStart } from "./sim/town/start.js";
 
@@ -40,12 +40,12 @@ export const WALK_RULES: Rules<WalkWorld, Walker> = {
   hostStep: () => undefined,
 };
 
-/** A world on `forest`: the host's own, or a client's predicted copy. */
+/** A world on `forest`: the host's own, or a client's predicted copy. Its ground is the engine's with the harbour's decks laid over it (`sim/town/decks.ts`), the same on every peer. */
 export function createWalkWorld(forest: Forest, authoritative: boolean): WalkWorld {
   return {
     state: { tick: 0, players: new Map(), nextEntityId: 1, rngSeed: forest.seed | 0 },
     boxes: forest.grid,
-    ground: createGroundField(forest.seed, null),
+    ground: withDecks(baseGround(forest.seed), forest.seed),
     forest,
     authoritative,
     waterLevel: activeTerrainVariant().waterLevel ?? null,

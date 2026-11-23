@@ -38,11 +38,11 @@ describe("the plan is deterministic", () => {
   // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (The generator is unreleased,
   // so for now the number stays at 1 and the pins are simply replaced.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(1);
+    expect(TOWN_GEN).toBe(2);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "1313e673",
-      1: "bbf33904",
-      7: "da0969ca",
+      20261121: "8ef88fa0",
+      1: "6c0c8cfb",
+      7: "09238be8",
     });
   });
 });

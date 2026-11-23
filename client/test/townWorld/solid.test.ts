@@ -20,7 +20,8 @@ function stream(seed: number): () => number {
   };
 }
 
-const solid = (b: Building): boolean => b.lot !== -1;
+/** A pier is its deck and no wall; every other building is solid, the sheds on piles among them. */
+const solid = (b: Building): boolean => b.kind !== "pier";
 
 /** The world position of a building's centre. */
 function centreOf(seed: number, b: Building): { x: number; z: number } {
@@ -105,13 +106,13 @@ describe("the town's buildings as walls", () => {
     }
   });
 
-  it("skips the buildings of no lot (the piers and the sheds on piles) and no other", () => {
+  it("skips the piers and no other building (a shed on piles stands on its deck and is solid)", () => {
     for (const seed of WORLD_SEEDS) {
       const plan = planFor(seed);
       const ids = new Set(townSolids(seed).ids);
-      for (const b of plan.buildings) expect(ids.has(b.id), `${seed} building ${b.id} ${b.kind}`).toBe(b.lot !== -1);
-      // What is skipped is only what stands over water: the piers and the terminal's sheds.
-      for (const b of plan.buildings.filter((q) => q.lot === -1)) expect(["pier", "port terminal shed"]).toContain(b.kind);
+      for (const b of plan.buildings) expect(ids.has(b.id), `${seed} building ${b.id} ${b.kind}`).toBe(b.kind !== "pier");
+      // What stands on piles is only the piers and the terminal's and cannery's sheds.
+      for (const b of plan.buildings.filter((q) => q.lot === -1)) expect(["pier", "port terminal shed", "cannery"]).toContain(b.kind);
     }
   });
 

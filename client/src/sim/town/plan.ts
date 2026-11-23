@@ -95,6 +95,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     buildings,
     landmarks,
     spawn,
+    decks: recipe.decks(layout, buildings, streets),
     fill: layout.fill,
     quay: layout.quay,
     bounds: bb,

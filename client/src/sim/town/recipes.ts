@@ -10,11 +10,12 @@ import type { TownNames } from "./names.js";
 import type { Rng } from "./rng.js";
 import type { ShoreFacts } from "./shore.js";
 import type { TownSite } from "./site.js";
-import type { Block, Building, District, History, Landmark, Lot, Spawn, TownKind } from "./types.js";
+import type { Block, Building, Deck, District, History, Landmark, Lot, Spawn, Street, TownKind } from "./types.js";
 import type { BlockMeta, Layout } from "./port/layout.js";
 import { makeHistory } from "./port/history.js";
 import { layoutPort } from "./port/layout.js";
 import { buildPort } from "./port/buildings.js";
+import { portDecks } from "./port/decks.js";
 import { bindLandmarks, planLandmarks, spawnAt } from "./port/landmarks.js";
 import { LOT_RULES } from "./port/rules.js";
 
@@ -40,6 +41,8 @@ export type Recipe = {
   buildings(input: { site: TownSite; history: History; layout: Layout; blocks: readonly Block[]; lots: readonly Lot[]; drafts: readonly LotDraft[] }, rng: Rng): Building[];
   bindLandmarks(history: History, names: TownNames, townName: string, lots: readonly Lot[], buildings: readonly Building[]): Landmark[];
   spawn(fbi: Building): Spawn;
+  /** The decks of the old harbour: the quay's apron, the piers, the sheds' platforms and the wharf. */
+  decks(layout: Layout, buildings: readonly Building[], streets: readonly Street[]): Deck[];
 };
 
 const PORT: Recipe = {
@@ -53,6 +56,7 @@ const PORT: Recipe = {
   buildings: buildPort,
   bindLandmarks,
   spawn: spawnAt,
+  decks: (layout, buildings, streets) => portDecks(layout.quay, buildings, streets),
 };
 
 export const RECIPES: Record<TownKind, Recipe> = { port: PORT };

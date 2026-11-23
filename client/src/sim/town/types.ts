@@ -234,6 +234,38 @@ export type Seam = {
   readonly street: number;
 };
 
+/** The quay: the straight line along the old plat, and the stretches of it that have water seaward. */
+export type Quay = {
+  readonly a: Vec;
+  readonly b: Vec;
+  /** The stretches (pieces of the line a to b) where the harbour lies seaward: a wall stands along each, and the made ground is a polygon of its own. */
+  readonly wet: readonly { readonly a: Vec; readonly b: Vec }[];
+  /** The unit vector from the quay out over the water. */
+  readonly seaward: Vec;
+};
+
+export type DeckKind = "apron" | "pier" | "wharf" | "shed" | "float" | "gangway";
+
+/**
+ * A deck a person can walk on, standing over the water: an oriented rectangle in the town's frame, and the height of its
+ * top. A flat deck has `top` and `topEnd` equal; a gangway's top is `top` at the end at `-halfAlong` along `axis` and
+ * `topEnd` at the other, and rises or falls evenly between. Heights are the world's (the sea is 0). It is the one list the
+ * walking (`sim/town/decks.ts`) and the drawing (`game/town/pileGeometry.ts`) both read.
+ */
+export type Deck = {
+  readonly id: number;
+  readonly kind: DeckKind;
+  readonly centre: Vec;
+  /** The unit vector along the deck's length. */
+  readonly axis: Vec;
+  readonly halfAlong: number;
+  readonly halfAcross: number;
+  readonly top: number;
+  readonly topEnd: number;
+  /** The building (a pier, a shed) it is the platform of, or null. */
+  readonly building: number | null;
+};
+
 export type Spawn = { readonly x: number; readonly z: number; readonly yaw: number };
 
 export type TownPlan = {
@@ -254,7 +286,9 @@ export type TownPlan = {
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
   readonly fill: readonly { readonly polygon: Poly }[];
   /** The quay: the straight edge of the made ground along the old plat, seaward of it the harbour. */
-  readonly quay: { readonly a: Vec; readonly b: Vec };
+  readonly quay: Quay;
+  /** Every deck a person can walk on over the water: aprons, piers, the wharf, sheds' platforms, floats and gangways. */
+  readonly decks: readonly Deck[];
   readonly bounds: { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number };
   readonly counts: {
     readonly plats: number;

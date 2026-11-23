@@ -14,6 +14,7 @@
  */
 import { COVE_Z, roadCenterX, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
+import { QUAY_HEIGHT } from "./levels.js";
 import { QUAY_BANK, fillWindowD, smootherstepD, townFillFor, type FillArea } from "./fill.js";
 import { SITE_HALF, SITE_INLAND, SITE_STEP, siteFor } from "./siteFor.js";
 import { shoreSplineOf, shoreXAt } from "./shoreSpline.js";
@@ -21,7 +22,7 @@ import { shoreSplineOf, shoreXAt } from "./shoreSpline.js";
 export { smootherstepD };
 
 /** The fill's height above the sea at the water's edge, metres. */
-export const QUAY = 2.5;
+export const QUAY = QUAY_HEIGHT;
 /** The blend from the made ground to the coast's own, metres. */
 export const EDGE = 40;
 /** The footprint's reach along the shore either side of the anchor, metres. */

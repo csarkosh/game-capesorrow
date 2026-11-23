@@ -9,12 +9,13 @@
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { sliceDue, type Slices } from "@csarkosh/engine/game/syncJobs";
+import { deckTopAt, townDecks } from "../../sim/town/decks.js";
 import { planFor } from "../../sim/town/planFor.js";
 import { siteFor } from "../../sim/town/siteFor.js";
 import type { LandmarkRole } from "../../sim/town/types.js";
 import { buildingGeometry } from "./buildingGeometry.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
-import { pierGeometry, quayDeck, quayGeometry, wharfGeometry } from "./pileGeometry.js";
+import { deckGeometryAll, quayGeometry, railGeometry, wharfGeometry } from "./pileGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import type { Detail, TownGround } from "./townTypes.js";
 
@@ -35,7 +36,7 @@ export function townGround(worldSeed: number): TownGround {
   const plan = planFor(worldSeed);
   const { anchor } = siteFor(worldSeed);
   const base = { plan, anchor, heightAt: (x: number, z: number) => elevationSampleAt(worldSeed, x, z).h, roadX: (z: number) => roadCenterX(worldSeed, z) };
-  return { ...base, deckAt: quayDeck(base) };
+  return { ...base, deckAt: (x, z) => deckTopAt(worldSeed, x, z) ?? -Infinity, rails: townDecks(worldSeed).rails };
 }
 
 /** Everything of the town, as batches. `from` is where the player starts: the cells nearest it come first. */
@@ -58,16 +59,16 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   yield;
   quayGeometry(g, sinks.solid, sinks.flat);
   for (const street of g.plan.streets) if (street.kind === "wharf") wharfGeometry(g, street, sinks.solid);
+  deckGeometryAll(g, sinks.solid);
+  railGeometry(g, sinks.solid);
   yield;
 
   const roles = new Map<number, LandmarkRole>();
   for (const l of g.plan.landmarks) if (!roles.has(l.building)) roles.set(l.building, l.role);
   for (const b of g.plan.buildings) {
-    if (b.lot === -1) {
-      pierGeometry(g, b, sinks.solid);
-      // A shed on piles is a building too; a pier is its deck alone.
-      if (b.kind !== "pier") buildingGeometry(g, b, roles.get(b.id) ?? null, sinks.solid, detail);
-    } else buildingGeometry(g, b, roles.get(b.id) ?? null, sinks.solid, detail);
+    // A pier is its deck alone (drawn with the decks); a shed on piles is a building, standing on its deck.
+    if (b.kind === "pier") continue;
+    buildingGeometry(g, b, roles.get(b.id) ?? null, sinks.solid, detail);
     if (sliceDue()) yield;
   }
 
