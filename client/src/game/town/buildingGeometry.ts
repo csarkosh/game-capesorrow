@@ -102,12 +102,16 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
 
   const corner = (su: number, sv: number): [number, number] => [f.cx + f.ux * f.hu * su + f.vx * f.hv * sv, f.cz + f.uz * f.hu * su + f.vz * f.hv * sv];
 
-  // The ground under the footprint: the lowest point sets the walls' base, the front's highest the floor.
+  // The ground under the footprint: the lowest point sets the walls' base, the highest the floor (on sloping ground a
+  // building stands on the highest ground under it, its walls running down to the lowest).
   let low = Infinity;
-  for (const su of [-1, 0, 1]) {
-    for (const sv of [-1, 0, 1]) {
+  let high = -Infinity;
+  for (const su of [-1, -0.5, 0, 0.5, 1]) {
+    for (const sv of [-1, -0.5, 0, 0.5, 1]) {
       const [x, z] = corner(su, sv);
-      low = Math.min(low, g.heightAt(x, z));
+      const h = g.heightAt(x, z);
+      low = Math.min(low, h);
+      high = Math.max(high, h);
     }
   }
   const deck = onPiles ? g.deckAt(f.cx, f.cz) : 0;
@@ -140,11 +144,8 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const L = long ? f.hu : f.hv;
   const S = long ? f.hv : f.hu;
 
-  // The floor: the front's highest ground (never under the base). A building's height is above its floor.
-  const fs = sides[frontAt] as (typeof sides)[number];
-  const fa = corner(fs[0], fs[1]);
-  const fb = corner(fs[2], fs[3]);
-  const floorY = onPiles ? deck + 0.1 : Math.max(baseY + 0.3, g.heightAt(fa[0], fa[1]) + 0.1, g.heightAt(fb[0], fb[1]) + 0.1, g.heightAt((fa[0] + fb[0]) / 2, (fa[1] + fb[1]) / 2) + 0.1);
+  // The floor: the highest ground under the footprint (never under the base). A building's height is above its floor.
+  const floorY = onPiles ? deck + 0.1 : Math.max(baseY + 0.3, high + 0.1);
 
   const H = floorY + (ruin ? Math.max(2.6, b.height * 0.6) : b.height);
   const roofKind = ruin ? "ruin" : b.roof;

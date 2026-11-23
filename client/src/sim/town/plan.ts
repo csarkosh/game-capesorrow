@@ -10,11 +10,14 @@ import { bbox, segSegDist, type Poly } from "./geom.js";
 import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
+import { findEnds } from "./port/ends.js";
+import { describeRoads, planRoads } from "./port/roads.js";
+import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
 import { analyseShore } from "./shore.js";
 import type { TownSite } from "./site.js";
 import { TOWN_GEN } from "./version.js";
-import type { Block, Lot, Street, TownKind, TownPlan } from "./types.js";
+import type { Block, History, Landmark, Lot, Street, TownKind, TownPlan } from "./types.js";
 
 /** Makes the plan of a town on a site. Deterministic: every machine computes the same plan. */
 export function planTown(site: TownSite, kind: TownKind): TownPlan {
@@ -62,12 +65,19 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
       drafts.push(d);
     }
     if (cut.alley && streets.some((st) => st.kind !== "alley" && Math.min(segSegDist(cut.alley!.a, cut.alley!.b, st.a, st.b)) <= (st.width + cut.alley!.width) / 2 + 0.5)) {
-      streets.push({ id: streets.length, a: cut.alley.a, b: cut.alley.b, width: cut.alley.width, kind: "alley", plat: block.plat, name: "alley" });
+      streets.push({ id: streets.length, a: cut.alley.a, b: cut.alley.b, width: cut.alley.width, ...wayOf("alley", cut.alley.width), kind: "alley", plat: block.plat, name: "alley" });
     }
   }
 
+  const madeEnds = findEnds(streets, site, layout.quay, layout.fill, stageRng(seed, "ends"));
+  // The roads out of town continue some of those ends from the grid; where a road leaves, the street has no end to make.
+  const rngRoads = stageRng(seed, "roads");
+  const { roads, ends } = planRoads(site, streets, madeEnds, blocks.map((b) => b.polygon), names, townName, rngRoads);
   const buildings = recipe.buildings({ site, history, layout, blocks, lots, drafts }, streams.buildings);
-  const landmarks = recipe.bindLandmarks(history, names, townName, lots, buildings);
+  const bound = recipe.bindLandmarks(history, names, townName, lots, buildings);
+  // The roads out: a sentence of the history for each, and each destination among the landmarks.
+  const described = describeRoads(roads, streets, names, townName, history.founding.year, rngRoads);
+  const landmarks: Landmark[] = [...bound, ...described.landmarks.map((l, i) => ({ ...l, id: bound.length + i }))];
   const fbi = landmarks.find((l) => l.role === "fbi");
   if (!fbi) throw new Error("the plan has no FBI office");
   const spawn = recipe.spawn(buildings[fbi.building]!);
@@ -75,10 +85,10 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   const oldDecks = recipe.decks(layout, buildings, streets);
   const harbourOut = recipe.harbour({ site, layout, history, buildings, streets, decks: oldDecks }, streams.harbour);
   const decks = [...oldDecks, ...harbourOut.decks];
-  // What is there joins the history's list, in order of year and then of the order they were told.
-  const told = [...history.events, ...harbourOut.harbour.events].map((e, i) => ({ e, i }));
+  // What the roads out and the harbour have to tell joins the history's list, in order of year and then of the order they were told.
+  const told = [...history.events, ...described.events, ...harbourOut.harbour.events].map((e, i) => ({ e, i }));
   told.sort((p, q) => p.e.year - q.e.year || p.i - q.i);
-  const fullHistory = { ...history, events: told.map((t) => t.e) };
+  const fullHistory: History = { ...history, events: told.map((t) => t.e) };
 
   const all: Poly[] = [...blocks.map((b) => b.polygon), ...streets.map((s) => [s.a, s.b])];
   const bb = bbox(all.flat());
@@ -99,6 +109,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     plats: layout.plats,
     seams: layout.seams,
     streets,
+    ends,
+    roads,
     blocks,
     lots,
     buildings,

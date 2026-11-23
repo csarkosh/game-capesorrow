@@ -44,6 +44,8 @@ import { ordinal, type TownNames } from "../names.js";
 import { chance, int, pick, range, type Rng } from "../rng.js";
 import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
+import { ALLEY_WIDTH, wayOf } from "../ways.js";
+import { pruneStreets } from "./ends.js";
 import type { Block, District, History, Plat, Quay, Seam, Street, StreetKind } from "../types.js";
 
 const FT = 0.3048;
@@ -326,9 +328,10 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
   // ---- The old plat: block size, street widths, alley, columns.
   const pU = FT * 5 * int(rngP, 60, 84);
   const pV = FT * 5 * int(rngP, 52, 66);
-  const wOld = pick(rngP, [18, 20]);
-  const wMain = history.fire ? 24 : 20;
-  const oldAlley = chance(rngP, 0.5) ? 5 : null;
+  // Rights of way as a small Northwest town's streets are (`ways.ts`); the blocks keep their centre-line sizes, so the lots gain the difference.
+  const wOld = pick(rngP, [14, 15]);
+  const wMain = history.fire ? 20 : 18;
+  const oldAlley = chance(rngP, 0.5) ? ALLEY_WIDTH : null;
   const C0 = int(rngP, 4, 6);
   const dq0 = int(rngP, 35, 70);
   const wharfJitter = int(rngP, -1, 1);
@@ -504,8 +507,8 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
   const hi = Math.max(pUcDraw, pVcDraw);
   const pUc = longAlongZ ? hi : lo;
   const pVc = longAlongZ ? lo : hi;
-  const wCo = pick(rngP, [18, 20, 20, 24]);
-  const avenueWidth = 30;
+  const wCo = pick(rngP, [14, 15, 15, 16]);
+  const avenueWidth = 20;
   const zOff = range(rngP, 0, pUc);
   const avenueAt = range(rngP, -pUc, pUc);
   const xOff = range(rngP, 0, pVc);
@@ -677,6 +680,13 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     }
   }
 
+  // A grid street runs only as far as the last block it serves (`ends.ts`).
+  {
+    const kept = pruneStreets(raw, [...oldPieces.map((p) => p.poly), ...comp.pieces.map((p) => p.poly)]);
+    raw.length = 0;
+    raw.push(...kept);
+  }
+
   // Streets cut off from the rest are dropped, and a block that touches none of those left goes with them.
   {
     const parent = raw.map((_, i) => i);
@@ -697,7 +707,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     raw.length = 0;
     raw.push(...keptRaw);
   }
-  const streets: Street[] = raw.map((s2, id) => ({ id, a: s2.a, b: s2.b, width: s2.width, kind: s2.kind, plat: s2.plat, name: s2.name, ...(s2.seam ? { seam: true } : {}) }));
+  const streets: Street[] = raw.map((s2, id) => ({ id, a: s2.a, b: s2.b, width: s2.width, ...wayOf(s2.kind, s2.width), kind: s2.kind, plat: s2.plat, name: s2.name, ...(s2.seam ? { seam: true } : {}) }));
   const touchesStreet = (poly: Poly): boolean => {
     for (const st of streets) {
       let d = Infinity;
@@ -837,7 +847,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     bearing: COMPASS,
     block: { along: pUc, across: pVc },
     streetWidth: wCo,
-    alley: 5,
+    alley: ALLEY_WIDTH,
     columns: N,
     rows: J,
     polygon: orient([toWorld(coFrame, 0, 0), toWorld(coFrame, N * pUc, 0), toWorld(coFrame, N * pUc, J * pVc), toWorld(coFrame, 0, J * pVc)]),
@@ -934,10 +944,23 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     return !blocks.some((b) => overlapDepth(r, orient(b.polygon)) > 0.2);
   });
 
+  // A street that runs between shops, yards or the strip has its sidewalk where a street of houses has its verge.
+  const SHOPS: readonly District[] = ["core", "dock", "waterfront", "mill", "industrial", "highway strip"];
+  const edgeDist = (poly: Poly, a: Vec, b: Vec): number => {
+    let d = Infinity;
+    for (let k = 0; k < poly.length; k++) d = Math.min(d, segSegDist(poly[k]!, poly[(k + 1) % poly.length]!, a, b));
+    return d;
+  };
+  const streetsOut: Street[] = streets.map((st) => {
+    if (st.kind !== "street") return st;
+    const shops = blocks.some((bl) => SHOPS.includes(bl.district) && edgeDist(bl.polygon, st.a, st.b) <= st.width / 2 + 1);
+    return shops ? { ...st, ...wayOf(st.kind, st.width, true) } : st;
+  });
+
   return {
     plats: [platOld, platCompany],
     seams,
-    streets,
+    streets: streetsOut,
     blocks,
     meta,
     old: { frame: oldFrame, bearing, columns: C, rows: R, pU, pV, wharfCol, dockDir, mainLine, coreRows, roadBasis, railPresent, mainWidth: wMain, streetWidth: wOld, quayV },

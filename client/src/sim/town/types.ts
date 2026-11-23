@@ -30,6 +30,7 @@ export type EventKind =
   | "county seat"
   | "port"
   | "mill"
+  | "road"
   | "harbour"
   | "present";
 
@@ -104,12 +105,61 @@ export type Street = {
   readonly id: number;
   readonly a: Vec;
   readonly b: Vec;
+  /** The right of way, edge to edge. */
   readonly width: number;
+  /** The roadway between the curbs, and the sidewalk down each side of it (0 for none): the rest of the right of way is verge (`port/ways.ts`). */
+  readonly roadway: number;
+  readonly walk: number;
   readonly kind: StreetKind;
   readonly plat: string | null;
   readonly name: string;
   /** True for the street that runs along the seam between two plats. */
   readonly seam?: boolean;
+};
+
+/** What a street's end made by the plan is: a turnaround (a gravel bulb to turn in), a barricade, or a landing at the water. */
+export type EndKind = "turnaround" | "barricade" | "landing";
+
+/** A street's end that is no junction: where it is, which way it points (out of the street) and what is made there. */
+export type StreetEnd = {
+  readonly street: number;
+  readonly at: "a" | "b";
+  readonly x: number;
+  readonly z: number;
+  readonly dx: number;
+  readonly dz: number;
+  readonly kind: EndKind;
+};
+
+/** How a road out of town is surfaced along its length: it narrows from paved to gravel to two wheel tracks. */
+export type RoadSurface = "paved" | "gravel" | "tracks";
+
+/** A point of a road's line, and how wide the road is and how it is surfaced there. */
+export type RoadPoint = { readonly x: number; readonly z: number; readonly width: number; readonly surface: RoadSurface };
+
+/** What a road ends at. */
+export type DestinationKind = "cemetery" | "landing" | "gravel pit" | "water tank" | "gate";
+
+export type Destination = {
+  readonly kind: DestinationKind;
+  readonly name: string;
+  readonly x: number;
+  readonly z: number;
+  /** The cleared place about it, metres. */
+  readonly radius: number;
+};
+
+/** A road out of town: a county road, an old logging road, or a road along the shore's flats. It continues from a grid street, follows the land, and ends at something. */
+export type Road = {
+  readonly id: number;
+  readonly name: string;
+  readonly kind: "county" | "logging" | "shore";
+  /** The street end it continues. */
+  readonly from: { readonly street: number; readonly at: "a" | "b" };
+  readonly points: readonly RoadPoint[];
+  readonly destination: Destination;
+  /** Its length along its line, metres. */
+  readonly length: number;
 };
 
 export type District =
@@ -213,14 +263,21 @@ export type LandmarkRole =
   | "depot"
   | "customs house"
   | "cannery"
-  | "bank";
+  | "bank"
+  | "cemetery"
+  | "landing"
+  | "gravel pit"
+  | "water tank"
+  | "gate";
 
 export type Landmark = {
   readonly id: number;
   readonly role: LandmarkRole;
   readonly name: string;
-  /** The building it points at. */
+  /** The building it points at; -1 for a place that is no building (a road's destination), which has `at`. */
   readonly building: number;
+  /** Where it is, for a place that is no building. */
+  readonly at?: Vec;
   /** One sentence for the map's list: what it is, and what the history did to it. */
   readonly text: string;
 };
@@ -388,6 +445,10 @@ export type TownPlan = {
   readonly plats: readonly Plat[];
   readonly seams: readonly Seam[];
   readonly streets: readonly Street[];
+  /** The ends of streets that no junction makes, each with what is made there. */
+  readonly ends: readonly StreetEnd[];
+  /** The roads out of town, and where each goes. */
+  readonly roads: readonly Road[];
   readonly blocks: readonly Block[];
   readonly lots: readonly Lot[];
   readonly buildings: readonly Building[];
