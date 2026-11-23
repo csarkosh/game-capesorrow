@@ -16,7 +16,7 @@ import { onLeg, cornerPolygon, arcPoints, RAMP_RUN, RAMP_LANDING, DOME_DEPTH, ty
 import { CURB_OUT } from "../../sim/town/streetField.js";
 import type { JunctionCorner, JunctionLeg, Vec } from "../../sim/town/types.js";
 import { clamp01, hashN, hashS, smooth } from "./groundNoise.js";
-import type { Over } from "./groundSurfaces.js";
+import { RANK, type Over } from "./groundSurfaces.js";
 import type { Rgb } from "./meshBuilder.js";
 import { ASPHALT, CURB, DOME, GRAVEL, PLANTER, SIDEWALK } from "./palette.js";
 import { CURB_WIDTH, ROADWAY_LIFT, WALK_LIFT } from "./streetGeometry.js";
@@ -73,6 +73,7 @@ export function junctionGeometry(g: TownGround, surf: Surface, solid: Sink, pave
         frame,
         dirt: (v) => clamp01(0.1 + (0.2 + (plain ? 0.2 : 0)) * smooth(2.2, 0, edgeDistance(j.polygon, v[0], v[2]))),
         wear: 0.03,
+        group: "base",
       };
       surf.fill(pts, ROADWAY_LIFT, ASPHALT, surf.depthFor(pts, 9, 2), over);
     }
@@ -113,7 +114,7 @@ function corner(g: TownGround, surf: Surface, legs: readonly JunctionLeg[], k: J
         const w1 = 0.9 + 0.6 * hashN(ckey, i + 1, 0, 5);
         const o0 = -0.04 - 0.12 * hashN(ckey, i, 0, 6);
         const o1 = -0.04 - 0.12 * hashN(ckey, i + 1, 0, 6);
-        surf.flat([p2(shift(p, o0, i)), p2(shift(q, o1, i)), p2(shift(q, w1, i)), p2(shift(p, w0, i))], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", tint: [0.95, 0.9, 0.82], frame, dirt: (v) => clamp01(0.2 + 0.6 * smooth(0, 1.4, Math.sqrt((v[0] - c.x) * (v[0] - c.x) + (v[2] - c.z) * (v[2] - c.z)) - k.radius + 1.4)), wear: 0.12 });
+        surf.flat([p2(shift(p, o0, i)), p2(shift(q, o1, i)), p2(shift(q, w1, i)), p2(shift(p, w0, i))], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", rank: RANK.under, group: "shoulder", tint: [0.95, 0.9, 0.82], frame, dirt: (v) => clamp01(0.2 + 0.6 * smooth(0, 1.4, Math.sqrt((v[0] - c.x) * (v[0] - c.x) + (v[2] - c.z) * (v[2] - c.z)) - k.radius + 1.4)), wear: 0.12 });
       }
       return;
     }
@@ -136,7 +137,7 @@ function corner(g: TownGround, surf: Surface, legs: readonly JunctionLeg[], k: J
       const pi = inset(p);
       const qi = inset(q);
       const sh = 0.72 + 0.16 * hashN(ckey, i, 0, 7);
-      const top: Over = { layer: "sidewalk", tint: [sh, sh * 0.99, sh * 0.94], wear: 0.12, dirt: 0.25 };
+      const top: Over = { rank: RANK.mark, layer: "sidewalk", tint: [sh, sh * 0.99, sh * 0.94], wear: 0.12, dirt: 0.25 };
       surf.polyY([[p.x, p.z, topY(p)], [q.x, q.z, topY(q)], [qi.x, qi.z, topY(qi)], [pi.x, pi.z, topY(pi)]] as P3[], CURB, top);
       // The face, looking over the roadway: away from the arc's centre.
       const mx = (p.x + q.x) / 2 - c.x;
@@ -164,7 +165,7 @@ function corner(g: TownGround, surf: Surface, legs: readonly JunctionLeg[], k: J
   const back = (v: readonly [number, number, number]): number => Math.sqrt((v[0] - lot.x) * (v[0] - lot.x) + (v[2] - lot.z) * (v[2] - lot.z));
   const reach = Math.max(1, ...poly.map((q) => Math.sqrt((q.x - lot.x) * (q.x - lot.x) + (q.z - lot.z) * (q.z - lot.z))));
   const sh = 0.64 + 0.1 * hashN(ckey, 0, 0, 10);
-  const over: Over = { layer: "sidewalk", tint: [sh, sh * 0.99, sh * 0.94], frame, wear: (v) => clamp01(0.05 + 0.16 * smooth(reach * 0.7, 0, back(v))), dirt: (v) => clamp01(0.06 + 0.3 * smooth(reach * 0.8, 0, back(v))) };
+  const over: Over = { rank: RANK.mark, layer: "sidewalk", tint: [sh, sh * 0.99, sh * 0.94], frame, wear: (v) => clamp01(0.05 + 0.16 * smooth(reach * 0.7, 0, back(v))), dirt: (v) => clamp01(0.06 + 0.3 * smooth(reach * 0.8, 0, back(v))) };
   // Lifted a little higher than the slabs' own (a corner has no trough under it): 2.8 cm over the ground, the most a slab's heave reaches.
   surf.fill(pts, WALK_LIFT + 0.016, SIDEWALK, surf.depthFor(pts, 6, 2), over);
   // An expansion joint or two across the corner's piece, and its crack.
@@ -179,7 +180,7 @@ function ramp(surf: Surface, l: JunctionLeg, side: 1 | -1, s0: number, s1: numbe
   };
   const us = [0, 0.1, 0.2, 0.3, 0.45, 0.7, 1.0, 1.4, RAMP_RUN, RAMP_RUN + RAMP_LANDING];
   const sh = 0.84 + 0.1 * hashN(key, l.street, side, 11);
-  const over: Over = { layer: "sidewalk", tint: [sh, sh * 0.99, sh * 0.95], wear: 0.05, dirt: 0.12 };
+  const over: Over = { layer: "sidewalk", tint: [sh, sh * 0.99, sh * 0.95], wear: 0.05, dirt: 0.12, group: "base" };
   for (let i = 0; i + 1 < us.length; i++) {
     surf.flat([at(s0, us[i] as number), at(s1, us[i] as number), at(s1, us[i + 1] as number), at(s0, us[i + 1] as number)], WALK_LIFT, SIDEWALK, over);
   }
@@ -187,7 +188,7 @@ function ramp(surf: Surface, l: JunctionLeg, side: 1 | -1, s0: number, s1: numbe
   const d: Rgb = DOME;
   const ds = [0, 0.1, 0.2, 0.3, 0.45, DOME_DEPTH];
   for (let i = 0; i + 1 < ds.length; i++) {
-    surf.flat([at(s0, ds[i] as number), at(s1, ds[i] as number), at(s1, ds[i + 1] as number), at(s0, ds[i + 1] as number)], WALK_LIFT + DOME_OVER, d, { layer: "sidewalk", tint: [0.95, 0.72, 0.08], wear: 0.1, dirt: 0.15 });
+    surf.flat([at(s0, ds[i] as number), at(s1, ds[i] as number), at(s1, ds[i + 1] as number), at(s0, ds[i + 1] as number)], WALK_LIFT + DOME_OVER, d, { layer: "sidewalk", tint: [0.95, 0.72, 0.08], wear: 0.1, dirt: 0.15, rank: RANK.mark });
   }
 }
 

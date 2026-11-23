@@ -6,6 +6,7 @@
  * A crosswalk across the highway lies on the engine's road surface, so its bars lie `ENGINE_MARK_LIFT` over the ground (the
  * engine's road is the ground's own height there).
  */
+import { RANK } from "./groundSurfaces.js";
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { CROSSWALK_WIDTH, STOP_LINE_WIDTH } from "../../sim/town/junctions.js";
 import { onLeg } from "../../sim/town/junctionShape.js";
@@ -37,8 +38,8 @@ export function junctionPaint(_g: TownGround, surf: Surface, junctions: readonly
   /** Paint on the roadway, without any junction's pavement under it. */
   const paint = (pts: P2[], lift: number, colour: typeof PAINT_WHITE, engine = false): void => {
     for (const piece of engine ? [pts] : pavements.free(pts)) {
-      if (engine) surf.onRoad(piece, lift, colour);
-      else surf.flat(piece, lift, colour);
+      if (engine) surf.onRoad(piece, lift, colour, { rank: RANK.paint });
+      else surf.flat(piece, lift, colour, { rank: RANK.paint });
     }
   };
   const lift = ROADWAY_LIFT + MARK_OVER;
@@ -93,7 +94,7 @@ function dotted(surf: Surface, j: WJunction, lift: number): void {
     let s = lo + (run - used) / 2;
     for (let k = 0; k < count; k++, s += DOTTED_DASH + DOTTED_GAP) {
       const pts: P2[] = [onLeg(a, s, -LINE_WIDTH / 2), onLeg(a, s + DOTTED_DASH, -LINE_WIDTH / 2), onLeg(a, s + DOTTED_DASH, LINE_WIDTH / 2), onLeg(a, s, LINE_WIDTH / 2)].map((v) => [v.x, v.z]);
-      surf.flat(pts, lift, PAINT_YELLOW);
+      surf.flat(pts, lift, PAINT_YELLOW, { rank: RANK.paint });
     }
   }
 }

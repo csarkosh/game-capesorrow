@@ -21,7 +21,7 @@ import type { WJunction } from "./junctionWorld.js";
 import { arcPoints } from "../../sim/town/junctionShape.js";
 import { clamp01, hashN, hashS, vnoise } from "./groundNoise.js";
 import { tally } from "./groundTally.js";
-import type { Over } from "./groundSurfaces.js";
+import { RANK, type Over } from "./groundSurfaces.js";
 import { GRAVEL, PATCH_ASPHALT as ASPHALT } from "./palette.js";
 import { ROADWAY_LIFT, type PS } from "./streetGeometry.js";
 import type { P2, RoadSet, Surface } from "./surface.js";
@@ -33,6 +33,8 @@ export type RoadWearContext = { g: TownGround; surf: Surface; road: RoadSet; p: 
 /** The wear's own lifts over the roadway: a cut, its seam, a crack, a pothole. */
 const CUT = 0.003;
 const SEAM_LIFT = 0.0045;
+/** Half the width of the sealed seam round a cut. */
+const SEAM_HALF = 0.025;
 
 const rot = (x: number, z: number, c: number, s: number): P2 => [x * c - z * s, x * s + z * c];
 
@@ -45,7 +47,7 @@ export function roadWear(ctx: RoadWearContext): void {
   const wearAt = (s: number): number => (edge.paving.find((q) => s < q.s1) ?? (edge.paving[edge.paving.length - 1]!)).wear;
   const decadeAt = (s: number): number => (edge.paving.find((q) => s < q.s1) ?? (edge.paving[edge.paving.length - 1]!)).decade;
   const frame = { origin: [p.ax, 0, p.az] as const, u: [p.nx, 0, p.nz] as const, v: [p.tx, 0, p.tz] as const };
-  const dark = (k: number): Over => ({ layer: "asphalt_dark", tint: [k, k, k], frame: { origin: [...frame.origin], u: [...frame.u], v: [...frame.v] } });
+  const dark = (k: number, rank: number = RANK.detail): Over => ({ rank, layer: "asphalt_dark", tint: [k, k, k], frame: { origin: [...frame.origin], u: [...frame.u], v: [...frame.v] } });
   const total = intervals.reduce((s, [a, b]) => s + Math.max(0, b - a), 0);
   /** A place in the roadways' intervals, by a fraction 0 to 1 of their total length. */
   const placeAt = (f: number): number => {
@@ -85,9 +87,15 @@ export function roadWear(ctx: RoadWearContext): void {
         const ex = b[0] - a[0];
         const ez = b[1] - a[1];
         const el = Math.sqrt(ex * ex + ez * ez) || 1;
-        const nx = (-ez / el) * 0.025;
-        const nz = (ex / el) * 0.025;
-        surf.flat([[a[0] - nx, a[1] - nz], [b[0] - nx, b[1] - nz], [b[0] + nx, b[1] + nz], [a[0] + nx, a[1] + nz]], ROADWAY_LIFT + SEAM_LIFT, ASPHALT, dark(0.32));
+        const nx = (-ez / el) * SEAM_HALF;
+        const nz = (ex / el) * SEAM_HALF;
+        // The bands along the first and third edges stop short of the corners, where the second and fourth cross them.
+        const cut = e % 2 === 0 ? SEAM_HALF / el : 0;
+        const ax = a[0] + ex * cut;
+        const az = a[1] + ez * cut;
+        const bx = b[0] - ex * cut;
+        const bz = b[1] - ez * cut;
+        surf.flat([[ax - nx, az - nz], [bx - nx, bz - nz], [bx + nx, bz + nz], [ax + nx, az + nz]], ROADWAY_LIFT + SEAM_LIFT, ASPHALT, dark(0.32, RANK.top));
       }
     };
     const cs = placeAt(hashN(key, i, 0, 106));
@@ -147,7 +155,7 @@ export function roadWear(ctx: RoadWearContext): void {
       const dl = Math.sqrt(ds * ds + dt * dt) || 1;
       const os = (-dt / dl) * w;
       const ot = (ds / dl) * w;
-      surf.flat([at(a[0] - os, a[1] - ot), at(b[0] - os, b[1] - ot), at(b[0] + os, b[1] + ot), at(a[0] + os, a[1] + ot)], ROADWAY_LIFT + 0.0025, ASPHALT, dark(sealed ? 0.3 : 0.5));
+      surf.flat([at(a[0] - os, a[1] - ot), at(b[0] - os, b[1] - ot), at(b[0] + os, b[1] + ot), at(a[0] + os, a[1] + ot)], ROADWAY_LIFT + 0.0025, ASPHALT, dark(sealed ? 0.3 : 0.5, RANK.crack));
     }
   }
 
@@ -168,7 +176,7 @@ export function roadWear(ctx: RoadWearContext): void {
     };
     // The broken rim (a darker, bitten ring), then the hole itself in dirt.
     surf.flat(Array.from({ length: n }, (_, k) => ring(k, 1.35)), ROADWAY_LIFT + 0.002, ASPHALT, dark(0.42));
-    surf.flat(Array.from({ length: n }, (_, k) => ring(k, 0.95)), ROADWAY_LIFT + 0.0035, ASPHALT, { layer: "mud", tint: [0.5, 0.46, 0.4], frame: { origin: [cs, 0, ct], u: [1, 0, 0], v: [0, 0, 1] }, dirt: 0.3 });
+    surf.flat(Array.from({ length: n }, (_, k) => ring(k, 0.95)), ROADWAY_LIFT + 0.0035, ASPHALT, { rank: RANK.top, layer: "mud", tint: [0.5, 0.46, 0.4], frame: { origin: [cs, 0, ct], u: [1, 0, 0], v: [0, 0, 1] }, dirt: 0.3 });
   }
 
   // ---- The gutter's band of needles, leaves and dirt, along each curbed side.
@@ -193,7 +201,7 @@ export function roadWear(ctx: RoadWearContext): void {
         const t = p.cw;
         const q = (s: number, tt: number): P2 => at(s, sg * tt);
         const moss = vnoise(gkey ^ 7, s0, 12) * 0.28;
-        surf.flat([q(s0, t - w0), q(s1, t - w1), q(s1, t), q(s0, t)], ROADWAY_LIFT + 0.0022, ASPHALT, { layer: "mud", tint: [0.55, 0.52, 0.42], frame: { origin: [p.ax + hashN(gkey, i, 0, 151) * 4, 0, p.az + hashN(gkey, i, 0, 152) * 4], u: [p.tx, 0, p.tz], v: [p.nx, 0, p.nz] }, wear: moss, dirt: 0.3 });
+        surf.flat([q(s0, t - w0), q(s1, t - w1), q(s1, t), q(s0, t)], ROADWAY_LIFT + 0.0022, ASPHALT, { rank: RANK.mark, layer: "mud", tint: [0.55, 0.52, 0.42], frame: { origin: [p.ax + hashN(gkey, i, 0, 151) * 4, 0, p.az + hashN(gkey, i, 0, 152) * 4], u: [p.tx, 0, p.tz], v: [p.nx, 0, p.nz] }, wear: moss, dirt: 0.3 });
       }
     }
   }
@@ -223,8 +231,8 @@ export function manhole(surf: Surface, c: P2, key: number): void {
   tally.manholes++;
   const n = 12;
   const disc = (r: number): P2[] => Array.from({ length: n }, (_, k) => [c[0] + Math.cos((k / n) * Math.PI * 2) * r, c[1] + Math.sin((k / n) * Math.PI * 2) * r] as P2);
-  surf.flat(disc(0.37), ROADWAY_LIFT + 0.002, ASPHALT, { layer: "asphalt_dark", tint: [0.35, 0.35, 0.35] });
-  surf.flat(disc(0.31), ROADWAY_LIFT + 0.0032, ASPHALT, { layer: "rust", tint: [0.36 + 0.1 * hashN(key, 0, 0, 170), 0.3, 0.26], frame: { origin: [c[0], 0, c[1]], u: [1, 0, 0], v: [0, 0, 1] }, dirt: 0.2 });
+  surf.flat(disc(0.37), ROADWAY_LIFT + 0.002, ASPHALT, { rank: RANK.detail, layer: "asphalt_dark", tint: [0.35, 0.35, 0.35] });
+  surf.flat(disc(0.31), ROADWAY_LIFT + 0.0032, ASPHALT, { rank: RANK.top, layer: "rust", tint: [0.36 + 0.1 * hashN(key, 0, 0, 170), 0.3, 0.26], frame: { origin: [c[0], 0, c[1]], u: [1, 0, 0], v: [0, 0, 1] }, dirt: 0.2 });
 }
 
 /** A storm drain's grate: 85 by 32 cm, dark, set along the curb (its long side along (tx, tz)). */
@@ -235,8 +243,8 @@ export function drain(surf: Surface, c: P2, tx: number, tz: number, key: number)
   const nx = -tz;
   const nz = tx;
   const q = (a: number, b: number): P2 => [c[0] + tx * a + nx * b, c[1] + tz * a + nz * b];
-  surf.flat([q(-hl - 0.05, -hw - 0.05), q(hl + 0.05, -hw - 0.05), q(hl + 0.05, hw + 0.05), q(-hl - 0.05, hw + 0.05)], ROADWAY_LIFT + 0.002, ASPHALT, { layer: "asphalt_dark", tint: [0.3, 0.3, 0.3] });
-  surf.flat([q(-hl, -hw), q(hl, -hw), q(hl, hw), q(-hl, hw)], ROADWAY_LIFT + 0.0032, ASPHALT, { layer: "rust", tint: [0.16 + 0.05 * hashN(key, 0, 0, 171), 0.14, 0.13], frame: { origin: [c[0], 0, c[1]], u: [tx, 0, tz], v: [nx, 0, nz] }, dirt: 0.35 });
+  surf.flat([q(-hl - 0.05, -hw - 0.05), q(hl + 0.05, -hw - 0.05), q(hl + 0.05, hw + 0.05), q(-hl - 0.05, hw + 0.05)], ROADWAY_LIFT + 0.002, ASPHALT, { rank: RANK.detail, layer: "asphalt_dark", tint: [0.3, 0.3, 0.3] });
+  surf.flat([q(-hl, -hw), q(hl, -hw), q(hl, hw), q(-hl, hw)], ROADWAY_LIFT + 0.0032, ASPHALT, { rank: RANK.top, layer: "rust", tint: [0.16 + 0.05 * hashN(key, 0, 0, 171), 0.14, 0.13], frame: { origin: [c[0], 0, c[1]], u: [tx, 0, tz], v: [nx, 0, nz] }, dirt: 0.35 });
 }
 
 /**
@@ -262,7 +270,7 @@ export function junctionWear(g: TownGround, surf: Surface, junctions: readonly W
       const w = a.width / 2 + 0.3 + 0.5 * hashN(key, 0, 0, 180);
       const L = 0.9 + 1.4 * hashN(key, 0, 0, 181);
       const pt = (u: number, v: number): P2 => [base[0] + ox * u + dx * v, base[1] + oz * u + dz * v];
-      surf.flat([pt(-w, 0), pt(w, 0), pt(w * 0.75, L * 0.55), pt(w * 0.2 * hashS(key, 0, 0, 182), L), pt(-w * 0.7, L * 0.6)], ROADWAY_LIFT + 0.003, GRAVEL, { layer: "gravel", tint: [0.85, 0.8, 0.72], frame: { origin: [base[0], 0, base[1]], u: [ox, 0, oz], v: [dx, 0, dz] }, dirt: 0.4 });
+      surf.flat([pt(-w, 0), pt(w, 0), pt(w * 0.75, L * 0.55), pt(w * 0.2 * hashS(key, 0, 0, 182), L), pt(-w * 0.7, L * 0.6)], ROADWAY_LIFT + 0.003, GRAVEL, { rank: RANK.mark, layer: "gravel", tint: [0.85, 0.8, 0.72], frame: { origin: [base[0], 0, base[1]], u: [ox, 0, oz], v: [dx, 0, dz] }, dirt: 0.4 });
       continue;
     }
     if (j.polygon.length < 3) continue;

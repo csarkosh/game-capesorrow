@@ -9,9 +9,9 @@
  *
  * Yards of houses, the churchyard, the school's and the hospital's grounds have no patch: they are grass (`sim/town/clearing.ts`).
  */
-import { flatSurfaceFor, type Over } from "./groundSurfaces.js";
+import { RANK, flatSurfaceFor, type Over } from "./groundSurfaces.js";
 import { clamp01, hashN } from "./groundNoise.js";
-import { subtractConvex, type P2 } from "./surface.js";
+import { Surface, subtractConvex, type P2 } from "./surface.js";
 import { isPaved } from "../../sim/town/clearing.js";
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import { bbox, clipHalfPlane, contains, dist, orient, type Vec } from "../../sim/town/geom.js";
@@ -51,6 +51,7 @@ export function patchColour(d: District): Rgb {
 }
 
 export function groundGeometry(g: TownGround, flat: Sink): void {
+  const surf = new Surface(g, flat);
   const { plan, anchor } = g;
   const world = (p: Vec): Vec => ({ x: anchor.x + p.x, z: anchor.z + p.z });
   const footprints = new Map<number, Vec[][]>();
@@ -155,12 +156,12 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
         }
       }
     }
-    if (block.district === "highway strip") stalls(g, flat, poly, (footprints.get(block.id) ?? []).map((f) => f.map(world)));
+    if (block.district === "highway strip") stalls(g, surf, flat, poly, (footprints.get(block.id) ?? []).map((f) => f.map(world)));
   }
 }
 
 /** A row of painted stalls along the block's longest edge, where no building is within `STALL_CLEAR` of the stall. */
-function stalls(g: TownGround, flat: Sink, poly: readonly Vec[], buildings: readonly (readonly Vec[])[]): void {
+function stalls(g: TownGround, surf: Surface, flat: Sink, poly: readonly Vec[], buildings: readonly (readonly Vec[])[]): void {
   // The longest edge, and the way in from it.
   let best = 0;
   let from = poly[0] as Vec;
@@ -184,7 +185,7 @@ function stalls(g: TownGround, flat: Sink, poly: readonly Vec[], buildings: read
   const clear = (p: Vec): boolean => buildings.every((b) => !contains(b as Vec[], p, STALL_CLEAR) && b.every((c) => dist(c, p) > STALL_CLEAR));
   const mark = (corners: readonly Vec[]): void => {
     const pts = corners.map((q): Vec3 => [q.x, g.heightAt(q.x, q.z) + PATCH_LIFT + STALL_OVER, q.z]);
-    flat(corners[0]!.x, corners[0]!.z).poly(pts, UP, PAINT_WHITE);
+    surf.lay(flat(corners[0]!.x, corners[0]!.z), pts, pts.map(() => PATCH_LIFT + STALL_OVER), PAINT_WHITE, undefined, RANK.paint);
   };
   for (let s = STALL_SETBACK + STALL_PITCH; s < best - STALL_SETBACK; s += STALL_PITCH) {
     const a = at(s, STALL_SETBACK);

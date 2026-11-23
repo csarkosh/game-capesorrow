@@ -266,19 +266,32 @@ export function emptyTownReady(): TownReady {
 
 const READY_FIELDS: readonly UniformField[] = uniformFields(emptyTownReady());
 
-/** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. */
-export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray): MaterialPlugin {
+/**
+ * The depth steps (of a 24-bit buffer) between one rank of the flat ground and the next: the flat layer is drawn a fixed number of steps ahead of
+ * the terrain (`ahead`, in `townParts.ts`), and a vertex of rank r is drawn `r * RANK_UNITS` steps further ahead of that. Steps, not metres, so the
+ * order of two ranks holds at every distance in view (a step is z * z / (0.05 * 2^24) m at a distance z; the faces are never more than a few
+ * millimetres apart, and four steps are far over what a vertex's rounding can move a face), where millimetres of lift hold to about 40 m.
+ */
+export const RANK_UNITS = 6;
+/** The most ranks the flat ground has (rank 0 is the base surfaces). */
+export const RANKS = 6;
+
+/** The vertex stage's line for a ranked material: the rank rides in the float a flat vertex leaves unused (`townWear`.w, float 11), so it adds no attribute and no draw. */
+export const RANK_CODE = `out.clipPos.z+=${(-RANK_UNITS / 2 ** 24).toExponential(6)}*${TOWN_WEAR_ATTRIBUTE}.w*out.clipPos.w;`;
+
+/** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
+export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
   const definitions = townDefinitions(low);
   const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low);
   return {
     name: "TownSurface",
     priority: 200,
-    defines: { low },
+    defines: { low, ranked },
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"
         ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
-        : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};` },
+        : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : ""}` },
     getVertexAttributes: () => [
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 0 },
       { name: TOWN_TINT_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 16 },

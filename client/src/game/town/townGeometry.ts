@@ -28,6 +28,8 @@ import { spurGeometry } from "./spurGeometry.js";
 import { stairGeometry } from "./stairGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import { SignAtlas } from "./signAtlas.js";
+import { forgetMarks } from "./surface.js";
+import { resetLedger } from "./faceLedger.js";
 import type { Detail, TownGround } from "./townTypes.js";
 
 /** The side of a batching cell, metres. */
@@ -80,6 +82,8 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   const sinks = { flat: (x: number, z: number) => cell(x, z).flat, solid: (x: number, z: number) => cell(x, z).solid, glass: (x: number, z: number) => cell(x, z).glass, sign: (x: number, z: number) => cell(x, z).sign };
   const extras = { glass: sinks.glass, sign: sinks.sign, atlas };
 
+  forgetMarks(g);
+  resetLedger();
   streetGeometry(g, sinks.flat, sinks.solid, detail);
   stairGeometry(g, sinks.solid);
   endsGeometry(g, sinks.flat, sinks.solid);

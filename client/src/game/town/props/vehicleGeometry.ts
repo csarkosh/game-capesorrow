@@ -14,6 +14,7 @@ import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
 import type { WearKind } from "../townSurface.js";
+import { RANK } from "../groundSurfaces.js";
 import { drawnAsModel } from "./vehicleFleet.js";
 import { D, P, groundAt, lbox, lquadX, lquadZ, mix, mixC, placeOn, rnd, type Place } from "./kit.js";
 import { BUMPER, CABIN, CHROME, GLASS_CAR, LAMP, PAINT, PLATE, RIM, SEAT, SHAPES, TAIL, TARP_BLUE, TARP_SILVER, TYRE, UNDER, paintTint, type Shape, type Station } from "./vehicleStyle.js";
@@ -456,7 +457,7 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
     const hl = v.length / 2 - 0.3;
     const hw = v.width / 2 - 0.22;
     const c: Array<[number, number]> = [[hl, hw * 0.6], [hl * 0.8, hw], [-hl * 0.8, hw], [-hl, hw * 0.6], [-hl, -hw * 0.6], [-hl * 0.8, -hw], [hl * 0.8, -hw], [hl, -hw * 0.6]];
-    sinks.flat(v.x, v.z).poly(c.map(([a, b]): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.012, pl.oz + pl.fz * a + pl.lz * b]), [0, 1, 0], [0.012, 0.012, 0.012]);
+    sinks.flat(v.x, v.z).poly(c.map(([a, b]): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.012, pl.oz + pl.fz * a + pl.lz * b]), [0, 1, 0], [0.012, 0.012, 0.012], undefined, { rank: RANK.stain });
   }
   // On the full tier a vehicle with a model is that model's (`vehicleFleet.ts`): what is left of it here is the dark of the ground under it.
   if (drawnAsModel(v, detail)) return;
@@ -534,6 +535,9 @@ function camperGeometry(m: MeshBuilder, gl: MeshBuilder, pl: Place, v: Vehicle, 
     lquadZ(m, pl, sg * w, rear + 1.1, rear + 2.1, 1.3, 1.85, sg as 1 | -1, GLASS_CAR);
     lquadZ(m, pl, sg * w, rear + 3.6, rear + 4.5, 1.3, 1.85, sg as 1 | -1, GLASS_CAR);
     if (sg > 0) lquadZ(m, pl, sg * w, rear + 2.5, rear + 3.3, 0.7, 2.2, 1, mixC(paint, [0.4, 0.4, 0.4], 0.5));
-    lquadZ(m, pl, sg * (w + 0.001), rear + 0.2, rear + v.length - 0.9, 1.0, 1.12, sg as 1 | -1, mixC([0.1, 0.18, 0.3], paint, v.age * 0.4));
+    // The stripe runs either side of the door on the side that has one, so it lies over no other panel.
+    const stripe = mixC([0.1, 0.18, 0.3], paint, v.age * 0.4);
+    const runs: [number, number][] = sg > 0 ? [[rear + 0.2, rear + 2.5], [rear + 3.3, rear + v.length - 0.9]] : [[rear + 0.2, rear + v.length - 0.9]];
+    for (const [z0, z1] of runs) if (z1 - z0 > 0.05) lquadZ(m, pl, sg * (w + 0.001), z0, z1, 1.0, 1.12, sg as 1 | -1, stripe);
   }
 }

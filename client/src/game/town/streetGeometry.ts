@@ -26,7 +26,7 @@
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
 import { ASPHALT, CURB, DECK, GRAVEL, MEDIAN, PAINT_WHITE, PAINT_YELLOW, PATCH_ASPHALT, SIDEWALK } from "./palette.js";
 import { clamp01, hashN, hashS, smooth, vnoise } from "./groundNoise.js";
-import type { Over } from "./groundSurfaces.js";
+import { RANK, type Over } from "./groundSurfaces.js";
 import { junctionWear, roadWear } from "./roadWear.js";
 import { walkSide, type SideFrame } from "./walkGeometry.js";
 import { junctionGeometry } from "./junctionGeometry.js";
@@ -343,8 +343,9 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
         }
       }
     }
-    streetPaint(p, spans, roadIntervals);
+    // The wear first, so the paint is laid over the cracks and cuts it crosses (a mark laid later is the one on top).
     roadWear({ g, surf, road, p, plan, intervals: roadIntervals, junctions, key });
+    streetPaint(p, spans, roadIntervals);
   }
 
   /** The yard kind of the lot beside a side of a street at `s`: a point 4 m past the right of way's edge. */
@@ -413,7 +414,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const j1 = 0.06 * hashS(key, i + 1, 0, 5);
       const w = 0.03 + 0.02 * hashN(key, i, 0, 6);
       const quad = [at(p, s + j0 - w, t0), at(p, s + j0 + w, t0), at(p, s + j1 + w, t1), at(p, s + j1 - w, t1)];
-      surf.flat(quad, ROADWAY_LIFT + 0.002, PATCH_ASPHALT, over);
+      surf.flat(quad, ROADWAY_LIFT + 0.002, PATCH_ASPHALT, { ...over, rank: RANK.mark });
     }
   }
 
@@ -428,7 +429,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const sh = (0.72 + 0.14 * hashN(key, Math.floor(s0 * 2), 0, 8)) * (replaced ? 1.18 : 1);
       const tint: Rgb = [sh * 0.98, sh * 0.97, sh * 0.92];
       const frame = { origin: [p.ax + hashN(key, Math.floor(s0 * 2), 0, 9) * 3, 0, p.az + hashN(key, Math.floor(s0 * 2), 0, 10) * 3] as Vec3, u: [p.tx, 0, p.tz] as Vec3, v: [p.nx, 0, p.nz] as Vec3 };
-      const top: Over = { layer: "sidewalk", tint, frame, wear: replaced ? 0.02 : 0.12, dirt: replaced ? 0.05 : 0.28 };
+      const top: Over = { rank: RANK.mark, layer: "sidewalk", tint, frame, wear: replaced ? 0.02 : 0.12, dirt: replaced ? 0.05 : 0.28 };
       const q = (s: number, t: number): P2 => at(p, s, sg * t);
       const y0 = topY(p, s0, sg, p.cw);
       const y1 = topY(p, s1, sg, p.cw);
@@ -463,7 +464,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const q = (s: number, t: number): P2 => at(p, s, sg * t);
       const dirt = (v: readonly [number, number, number]): number => clamp01(0.18 + 0.7 * smooth(p.cw, p.cw + w, lat(v)));
       const wear = (v: readonly [number, number, number]): number => clamp01(0.05 + 0.35 * smooth(p.cw + 0.3, p.cw + w, lat(v)));
-      surf.flat([q(s0, edge + e0 - 0.08), q(s1, edge + e1 - 0.08), q(s1, o1), q(s0, o0)], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", tint: [0.95, 0.9, 0.82], frame, dirt, wear });
+      surf.flat([q(s0, edge + e0 - 0.08), q(s1, edge + e1 - 0.08), q(s1, o1), q(s0, o0)], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", rank: RANK.under, group: "shoulder", tint: [0.95, 0.9, 0.82], frame, dirt, wear });
     }
   }
 
@@ -509,7 +510,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
         const centre = c0;
         void centre;
         const hump = (v: readonly [number, number, number]): number => clamp01(0.45 + 0.4 * Math.abs(Math.abs((v[0] - p.ax) * p.nx + (v[2] - p.az) * p.nz) - 0.85));
-        surf.flat([q(s0, c0 - w0), q(s1, c1 - w1), q(s1, c1 + w1), q(s0, c0 + w0)], 0.01, GRAVEL, { layer: "gravel", tint: [0.8, 0.75, 0.68], frame, dirt: hump, wear: 0.08 });
+        surf.flat([q(s0, c0 - w0), q(s1, c1 - w1), q(s1, c1 + w1), q(s0, c0 + w0)], 0.01, GRAVEL, { layer: "gravel", tint: [0.8, 0.75, 0.68], frame, dirt: hump, wear: 0.08, rank: RANK.mark });
       }
     }
   }
@@ -530,7 +531,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
     let mark = 0;
     const stripP = (r: Rect, colour: Rgb, l = lift): void => {
       const { c, over } = paint(colour, mark++);
-      strip(p, r, c, l, false, over);
+      strip(p, r, c, l, false, { ...over, rank: RANK.paint });
     };
     for (const [a, b] of roadIntervals) {
       // Where the paint may begin and end: short of the crossing at each junction end.
@@ -555,7 +556,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
           }
         } else {
           // The avenue's median: a band between two solid yellow lines, ended short of the crossing; the lines broken where worn.
-          strip(p, [ca, cb, -MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2], MEDIAN, lift, false, { layer: "asphalt", tint: [0.3, 0.28, 0.24], dirt: 0.3, wear: 0.1 });
+          strip(p, [ca, cb, -MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2], MEDIAN, lift, false, { layer: "asphalt", tint: [0.3, 0.28, 0.24], dirt: 0.3, wear: 0.1, rank: RANK.mark });
           for (const t of [-MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2]) {
             const pieces = Math.max(1, Math.round((cb - ca) / 6));
             for (let i = 0; i < pieces; i++) {

@@ -10,7 +10,7 @@
  */
 import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
 
-export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string };
+export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string; /** For flat ground, its depth rank (`townMaterial.ts`): a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly rank: number };
 
 export type NearPair = { readonly a: Tri; readonly b: Tri; readonly gap: number; readonly area: number; readonly at: readonly [number, number, number] };
 
@@ -60,7 +60,7 @@ export function trianglesOf(arrays: MeshArrays, layer: string, into: Tri[] = [],
     const layerAt = arrays.surface[sv] as number;
     const textured = layerAt >= 0 && layerAt < 1e6;
     const look: Tri["look"] = [textured ? layerAt : -1, arrays.colors[cv] as number, arrays.colors[cv + 1] as number, arrays.colors[cv + 2] as number, arrays.surface[sv + 3] as number, arrays.surface[sv + 7] as number];
-    into.push({ layer, p, n: [nx, ny, nz], d: nx * p[0] + ny * p[1] + nz * p[2], index: t / 3, look, ...(tag === undefined ? {} : { tag }) });
+    into.push({ layer, p, n: [nx, ny, nz], d: nx * p[0] + ny * p[1] + nz * p[2], index: t / 3, look, rank: layer === "flat" ? (arrays.surface[sv + 11] as number) : 0, ...(tag === undefined ? {} : { tag }) });
   }
   return into;
 }
@@ -179,18 +179,28 @@ export function nearPairs(tris: readonly Tri[], gap: number, minArea = 1e-4): Ne
     const pk = ia < ib ? ia * 4194304 + ib : ib * 4194304 + ia;
     if (seen.has(pk)) return;
     seen.add(pk);
-    const [u, v] = across(a.n);
+    // Faces that look up are laid over each other in plan: two of them overlap where their outlines overlap seen from above, and two that meet along a step (a slab raised 5 mm over the ramp beside it) on a slope do not, though their projections along their normals overlap by the step's width. Any other face is compared in its own plane.
+    const plan = a.n[1] >= 0.7 && b.n[1] >= 0.7;
+    const [u, v] = plan ? ([[1, 0, 0], [0, 0, 1]] as const) : across(a.n);
     const fa = flat(a, u, v);
     const fb = flat(b, u, v);
     const c = clipped([fa[0], fa[1], fa[2]], fb);
     if (!(c.area > minArea)) return;
-    // The distance between the two planes where the faces overlap: the second plane's height over the first at the middle of the overlap, along the first's normal.
-    const nbu = b.n[0] * u[0] + b.n[1] * u[1] + b.n[2] * u[2];
-    const nbv = b.n[0] * v[0] + b.n[1] * v[1] + b.n[2] * v[2];
-    const nbn = b.n[0] * a.n[0] + b.n[1] * a.n[1] + b.n[2] * a.n[2];
-    const wb = (b.d - c.cx * nbu - c.cy * nbv) / nbn;
-    // The first plane's `w` at the same (u, v): the plane is n_a . x = d_a, with x = cx u + cy v + w n_a, so w = d_a.
-    const dd = Math.abs(wb - a.d);
+    let dd: number;
+    if (plan) {
+      // The two planes' heights over the middle of the overlap, as a distance along the normal.
+      const ya = (a.d - a.n[0] * c.cx - a.n[2] * c.cy) / a.n[1];
+      const yb = (b.d - b.n[0] * c.cx - b.n[2] * c.cy) / b.n[1];
+      dd = Math.abs(yb - ya) * a.n[1];
+    } else {
+      // The distance between the two planes where the faces overlap: the second plane's height over the first at the middle of the overlap, along the first's normal.
+      const nbu = b.n[0] * u[0] + b.n[1] * u[1] + b.n[2] * u[2];
+      const nbv = b.n[0] * v[0] + b.n[1] * v[1] + b.n[2] * v[2];
+      const nbn = b.n[0] * a.n[0] + b.n[1] * a.n[1] + b.n[2] * a.n[2];
+      const wb = (b.d - c.cx * nbu - c.cy * nbv) / nbn;
+      // The first plane's `w` at the same (u, v): the plane is n_a . x = d_a, with x = cx u + cy v + w n_a, so w = d_a.
+      dd = Math.abs(wb - a.d);
+    }
     if (dd >= gap) return;
     // Back to the world for where it is: the first face's own middle.
     const cx = (a.p[0] + a.p[3] + a.p[6]) / 3;

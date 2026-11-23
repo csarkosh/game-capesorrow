@@ -8,7 +8,8 @@
  *
  * Gravel lies on the ground a little over a verge (`END_LIFT`); posts, boards and the bumper stand, in the solid layer.
  */
-import { flatSurfaceFor } from "./groundSurfaces.js";
+import { RANK, flatSurfaceFor } from "./groundSurfaces.js";
+import { Surface } from "./surface.js";
 import { BARRICADE_RED, BARRICADE_WHITE, GRAVEL, TIMBER, PILE } from "./palette.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { endMarker } from "./signGeometry.js";
@@ -22,9 +23,8 @@ export const BULB_EXTRA = 3.5;
 /** The gravel's lift over the ground, metres. */
 export const END_LIFT = STREET_LIFT + 0.005;
 
-const UP: Vec3 = [0, 1, 0];
-
 export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
+  const surf = new Surface(g, flat);
   for (const e of g.plan.ends) {
     const st = g.plan.streets[e.street];
     if (st === undefined) continue;
@@ -41,7 +41,7 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
       const corners = pts.map(([px, pz]): Vec3 => [px, g.heightAt(px, pz) + END_LIFT, pz]);
       if (corners.every((c) => c[1] - END_LIFT < SEA + 0.1)) return;
       const [cx, cz] = pts[0] as [number, number];
-      flat(cx, cz).poly(corners, UP, colour, flatSurfaceFor(colour, g.anchor));
+      surf.lay(flat(cx, cz), corners, corners.map(() => END_LIFT), colour, flatSurfaceFor(colour, g.anchor), RANK.mark);
     };
     if (e.kind === "turnaround") {
       // A bulb of gravel whose near edge is the pavement's end line.
@@ -76,7 +76,8 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
       const [bx, bz] = at(1, 0);
       for (const t of [-cw + 0.15, 0, cw - 0.15]) {
         const [px, pz] = at(1, t);
-        solid(px, pz).box(px, pz, base(px, pz) - 0.05, ox, oz, 0.06, 0.06, 1.2, TIMBER, TIMBER);
+        // The posts stand 28 cm over the top board's top (1.17 m: the ground across the road's width falls by up to 20 cm), so the boards' tops (ends inside the outer posts) are not faces in their planes.
+        solid(px, pz).box(px, pz, base(px, pz) - 0.05, ox, oz, 0.06, 0.06, 1.5, TIMBER, TIMBER);
       }
       // To the outer posts' middles, so a board's end is inside its post.
       const half = cw - 0.15;
