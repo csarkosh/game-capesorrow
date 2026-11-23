@@ -1,25 +1,34 @@
 /**
  * The town's streets as flat surfaces that follow the ground: every street of the plan but the highway (which the engine
- * paints and the town does not draw over). A street is a roadway of `street.roadway` between curbs and, down each side, a
- * grass verge and a sidewalk of `street.walk` (the main street has sidewalks and no verge; an alley is gravel, all roadway; the
- * wharf is a timber deck).
+ * paints and the town does not draw over). A street is a roadway of `street.roadway` between curbs and, down each side, what that side
+ * of the street has (`plan.edges`, `port/edges.ts`): a curb and a sidewalk of slabs (`walkGeometry.ts`), or no curb and a ragged
+ * asphalt edge against a gravel shoulder; an alley is two wheel tracks of gravel with grass between; the wharf is a timber deck.
  *
- * - **One height for every roadway.** Every roadway, the junctions' pavements included, lies `ROADWAY_LIFT` over the ground, so no
- *   two roadway surfaces overlap and none stands over another. The sidewalk lies a curb's face (6 in, `CURB_RISE`) over the
- *   roadway, the verge 2 cm under it, and the curb's top is the sidewalk's own height.
+ * - **The ground is cut for the roadway** (`sim/town/streetField.ts`): the roadway lies the curb's height (15 cm, 5 to 10 where overlays
+ *   buried the old curb, none where there is no curb) under the lots' level, and the sidewalk, the verge and the lawns keep the lots'
+ *   level. Every surface here is the ground's height (the walked surface: terrain plus the trough's fill) plus a lift of a centimetre or
+ *   so: the roadway `ROADWAY_LIFT`, the curb's top and the sidewalk `WALK_LIFT`, the curb's top laid at the lots' level (read a quarter
+ *   metre beyond the curb line, where the ground has come up) over a face down to the gutter.
  * - **The legs' strips end on the junction.** A street is cut where it meets another: its roadway strip ends at each junction's
  *   mouth (`sim/town/junctions.ts`), its verge, sidewalk and curb at the corner's tangent point, and the pavement between is the
- *   junction's, bounded by its curb returns (`junctionGeometry.ts`). A street that runs through a junction is two strips.
- * - **Cut every `TILE` m** along its length and across into bands; a vertex stands at the ground's height plus its lift, so a
- *   surface follows the ground's roll.
- * - **Curb ramps, aprons and gaps**: the sidewalk's bands are cut where a ramp or a driveway apron stands, and the curb with them.
+ *   junction's, bounded by its curb returns (`junctionGeometry.ts`).
+ * - **The roadway is laid in the stretches the plan gives it** (`Paving`): each its own asphalt (the new, dark layer after 2000, else
+ *   the old, cracked one, with a tone of its own), a seam across the roadway between them, its texture running along the street.
+ *   A side with no curb ends its asphalt in a ragged edge that wanders by 10 to 20 cm and bites out here and there, against a gravel
+ *   shoulder 0.9 to 1.6 m wide with its own ragged edge, and a ditch beyond it where the plan has one.
+ * - **Wear** (`roadWear.ts`): utility cuts, sealed cracks, potholes, the band of needles and dirt in the gutter, gravel tracked on from
+ *   alley mouths, manhole covers and storm drains.
  * - **Paint**: the main street has a dashed yellow centre line (10 ft dashes with 30 ft gaps, ending short of every crossing) and
  *   white parking stalls held back from corners; the avenue a painted median between solid yellow lines. A residential street
- *   has none. The marks at a junction (crosswalks, stop lines, the dotted extension) are `junctionPaint.ts`'s.
+ *   has none. Paint is worn: some dashes short, some gone, the rest faded by the street's use. The marks at a junction are `junctionPaint.ts`'s.
  * - Ground under the sea is not drawn. A tile that reaches into the engine's road bed is cut along the bed's edge.
  */
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
-import { ALLEY, ASPHALT, CURB, DECK, MEDIAN, PAINT_WHITE, PAINT_YELLOW, SIDEWALK, VERGE } from "./palette.js";
+import { ASPHALT, CURB, DECK, GRAVEL, MEDIAN, PAINT_WHITE, PAINT_YELLOW, PATCH_ASPHALT, SIDEWALK } from "./palette.js";
+import { clamp01, hashN, hashS, smooth, vnoise } from "./groundNoise.js";
+import type { Over } from "./groundSurfaces.js";
+import { junctionWear, roadWear } from "./roadWear.js";
+import { walkSide, type SideFrame } from "./walkGeometry.js";
 import { junctionGeometry } from "./junctionGeometry.js";
 import { junctionPaint } from "./junctionPaint.js";
 import { worldJunctions } from "./junctionWorld.js";
@@ -28,20 +37,23 @@ import { RoadSet, Surface, type P2, type P3 } from "./surface.js";
 import type { Detail, Sink, TownGround } from "./townTypes.js";
 import { RAMP_RUN, RAMP_LANDING, CURB_FACE } from "../../sim/town/junctionShape.js";
 import { hasPavement } from "../../sim/town/junctions.js";
-import type { JunctionLeg, Street } from "../../sim/town/types.js";
+import { lotIdAt } from "../../sim/town/lotIndex.js";
+import { CURB_OUT } from "../../sim/town/streetField.js";
+import type { JunctionLeg, Paving, SideEdge, Street, StreetEdge, YardKind } from "../../sim/town/types.js";
+
 
 /** A strip is cut along its length at least this often, metres. */
 export const TILE = 4;
 /** The lift of a verge's base over the ground, metres; a roadway lies `ASPHALT_OVER` more. */
-export const STREET_LIFT = 0.06;
-export const ASPHALT_OVER = 0.02;
-/** Every roadway's lift over the ground, the junctions' pavements and the legs alike. */
-export const ROADWAY_LIFT = STREET_LIFT + ASPHALT_OVER;
-/** The curb's face over the gutter, 6 in (the research, section 1), the sidewalk's height over the roadway, and the curb's width. */
-export const CURB_RISE = CURB_FACE;
-export const WALK_LIFT = ROADWAY_LIFT + CURB_RISE;
-export const VERGE_LIFT = WALK_LIFT - 0.02;
+export const STREET_LIFT = 0.024;
+/** Every roadway's lift over the ground (which is already cut down by the curb's height: `sim/town/streetField.ts`), the junctions' pavements and the legs alike. */
+export const ROADWAY_LIFT = 0.012;
+/** The curb's top and the sidewalk's lie this much over the ground at the lots' level, so a sidewalk is level with the lot behind it. */
+export const WALK_LIFT = 0.012;
+/** The curb's width. */
 export const CURB_WIDTH = 0.18;
+/** The curb's face as a constant, for the ramps' length (the research's 6 in); the face drawn is the street's own curb height. */
+export const CURB_RISE = CURB_FACE;
 /** Paint lies this much over its roadway, metres. */
 export const MARK_OVER = 0.012;
 /** The main street's centre line: its width (4 in, WSDOT), dash and gap (10 ft and 30 ft, MUTCD and WSDOT), metres. */
@@ -60,30 +72,7 @@ export const MEDIAN_WIDTH = 2;
 /** A driveway apron's flare at each side (2 ft 6 in, WSDOT's sheet) and its lip at the gutter (1/2 in), metres. */
 export const APRON_FLARE = 0.76;
 export const APRON_LIP = 0.013;
-/** Where an alley's gravel rises to the sidewalk's height, over this long a ramp at its mouth, metres. */
-export const ALLEY_RISE = 1.8;
-/** How far beyond the sidewalk the skirt's foot lies under the ground, so no light shows under it, metres. */
-const SKIRT_FOOT = 0.0;
 
-type PS = {
-  street: Street;
-  ax: number;
-  az: number;
-  tx: number;
-  tz: number;
-  /** The left normal: a positive offset lies left of the street's direction. */
-  nx: number;
-  nz: number;
-  length: number;
-  cw: number;
-  hw: number;
-  walk: number;
-  /** The verge's width between the curb's back and the sidewalk (0 for none). */
-  verge: number;
-};
-
-type Rect = [number, number, number, number];
-type Span = { lo: number; hi: number; backCentre: number; backPark: number; fwdCentre: number; fwdPark: number };
 
 /** The parts of [lo, hi] that none of `blocked` covers. */
 function without(lo: number, hi: number, blocked: readonly (readonly [number, number])[]): [number, number][] {
@@ -121,6 +110,35 @@ function cut(r: Rect, holes: readonly Rect[]): Rect[] {
   return pieces.filter((p) => p[1] - p[0] > 1e-6 && p[3] - p[2] > 1e-6);
 }
 
+
+/** A street's frame in the world, as the builders here use it (and `walkGeometry.ts`, `roadWear.ts`). */
+export type PS = {
+  street: Street;
+  edge: StreetEdge;
+  ax: number;
+  az: number;
+  tx: number;
+  tz: number;
+  /** The left normal: a positive offset lies left of the street's direction. */
+  nx: number;
+  nz: number;
+  length: number;
+  cw: number;
+  hw: number;
+  walk: number;
+};
+
+type Rect = [number, number, number, number];
+type Span = { lo: number; hi: number; backCentre: number; backPark: number; fwdCentre: number; fwdPark: number };
+
+/** The curb top's lift when the ground beside the curb has come up: the lots' level is read this far past the curb line. */
+const CURB_LEVEL = CURB_OUT + 0.01;
+/** The asphalt of a stretch: the new layer after 2000 and under half worn, else the old one. */
+function asphaltOf(pv: Paving, sf: number): { layer: "asphalt" | "asphalt_dark"; tint: Rgb } {
+  const fresh = pv.decade >= 2000 && pv.wear < 0.5;
+  return fresh ? { layer: "asphalt_dark", tint: [1.15 * sf, 1.15 * sf, 1.15 * sf] } : { layer: "asphalt", tint: [sf, sf, sf * 0.98] };
+}
+
 export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, detail: Detail = "full"): void {
   const { plan, anchor } = g;
   const surf = new Surface(g, flat);
@@ -133,6 +151,8 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
   const prepared = new Map<number, PS>();
   for (const street of plan.streets) {
     if (street.kind === "highway" || street.kind === "rail" || street.kind === "stair") continue;
+    const edge = plan.edges[street.id];
+    if (edge === undefined) continue;
     const ax = anchor.x + street.a.x;
     const az = anchor.z + street.a.z;
     const bx = anchor.x + street.b.x;
@@ -143,23 +163,31 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
     const tz = (bz - az) / length;
     const hw = street.width / 2;
     const cw = street.kind === "wharf" ? 0 : street.roadway / 2;
-    const inner = cw + CURB_WIDTH;
-    const verge = street.walk > 0 ? Math.max(0, hw - street.walk - inner) : 0;
-    prepared.set(street.id, { street, ax, az, tx, tz, nx: -tz, nz: tx, length, cw, hw, walk: street.walk, verge: verge > 0.05 ? verge : 0 });
+    prepared.set(street.id, { street, edge, ax, az, tx, tz, nx: -tz, nz: tx, length, cw, hw, walk: street.walk });
   }
 
   const at = (p: PS, s: number, t: number): P2 => [p.ax + p.tx * s + p.nx * t, p.az + p.tz * s + p.nz * t];
+  /** The roadway's height at (s, t) with its lift: the walked surface where the roadway is whole (the cut reaches the curb line). */
+  const roadY = (p: PS, s: number, t: number, lift = ROADWAY_LIFT): number => {
+    const q = at(p, s, t);
+    return g.heightAt(q[0], q[1]) + lift;
+  };
+  /** The lots' level at (s, t) beside a curb: read at least `CURB_LEVEL` past the curb line. */
+  const topY = (p: PS, s: number, sg: number, t: number, lift = WALK_LIFT): number => {
+    const q = at(p, s, sg * Math.max(t, p.cw + CURB_LEVEL));
+    return g.heightAt(q[0], q[1]) + lift;
+  };
 
-  /** A flat strip of a street: from `s0` to `s1` along it and `t0` to `t1` across it, cut every `TILE` m, at one lift; a roadway's tiles are laid without the ground a roadway laid before covers. */
-  const strip = (p: PS, r: Rect, colour: Rgb, lift: number, roadway = false): void => {
+  /** A flat strip of a street: from `s0` to `s1` along it and `t0` to `t1` across it, cut every `tile` m, at one lift; a roadway's tiles are laid without the ground a roadway laid before covers. */
+  const strip = (p: PS, r: Rect, colour: Rgb, lift: number, roadway = false, over?: Over, tile = TILE): void => {
     const [s0, s1, t0, t1] = r;
-    const n = Math.max(1, Math.ceil((s1 - s0) / TILE));
+    const n = Math.max(1, Math.ceil((s1 - s0) / tile));
     for (let i = 0; i < n; i++) {
       const a = s0 + ((s1 - s0) * i) / n;
       const b = s0 + ((s1 - s0) * (i + 1)) / n;
       const quad = [at(p, a, t0), at(p, b, t0), at(p, b, t1), at(p, a, t1)];
-      if (roadway) road.tile(quad, lift, colour);
-      else surf.flat(quad, lift, colour);
+      if (roadway) road.tile(quad, lift, colour, over);
+      else surf.flat(quad, lift, colour, over);
     }
   };
 
@@ -210,7 +238,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       for (const sg of [1, -1]) {
         (sideBlocked.get(p.street.id) as [number, number][][])[sideIx(sg)]!.push([hasBack ? (sideLo[sideIx(sg)] as number) : -1e9, hasFwd ? (sideHi[sideIx(sg)] as number) : 1e9]);
       }
-      // Each ramp of this junction on this street: a hole in the verge, sidewalk and curb.
+      // Each ramp of this junction on this street: a hole in the curb and the sidewalk.
       for (const r of j.ramp) {
         const l = j.legs[r.leg] as JunctionLeg;
         if (l.street !== p.street.id) continue;
@@ -224,7 +252,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       }
     }
   }
-  // Alleys' mouths: the apron's opening in the curb, verge and sidewalk.
+  // Alleys' mouths: the apron's opening in the curb (and the sidewalk, where the verge is no wider than the apron).
   const apronsOf: { p: PS; s: number; sigma: number; width: number; depth: number }[] = [];
   for (const j of junctions) {
     if (j.kind !== "alley" || j.alley === null) continue;
@@ -232,14 +260,12 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
     if (p === undefined) continue;
     const s = (j.legs[0]!.x - p.ax) * p.tx + (j.legs[0]!.z - p.az) * p.tz;
     const sigma = j.alley.dx * p.nx + j.alley.dz * p.nz > 0 ? 1 : -1;
-    const depth = p.verge > 0.5 ? p.verge : CURB_FACE / 0.083;
+    const side = p.edge.sides[sideIx(sigma)] as SideEdge;
+    const depth = side.curb ? (side.verge > 0.5 ? side.verge : 1.8) : 0;
     const half = j.alley.width / 2 + APRON_FLARE;
-    (holes.get(p.street.id) as Rect[][])[sideIx(sigma)]!.push([s - half, s + half, sigma > 0 ? p.cw : -(p.cw + depth + 0.0), sigma > 0 ? p.cw + depth : -p.cw]);
+    if (side.curb) (holes.get(p.street.id) as Rect[][])[sideIx(sigma)]!.push([s - half, s + half, sigma > 0 ? p.cw : -(p.cw + depth), sigma > 0 ? p.cw + depth : -p.cw]);
     apronsOf.push({ p, s, sigma, width: j.alley.width, depth });
   }
-
-  /** The curb's gaps along a side: the ramps' and the aprons' s-ranges. */
-  const curbGaps = (p: PS, sigma: number): [number, number][] => (holes.get(p.street.id) as Rect[][])[sideIx(sigma)]!.map((h): [number, number] => [h[0], h[1]]);
 
   // The junctions' pavements first: they keep their ground, and the roadways laid after them leave it.
   junctionGeometry(g, surf, solid, paved, road, pavements);
@@ -252,7 +278,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
         const n = Math.max(1, Math.ceil(p.length / TILE));
         for (let i = 0; i < n; i++) {
           const corners = [at(p, (i / n) * p.length, t0), at(p, ((i + 1) / n) * p.length, t0), at(p, ((i + 1) / n) * p.length, t1), at(p, (i / n) * p.length, t1)];
-          const pts: Vec3[] = corners.map(([x, z]) => [x, Math.max(g.heightAt(x, z) + STREET_LIFT, g.deckAt(x, z)), z]);
+          const pts: Vec3[] = corners.map(([x, z]) => [x, Math.max(g.heightAt(x, z) + 0.06, g.deckAt(x, z)), z]);
           const c = corners[0] as P2;
           solid(c[0], c[1]).poly(pts, [0, 1, 0], DECK);
         }
@@ -266,83 +292,199 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
     const spans = spansOf.get(street.id) as Span[];
     const blocked = spans.map((s): [number, number] => [s.lo, s.hi]);
     const roadIntervals = without(0, p.length, blocked);
+    const key = Math.imul(street.id + 1, 40503);
+    // The roadway, in the stretches it was paved in.
     for (const [a, b] of roadIntervals) {
-      strip(p, [a, b, -p.cw, 0], ASPHALT, ROADWAY_LIFT, true);
-      strip(p, [a, b, 0, p.cw], ASPHALT, ROADWAY_LIFT, true);
+      p.edge.paving.forEach((pv, ix) => {
+        const lo = Math.max(a, pv.s0);
+        const hi = Math.min(b, pv.s1);
+        if (hi - lo < 0.04) return;
+        roadway(p, lo, hi, pv, ix, key);
+      });
     }
-    const inner = p.cw + CURB_WIDTH;
+    // The seams between stretches: a dark line across the roadway where the old surface meets the new.
+    p.edge.paving.forEach((pv, ix) => {
+      if (ix === 0) return;
+      for (const [a, b] of roadIntervals) if (pv.s0 > a + 0.3 && pv.s0 < b - 0.3) seam(p, pv.s0, key + ix);
+    });
     for (const sg of [1, -1]) {
-      const sideBand = (sideBlocked.get(street.id) as [number, number][][])[sideIx(sg)] as [number, number][];
-      const hs = (holes.get(street.id) as Rect[][])[sideIx(sg)] as Rect[];
+      const k = sideIx(sg);
+      const side = p.edge.sides[k] as SideEdge;
+      const sideBand = (sideBlocked.get(street.id) as [number, number][][])[k] as [number, number][];
+      const hs = (holes.get(street.id) as Rect[][])[k] as Rect[];
       const lat = (u0: number, u1: number): [number, number] => (sg > 0 ? [u0, u1] : [-u1, -u0]);
+      const sideKey = key ^ (sg > 0 ? 0x1f : 0x2e);
       for (const [a, b] of without(0, p.length, sideBand)) {
-        if (p.walk > 0) {
-          const [c0, c1] = lat(p.cw, inner);
-          for (const r of cut([a, b, c0, c1], hs)) strip(p, r, CURB, WALK_LIFT);
-          if (p.verge > 0) {
-            const [v0, v1] = lat(inner, inner + p.verge);
-            for (const r of cut([a, b, v0, v1], hs)) strip(p, r, VERGE, VERGE_LIFT);
-          }
-          const [w0, w1] = lat(p.hw - p.walk, p.hw);
-          const [x0, x1] = lat(Math.max(inner, p.hw - p.walk), p.hw);
-          void w0;
-          void w1;
-          for (const r of cut([a, b, x0, x1], hs)) strip(p, r, SIDEWALK, WALK_LIFT);
-          // The curb's face down to the roadway, looking over it, and the sidewalk's outer edge down to the ground.
-          for (const [fa, fb] of without(a, b, curbGaps(p, sg))) {
-            const m = Math.max(1, Math.ceil((fb - fa) / TILE));
-            for (let i = 0; i < m; i++) {
-              const s0 = fa + ((fb - fa) * i) / m;
-              const s1 = fa + ((fb - fa) * (i + 1)) / m;
-              surf.face(at(p, s0, sg * p.cw), at(p, s1, sg * p.cw), ROADWAY_LIFT, WALK_LIFT, [-sg * p.nx, -sg * p.nz], CURB);
-            }
-          }
-          const m = Math.max(1, Math.ceil((b - a) / TILE));
-          for (let i = 0; i < m; i++) {
-            const s0 = a + ((b - a) * i) / m;
-            const s1 = a + ((b - a) * (i + 1)) / m;
-            surf.face(at(p, s0, sg * p.hw), at(p, s1, sg * p.hw), SKIRT_FOOT, WALK_LIFT, [sg * p.nx, sg * p.nz], CURB);
-          }
+        if (side.curb) {
+          // The curb: its top at the lots' level, in sections of about 3 m (poured as they were, some replaced), and its face down to the gutter.
+          const [c0, c1] = lat(p.cw, p.cw + CURB_WIDTH);
+          for (const r of cut([a, b, c0, c1], hs)) curbSections(p, sg, r[0], r[1], sideKey);
+        } else {
+          shoulder(p, sg, a, b, side, sideKey);
+        }
+        // The sidewalk: the runs of this side between the junctions' corners and the ramps and aprons that cross it.
+        if (side.runs.length > 0) {
+          const inner = p.hw - p.walk;
+          const free = without(a, b, hs.filter((h) => Math.max(Math.abs(h[2]), Math.abs(h[3])) > inner && Math.min(Math.abs(h[2]), Math.abs(h[3])) < p.hw).map((h): [number, number] => [h[0], h[1]]));
+          const frame: SideFrame = { id: street.id, ax: p.ax, az: p.az, tx: p.tx, tz: p.tz, nx: p.nx, nz: p.nz, cw: p.cw, hw: p.hw, walk: p.walk };
+          walkSide(
+            {
+              surf,
+              frame,
+              sigma: sg as 1 | -1,
+              side,
+              yardKindAt: (s) => yardKindAt(p, sg, s),
+              plan,
+            },
+            free,
+            (x, z) => g.heightAt(x, z),
+            inner,
+          );
         }
       }
     }
     streetPaint(p, spans, roadIntervals);
+    roadWear({ g, surf, road, p, plan, intervals: roadIntervals, junctions, key });
   }
 
-  // ---- Aprons: the driveway aprons across the verge, each with its flared wings.
-  for (const { p, s, sigma, width, depth } of apronsOf) {
-    const half = width / 2;
-    const f = APRON_FLARE;
-    const t0 = sigma * p.cw;
-    const t1 = sigma * (p.cw + depth);
-    const lip = ROADWAY_LIFT + APRON_LIP;
-    const pt = (ss: number, t: number, lift: number): P3 => {
-      const q = at(p, ss, t);
-      return [q[0], q[1], lift];
-    };
-    // The apron's middle, sloping from the lip at the gutter up to the sidewalk's height.
-    surf.poly([pt(s - half, t0, lip), pt(s + half, t0, lip), pt(s + half, t1, WALK_LIFT), pt(s - half, t1, WALK_LIFT)], SIDEWALK);
-    // Each wing: the flare, a triangle from the apron's edge at the gutter up to the curb's full height.
-    for (const e of [-1, 1]) {
-      surf.poly([pt(s + e * half, t0, lip), pt(s + e * (half + f), t0, WALK_LIFT), pt(s + e * half, t1, WALK_LIFT)], SIDEWALK);
-      surf.poly([pt(s + e * (half + f), t0, WALK_LIFT), pt(s + e * (half + f), t1, WALK_LIFT), pt(s + e * half, t1, WALK_LIFT)], SIDEWALK);
+  /** The yard kind of the lot beside a side of a street at `s`: a point 4 m past the right of way's edge. */
+  function yardKindAt(p: PS, sg: number, s: number): YardKind | null {
+    const q = at(p, s, sg * (p.hw + 4));
+    const id = lotIdAt(plan, q[0] - anchor.x, q[1] - anchor.z);
+    if (id < 0) return null;
+    return plan.yards[id]?.kind ?? null;
+  }
+
+  /** The roadway of one stretch of paving, from `a` to `b`: bands across, the outer one at each side ragged where there is no curb. */
+  function roadway(p: PS, a: number, b: number, pv: Paving, ix: number, key: number): void {
+    const sf = 0.86 + 0.28 * hashN(key, ix, 0, 1);
+    const { layer, tint } = asphaltOf(pv, sf);
+    const use = p.edge.use;
+    // The texture runs along the street (its cracks do), shifted by a roll of the stretch's own.
+    const frame = { origin: [p.ax + hashN(key, ix, 0, 2) * 5, 0, p.az + hashN(key, ix, 0, 3) * 5] as Vec3, u: [p.nx, 0, p.nz] as Vec3, v: [p.tx, 0, p.tz] as Vec3 };
+    const across = (q: readonly [number, number, number]): number => Math.abs((q[0] - p.ax) * p.nx + (q[2] - p.az) * p.nz) / p.cw;
+    // Dirt gathers toward the gutters, the more where the stretch is worn and the street little used; the middle is cleaner where the wheels go.
+    const dirt = (q: readonly [number, number, number]): number => clamp01(0.02 + 0.08 * pv.wear + (0.1 + 0.25 * (1 - use * 0.6)) * smooth(0.55, 1, across(q)));
+    const wear = (q: readonly [number, number, number]): number => clamp01((0.02 + 0.12 * pv.wear * (1 - use * 0.5)) * smooth(0.6, 1.05, across(q)));
+    const over: Over = { layer, tint, frame, dirt, wear };
+    for (const sg of [1, -1]) {
+      const side = p.edge.sides[sideIx(sg)] as SideEdge;
+      const lat = (u0: number, u1: number): [number, number] => (sg > 0 ? [u0, u1] : [-u1, -u0]);
+      const [i0, i1] = lat(0, p.cw * 0.5);
+      const [m0, m1] = lat(p.cw * 0.5, p.cw - 0.9);
+      strip(p, [a, b, i0, i1], ASPHALT, ROADWAY_LIFT, true, over);
+      strip(p, [a, b, m0, m1], ASPHALT, ROADWAY_LIFT, true, over);
+      const t0 = p.cw - 0.9;
+      if (side.curb) {
+        const [o0, o1] = lat(t0, p.cw);
+        strip(p, [a, b, o0, o1], ASPHALT, ROADWAY_LIFT, true, over);
+        continue;
+      }
+      // No curb: the outer band ends in an edge that wanders, in stations of 2 m.
+      const sideKey = key ^ (sg > 0 ? 0x11 : 0x22);
+      const n = Math.max(1, Math.ceil((b - a) / 2));
+      for (let i = 0; i < n; i++) {
+        const s0 = a + ((b - a) * i) / n;
+        const s1 = a + ((b - a) * (i + 1)) / n;
+        const e0 = edgeOffset(p, sideKey, s0, pv);
+        const e1 = edgeOffset(p, sideKey, s1, pv);
+        const q = (s: number, t: number): P2 => at(p, s, sg * t);
+        road.tile([q(s0, t0), q(s1, t0), q(s1, p.cw + e1), q(s0, p.cw + e0)], ROADWAY_LIFT, ASPHALT, over);
+      }
     }
   }
 
-  // ---- An alley: gravel, risen to the sidewalk's height where it meets a street.
-  function alleyGeometry(p: PS): void {
-    const mouths = junctions.filter((j) => j.kind === "alley" && j.legs[2]!.street === p.street.id);
-    // The alley's own two ends: the one nearer each mouth is where its gravel rises; the end carries on to the street's lot line.
-    const lifts = (s: number): number => {
-      let lift = ROADWAY_LIFT;
-      for (const m of mouths) {
-        const e = m.legs[2] as JunctionLeg;
-        const sm = (e.x - p.ax) * p.tx + (e.z - p.az) * p.tz;
-        const d = Math.abs(s - sm);
-        if (d < ALLEY_RISE) lift = Math.max(lift, WALK_LIFT - ((WALK_LIFT - ROADWAY_LIFT) * d) / ALLEY_RISE);
+  /** How far the asphalt's edge stands out from the nominal line at `s` where there is no curb: -0.14 to +0.18 m, bitten in where the stretch is worn. */
+  function edgeOffset(p: PS, key: number, s: number, pv: Paving): number {
+    const slow = vnoise(key, s, 7) - 0.45;
+    const fine = hashS(key, Math.floor(s / 2), 0, 3);
+    const bite = hashN(key, Math.floor(s / 2), 0, 4) < 0.12 * pv.wear ? -0.12 : 0;
+    return Math.max(-0.2, Math.min(0.22, slow * 0.34 + fine * 0.05 + bite));
+  }
+
+  /** A seam across the roadway: a dark band 5 cm wide with a jog or two, where one paving ends and the next begins. */
+  function seam(p: PS, s: number, key: number): void {
+    const over: Over = { layer: "asphalt_dark", tint: [0.5, 0.5, 0.5], frame: { origin: [p.ax, 0, p.az], u: [p.nx, 0, p.nz], v: [p.tx, 0, p.tz] } };
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const t0 = -p.cw + (2 * p.cw * i) / n;
+      const t1 = -p.cw + (2 * p.cw * (i + 1)) / n;
+      const j0 = 0.06 * hashS(key, i, 0, 5);
+      const j1 = 0.06 * hashS(key, i + 1, 0, 5);
+      const w = 0.03 + 0.02 * hashN(key, i, 0, 6);
+      const quad = [at(p, s + j0 - w, t0), at(p, s + j0 + w, t0), at(p, s + j1 + w, t1), at(p, s + j1 - w, t1)];
+      surf.flat(quad, ROADWAY_LIFT + 0.002, PATCH_ASPHALT, over);
+    }
+  }
+
+  /** The curb along [a, b] of a side, in sections of 2.6 to 3.4 m: each poured by itself, with its tone and its dirt, and its face down to the gutter. */
+  function curbSections(p: PS, sg: number, a: number, b: number, key: number): void {
+    const n = Math.max(1, Math.round((b - a) / 3));
+    for (let i = 0; i < n; i++) {
+      const s0 = a + ((b - a) * i) / n;
+      const s1 = a + ((b - a) * (i + 1)) / n;
+      const roll = hashN(key, Math.floor(s0 * 2), 0, 7);
+      const replaced = roll < 0.07;
+      const sh = (0.72 + 0.14 * hashN(key, Math.floor(s0 * 2), 0, 8)) * (replaced ? 1.18 : 1);
+      const tint: Rgb = [sh * 0.98, sh * 0.97, sh * 0.92];
+      const frame = { origin: [p.ax + hashN(key, Math.floor(s0 * 2), 0, 9) * 3, 0, p.az + hashN(key, Math.floor(s0 * 2), 0, 10) * 3] as Vec3, u: [p.tx, 0, p.tz] as Vec3, v: [p.nx, 0, p.nz] as Vec3 };
+      const top: Over = { layer: "sidewalk", tint, frame, wear: replaced ? 0.02 : 0.12, dirt: replaced ? 0.05 : 0.28 };
+      const q = (s: number, t: number): P2 => at(p, s, sg * t);
+      const y0 = topY(p, s0, sg, p.cw);
+      const y1 = topY(p, s1, sg, p.cw);
+      surf.polyY([[...q(s0, p.cw), y0], [...q(s1, p.cw), y1], [...q(s1, p.cw + CURB_WIDTH), y1], [...q(s0, p.cw + CURB_WIDTH), y0]] as P3[], CURB, top);
+      // The face, looking over the roadway; its foot is the gutter, which is dirtier.
+      const fb0 = roadY(p, s0, sg * p.cw);
+      const fb1 = roadY(p, s1, sg * p.cw);
+      if (y0 - fb0 > 0.01 || y1 - fb1 > 0.01) {
+        const faceOver: Over = { layer: "sidewalk", tint: [tint[0] * 0.92, tint[1] * 0.92, tint[2] * 0.9], frame: { origin: [p.ax, 0, p.az], u: [p.tx, 0, p.tz], v: [0, 1, 0] }, wear: 0.1, dirt: (v) => clamp01(0.55 - (v[1] - Math.min(fb0, fb1)) * 4.5) };
+        surf.faceY(q(s0, p.cw), q(s1, p.cw), fb0, y0, fb1, y1, [-sg * p.nx, -sg * p.nz], CURB, faceOver);
       }
-      return lift;
-    };
+    }
+  }
+
+  /** A side with no curb: the gravel shoulder, 0.9 to 1.6 m wide, from under the asphalt's edge to its own ragged edge. */
+  function shoulder(p: PS, sg: number, a: number, b: number, side: SideEdge, key: number): void {
+    const sideKey = key ^ 0x44;
+    const pvOf = (s: number): Paving => p.edge.paving.find((q) => s < q.s1) ?? (p.edge.paving[p.edge.paving.length - 1] as Paving);
+    const n = Math.max(1, Math.ceil((b - a) / 2));
+    const frame = { origin: [p.ax + hashN(sideKey, 0, 0, 2) * 5, 0, p.az + hashN(sideKey, 0, 0, 3) * 5] as Vec3, u: [p.tx, 0, p.tz] as Vec3, v: [p.nx, 0, p.nz] as Vec3 };
+    const lat = (q: readonly [number, number, number]): number => Math.abs((q[0] - p.ax) * p.nx + (q[2] - p.az) * p.nz);
+    for (let i = 0; i < n; i++) {
+      const s0 = a + ((b - a) * i) / n;
+      const s1 = a + ((b - a) * (i + 1)) / n;
+      // The asphalt's own edge (the same offsets as the roadway's, so they meet) and the shoulder's outer edge.
+      const e0 = edgeOffset(p, key ^ (sg > 0 ? 0x11 : 0x22), s0, pvOf(s0));
+      const e1 = edgeOffset(p, key ^ (sg > 0 ? 0x11 : 0x22), s1, pvOf(s1));
+      const w = side.verge;
+      const o0 = p.cw + w * (0.75 + 0.5 * vnoise(sideKey, s0, 5)) + 0.12 * hashS(sideKey, Math.floor(s0 / 2), 0, 3);
+      const o1 = p.cw + w * (0.75 + 0.5 * vnoise(sideKey, s1, 5)) + 0.12 * hashS(sideKey, Math.floor(s1 / 2), 0, 3);
+      const edge = p.cw + 0.04;
+      const q = (s: number, t: number): P2 => at(p, s, sg * t);
+      const dirt = (v: readonly [number, number, number]): number => clamp01(0.18 + 0.7 * smooth(p.cw, p.cw + w, lat(v)));
+      const wear = (v: readonly [number, number, number]): number => clamp01(0.05 + 0.35 * smooth(p.cw + 0.3, p.cw + w, lat(v)));
+      surf.flat([q(s0, edge + e0 - 0.08), q(s1, edge + e1 - 0.08), q(s1, o1), q(s0, o0)], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", tint: [0.95, 0.9, 0.82], frame, dirt, wear });
+    }
+  }
+
+  // ---- Aprons: the driveway aprons across the verge, in strips across so they follow the ground's own cut.
+  for (const { p, s, sigma, width, depth } of apronsOf) {
+    if (depth <= 0) continue;
+    const half = width / 2 + APRON_FLARE;
+    const ts = [p.cw, p.cw + 0.12, p.cw + 0.25, p.cw + 0.6, p.cw + depth];
+    const over: Over = { layer: "sidewalk", tint: [0.78, 0.77, 0.73], dirt: 0.18, wear: 0.1 };
+    for (let i = 0; i + 1 < ts.length; i++) {
+      const t0 = ts[i] as number;
+      const t1 = ts[i + 1] as number;
+      if (t1 - t0 < 0.02) continue;
+      surf.flat([at(p, s - half, sigma * t0), at(p, s + half, sigma * t0), at(p, s + half, sigma * t1), at(p, s - half, sigma * t1)], WALK_LIFT, SIDEWALK, over);
+    }
+  }
+
+  // ---- An alley: two wheel tracks of gravel with grass between (the mask lets the grass grow there).
+  function alleyGeometry(p: PS): void {
+    const key = Math.imul(p.street.id + 1, 2246822);
+    const mouths = junctions.filter((j) => j.kind === "alley" && j.legs[2]!.street === p.street.id);
     // Along the alley, from its end (or the lot line it is carried out to) to its other end.
     let a = 0;
     let b = p.length;
@@ -352,35 +494,44 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       if (sm < p.length / 2) a = Math.min(a, sm);
       else b = Math.max(b, sm);
     }
-    const stations: number[] = [a];
-    const n = Math.max(1, Math.ceil((b - a) / TILE));
-    for (let i = 1; i < n; i++) stations.push(a + ((b - a) * i) / n);
-    stations.push(b);
-    for (const m of mouths) {
-      const e = m.legs[2] as JunctionLeg;
-      const sm = (e.x - p.ax) * p.tx + (e.z - p.az) * p.tz;
-      stations.push(sm + (sm < p.length / 2 ? ALLEY_RISE : -ALLEY_RISE));
-    }
-    stations.sort((x, y) => x - y);
-    for (let i = 0; i + 1 < stations.length; i++) {
-      const s0 = stations[i] as number;
-      const s1 = stations[i + 1] as number;
-      if (s1 - s0 < 1e-3) continue;
-      const y0 = lifts(s0);
-      const y1 = lifts(s1);
-      const l0 = at(p, s0, -p.cw);
-      const l1 = at(p, s1, -p.cw);
-      const r1 = at(p, s1, p.cw);
-      const r0 = at(p, s0, p.cw);
-      surf.poly([[l0[0], l0[1], y0], [l1[0], l1[1], y1], [r1[0], r1[1], y1], [r0[0], r0[1], y0]], ALLEY);
+    const n = Math.max(1, Math.ceil((b - a) / 3));
+    for (const sg of [-1, 1]) {
+      for (let i = 0; i < n; i++) {
+        const s0 = a + ((b - a) * i) / n;
+        const s1 = a + ((b - a) * (i + 1)) / n;
+        // A track about 0.8 m wide, 0.8 m off the middle, its edges wandering a few centimetres: the wheels do not run true.
+        const c0 = 0.85 + 0.1 * (vnoise(key ^ sg, s0, 9) - 0.5);
+        const c1 = 0.85 + 0.1 * (vnoise(key ^ sg, s1, 9) - 0.5);
+        const w0 = 0.34 + 0.12 * hashN(key, i, sg, 3);
+        const w1 = 0.34 + 0.12 * hashN(key, i + 1, sg, 3);
+        const q = (s: number, t: number): P2 => at(p, s, sg * t);
+        const frame = { origin: [p.ax + hashN(key, i, sg, 4) * 4, 0, p.az + hashN(key, i, sg, 5) * 4] as Vec3, u: [p.tx, 0, p.tz] as Vec3, v: [p.nx, 0, p.nz] as Vec3 };
+        const centre = c0;
+        void centre;
+        const hump = (v: readonly [number, number, number]): number => clamp01(0.45 + 0.4 * Math.abs(Math.abs((v[0] - p.ax) * p.nx + (v[2] - p.az) * p.nz) - 0.85));
+        surf.flat([q(s0, c0 - w0), q(s1, c1 - w1), q(s1, c1 + w1), q(s0, c0 + w0)], 0.01, GRAVEL, { layer: "gravel", tint: [0.8, 0.75, 0.68], frame, dirt: hump, wear: 0.08 });
+      }
     }
   }
 
-  // ---- The paint along a street: the main street's centre line and parking, the avenue's median.
+  // ---- The paint along a street: the main street's centre line and parking, the avenue's median; worn.
   function streetPaint(p: PS, spans: readonly Span[], roadIntervals: readonly [number, number][]): void {
     const kind = p.street.kind;
     if (kind !== "main" && kind !== "avenue") return;
     const lift = ROADWAY_LIFT + MARK_OVER;
+    const key = Math.imul(p.street.id + 1, 1597334);
+    /** A mark's surface: the asphalt's own grain under the paint colour, faded by the street's use and by a roll of the mark's own, and dirt over it where it has worn through. */
+    const paint = (colour: Rgb, i: number): { c: Rgb; over: Over } => {
+      const fresh = 0.55 + 0.45 * p.edge.use;
+      const roll = 0.55 + 0.45 * hashN(key, i, 0, 1);
+      const k = fresh * roll;
+      return { c: colour, over: { layer: "asphalt", tint: [colour[0] * k * 2.1, colour[1] * k * 2.1, colour[2] * k * 2.1], dirt: 0.12 + 0.55 * (1 - roll), wear: 0.04 } };
+    };
+    let mark = 0;
+    const stripP = (r: Rect, colour: Rgb, l = lift): void => {
+      const { c, over } = paint(colour, mark++);
+      strip(p, r, c, l, false, over);
+    };
     for (const [a, b] of roadIntervals) {
       // Where the paint may begin and end: short of the crossing at each junction end.
       const start = spans.filter((s) => Math.abs(s.hi - a) < 1e-6);
@@ -389,16 +540,29 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const cb = end.length > 0 ? Math.min(b, ...end.map((s) => s.backCentre)) : b;
       if (cb - ca > 0.2) {
         if (kind === "main") {
-          // Dashes, 10 ft with 30 ft gaps, spread so they begin and end even.
+          // Dashes, 10 ft with 30 ft gaps, spread so they begin and end even; each worn: some short, a few gone.
           const run = cb - ca;
           const count = Math.max(1, Math.floor((run + CENTRE_GAP) / (CENTRE_DASH + CENTRE_GAP)));
           const used = count * CENTRE_DASH + (count - 1) * CENTRE_GAP;
           let s = ca + (run - used) / 2;
-          for (let k = 0; k < count; k++, s += CENTRE_DASH + CENTRE_GAP) strip(p, [Math.max(ca, s), Math.min(cb, s + CENTRE_DASH), -CENTRE_WIDTH / 2, CENTRE_WIDTH / 2], PAINT_YELLOW, lift);
+          for (let k = 0; k < count; k++, s += CENTRE_DASH + CENTRE_GAP) {
+            const gone = hashN(key, Math.floor(s), 0, 2) < 0.12 * (1 - p.edge.use * 0.6);
+            if (gone) continue;
+            const short = hashN(key, Math.floor(s), 0, 3) * 0.45 * (1 - p.edge.use * 0.5);
+            const d0 = s + CENTRE_DASH * short * 0.5 * hashN(key, Math.floor(s), 0, 4);
+            const d1 = s + CENTRE_DASH - CENTRE_DASH * short * 0.5;
+            stripP([Math.max(ca, d0), Math.min(cb, d1), -CENTRE_WIDTH / 2, CENTRE_WIDTH / 2], PAINT_YELLOW);
+          }
         } else {
-          // The avenue's median: a band between two solid yellow lines, ended short of the crossing.
-          strip(p, [ca, cb, -MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2], MEDIAN, lift);
-          for (const t of [-MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2]) strip(p, [ca, cb, t - LINE_WIDTH / 2, t + LINE_WIDTH / 2], PAINT_YELLOW, lift + 0.002);
+          // The avenue's median: a band between two solid yellow lines, ended short of the crossing; the lines broken where worn.
+          strip(p, [ca, cb, -MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2], MEDIAN, lift, false, { layer: "asphalt", tint: [0.3, 0.28, 0.24], dirt: 0.3, wear: 0.1 });
+          for (const t of [-MEDIAN_WIDTH / 2, MEDIAN_WIDTH / 2]) {
+            const pieces = Math.max(1, Math.round((cb - ca) / 6));
+            for (let i = 0; i < pieces; i++) {
+              if (hashN(key, i, Math.floor(t * 4), 5) < 0.1) continue;
+              stripP([ca + ((cb - ca) * i) / pieces, ca + ((cb - ca) * (i + 1)) / pieces - 0.05, t - LINE_WIDTH / 2, t + LINE_WIDTH / 2], PAINT_YELLOW, lift + 0.002);
+            }
+          }
         }
       }
       if (kind !== "main") continue;
@@ -410,11 +574,16 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
         const edge = sg * (p.cw - PARKING_LANE);
         const lo = Math.min(edge, sg * p.cw);
         const hi = Math.max(edge, sg * p.cw);
-        strip(p, [pa, pb, edge - LINE_WIDTH / 2, edge + LINE_WIDTH / 2], PAINT_WHITE, lift);
+        const pieces = Math.max(1, Math.round((pb - pa) / 5));
+        for (let i = 0; i < pieces; i++) {
+          if (hashN(key, i, sg, 6) < 0.08) continue;
+          stripP([pa + ((pb - pa) * i) / pieces, pa + ((pb - pa) * (i + 1)) / pieces - 0.04, edge - LINE_WIDTH / 2, edge + LINE_WIDTH / 2], PAINT_WHITE);
+        }
         const stalls = Math.max(1, Math.round((pb - pa) / PARKING_STALL));
         for (let k = 0; k <= stalls; k++) {
           const s = pa + ((pb - pa) * k) / stalls;
-          strip(p, [Math.max(pa, s - LINE_WIDTH / 2), Math.min(pb, s + LINE_WIDTH / 2), lo, hi], PAINT_WHITE, lift);
+          if (hashN(key, k, sg, 7) < 0.15) continue;
+          stripP([Math.max(pa, s - LINE_WIDTH / 2), Math.min(pb, s + LINE_WIDTH / 2), lo, hi], PAINT_WHITE);
         }
       }
     }
@@ -422,5 +591,6 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
 
   // ---- Everything at the junctions.
   junctionPaint(g, surf, junctions, pavements);
+  junctionWear(g, surf, junctions, plan);
   signGeometry(g, surf, solid, junctions, detail);
 }

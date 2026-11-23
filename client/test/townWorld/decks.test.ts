@@ -5,6 +5,7 @@ import { createForest } from "@csarkosh/engine/sim/forest";
 import { addPlayer, tickPlayers } from "@csarkosh/engine/sim/tick";
 import { createWalkWorld, WALK_RULES, type WalkWorld, type Walker } from "../../src/sim.js";
 import { buildDecks, baseGround, constrainRails, deckTopAt, townDecks, withDecks } from "../../src/sim/town/decks.js";
+import { withStreets } from "../../src/sim/town/streetField.js";
 import { DECK_TOP, FLOAT_TOP } from "../../src/sim/town/levels.js";
 import { HULL_RADIUS, penetration, townConstrain } from "../../src/sim/town/solid.js";
 import { deckGeometry } from "../../src/game/town/pileGeometry.js";
@@ -68,7 +69,7 @@ describe("decks as ground", () => {
       const plan = planFor(seed);
       const { anchor } = siteFor(seed);
       const field = groundOf(worldFor(seed));
-      const base = baseGround(seed);
+      const base = withStreets(baseGround(seed), seed);
       for (const d of plan.decks) {
         for (const [a, b] of [[0, 0], [0.9, 0.9], [-0.9, 0.9], [0.9, -0.9], [-0.9, -0.9]] as const) {
           const x = anchor.x + d.centre.x + d.axis.x * d.halfAlong * a + d.axis.z * d.halfAcross * b;
@@ -95,7 +96,7 @@ describe("decks as ground", () => {
     for (const seed of WORLD_SEEDS) {
       const { anchor } = siteFor(seed);
       const field = groundOf(worldFor(seed));
-      const base = baseGround(seed);
+      const base = withStreets(baseGround(seed), seed);
       let off = 0;
       for (let k = 0; k < 3000; k++) {
         const x = anchor.x - 250 + rand() * 500;
@@ -147,7 +148,7 @@ describe("decks as ground", () => {
         expect(groundOf(host).heightAt(x, z)).toBe(groundOf(client).heightAt(x, z));
       }
       expect(buildDecks(seed)).toEqual(townDecks(seed));
-      expect(withDecks(baseGround(seed), seed).heightAt(anchor.x, anchor.z)).toBe(groundOf(host).heightAt(anchor.x, anchor.z));
+      expect(withDecks(withStreets(baseGround(seed), seed), seed).heightAt(anchor.x, anchor.z)).toBe(groundOf(host).heightAt(anchor.x, anchor.z));
     }
   });
 
@@ -219,7 +220,7 @@ describe("walking the harbour", () => {
           const heading = reachedEnd ? yaw + Math.PI : yaw;
           tickPlayers(world, new Map([[player.id, cmd(t + 1, 0, 1, heading)]]), WALK_RULES);
           const top = deckTopAt(seed, player.pos.x, player.pos.z);
-          const ground = baseGround(seed).heightAt(player.pos.x, player.pos.z);
+          const ground = withStreets(baseGround(seed), seed).heightAt(player.pos.x, player.pos.z);
           if (top !== null && top > ground + 1 && Math.abs(along()) < half - 1) {
             onDeckTicks++;
             expect(player.pos.y - PLAYER_HALF.y, `${seed} pier ${d.id} tick ${t}`).toBeCloseTo(top, 6);
@@ -243,7 +244,7 @@ describe("walking the harbour", () => {
     for (const seed of WORLD_SEEDS) {
       const world = worldFor(seed);
       const town = townDecks(seed);
-      const base = baseGround(seed);
+      const base = withStreets(baseGround(seed), seed);
       const rand = stream(seed);
       // Rails of the apron, the piers and the sheds' platforms, a spread of them.
       const pick = town.rails.filter((r) => Math.hypot(r.bx - r.ax, r.bz - r.az) > 3);

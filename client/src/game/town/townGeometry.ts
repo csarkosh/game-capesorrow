@@ -10,12 +10,14 @@ import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { sliceDue, type Slices } from "@csarkosh/engine/game/syncJobs";
 import { deckTopAt, townDecks } from "../../sim/town/decks.js";
+import { streetLiftD } from "../../sim/town/streetField.js";
 import { planFor } from "../../sim/town/planFor.js";
 import { siteFor } from "../../sim/town/siteFor.js";
 import type { LandmarkRole } from "../../sim/town/types.js";
 import { buildingGeometry } from "./buildingGeometry.js";
 import { endsGeometry } from "./endsGeometry.js";
 import { groundGeometry } from "./groundGeometry.js";
+import { yardGeometry } from "./yardGeometry.js";
 import { boatsGeometry, lightGeometry, millGeometry, pilingGeometry, terminalGeometry } from "./harbourGeometry.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
 import { deckGeometryAll, railGeometry, wharfGeometry } from "./pileGeometry.js";
@@ -41,11 +43,22 @@ export type TownBatch = {
   readonly arrays: MeshArrays;
 };
 
-/** The ground the town stands on for a world seed: the plan, its anchor, the engine's elevation field (the ground the player stands on, where no rock layer lies: the town has none) and the highway's line. */
+/** The ground the town stands on for a world seed: the plan, its anchor, the engine's elevation field plus the streets' trough filled (the ground the player stands on, where no rock layer lies: the town has none) and the highway's line. */
 export function townGround(worldSeed: number): TownGround {
   const plan = planFor(worldSeed);
   const { anchor } = siteFor(worldSeed);
-  const base = { seed: worldSeed, plan, anchor, heightAt: (x: number, z: number) => elevationSampleAt(worldSeed, x, z).h, roadX: (z: number) => roadCenterX(worldSeed, z) };
+  // The same point is asked for again and again (the corners of tiles that meet, a slab's two readings): a point read to the millimetre is read once.
+  const memo = new Map<number, number>();
+  const heightAt = (x: number, z: number): number => {
+    const key = Math.round(x * 1000) * 4000003 + Math.round(z * 1000);
+    let h = memo.get(key);
+    if (h === undefined) {
+      h = elevationSampleAt(worldSeed, x, z).h + streetLiftD(worldSeed, x, z).v;
+      memo.set(key, h);
+    }
+    return h;
+  };
+  const base = { seed: worldSeed, plan, anchor, heightAt, roadX: (z: number) => roadCenterX(worldSeed, z) };
   return { ...base, deckAt: (x, z) => deckTopAt(worldSeed, x, z) ?? -Infinity, rails: townDecks(worldSeed).rails };
 }
 
@@ -70,6 +83,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   stairGeometry(g, sinks.solid);
   endsGeometry(g, sinks.flat, sinks.solid);
   groundGeometry(g, sinks.flat);
+  yardGeometry(g, sinks.flat);
   roadGeometry(g, sinks.flat, sinks.solid);
   yield;
   quayGeometry(g, sinks.solid, sinks.flat);

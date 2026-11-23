@@ -3,7 +3,7 @@
  * centres, its ground cover, its loose rock and driftwood), and the cliff bands' keep, and the heights its shore rules
  * read; this answers all of them from the plan:
  *
- * - **Streets, buildings, paved blocks.** No tree stands where its trunk could fall on a street's right of way or
+ * - **Streets, buildings, paved blocks.** (Ground cover on a street's right of way is by its parts, `gridFactor`: shut within `PAVEMENT_CLEAR` of the roadway, almost shut on the sidewalk and shoulder, the lot's own grass on the verge; and a yard is its lot's own, `YARD_MASK`.) No tree stands where its trunk could fall on a street's right of way or
  *   within `TREE_BUILDING_CLEAR` of a building, and none on a paved block (the core, the dock end, the working
  *   waterfront, the mill's site, industrial flats, the highway strip's lots) or a few metres of it. A tree is placed
  *   by its cell's centre and stands up to `TREE_JITTER` from it, so the mask is shut over that much more than the trunk's own clearance, and
@@ -29,10 +29,13 @@ import { coverD } from "./cover.js";
 import { smootherstepD } from "./ground.js";
 import { QUAY_BANK, fillWindowD, type FillArea } from "./fill.js";
 import { orient } from "./geom.js";
+import { lotIdAt } from "./lotIndex.js";
+import { walkAt } from "./port/edges.js";
+import { inYardRect, yardShape } from "./yardShapes.js";
 import { planFor } from "./planFor.js";
 import { readingSite } from "./reading.js";
 import { siteFor } from "./siteFor.js";
-import type { District, TownPlan } from "./types.js";
+import type { District, TownPlan, YardKind } from "./types.js";
 
 /** The farthest a tree stands from its cell's centre, in x or z summed as a diagonal (the engine's jitter of 0.7 of a 10 m cell), metres. */
 export const TREE_JITTER = 5;
@@ -54,6 +57,32 @@ export const YARD_TREE = 0.22;
 export const YARD_CLUTTER = 1;
 /** `meadow`: how much denser a yard's grass reads. */
 export const YARD_MEADOW = 0.6;
+/**
+ * What each kind of yard leaves of the forest (`port/yards.ts` says which lot has which): trees as a share of the forest's, the ground cover's
+ * density (the engine's blades stand taller where it is over 1) and `meadow`. A mown lawn is thin and short; a shaggy one thick and full
+ * of weeds; a tall one waist-high; bare ground has next to nothing; a mossy yard stands under trees; brush is the lot going back to the
+ * woods. Authored; the contrast is meant to be sharp at a property line, as in life.
+ */
+export const YARD_MASK: Readonly<Record<YardKind, { tree: number; clutter: number; meadow: number }>> = {
+  paved: { tree: 0, clutter: 0, meadow: 0 },
+  mown: { tree: 0.15, clutter: 0.4, meadow: 0 },
+  shaggy: { tree: 0.2, clutter: 1.1, meadow: 0.8 },
+  tall: { tree: 0.25, clutter: 2.1, meadow: 1 },
+  bare: { tree: 0.05, clutter: 0.1, meadow: 0 },
+  mossy: { tree: 0.32, clutter: 0.7, meadow: 0.2 },
+  brush: { tree: 0.32, clutter: 2.4, meadow: 1 },
+};
+/** The share of its lot's ground cover a street's verge keeps (the owner mows it, or does not), and of its meadow. */
+export const VERGE_CLUTTER = 0.7;
+export const VERGE_MEADOW = 0.5;
+/** Ground cover keeps this far past a roadway's edge (the curb, the gutter and a margin for the blades' jitter) off: nothing grows in the trough. */
+export const PAVEMENT_CLEAR = 1.0;
+/** How much of the grass the back 45 cm of a sidewalk lets through (grass over the edge), and on a shoulder of gravel. */
+export const WALK_EDGE_CLUTTER = 0.3;
+export const SHOULDER_CLUTTER = 0.12;
+/** An alley's wheel tracks keep the grass off between these distances from its middle (the grass grows between and beside them). */
+export const TRACK_FROM = 0.4;
+export const TRACK_TO = 1.3;
 /** How many metres higher the shore's rules read a yard's ground (`shoreStrip`'s lift). */
 export const YARD_LIFT = 12;
 /** A block's own window falls over this many metres outside its edges. */
@@ -69,6 +98,24 @@ export const ROAD_KEEP_RAMP = 14;
 
 /** What the clearing declares of itself for the level id. */
 export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
+  YARD_MOWN_TREE: YARD_MASK.mown.tree,
+  YARD_MOWN_CLUTTER: YARD_MASK.mown.clutter,
+  YARD_MOWN_MEADOW: YARD_MASK.mown.meadow,
+  YARD_SHAGGY_TREE: YARD_MASK.shaggy.tree,
+  YARD_SHAGGY_CLUTTER: YARD_MASK.shaggy.clutter,
+  YARD_SHAGGY_MEADOW: YARD_MASK.shaggy.meadow,
+  YARD_TALL_TREE: YARD_MASK.tall.tree,
+  YARD_TALL_CLUTTER: YARD_MASK.tall.clutter,
+  YARD_TALL_MEADOW: YARD_MASK.tall.meadow,
+  YARD_BARE_TREE: YARD_MASK.bare.tree,
+  YARD_BARE_CLUTTER: YARD_MASK.bare.clutter,
+  YARD_BARE_MEADOW: YARD_MASK.bare.meadow,
+  YARD_MOSSY_TREE: YARD_MASK.mossy.tree,
+  YARD_MOSSY_CLUTTER: YARD_MASK.mossy.clutter,
+  YARD_MOSSY_MEADOW: YARD_MASK.mossy.meadow,
+  YARD_BRUSH_TREE: YARD_MASK.brush.tree,
+  YARD_BRUSH_CLUTTER: YARD_MASK.brush.clutter,
+  YARD_BRUSH_MEADOW: YARD_MASK.brush.meadow,
   TREE_JITTER,
   TREE_STREET_CLEAR,
   TREE_BUILDING_CLEAR,
@@ -81,6 +128,13 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   YARD_CLUTTER,
   YARD_MEADOW,
   YARD_LIFT,
+  VERGE_CLUTTER,
+  VERGE_MEADOW,
+  PAVEMENT_CLEAR,
+  WALK_EDGE_CLUTTER,
+  SHOULDER_CLUTTER,
+  TRACK_FROM,
+  TRACK_TO,
   BLOCK_MARGIN,
   READ_KEEP_Z,
   READ_KEEP_INLAND,
@@ -238,7 +292,7 @@ type Edge = { readonly nx: number; readonly nz: number; readonly c: number };
 type Footprint = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly vx: number; readonly vz: number; readonly hu: number; readonly hv: number };
 /** A cleared place: a destination's, and whether its ground cover is cleared too. */
 type Disc = { readonly x: number; readonly z: number; readonly r: number; readonly bare: boolean };
-type Streetway = { readonly ax: number; readonly az: number; readonly bx: number; readonly bz: number; readonly half: number };
+type Streetway = { readonly ax: number; readonly az: number; readonly bx: number; readonly bz: number; readonly half: number; readonly kind: "grid" | "alley" | "other"; readonly id: number; readonly cw: number };
 
 const CELL = 16;
 /** The farthest any rule here reaches from an item: the tree's, over a building (shut distance plus ramp). */
@@ -316,7 +370,8 @@ function indexOf(plan: TownPlan): Index {
     // The wharf is a deck over water; the highway is the engine's own, cleared by its rules.
     if (st.kind === "highway" || st.kind === "wharf") continue;
     const half = wayHalf(st);
-    streets.push({ ax: st.a.x, az: st.a.z, bx: st.b.x, bz: st.b.z, half });
+    const grid = st.kind === "street" || st.kind === "main" || st.kind === "avenue";
+    streets.push({ ax: st.a.x, az: st.a.z, bx: st.b.x, bz: st.b.z, half, kind: grid ? "grid" : st.kind === "alley" ? "alley" : "other", id: st.id, cw: st.roadway / 2 });
     stBox.push({ x0: Math.min(st.a.x, st.b.x) - half, z0: Math.min(st.a.z, st.b.z) - half, x1: Math.max(st.a.x, st.b.x) + half, z1: Math.max(st.a.z, st.b.z) + half });
   }
   // The roads out of town clear the forest as streets do: to their own width, the trees closing over them beyond.
@@ -325,7 +380,7 @@ function indexOf(plan: TownPlan): Index {
       const a = road.points[i - 1] as { x: number; z: number; width: number };
       const b = road.points[i] as { x: number; z: number; width: number };
       const half = (a.width + b.width) / 4;
-      streets.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, half });
+      streets.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, half, kind: "other", id: -1, cw: half });
       stBox.push({ x0: Math.min(a.x, b.x) - half, z0: Math.min(a.z, b.z) - half, x1: Math.max(a.x, b.x) + half, z1: Math.max(a.z, b.z) + half });
     }
   }
@@ -407,9 +462,58 @@ function streetDistance(s: Streetway, x: number, z: number): number {
 }
 
 /** What the town leaves of the forest at a point of the plan's frame: a share of its trees, of its ground cover, and the yard weight. */
-export type Clear = { tree: number; clutter: number; yard: number };
+export type Clear = { tree: number; clutter: number; yard: number; meadow: number };
 
-const OPEN: Clear = Object.freeze({ tree: 1, clutter: 1, yard: 0 });
+const OPEN: Clear = Object.freeze({ tree: 1, clutter: 1, yard: 0, meadow: 0 });
+
+/** The street's own frame at a point: how far along it, how far to its left (signed), and its length. */
+function streetCoords(s: Streetway, x: number, z: number): { s: number; t: number; len: number } {
+  const abx = s.bx - s.ax;
+  const abz = s.bz - s.az;
+  const len = Math.sqrt(abx * abx + abz * abz);
+  const tx = abx / len;
+  const tz = abz / len;
+  return { s: (x - s.ax) * tx + (z - s.az) * tz, t: -(x - s.ax) * tz + (z - s.az) * tx, len };
+}
+
+/**
+ * What a street's right of way lets grow at a point inside it: nothing within `PAVEMENT_CLEAR` of the roadway's edge (the curb, the gutter
+ * and the trough under them), nothing on a sidewalk's slabs but a little over the back 45 cm, a little on a gravel shoulder, and on a
+ * verge the grass of the lot beside it (the owner's mowing), thinned.
+ */
+function gridFactor(plan: TownPlan, sw: Streetway, x: number, z: number): { clutter: number; meadow: number } {
+  const c = streetCoords(sw, x, z);
+  if (c.s < -0.5 || c.s > c.len + 0.5) return { clutter: 1, meadow: 1 };
+  const at = c.t < 0 ? -c.t : c.t;
+  if (at <= sw.cw + PAVEMENT_CLEAR) return { clutter: 0, meadow: 0 };
+  const edge = plan.edges[sw.id];
+  if (edge === undefined) return { clutter: 1, meadow: 1 };
+  const side = edge.sides[c.t > 0 ? 0 : 1];
+  const run = side.walk > 0 ? walkAt(side, c.s) : null;
+  if (run !== null && at >= sw.half - side.walk) return { clutter: at > sw.half - 0.45 ? WALK_EDGE_CLUTTER : 0, meadow: 0 };
+  if (!side.curb && at < sw.cw + side.verge) return { clutter: SHOULDER_CLUTTER, meadow: 0 };
+  // The verge: the grass of the lot beside it, four metres past the right of way's edge.
+  const abx = sw.bx - sw.ax;
+  const abz = sw.bz - sw.az;
+  const len = Math.sqrt(abx * abx + abz * abz);
+  const sgn = c.t > 0 ? 1 : -1;
+  const px = sw.ax + (abx / len) * c.s - (abz / len) * sgn * (sw.half + 4);
+  const pz = sw.az + (abz / len) * c.s + (abx / len) * sgn * (sw.half + 4);
+  const id = lotIdAt(plan, px, pz);
+  const y = id >= 0 ? plan.yards[id] : undefined;
+  if (y === undefined || y.kind === "paved") return { clutter: id >= 0 ? 0 : 1, meadow: 0 };
+  const m = YARD_MASK[y.kind];
+  // The grass comes up from the pavement's edge over the next 0.8 m, not as a wall.
+  const ramp = smootherstepD(sw.cw + PAVEMENT_CLEAR, sw.cw + PAVEMENT_CLEAR + 0.8, at).v;
+  return { clutter: m.clutter * VERGE_CLUTTER * ramp, meadow: m.meadow * VERGE_MEADOW * ramp };
+}
+
+/** An alley: the wheel tracks keep the grass off; between them and beside them it grows. */
+function alleyFactor(sw: Streetway, x: number, z: number): { clutter: number; meadow: number } {
+  const c = streetCoords(sw, x, z);
+  const at = c.t < 0 ? -c.t : c.t;
+  return at > TRACK_FROM && at < TRACK_TO ? { clutter: 0, meadow: 0 } : { clutter: 0.8, meadow: 0.5 };
+}
 
 /** What the town leaves of the forest at a point of the plan's frame. */
 export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
@@ -431,15 +535,45 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
   // The town's own ground: paved, or yard (where the two meet a block's margin, paved wins).
   const town = 1 - (1 - paved) * (1 - yard);
   const lawn = yard * (1 - paved);
-  let tree = 1 - town + lawn * YARD_TREE;
-  let clutter = 1 - town + lawn * YARD_CLUTTER;
+  // A yard is its lot's: its kind (`port/yards.ts`) says how thick and tall the grass stands and how many trees, and a drive or a walk keeps the grass off.
+  let treeY = YARD_TREE;
+  let clutterY = YARD_CLUTTER;
+  let meadowY = YARD_MEADOW;
+  let driveShut = false;
+  if (lawn > 0) {
+    const id = lotIdAt(plan, xf, zr);
+    const yard2 = id >= 0 ? plan.yards[id] : undefined;
+    if (yard2 !== undefined && yard2.kind !== "paved") {
+      const m = YARD_MASK[yard2.kind];
+      treeY = m.tree;
+      clutterY = m.clutter;
+      meadowY = m.meadow;
+      const shape = yardShape(plan, id);
+      if ((shape.drive !== null && inYardRect(shape.drive, xf, zr, 0.3)) || (shape.walk !== null && inYardRect(shape.walk, xf, zr, 0.2))) driveShut = true;
+    }
+  }
+  let tree = 1 - town + lawn * treeY;
+  let clutter = 1 - town + lawn * clutterY;
+  let meadow = lawn * meadowY;
+  if (driveShut) {
+    clutter = 0;
+    tree = 0;
+    meadow = 0;
+  }
   const streets = index.cellStreets[cell] as readonly number[];
   for (let k = 0; k < streets.length; k++) {
-    const d = streetDistance(index.streets[streets[k] as number] as Streetway, xf, zr);
+    const sw = index.streets[streets[k] as number] as Streetway;
+    const d = streetDistance(sw, xf, zr);
     const shut = TREE_STREET_CLEAR + TREE_JITTER;
     if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
-    const cshut = CLUTTER_STREET_CLEAR + CLUTTER_JITTER;
-    if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+    if (sw.kind === "other") {
+      const cshut = CLUTTER_STREET_CLEAR + CLUTTER_JITTER;
+      if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+    } else if (d <= 0) {
+      const z = sw.kind === "alley" ? alleyFactor(sw, xf, zr) : gridFactor(plan, sw, xf, zr);
+      clutter *= z.clutter;
+      meadow *= z.meadow;
+    }
   }
   const discs = index.cellDiscs[cell] as readonly number[];
   for (let k = 0; k < discs.length; k++) {
@@ -460,7 +594,7 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
     const cshut = CLUTTER_BUILDING_CLEAR + CLUTTER_JITTER;
     if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
   }
-  return { tree, clutter, yard: lawn };
+  return { tree, clutter, yard: lawn, meadow };
 }
 
 /**
@@ -475,8 +609,8 @@ export function townFeatureMask(seed: number, x: number, z: number): FeatureMask
   const c = clearAt(plan, xf, zr);
   const cover = coverD(plan, xf, zr).v;
   const loose = cover === 0 ? 1 : 1 - cover;
-  if (c.tree === 1 && c.clutter === 1 && loose === 1) return { tree: 1, clutter: 1, meadow: 0, bare: 0 };
-  return { tree: c.tree, clutter: c.clutter, meadow: c.yard * YARD_MEADOW, bare: 0, loose };
+  if (c.tree === 1 && c.clutter === 1 && c.meadow === 0 && loose === 1) return { tree: 1, clutter: 1, meadow: 0, bare: 0 };
+  return { tree: c.tree, clutter: c.clutter, meadow: c.meadow, bare: 0, loose };
 }
 
 /** The place's shore strip (`CoastOverlay.shoreStrip`): a yard's weight, which lifts the height the shore's rules read there by `YARD_LIFT`. */

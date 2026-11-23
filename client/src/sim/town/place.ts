@@ -15,6 +15,7 @@ import { RAIL_CLEARING_TUNABLES, railFeatureMask } from "./railClearing.js";
 import { RAIL_TUNABLES, railGroundD } from "./railGround.js";
 import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_SEED_MIX } from "./siteFor.js";
 import { townClearingX } from "./start.js";
+import { STREET_TUNABLES, streetChannelD } from "./streetField.js";
 import { TOWN_GEN } from "./version.js";
 
 export const CAPE_PLACE: CoastOverlay = {
@@ -24,6 +25,7 @@ export const CAPE_PLACE: CoastOverlay = {
     ...CLEARING_TUNABLES,
     ...RAIL_TUNABLES,
     ...RAIL_CLEARING_TUNABLES,
+    ...STREET_TUNABLES,
     SHORE_SCAN_STEP,
     SHORE_SCAN_REACH,
     SHORE_BISECT_STEPS,
@@ -34,8 +36,8 @@ export const CAPE_PLACE: CoastOverlay = {
   },
   blend: { end: townBlendEnd, windowD: townBlendWindowD },
   cliffKeepD: townKeepD,
-  // The town's made ground, then the railroad's bed laid over it (`railGround.ts`), under the highway's own corridor.
-  shapeD: (seed, x, z, u, uDz, base) => railGroundD(seed, z, u, uDz, townGroundD(seed, x, z, u, uDz, base)),
+  // The town's made ground, with the streets cut into it (`streetField.ts`: the roadways lie a curb's face under the lots), then the railroad's bed laid over it (`railGround.ts`), under the highway's own corridor.
+  shapeD: (seed, x, z, u, uDz, base) => railGroundD(seed, z, u, uDz, streetChannelD(seed, x, z, townGroundD(seed, x, z, u, uDz, base))),
   // The town's mask, with the railroad's corridor shut in it (`railClearing.ts`).
   featureMask: (seed, x, z) => railFeatureMask(seed, x, z, townFeatureMask(seed, x, z)),
   // On a yard the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and trees.

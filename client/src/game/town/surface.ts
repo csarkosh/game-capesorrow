@@ -7,7 +7,7 @@
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
-import { faceSurfaceFor, flatSurfaceFor } from "./groundSurfaces.js";
+import { faceSurfaceFor, flatSurfaceFor, withOver, type Over } from "./groundSurfaces.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
 export type P2 = readonly [number, number];
@@ -16,7 +16,7 @@ export type P3 = readonly [number, number, number];
 
 const UP: Vec3 = [0, 1, 0];
 
-type Corner = { x: number; z: number; u: number; lift: number };
+type Corner = { x: number; z: number; u: number; lift: number; y?: number };
 
 /** A convex polygon clipped to one side of the highway's bed edge: `sign` 1 keeps u >= edge, -1 keeps u <= -edge. */
 function clipSide(poly: readonly Corner[], sign: 1 | -1, edge: number): Corner[] {
@@ -30,10 +30,29 @@ function clipSide(poly: readonly Corner[], sign: 1 | -1, edge: number): Corner[]
     if (da >= 0) out.push(a);
     if ((da >= 0) !== (db >= 0)) {
       const k = da / (da - db);
-      out.push({ x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, u: a.u + (b.u - a.u) * k, lift: a.lift + (b.lift - a.lift) * k });
+      const c: Corner = { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, u: a.u + (b.u - a.u) * k, lift: a.lift + (b.lift - a.lift) * k };
+      if (a.y !== undefined && b.y !== undefined) c.y = a.y + (b.y - a.y) * k;
+      out.push(c);
     }
   }
   return out;
+}
+
+/** Whether a polygon's corners turn one way all round in the plan (a convex polygon, with no corner flat or folded). */
+function convexXZ(piece: readonly Corner[]): boolean {
+  let sign = 0;
+  const n = piece.length;
+  for (let i = 0; i < n; i++) {
+    const a = piece[i] as Corner;
+    const b = piece[(i + 1) % n] as Corner;
+    const c = piece[(i + 2) % n] as Corner;
+    const cr = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
+    if (Math.abs(cr) < 1e-7) return false;
+    const s = cr > 0 ? 1 : -1;
+    if (sign === 0) sign = s;
+    else if (s !== sign) return false;
+  }
+  return true;
 }
 
 /** The ears of a simple polygon (any winding): triples of indices into `pts`. */
@@ -109,7 +128,7 @@ export class Surface {
   }
 
   /** Emits one convex polygon (a few corners, each with its lift), off the highway's bed and not under the sea. */
-  private emit(corners: readonly Corner[], colour: Rgb): void {
+  private emit(corners: readonly Corner[], colour: Rgb, over?: Over): void {
     const bed = ROAD_BED_HALF;
     let pieces: Corner[][];
     const us = corners.map((q) => q.u);
@@ -131,15 +150,28 @@ export class Surface {
         twice += a.x * b.z - b.x * a.z;
       }
       if (Math.abs(twice) < 4e-4) continue;
-      const pts: Vec3[] = piece.map((q) => [q.x, this.g.heightAt(q.x, q.z) + q.lift, q.z]);
-      if (pts.every((q, i) => q[1] - (piece[i] as Corner).lift < SEA + 0.1)) continue;
+      const ground = piece.map((q) => this.g.heightAt(q.x, q.z));
+      const pts: Vec3[] = piece.map((q, i) => [q.x, q.y ?? (ground[i] as number) + q.lift, q.z]);
+      if (ground.every((h) => h < SEA + 0.1)) continue;
       let cx = 0;
       let cz = 0;
       for (const q of piece) {
         cx += q.x;
         cz += q.z;
       }
-      this.sink(cx / piece.length, cz / piece.length).poly(pts, UP, colour, flatSurfaceFor(colour, this.g.anchor));
+      const surface = withOver(flatSurfaceFor(colour, this.g.anchor), colour, this.g.anchor, over);
+      const builder = this.sink(cx / piece.length, cz / piece.length);
+      if (piece.length > 3 && !convexXZ(piece)) {
+        // Not convex (a jittered edge folded, a corner or two collinear): its ears, each a polygon of its own, so no fan turns against the face.
+        const flatPts = piece.map((q): P2 => [q.x, q.z]);
+        for (const [i, j, k] of triangulate(flatPts)) {
+          const tri = [pts[i] as Vec3, pts[j] as Vec3, pts[k] as Vec3];
+          const a2 = (tri[1]![0] - tri[0]![0]) * (tri[2]![2] - tri[0]![2]) - (tri[1]![2] - tri[0]![2]) * (tri[2]![0] - tri[0]![0]);
+          if (Math.abs(a2) > 4e-4) builder.poly(tri, UP, colour, surface);
+        }
+        continue;
+      }
+      builder.poly(pts, UP, colour, surface);
     }
   }
 
@@ -150,18 +182,29 @@ export class Surface {
   }
 
   /** A convex polygon (kept as one polygon) at corners' own lifts. */
-  poly(corners: readonly P3[], colour: Rgb): void {
+  poly(corners: readonly P3[], colour: Rgb, over?: Over): void {
     this.emit(
       corners.map((c) => ({ x: c[0], z: c[1], u: c[0] - this.g.roadX(c[1]), lift: c[2] })),
       colour,
+      over,
+    );
+  }
+
+  /** A convex polygon at corners' own absolute heights (x, z, y): for what does not follow the ground's own height (a curb's top, laid at the lots' level beside the roadway's cut). */
+  polyY(corners: readonly P3[], colour: Rgb, over?: Over): void {
+    this.emit(
+      corners.map((c) => ({ x: c[0], z: c[1], u: c[0] - this.g.roadX(c[1]), lift: 0, y: c[2] })),
+      colour,
+      over,
     );
   }
 
   /** A convex polygon at one lift. */
-  flat(pts: readonly P2[], lift: number, colour: Rgb): void {
+  flat(pts: readonly P2[], lift: number, colour: Rgb, over?: Over): void {
     this.poly(
       pts.map((p) => [p[0], p[1], lift] as const),
       colour,
+      over,
     );
   }
 
@@ -169,11 +212,11 @@ export class Surface {
    * Any simple polygon at one lift, in triangles split `depth` times (4^depth each). The same depth for every triangle of
    * one polygon, so no two meet with a crack between.
    */
-  fill(pts: readonly P2[], lift: number, colour: Rgb, depth: number): void {
+  fill(pts: readonly P2[], lift: number, colour: Rgb, depth: number, over?: Over): void {
     const tris = triangulate(pts);
     const sub = (a: P2, b: P2, c: P2, d: number): void => {
       if (d === 0) {
-        this.flat([a, b, c], lift, colour);
+        this.flat([a, b, c], lift, colour, over);
         return;
       }
       const ab: P2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -205,13 +248,26 @@ export class Surface {
   }
 
   /** A vertical face from `a` to `b`, from lift `y0` to `y1` over the ground, looking along `n` (a horizontal unit vector). */
-  face(a: P2, b: P2, y0: number, y1: number, n: P2, colour: Rgb): void {
+  face(a: P2, b: P2, y0: number, y1: number, n: P2, colour: Rgb, over?: Over): void {
     const bed = ROAD_BED_HALF;
     if (Math.abs(a[0] - this.g.roadX(a[1])) < bed + 0.3 || Math.abs(b[0] - this.g.roadX(b[1])) < bed + 0.3) return;
     const ga = this.g.heightAt(a[0], a[1]);
     const gb = this.g.heightAt(b[0], b[1]);
     if (ga + y1 < SEA + 0.1 && gb + y1 < SEA + 0.1) return;
-    this.sink((a[0] + b[0]) / 2, (a[1] + b[1]) / 2).poly([[a[0], ga + y0, a[1]], [b[0], gb + y0, b[1]], [b[0], gb + y1, b[1]], [a[0], ga + y1, a[1]]], [n[0], 0, n[1]], colour, faceSurfaceFor(colour, a[0], a[1], b[0], b[1]));
+    this.sink((a[0] + b[0]) / 2, (a[1] + b[1]) / 2).poly([[a[0], ga + y0, a[1]], [b[0], gb + y0, b[1]], [b[0], gb + y1, b[1]], [a[0], ga + y1, a[1]]], [n[0], 0, n[1]], colour, withOver(faceSurfaceFor(colour, a[0], a[1], b[0], b[1]), colour, this.g.anchor, over, true, [a[0], a[1], b[0], b[1]]));
+  }
+
+  /** A vertical face with its own absolute heights at each end: from `ya0` up to `ya1` at `a`, `yb0` to `yb1` at `b`. */
+  faceY(a: P2, b: P2, ya0: number, ya1_: number, yb0: number, yb1_: number, n: P2, colour: Rgb, over?: Over): void {
+    const bed = ROAD_BED_HALF;
+    let ya1 = ya1_;
+    let yb1 = yb1_;
+    if (Math.abs(a[0] - this.g.roadX(a[1])) < bed + 0.3 || Math.abs(b[0] - this.g.roadX(b[1])) < bed + 0.3) return;
+    if (this.g.heightAt(a[0], a[1]) < SEA + 0.1 && this.g.heightAt(b[0], b[1]) < SEA + 0.1) return;
+    // A face is never turned over (its top under its foot where the curb is buried to nothing) nor flat: at least 2 mm high at each end.
+    ya1 = Math.max(ya1, ya0 + 0.002);
+    yb1 = Math.max(yb1, yb0 + 0.002);
+    this.sink((a[0] + b[0]) / 2, (a[1] + b[1]) / 2).poly([[a[0], ya0, a[1]], [b[0], yb0, b[1]], [b[0], yb1, b[1]], [a[0], ya1, a[1]]], [n[0], 0, n[1]], colour, withOver(faceSurfaceFor(colour, a[0], a[1], b[0], b[1]), colour, this.g.anchor, over, true, [a[0], a[1], b[0], b[1]]));
   }
 }
 
@@ -353,9 +409,9 @@ export class RoadSet {
   }
 
   /** Lays a convex roadway tile at one lift, without the ground already laid. */
-  tile(poly: readonly P2[], lift: number, colour: Rgb): void {
+  tile(poly: readonly P2[], lift: number, colour: Rgb, over?: Over): void {
     for (const piece of this.free(poly)) {
-      this.surf.flat(piece, lift, colour);
+      this.surf.flat(piece, lift, colour, over);
       this.note(piece);
     }
   }

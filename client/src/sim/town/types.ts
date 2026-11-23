@@ -117,6 +117,74 @@ export type Street = {
   readonly seam?: boolean;
 };
 
+/**
+ * A stretch of a street side's sidewalk, poured in one go: from `s0` to `s1` metres along the street (from `a`). A sidewalk is
+ * never one pour: a block, or half of one, was poured when the owners or the town could pay for it, so each run has a decade of
+ * its own (its tone, its joint spacing and how broken it is follow from it).
+ */
+export type WalkRun = {
+  readonly s0: number;
+  readonly s1: number;
+  /** The decade it was poured (1950 means the 1950s). */
+  readonly decade: number;
+  /** How broken it is, 0 (sound) to 1 (heaved, cracked, patched): from its age, the district and the lots it fronts. */
+  readonly wear: number;
+};
+
+/** One side of a street (left of its direction from `a` to `b` is side 0, right is side 1): what stands beside its roadway. */
+export type SideEdge = {
+  /** The sidewalk's width where there is one (the street's `walk`), 0 where this side has none along its whole length. */
+  readonly walk: number;
+  /** A curb and gutter stands along this side. */
+  readonly curb: boolean;
+  /** Where the sidewalk is, in order and apart. Empty when there is none. */
+  readonly runs: readonly WalkRun[];
+  /** The width between the curb's back (or the pavement's edge, where there is no curb) and the sidewalk, or to the right of way's edge where there is none: grass verge, or gravel shoulder where no curb. */
+  readonly verge: number;
+  /** A shallow ditch runs along this side beyond the shoulder (a street with no curb). */
+  readonly ditch: boolean;
+};
+
+/** A stretch of a roadway laid at one time: from `s0` to `s1` along its street. Each overlay buried more of the curb's face. */
+export type Paving = {
+  readonly s0: number;
+  readonly s1: number;
+  /** The decade it was last paved. */
+  readonly decade: number;
+  /** How much of the curb's face shows over the gutter here, metres (0.15 where the street was rebuilt, 0.05 where layers of paving buried the old curb); the same on a side that has a curb, and the pavement stands at the ground where it has none. */
+  readonly curb: number;
+  /** How worn the surface is, 0 (new) to 1. */
+  readonly wear: number;
+};
+
+/** The street's history, the way it was built and kept: what its two sides have beside the roadway, and how the roadway was laid. */
+export type StreetEdge = {
+  readonly street: number;
+  /** Left and right of the street's direction. */
+  readonly sides: readonly [SideEdge, SideEdge];
+  /** The roadway's stretches, in order, from `a` to `b`. */
+  readonly paving: readonly Paving[];
+  /** How much traffic it has, 0 (a dead end of a few houses) to 1 (the main street): paint, wear and potholes follow. */
+  readonly use: number;
+  /** Where the street stands in the town's history: the core and the civic blocks, the old plat's house streets, the later additions, the edges. */
+  readonly era: "core" | "old" | "later" | "edge";
+};
+
+/** How a house lot's ground is kept. `paved` is no yard (a lot of a paved district). */
+export type YardKind = "paved" | "mown" | "shaggy" | "tall" | "bare" | "mossy" | "brush";
+
+/** A lot's ground, from the lot's own story (the building's state and era, the district and a roll of its own). */
+export type Yard = {
+  readonly lot: number;
+  readonly kind: YardKind;
+  /** How kept it is, 0 (abandoned) to 1 (mown). */
+  readonly kept: number;
+  /** A drive from the street to the building and what it is made of, or null; `at` is where along the lot's frontage (0 to 1) it meets the street. */
+  readonly drive: { readonly kind: "gravel" | "dirt" | "concrete"; readonly at: number; readonly width: number } | null;
+  /** A front walk from the street to the door, and how broken it is (0 sound, 1 half gone to weeds), or null. */
+  readonly walk: { readonly wear: number } | null;
+};
+
 /** What a street's end made by the plan is: a turnaround (a gravel bulb to turn in), a barricade, or a landing at the water. */
 export type EndKind = "turnaround" | "barricade" | "landing";
 
@@ -543,6 +611,11 @@ export type JunctionLeg = {
   readonly deadEnd: boolean;
   /** A leg closed with a planter (a legacy of the seam's sharp crossings): its strip ends on the other street's curb line. */
   readonly closed: boolean;
+  /** Which sides of the leg, at the junction, have a curb and a sidewalk (left of the leg's direction, then right): a corner has a curb return and a sidewalk only where both legs it joins have them. */
+  readonly curbLeft: boolean;
+  readonly curbRight: boolean;
+  readonly walkLeft: boolean;
+  readonly walkRight: boolean;
 };
 
 /**
@@ -564,6 +637,10 @@ export type JunctionCorner = {
   readonly tb: Vec;
   readonly c: Vec | null;
   readonly lot: Vec | null;
+  /** The corner has a curb return (both legs have a curb on the sides that meet here), else the pavement turns in a plain radius into gravel. */
+  readonly curb: boolean;
+  /** The corner has its sidewalk (both legs have one on the sides that meet here). */
+  readonly walk: boolean;
 };
 
 /** An alley's mouth: where an alley meets a street, drawn as a driveway apron with the sidewalk carried across. */
@@ -805,6 +882,10 @@ export type TownPlan = {
   readonly spawn: Spawn;
   /** Every place where streets meet (and the alley mouths, road ends, stairs and rail crossings), with its legs, corners and control. */
   readonly junctions: readonly Junction[];
+  /** What stands beside each street's roadway and how it was laid, by street id (the sidewalks, curbs and repaving: `port/edges.ts`). */
+  readonly edges: readonly StreetEdge[];
+  /** How each lot's ground is kept, by lot id (`port/yards.ts`). */
+  readonly yards: readonly Yard[];
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
   readonly fill: readonly { readonly polygon: Poly }[];
   /** The quay: the straight edge of the made ground along the old plat, seaward of it the harbour. */

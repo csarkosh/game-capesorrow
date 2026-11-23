@@ -16,7 +16,7 @@
 import type { Rgb } from "./meshBuilder.js";
 import { ALLEY, ASPHALT, CURB, GRAVEL, ROAD_ASPHALT, SIDEWALK, WALK_CONCRETE, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
 import type { LayerName } from "./townLayers.js";
-import { groundFrame, wallFrame, type Surface, type WearKind } from "./townSurface.js";
+import { groundFrame, wallFrame, type Surface, type UvFrame, type WearKind } from "./townSurface.js";
 
 type Material = { readonly layer: LayerName; readonly tint: Rgb; readonly wear: number; readonly wearKind: WearKind };
 
@@ -52,4 +52,38 @@ export function faceSurfaceFor(colour: Rgb, ax: number, az: number, bx: number, 
   const len = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
   if (!(len > 1e-9)) return undefined;
   return { layer: m.layer, tint: m.tint, frame: wallFrame(ax, az, (bx - ax) / len, (bz - az) / len, 0), ...(m.wear > 0 ? { wear: m.wear, wearKind: m.wearKind } : {}) };
+}
+
+/**
+ * What a builder may lay over the surface a colour names: another layer, a tint, a frame (so asphalt runs along its street and not along the world's z), and
+ * wear and dirt (numbers, or functions of a vertex's position, which is how a gutter is dirtier than a street's middle). A field left out is the colour's own.
+ */
+export type Over = {
+  readonly layer?: LayerName;
+  readonly tint?: Rgb;
+  readonly frame?: UvFrame;
+  readonly wear?: number | ((p: readonly [number, number, number]) => number);
+  readonly wearKind?: WearKind;
+  readonly dirt?: number | ((p: readonly [number, number, number]) => number);
+};
+
+/** `base` (the surface the colour names, if any) with `over` laid on it. With no `over` it is `base` itself. A face takes a layer on its own frame unless `over` gives one. */
+export function withOver(base: Surface | undefined, colour: Rgb, anchor: { readonly x: number; readonly z: number }, over: Over | undefined, face = false, ends?: readonly [number, number, number, number]): Surface | undefined {
+  if (over === undefined) return base;
+  const layer = over.layer ?? base?.layer;
+  if (layer === undefined) return undefined;
+  let frame = over.frame ?? base?.frame;
+  if (frame === undefined) {
+    if (face && ends !== undefined) {
+      const len = Math.sqrt((ends[2] - ends[0]) * (ends[2] - ends[0]) + (ends[3] - ends[1]) * (ends[3] - ends[1]));
+      frame = len > 1e-9 ? wallFrame(ends[0], ends[1], (ends[2] - ends[0]) / len, (ends[3] - ends[1]) / len, 0) : groundFrame(anchor);
+    } else frame = groundFrame(anchor);
+  }
+  void colour;
+  const wear = over.wear ?? base?.wear;
+  // Dirt is the second wear, of the grime kind (the mud layer), laid over the first (moss): one mechanism with the buildings' (`townSurface.ts`, `townMaterial.ts`).
+  const wear2 = over.dirt ?? base?.wear2;
+  const tint = over.tint ?? base?.tint;
+  const wearKind = over.wearKind ?? base?.wearKind;
+  return { layer, frame, ...(tint === undefined ? {} : { tint }), ...(wear === undefined ? {} : { wear }), ...(wearKind === undefined ? {} : { wearKind }), ...(wear2 === undefined ? {} : { wear2, wearKind2: "grime" as const }) };
 }

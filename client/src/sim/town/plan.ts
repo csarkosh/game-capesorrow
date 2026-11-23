@@ -18,6 +18,8 @@ import { findEnds } from "./port/ends.js";
 import { planOutskirts } from "./port/outskirts.js";
 import { landOf } from "./land.js";
 import { findJunctions } from "./junctions.js";
+import { planEdges } from "./port/edges.js";
+import { planYards } from "./port/yards.js";
 import { describeRoads, planRoads } from "./port/roads.js";
 import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
@@ -163,7 +165,10 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   // What is in the buildings, from the finished plan and the business stream alone: nothing above it changes.
   const uses = recipe.uses({ history: fullHistory, townName, names, buildings, lots, blocks, streets, landmarks, harbour: harbourOut.harbour }, stageRng(seed, "business"));
   const crossings = railCrossings(site, streets, roads);
-  const junctions = findJunctions({ streets, roads, ends, rail: crossings, blocks, buildings, landmarks, rng: stageRng(seed, "junctions") });
+  // What stands beside each street's roadway (sidewalks, curbs, repaving), then the junctions that follow it, then each lot's yard.
+  const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges") });
+  const junctions = findJunctions({ streets, roads, ends, rail: crossings, blocks, buildings, landmarks, edges, rng: stageRng(seed, "junctions") });
+  const yards = planYards({ blocks, lots, buildings, rng: stageRng(seed, "yards") });
   return {
     version: TOWN_GEN,
     kind,
@@ -185,6 +190,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     woods: layout.woods,
     spawn,
     junctions,
+    edges,
+    yards,
     decks,
     harbour: harbourOut.harbour,
     fill: layout.fill,

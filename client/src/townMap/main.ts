@@ -240,6 +240,7 @@ function legend(): HTMLElement {
   swatch("#c8b090", "a pole of the power line");
   swatch("#ff9a30", "a street crossing the main line");
   swatch("#f0e8c8", "a public stair");
+  swatch("#5ac8ff", "a sidewalk pour, by the side of the street it is on (bluer: poured later); a white line is a curb");
   for (const k of ["four-way", "bend", "tee", "skew", "highway"] as const) swatch(JUNCTION_FILL[k], `a junction: ${k} (dashed outline: ramp-less corners)`);
   swatch("#d02020", "a STOP sign (a ring: stopped all ways)");
   swatch("#ffffff", "a marked crosswalk");
