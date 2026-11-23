@@ -103,7 +103,11 @@ export type Street = {
   readonly id: number;
   readonly a: Vec;
   readonly b: Vec;
+  /** The right of way, edge to edge. */
   readonly width: number;
+  /** The roadway between the curbs, and the sidewalk down each side of it (0 for none): the rest of the right of way is verge (`port/ways.ts`). */
+  readonly roadway: number;
+  readonly walk: number;
   readonly kind: StreetKind;
   readonly plat: string | null;
   readonly name: string;

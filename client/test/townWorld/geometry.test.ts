@@ -3,7 +3,7 @@ import { finish } from "@csarkosh/engine/game/syncJobs";
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { buildingGeometry, PROUD } from "../../src/game/town/buildingGeometry.js";
 import { MeshBuilder, hash01, type MeshArrays } from "../../src/game/town/meshBuilder.js";
-import { GLASS, PLYWOOD, DECK, PILE, QUAY_FACE } from "../../src/game/town/palette.js";
+import { CURB, GLASS, PLYWOOD, DECK, PILE, QUAY_FACE } from "../../src/game/town/palette.js";
 import { APRON, CURB_HEIGHT, FACE_DEPTH, pierGeometry, quayGeometry, wharfGeometry } from "../../src/game/town/pileGeometry.js";
 import { ASPHALT_OVER, RANK_LIFT, SLOT_LIFT, STREET_LIFT, streetGeometry } from "../../src/game/town/streetGeometry.js";
 import { CELL, townGeometry, townGround } from "../../src/game/town/townGeometry.js";
@@ -141,7 +141,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 74, flat: 38, vertices: 122637, triangles: 61125 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 75, flat: 38, vertices: 172598, triangles: 86102 });
   });
 });
 
@@ -155,7 +155,7 @@ describe("the streets", () => {
     return { g, a: builder.finish() };
   }
 
-  it("lie on the ground: every vertex is its ground's height plus a lift of 0.06 m (the sidewalks) to 0.16 m (the rail's top), facing up", () => {
+  it("lie on the ground: every vertex is its ground's height plus a lift of 0.06 m (the verges) to 0.18 m (the curbs' tops), facing up but for the curbs' faces", () => {
     for (const seed of WORLD_SEEDS) {
       const { g, a } = streetsOf(seed);
       let least = Infinity;
@@ -166,11 +166,16 @@ describe("the streets", () => {
         most = Math.max(most, lift);
       }
       expect(least).toBeGreaterThan(STREET_LIFT - 0.002);
-      // The highest is the rail's top (0.1 over the street lift); the highest carriageway is under 0.125.
-      expect(most).toBeLessThan(STREET_LIFT + 0.1 + 0.002);
-      eachTriangle(a, (_p, n) => {
-        if (n[1] < 0.95) throw new Error(`${seed}: a street surface turned from the sky (${n[1]})`);
+      // The highest is a curb's top, `CURB_RISE` over the highest carriageway (under 0.125 and the paint's 0.012 on it).
+      expect(most).toBeLessThan(STREET_LIFT + 0.12 + 0.002);
+      let curbFaces = 0;
+      eachTriangle(a, (_p, n, c) => {
+        // A curb's faces stand up, in the curb's colour; every other surface faces the sky.
+        const curb = Math.abs(c[0] - CURB[0]) < 1e-6 && Math.abs(c[1] - CURB[1]) < 1e-6;
+        if (curb && Math.abs(n[1]) < 0.05) curbFaces++;
+        else if (n[1] < 0.95) throw new Error(`${seed}: a street surface turned from the sky (${n[1]})`);
       });
+      expect(curbFaces).toBeGreaterThan(100);
       console.log(`street lifts for ${seed}: ${least.toFixed(4)} to ${most.toFixed(4)} m`);
     }
   });

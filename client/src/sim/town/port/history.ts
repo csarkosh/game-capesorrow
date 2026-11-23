@@ -97,7 +97,7 @@ export function makeHistory(rng: Rng, names: TownNames, shore: ShoreFacts): { hi
   ev(
     secondYear,
     "second plat",
-    `The ${secondCompany} plats the land behind the water to the compass, with ${names.avenue}, a hundred feet wide, running up from the harbour. Where its grid meets the first, the streets do not line up.`,
+    `The ${secondCompany} plats the land behind the water to the compass, with ${names.avenue}, sixty-six feet wide, running up from the harbour. Where its grid meets the first, the streets do not line up.`,
   );
   if (hasRail) {
     ev(

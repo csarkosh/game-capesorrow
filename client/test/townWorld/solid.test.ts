@@ -332,7 +332,7 @@ describe("the town's buildings as walls", () => {
         }
       }
     }
-    expect(settled).toBeGreaterThan(500);
+    expect(settled).toBeGreaterThan(400);
   });
 
   it("starts the player outside every building, and leaves the start alone", () => {

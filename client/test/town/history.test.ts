@@ -245,15 +245,15 @@ describe("form follows history", () => {
     expect(yes).toBeGreaterThan(5);
   });
 
-  it("the main street is wider after a fire, and one wide avenue is 30 m", () => {
+  it("the main street is wider after a fire, and one wide avenue is 20 m", () => {
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       const main = plan.streets.find((s) => s.kind === "main");
-      // Where the highway is the old town's main street there is no other; elsewhere it is 24 m after a fire and 20 m before.
-      if (main) expect(main.width).toBe(plan.history.fire ? 24 : 20);
+      // Where the highway is the old town's main street there is no other; elsewhere it is 20 m after a fire and 18 m before.
+      if (main) expect(main.width).toBe(plan.history.fire ? 20 : 18);
       const avenue = plan.streets.filter((s) => s.kind === "avenue");
       expect(avenue.length).toBeGreaterThan(0);
-      for (const a of avenue) expect(a.width).toBe(30);
+      for (const a of avenue) expect(a.width).toBe(20);
       expect(new Set(plan.streets.filter((s) => s.kind !== "alley" && s.kind !== "wharf" && s.kind !== "rail").map((s) => s.width)).size).toBeLessThanOrEqual(6);
     }
   });

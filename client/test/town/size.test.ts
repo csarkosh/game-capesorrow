@@ -24,12 +24,12 @@ describe("the large port's size and speed", () => {
         expect(lo).toBeLessThanOrEqual(115);
         expect(hi).toBeGreaterThanOrEqual(90);
         expect(hi).toBeLessThanOrEqual(141);
-        expect([18, 20, 24]).toContain(p.streetWidth);
-        expect(p.alley === null || p.alley === 5).toBe(true);
+        expect([14, 15, 16]).toContain(p.streetWidth);
+        expect(p.alley === null || p.alley === 4).toBe(true);
       }
       for (const s of plan.streets) {
-        if (s.kind === "alley") expect(s.width).toBe(5);
-        if (s.kind === "street") expect([18, 20, 24]).toContain(s.width);
+        if (s.kind === "alley") expect(s.width).toBe(4);
+        if (s.kind === "street") expect([14, 15, 16]).toContain(s.width);
       }
       // Commercial lots are 7.5 to 15 m wide: no core lot wider along its street than 15 m or so, but for the reserved ones.
       for (const b of plan.buildings) {
@@ -37,6 +37,35 @@ describe("the large port's size and speed", () => {
         // A shop's frontage is its narrow side: 15 m at most.
         const narrow = Math.min(b.halfAlong, b.halfAcross) * 2;
         expect(narrow, `seed ${seed} ${b.kind}`).toBeLessThanOrEqual(15.5);
+      }
+    }
+  });
+
+  it("draws every street at its true width: roadways of 7.5 to 9 m in rights of way of 14 to 16 m, the main street's 11 or 12 m between sidewalks of 3.5 or 4, the avenue's 12 m, alleys of 4 m, and nothing wider than the highway's bed by more than a lane's margin", () => {
+    for (const seed of SEEDS) {
+      const { plan } = townFor(seed);
+      for (const s of plan.streets) {
+        // Roadway, two sidewalks and the verges that are left fit the right of way.
+        expect(s.roadway + 2 * s.walk, `seed ${seed} street ${s.id} ${s.kind}`).toBeLessThanOrEqual(s.width + 1e-9);
+        if (s.kind === "street") {
+          expect(s.roadway).toBeGreaterThanOrEqual(7.5);
+          expect(s.roadway).toBeLessThanOrEqual(9);
+          expect(s.walk).toBeGreaterThanOrEqual(1.5);
+          expect(s.walk).toBeLessThanOrEqual(3.5);
+        }
+        if (s.kind === "main") {
+          expect([11, 12]).toContain(s.roadway);
+          expect([3.5, 4]).toContain(s.walk);
+        }
+        if (s.kind === "avenue") {
+          expect(s.roadway).toBe(12);
+          expect(s.width).toBe(20);
+        }
+        if (s.kind === "alley") {
+          expect(s.width).toBe(4);
+          expect(s.walk).toBe(0);
+        }
+        if (s.kind !== "highway" && s.kind !== "rail" && s.kind !== "wharf") expect(s.roadway, `seed ${seed} ${s.kind}`).toBeLessThanOrEqual(12);
       }
     }
   });

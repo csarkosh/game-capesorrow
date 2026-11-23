@@ -10,6 +10,7 @@ import { bbox, segSegDist, type Poly } from "./geom.js";
 import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
+import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
 import { analyseShore } from "./shore.js";
 import type { TownSite } from "./site.js";
@@ -61,7 +62,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
       drafts.push(d);
     }
     if (cut.alley && streets.some((st) => st.kind !== "alley" && Math.min(segSegDist(cut.alley!.a, cut.alley!.b, st.a, st.b)) <= (st.width + cut.alley!.width) / 2 + 0.5)) {
-      streets.push({ id: streets.length, a: cut.alley.a, b: cut.alley.b, width: cut.alley.width, kind: "alley", plat: block.plat, name: "alley" });
+      streets.push({ id: streets.length, a: cut.alley.a, b: cut.alley.b, width: cut.alley.width, ...wayOf("alley", cut.alley.width), kind: "alley", plat: block.plat, name: "alley" });
     }
   }
 
