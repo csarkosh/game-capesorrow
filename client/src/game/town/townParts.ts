@@ -139,8 +139,6 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
       building = true;
       host.jobs.begin(owner, build(), false, "town");
-      // The railroad's cells nearest the start, after the town's own job.
-      rail.prime(start.x, start.z);
     },
 
     seen(planes, cover) {

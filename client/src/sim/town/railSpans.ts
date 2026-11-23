@@ -69,28 +69,16 @@ export function lineGroundAt(seed: number, z: number): number {
 }
 
 type Chunk = readonly RailSpan[];
-const CHUNKS = new Map<number, Map<number, Chunk>>();
-let lastSeed = NaN;
-let lastChunks: Map<number, Chunk> | null = null;
+/** The chunks made, keyed by the seed and the chunk's index together (the index is under 2^19 either way: a coast of 134 km). */
+const CHUNKS = new Map<number, Chunk>();
 
 /** The spans that touch the chunk `c` of a seed's table, made once. */
 function chunkOf(seed: number, c: number): Chunk {
-  let table: Map<number, Chunk>;
-  if (seed === lastSeed && lastChunks !== null) table = lastChunks;
-  else {
-    let t = CHUNKS.get(seed);
-    if (t === undefined) {
-      t = new Map();
-      CHUNKS.set(seed, t);
-    }
-    table = t;
-    lastSeed = seed;
-    lastChunks = t;
-  }
-  let hit = table.get(c);
+  const key = seed * 1048576 + c;
+  let hit = CHUNKS.get(key);
   if (hit === undefined) {
     hit = buildChunk(seed, c);
-    table.set(c, hit);
+    CHUNKS.set(key, hit);
   }
   return hit;
 }

@@ -12,7 +12,7 @@
  *
  * The bank's width grows with how far the grade line stands from the land there (`m = g - N`): `BANK_MIN` on level ground
  * and `BANK_SLOPE` metres more for each metre of difference (saturating at `BANK_EXTRA` metres more), so a fill or a cut
- * is never steeper than about one in 1.6 however deep. Where the line would stand over the sea the bed is a causeway (the
+ * on land that is itself gentle is under one in one, and only the land's own cliffs are steeper. Where the line would stand over the sea the bed is a causeway (the
  * same fill, reaching into the water) or, where the water is deep or the gap long, the ground is left and the track is
  * carried on a trestle (`railSpans.ts`): the bench's weight is then taken away by the trestle's own over a short ramp.
  *

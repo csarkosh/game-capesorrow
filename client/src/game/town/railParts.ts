@@ -43,8 +43,6 @@ type Cell = { k: number; lod: RailLod; pieces: Piece[]; building: Piece[]; verti
 export type RailStream = {
   /** Each frame, with the view's planes: streams the cells by the camera's place and shows those in view. */
   seen(planes: readonly ViewFrustumPlane[]): void;
-  /** Makes the cells nearest a place at once, over the scheduler's first frames (the player's start). */
-  prime(x: number, z: number): void;
   stats(): RailStats;
   dispose(): void;
 };
@@ -195,9 +193,6 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
           }
         }
       }
-    },
-    prime(x, z) {
-      stream(x, z, 12);
     },
     stats() {
       const s: RailStats = { cells: 0, meshes: 0, vertices: 0, triangles: 0, pending: 0, byLod: [0, 0, 0] };
