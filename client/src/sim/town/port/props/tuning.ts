@@ -12,7 +12,7 @@ export type W<T> = readonly (readonly [T, number])[];
 // ---- The streets: curbs and shoulders -------------------------------------------------------------------------------------------
 
 /** The share of stalls along a curb that hold a car, before the open businesses are counted, by the street's era. */
-export const CURB_BASE: Readonly<Record<"core" | "old" | "later" | "edge", number>> = { core: 0.1, old: 0.06, later: 0.035, edge: 0.025 };
+export const CURB_BASE: Readonly<Record<"core" | "old" | "later" | "edge", number>> = { core: 0.08, old: 0.05, later: 0.03, edge: 0.02 };
 /** What an open business adds to the stalls near it (times its `DRAW`, falling off linearly to nothing at `DRAW_REACH` metres), at most. */
 export const DRAW_GAIN = 0.9;
 export const DRAW_REACH = 28;
@@ -68,18 +68,18 @@ export const AGE = { newest: 0.0, oldest: 1.0 };
 // ---- Lots: what a household keeps ----------------------------------------------------------------------------------------------
 
 /** A house lot's drive holds a vehicle, by the state of the house. */
-export const DRIVE_VEHICLE = { open: 0.72, vacant: 0.1, ruin: 0.04 };
+export const DRIVE_VEHICLE = { open: 0.58, vacant: 0.1, ruin: 0.04 };
 /** A second vehicle on the yard of an open house, by the yard's kind. */
-export const SECOND_VEHICLE: Readonly<Record<string, number>> = { mown: 0.1, shaggy: 0.24, mossy: 0.18, bare: 0.35, tall: 0.12, brush: 0.05, paved: 0 };
+export const SECOND_VEHICLE: Readonly<Record<string, number>> = { mown: 0.1, shaggy: 0.18, mossy: 0.14, bare: 0.25, tall: 0.1, brush: 0.05, paved: 0 };
 /** A dead vehicle in the grass: by the yard's kind, for an open house and a vacant one. */
 export const DERELICT_YARD: Readonly<Record<string, readonly [number, number]>> = { tall: [0.22, 0.45], brush: [0.2, 0.4], shaggy: [0.05, 0.25], bare: [0.1, 0.2], mossy: [0.08, 0.3], mown: [0.0, 0.05], paved: [0, 0.15] };
 /** A project car on blocks under a tarp: the share of open houses with an untidy yard. */
-export const PROJECT_CAR = 0.06;
+export const PROJECT_CAR = 0.14;
 /** A travel trailer or camper in a side yard, for a house with room. */
 export const CAMPER = 0.045;
 /** A boat on a trailer, in a house's yard: near the harbour, and away from it. */
-export const BOAT_NEAR = 0.32;
-export const BOAT_FAR = 0.07;
+export const BOAT_NEAR = 0.45;
+export const BOAT_FAR = 0.09;
 /** How near the quay (metres) a lot is called near the harbour, and the extra share in a mill's housing or the dock district. */
 export const HARBOUR_NEAR = 260;
 /** Of boats on trailers: those under a tarp, and the weeds grown through the trailer (the weight of a lot that is not kept). */
@@ -87,9 +87,9 @@ export const BOAT_TARP = 0.3;
 export const BOAT_SKIFF = 0.55;
 
 /** Paved lots (a business's parking): the cars in a row by the building, by how much the building draws. */
-export const LOT_CARS_MAX = 5;
+export const LOT_CARS_MAX = 4;
 /** A stall in the highway strip holds a car this often when its business is open (the painted rows `groundGeometry.ts` draws). */
-export const STRIP_STALL = 0.3;
+export const STRIP_STALL = 0.22;
 /** Mirrors `game/town/groundGeometry.ts` (a test holds the two together): the painted stalls' length, pitch and setback, and the clearance from buildings. */
 export const STALL_LENGTH = 5.5;
 export const STALL_PITCH = 2.7;
@@ -101,11 +101,11 @@ export const STALL_CLEAR = 1.5;
 /** The share of house lots with a picket fence round the front yard, by how kept the yard is (0 to 1). */
 export const PICKET_FRONT = 0.16;
 /** A board fence along the back or one side: the share of open houses, and of businesses with a yard behind. */
-export const BOARD_SIDE = 0.22;
+export const BOARD_SIDE = 0.16;
 /** Post-and-wire along the front or a side of an edge or outlying lot. */
-export const WIRE_EDGE = 0.4;
+export const WIRE_EDGE = 0.3;
 /** Chain-link all round a working yard: the share of such lots, and of houses with dogs or gear. */
-export const CHAIN_WORK = 0.6;
+export const CHAIN_WORK = 0.5;
 export const CHAIN_HOUSE = 0.04;
 /** Trades and building kinds that keep a fenced yard. */
 export const FENCED_TRADES: readonly Trade[] = ["auto repair", "boat yard", "tire shop", "saw and chain shop", "self storage", "garden and feed", "marine supply"];

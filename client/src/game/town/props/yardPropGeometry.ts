@@ -9,7 +9,6 @@ import type { Surface } from "../townSurface.js";
 import type { Detail, TownGround } from "../townTypes.js";
 import type { Bin, Gear, Mailbox } from "../../../sim/town/types.js";
 import { D, P, lbox, lcylY, mixC, placeOn, rnd, tube, type Place } from "./kit.js";
-import { paintTint } from "./vehicleStyle.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
 
@@ -19,7 +18,9 @@ const MAILBOX: readonly Rgb[] = [[0.01, 0.01, 0.012], [0.25, 0.26, 0.27], [0.5, 
 const BUOY: readonly Rgb[] = [[0.5, 0.04, 0.03], [0.5, 0.35, 0.03], [0.5, 0.5, 0.48], [0.03, 0.12, 0.3], [0.04, 0.3, 0.1], [0.4, 0.12, 0.02]];
 
 function metal(o: Vec3, c: Rgb, wear: number, kind: "rust" | "grime" = "rust"): Surface {
-  return { layer: "metal_painted", frame: { origin: o, u: [1, 0, 0], v: [0, 1, 0] }, tint: paintTint(c), wear, wearKind: kind, wear2: 0.2, wearKind2: "grime" };
+  // The painted-metal layer: ribbed sheet, as a dumpster's sides are. Its tint is the paint over the layer's own mean (a green).
+  const mean: Rgb = [0.0184, 0.0927, 0.0192];
+  return { layer: "metal_painted", frame: { origin: o, u: [1, 0, 0], v: [0, 1, 0] }, tint: [Math.min(40, c[0] / mean[0]), Math.min(40, c[1] / mean[1]), Math.min(40, c[2] / mean[2])], wear, wearKind: kind, wear2: 0.2, wearKind2: "grime" };
 }
 
 function cart(m: MeshBuilder, pl: Place, b: Bin, tipped: boolean): void {
@@ -52,7 +53,7 @@ function dumpster(m: MeshBuilder, pl: Place, b: Bin): void {
   const colours: readonly Rgb[] = [[0.03, 0.1, 0.05], [0.03, 0.06, 0.16], [0.1, 0.09, 0.08], [0.2, 0.05, 0.03]];
   const c = colours[b.colour % 4] as Rgb;
   const w = 0.62;
-  const wear = 0.2 + rnd(b.seed, 1) * 0.5;
+  const wear = 0.1 + rnd(b.seed, 1) * 0.2;
   const sf = (o: Vec3): Surface => metal(o, c, wear);
   const q = (pts: Vec3[], hint: Vec3): void => m.poly(pts, hint, c, sf(pts[0] as Vec3));
   q([P(pl, 0.95, 0.2, -w), P(pl, 0.95, 0.2, w), P(pl, 0.95, 1.2, w), P(pl, 0.95, 1.2, -w)], D(pl, 1, 0, 0));
@@ -163,7 +164,7 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
   if (low && o.kind !== "pots" && o.kind !== "totes" && o.kind !== "firewood" && o.kind !== "pallet stack") return;
   switch (o.kind) {
     case "pots": {
-      const wire: Rgb = rnd(o.seed, 1) < 0.5 ? [0.1, 0.12, 0.1] : [0.14, 0.1, 0.06];
+      const wire: Rgb = rnd(o.seed, 1) < 0.5 ? [0.2, 0.24, 0.17] : [0.28, 0.17, 0.08];
       const lx = (rnd(o.seed, 2) - 0.5) * 0.14;
       const lz = (rnd(o.seed, 3) - 0.5) * 0.14;
       if (low) {
@@ -171,7 +172,7 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
         m.cylinder(p0[0], p0[2], p0[1], 0.44, o.n * 0.3, 5, wire, mixC(wire, [0.3, 0.28, 0.2], 0.3), 0.4);
         break;
       }
-      for (let k = 0; k < o.n; k++) pot(m, pl, 0, 0, k * 0.3, lx * (k / 6), lz * (k / 6), wire);
+      for (let k = 0; k < o.n; k++) pot(m, pl, 0, 0, k * 0.3, lx * (k / 6), lz * (k / 6), k % 2 === 0 ? wire : mixC(wire, [0.04, 0.04, 0.04], 0.55));
       const buoy = BUOY[o.colour % BUOY.length] as Rgb;
       m.cylinder(P(pl, 0.2, 0, 0.1)[0], P(pl, 0.2, 0, 0.1)[2], P(pl, 0, o.n * 0.3 + 0.32, 0)[1], 0.11, 0.2, 5, buoy, buoy, 0.07);
       if (!low) tube(m, [P(pl, 0, o.n * 0.3 + 0.3, 0), P(pl, 0.35, o.n * 0.3 + 0.1, 0.2), P(pl, 0.5, 0.05, 0.3)], 0.02, [0.3, 0.25, 0.14], 3);

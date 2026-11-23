@@ -125,7 +125,6 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       const pa: Vec3 = [a.x, a.y + 0.06, a.z];
       const pb: Vec3 = [b.x, b.y + 0.06, b.z];
       gl.poly([pa, pb, top(b, 1), top(a, 0)], [nx, 0, nz], [0.45, 0.46, 0.48], undefined, { clear: 0.8 });
-      if (!low) gl.poly([pb, pa, top(a, 0), top(b, 1)], [-nx, 0, -nz], [0.45, 0.46, 0.48], undefined, { clear: 0.8 });
       if (!low) tube(m, [[a.x, a.y + H, a.z], [b.x, b.y + H, b.z]], 0.022, GALV, 3);
     }
   }

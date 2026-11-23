@@ -196,7 +196,7 @@ function curbVehicles(ctx: Context, out: Out): void {
 // ---- A lot's own ---------------------------------------------------------------------------------------------------------------
 
 /** A free place in a lot for a box of this size, by a few tries; the heading comes from `heading`. */
-export function scatter(ctx: Context, out: Out, info: LotInfo, rng: Rng, length: number, width: number, opts: { depth0: number; depth1: number; heading: (rng: Rng) => { x: number; z: number }; margin?: number; inset?: number; tries?: number }): { x: number; z: number; hx: number; hz: number } | null {
+export function scatter(ctx: Context, out: Out, info: LotInfo, rng: Rng, length: number, width: number, opts: { depth0: number; depth1: number; heading: (rng: Rng) => { x: number; z: number }; margin?: number; inset?: number; tries?: number; keep?: number }): { x: number; z: number; hx: number; hz: number } | null {
   const tries = opts.tries ?? 24;
   const d1 = Math.min(opts.depth1, info.depth - 1);
   if (d1 <= opts.depth0 || info.frontLen < 3) return null;
@@ -207,7 +207,7 @@ export function scatter(ctx: Context, out: Out, info: LotInfo, rng: Rng, length:
     const z = info.oz + info.tz * s + info.dz * d;
     const h = opts.heading(rng);
     const box = boxAt(x, z, h.x, h.z, length, width);
-    const hit = tryFree(ctx, box, info, opts.margin ?? 0.8, opts.inset ?? 0.4);
+    const hit = tryFree(ctx, box, info, opts.margin ?? 0.8, opts.inset ?? 0.4, opts.keep);
     if (hit) return { x, z, hx: h.x, hz: h.z };
   }
   return null;
@@ -215,10 +215,10 @@ export function scatter(ctx: Context, out: Out, info: LotInfo, rng: Rng, length:
 
 /** How far from a house a vehicle keeps: what an owner added to it (a lean-to or a carport reaches 3.5 m from a wall) is drawn, not planned. */
 export const HOUSE_KEEP = 3.6;
-function tryFree(ctx: Context, box: ReturnType<typeof boxAt>, info: LotInfo, margin: number, inset: number): boolean {
+function tryFree(ctx: Context, box: ReturnType<typeof boxAt>, info: LotInfo, margin: number, inset: number, keep = HOUSE_KEEP): boolean {
   const b = info.building;
   const house = b !== undefined && (b.kind === "house" || b.kind === "boarding house");
-  return boxInside(box, info.poly, inset) && !ctx.occ.hits(box, margin) && !ctx.bocc.hits(box, house ? HOUSE_KEEP : 1.0);
+  return boxInside(box, info.poly, inset) && !ctx.occ.hits(box, margin) && !ctx.bocc.hits(box, house ? keep : 1.0);
 }
 
 /** A heading along the way into the lot or back out, or across, each a few degrees crooked. */
@@ -284,7 +284,7 @@ function houseVehicles(ctx: Context, out: Out, info: LotInfo): void {
   if (lived && (yk === "shaggy" || yk === "tall" || yk === "bare" || yk === "mossy") && chance(rng, T.PROJECT_CAR)) {
     const kind: VehicleKind = next(rng) < 0.5 ? "sedan" : "pickup";
     const [length, width] = dims(kind, 0.8);
-    const sp = scatter(ctx, out, info, rng, length, width, { depth0: 5, depth1: 18, heading: headingOf(info, "any") });
+    const sp = scatter(ctx, out, info, rng, length, width, { depth0: 4, depth1: 18, heading: headingOf(info, "any"), keep: 2.4 });
     if (sp !== null) placeVehicle(ctx, out, rng, { kind, x: sp.x, z: sp.z, hx: sp.hx, hz: sp.hz, spot: "yard", lot: lotId, state: "project", age: range(rng, 0.7, 1) }, info, age);
   }
   // A dead one in the grass.
@@ -314,7 +314,7 @@ function boatTrailers(ctx: Context, out: Out, info: LotInfo): void {
   const skiff = chance(rng, T.BOAT_SKIFF);
   const length = skiff ? range(rng, 5.2, 6.2) : range(rng, 6.4, 7.8);
   const width = 2.35;
-  const sp = scatter(ctx, out, info, rng, length, width, { depth0: 5, depth1: 20, heading: headingOf(info, "any", 0.12), margin: 0.9 });
+  const sp = scatter(ctx, out, info, rng, length, width, { depth0: 5, depth1: 20, heading: headingOf(info, "any", 0.12), margin: 0.9, keep: 2.4 });
   if (sp === null) return;
   const tr = makeTrailer(out, rng, { x: sp.x, z: sp.z, hx: sp.hx, hz: sp.hz, boat: skiff ? "skiff" : "runabout", lot: info.lot.id, length, width, kept: info.yard.kept });
   const box = boxAt(sp.x, sp.z, sp.hx, sp.hz, length, width);

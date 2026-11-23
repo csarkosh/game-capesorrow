@@ -192,7 +192,7 @@ function yardGear(ctx: Context, out: Out, info: LotInfo): void {
       if (sp !== null) gearIn(ctx, out, rng, kind, { ...sp, ...turnedXZ(sp, rng) }, info.lot.id, info);
     }
   }
-  if (chance(rng, lived ? 0.4 : 0.1)) {
+  if (chance(rng, lived ? 0.3 : 0.08)) {
     const kind = weighted(rng, T.YARD_GEAR);
     const sp = besideBuilding(ctx, out, info, rng, 1.2, 1.0, true);
     if (sp !== null) gearIn(ctx, out, rng, kind, { ...sp, ...turnedXZ(sp, rng) }, info.lot.id, info);

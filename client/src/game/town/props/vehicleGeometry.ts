@@ -14,11 +14,11 @@ import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
 import type { WearKind } from "../townSurface.js";
-import { D, P, lbox, lquadX, lquadZ, mix, mixC, placeOn, rnd, type Place } from "./kit.js";
+import { D, P, groundAt, lbox, lquadX, lquadZ, mix, mixC, placeOn, rnd, type Place } from "./kit.js";
 import { BUMPER, CABIN, CHROME, GLASS_CAR, LAMP, PAINT, PLATE, RIM, SEAT, SHAPES, TAIL, TARP_BLUE, TARP_SILVER, TYRE, UNDER, paintTint, type Shape, type Station } from "./vehicleStyle.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
-export type VehicleSinks = { readonly solid: Sink; readonly glass: Sink };
+export type VehicleSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat?: Sink };
 
 type Opts = {
   readonly sx: number;
@@ -193,9 +193,9 @@ function loft(m: MeshBuilder, gl: MeshBuilder, pl: Place, sh: Shape, o: Opts): v
     });
     m.grid(rows, centre, {
       colour: colourOf,
-      layer: "metal_painted",
+      layer: "roof_bitumen",
       tint: (ii, j) => paintTint(colourOf(ii, j)),
-      uv: (ii, j) => [(meta[ii + a0] as { x: number }).x, (uvLen[ii] as number[])[j] as number],
+      uv: (ii, j) => [(meta[ii + a0] as { x: number }).x * 6, (uvLen[ii] as number[])[j] as number * 6],
       wear: (ii, j) => {
         const w = wearAt(look(ii, j).ii, j);
         const kind: WearKind = w.rust >= w.algae ? "rust" : "algae";
@@ -209,7 +209,7 @@ function loft(m: MeshBuilder, gl: MeshBuilder, pl: Place, sh: Shape, o: Opts): v
     // The bridge to the next segment: one row of quads, its own surface.
     if (b + 1 < breaks.length - 1) {
       const bridge = rowsPts.slice(a1, a1 + 2);
-      m.grid(bridge, centre, { colour: o.paint, layer: "metal_painted", tint: paintTint(o.paint), uv: (ii, j) => [ii, (j as number) * 0.2] });
+      m.grid(bridge, centre, { colour: o.paint, layer: "roof_bitumen", tint: paintTint(o.paint), uv: (ii, j) => [ii, (j as number) * 0.2] });
     }
   }
   // The glass over a dark cabin, a window at a time: for each window (a range of the shape), its first and last rows and the coarse cells between them (columns belt, roof's
@@ -295,7 +295,7 @@ function faceNormal(a: Vec3, b: Vec3, c: Vec3, d: Vec3, inside: Vec3): Vec3 {
 
 /** A tyre on a rim at the local place (x, y of its centre, z of its outer face), its face out to the side `sg`: the tread smooth round, a dark face and a lighter rim. */
 function wheel(m: MeshBuilder, pl: Place, x: number, y: number, z: number, r: number, tw: number, sg: number, detail: Detail, flat: boolean, paintRim: Rgb): void {
-  const n = detail === "low" ? 6 : 9;
+  const n = detail === "low" ? 6 : 12;
   const sq = flat ? 0.93 : 1;
   const ring = (rad: number, zz: number): Vec3[] => Array.from({ length: n + 1 }, (_, i) => P(pl, x + Math.cos((i / n) * Math.PI * 2) * rad, y + Math.sin((i / n) * Math.PI * 2) * rad * sq - (flat ? 0.015 : 0), zz));
   m.grid([ring(r, z - sg * tw), ring(r, z)], P(pl, x, y, z - sg * tw / 2), { colour: TYRE });
@@ -319,7 +319,6 @@ function interior(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, wAt: (x: number
     const y0 = Math.max(0.5 * o.sy, sh.sill + 0.2);
     const w = wAt(sx * o.sx) - 0.15;
     lbox(m, pl, x - 0.3, x - 0.2, y0, beltAt(sx * o.sx) + 0.3, -w, w, SEAT);
-    lbox(m, pl, x - 0.26, x + 0.22, y0, y0 + 0.16, -w, w, SEAT);
   }
   const dx = (sh.mirror - 0.5) * o.sx + o.xOff - o.len / 2;
   lbox(m, pl, dx, dx + 0.3, beltAt(sh.mirror * o.sx) - 0.25, beltAt(sh.mirror * o.sx) + 0.02, -(wAt(sh.mirror * o.sx) - 0.1), wAt(sh.mirror * o.sx) - 0.1, [0.02, 0.02, 0.022]);
@@ -438,14 +437,14 @@ function blocks(m: MeshBuilder, pl: Place, sh: Shape, o: Opts): void {
 
 /** A work truck: a cab (the van's front, shortened) on a frame with a flatbed or a service rack. */
 const CAB: Shape = {
-  L: 2.2, W: 2.1, sill: 0.55, axles: [], r: 0.45, tw: 0.28,
+  L: 2.2, W: 2.1, sill: 0.42, axles: [], r: 0.45, tw: 0.28,
   stations: [[0.0, 2.1, 1.2, 1.0, 0.9], [0.15, 2.15, 1.2, 1.02, 0.92], [0.9, 2.15, 1.2, 1.02, 0.92], [1.3, 1.8, 1.2, 1.0, 0.9], [1.45, 1.35, 1.15, 1.0, 0.9], [1.95, 1.28, 1.1, 0.98, 0.9], [2.2, 1.0, 0.8, 0.95, 0.86]],
   creases: [], side: [[0.2, 1.2]], screens: [[1.28, 1.45]], doors: [0.2, 1.25], mirror: 1.35, seats: [0.75],
 };
 
 export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, detail: Detail): void {
-  // The low tier draws three vehicles in four (the rest are left out by their number).
-  if (detail === "low" && v.id % 4 === 0) return;
+  // The low tier draws three vehicles in five (the rest are left out by their number).
+  if (detail === "low" && (v.id % 5 === 0 || v.id % 5 === 3)) return;
   const m = sinks.solid(v.x, v.z);
   const gl = sinks.glass(v.x, v.z);
   const paint = PAINT[v.colour % PAINT.length] as Rgb;
@@ -456,6 +455,13 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
   const sag = derelict ? -0.05 : 0;
   const lift = project ? 0.3 : sag;
   const pl = placeOn(g, v.x, v.z, v.hx, v.hz, v.length, v.width, lift);
+  // The dark of the ground under it (there is no shadow in the scene): an eight-cornered patch drawn on the ground, inside the body's footprint, seen in the gap under the sills.
+  if (sinks.flat !== undefined) {
+    const hl = v.length / 2 - 0.3;
+    const hw = v.width / 2 - 0.22;
+    const c: Array<[number, number]> = [[hl, hw * 0.6], [hl * 0.8, hw], [-hl * 0.8, hw], [-hl, hw * 0.6], [-hl, -hw * 0.6], [-hl * 0.8, -hw], [hl * 0.8, -hw], [hl, -hw * 0.6]];
+    sinks.flat(v.x, v.z).poly(c.map(([a, b]): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.012, pl.oz + pl.fz * a + pl.lz * b]), [0, 1, 0], [0.012, 0.012, 0.012]);
+  }
   if (camper) {
     camperGeometry(m, gl, pl, v, detail);
     return;
@@ -513,7 +519,7 @@ function workTruck(m: MeshBuilder, pl: Place, v: Vehicle, o: Opts, wAt: (x: numb
 function camperGeometry(m: MeshBuilder, gl: MeshBuilder, pl: Place, v: Vehicle, detail: Detail): void {
   const paint = mixC(PAINT[v.colour % PAINT.length] as Rgb, [0.55, 0.55, 0.52], 0.55);
   const stations: Station[] = [[0.0, 2.3, 1.9, 1.0, 0.85], [0.15, 2.8, 2.0, 1.14, 1.0], [3.0, 2.9, 2.0, 1.16, 1.02], [5.5, 2.85, 2.0, 1.16, 1.0], [5.9, 2.6, 1.9, 1.12, 0.95], [6.2, 2.2, 1.7, 1.02, 0.82]];
-  const sh: Shape = { L: 6.2, W: 2.3, sill: 0.62, axles: [3.0], r: 0.33, tw: 0.2, stations, creases: [], side: [], screens: [], doors: [], mirror: 0, seats: [] };
+  const sh: Shape = { L: 6.2, W: 2.3, sill: 0.5, axles: [3.0], r: 0.33, tw: 0.2, stations, creases: [], side: [], screens: [], doors: [], mirror: 0, seats: [] };
   const sx = (v.length - 0.4) / 6.2;
   const o: Opts = { sx, sw: v.width / 2.3, xOff: 0, len: v.length - 0.4, paint, age: v.state === "derelict" ? 0.95 : v.age, idle: v.idle, detail, flat: v.state === "derelict", wheels: true, seed: v.seed, sy: 1 };
   const pl2 = { ...pl, ox: pl.ox + pl.fx * 0.2, oz: pl.oz + pl.fz * 0.2 };

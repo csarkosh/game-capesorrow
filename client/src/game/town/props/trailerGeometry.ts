@@ -42,16 +42,19 @@ function hull(m: MeshBuilder, gl: MeshBuilder, pl: Place, t: BoatTrailer, y0: nu
     rows.push([P(pl, x, y0 + gh, -hb), P(pl, x, y0 + (alu ? 0.12 : 0.2), -ch), P(pl, x, y0 - kd * (alu ? 0.5 : 0.75), -ch * 0.55), P(pl, x, y0 - kd, 0), P(pl, x, y0 - kd * (alu ? 0.5 : 0.75), ch * 0.55), P(pl, x, y0 + (alu ? 0.12 : 0.2), ch), P(pl, x, y0 + gh, hb)]);
     insides.push(P(pl, x, y0 + 0.2, 0));
   }
-  const tint: Rgb = alu ? [1.9, 1.9, 1.95] : paintTint(white);
+  const tint: Rgb = alu ? [3.2, 3.2, 3.3] : paintTint(white);
   const colour: Rgb = alu ? [0.36, 0.37, 0.38] : white;
-  m.grid(rows, insides, {
-    colour,
-    layer: alu ? "roof_metal" : "metal_painted",
-    tint,
-    uv: (i, j) => [(T[i] as number) * Lb, j * 0.5],
-    wear: (_, j) => [alu ? 0.08 : t.weeds * 0.3, alu ? "grime" : "algae"],
-    wear2: (_, j) => [j <= 1 || j >= 5 ? 0.1 + t.weeds * 0.2 : 0.02, "grime"],
-  });
+  // Each side its own sheet, so that every quad of it faces away from the centre line.
+  for (const half of [0, 1]) {
+    m.grid(rows.map((r) => (half === 0 ? r.slice(0, 4) : r.slice(3))), insides, {
+      colour,
+      layer: alu ? "roof_metal" : "roof_bitumen",
+      tint,
+      uv: (i, j) => [(T[i] as number) * Lb, j * 0.5],
+      wear: () => [alu ? 0.08 : t.weeds * 0.3, alu ? "grime" : "algae"],
+      wear2: (_, j) => [j === 0 || j === 3 ? 0.1 + t.weeds * 0.2 : 0.02, "grime"],
+    });
+  }
   // The transom, and inside: a floor and the bench, dark.
   m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour);
   const inner: Rgb = alu ? [0.14, 0.15, 0.16] : [0.3, 0.3, 0.28];
@@ -61,7 +64,7 @@ function hull(m: MeshBuilder, gl: MeshBuilder, pl: Place, t: BoatTrailer, y0: nu
   for (let i = 0; i < T.length - 1; i++) {
     const a = rows[i] as Vec3[];
     const b = rows[i + 1] as Vec3[];
-    for (const [j0, j1] of [[0, 1], [6, 5]] as const) m.poly([a[j0] as Vec3, b[j0] as Vec3, b[j1] as Vec3, a[j1] as Vec3], [0, 1, 0], inner);
+    for (const [j0, j1, face] of [[0, 1, 1], [6, 5, -1]] as const) m.poly([a[j0] as Vec3, b[j0] as Vec3, b[j1] as Vec3, a[j1] as Vec3], D(pl, 0, 0.3, face), inner);
   }
   if (detail === "low") return;
   // A bench, a console and an outboard.

@@ -59,7 +59,7 @@ export function poleGeometry(g: TownGround, solid: Sink, p: Pole, next: Pole | n
   const { tx, tz, nx, nz } = lineAxes(g, p, next);
   const wood = mixC(WOOD, [0.28, 0.25, 0.22], rnd(p.seed, 1) * 0.6);
   const sides = detail === "low" ? 4 : 5;
-  const surf = (a: Vec3, tan: Vec3): Surface => ({ layer: "planks_weathered", frame: { origin: a, u: tan, v: [0, 1, 0] }, tint: [0.75 + rnd(p.seed, 2) * 0.2, 0.72, 0.68], wear: 0.12 + rnd(p.seed, 3) * 0.3, wearKind: "algae", wear2: 0.2, wearKind2: "grime" });
+  const surf = (a: Vec3, tan: Vec3): Surface => ({ layer: "planks_weathered", frame: { origin: a, u: [0, 1, 0], v: tan }, tint: [0.75 + rnd(p.seed, 2) * 0.2, 0.72, 0.68], wear: 0.12 + rnd(p.seed, 3) * 0.3, wearKind: "algae", wear2: 0.2, wearKind2: "grime" });
   post(m, [wx, gh, wz], p.height + 0.1, 0.19, 0.12, p.lx, p.lz, sides, wood, detail === "low" ? undefined : surf);
   const top = p.height;
   const at = (h: number, lat: number): [number, number] => {
@@ -120,7 +120,7 @@ export function wireGeometry(g: TownGround, solid: Sink, a: Pole, b: Pole, detai
   const d = Math.sqrt(dx * dx + dz * dz);
   if (d < 6 || d > 120) return;
   const m = solid(a.x, a.z);
-  const segs = Math.max(3, Math.min(detail === "low" ? 3 : 6, Math.round(d / 6.5)));
+  const segs = Math.max(3, Math.min(detail === "low" ? 3 : 5, Math.round(d / 7)));
   const ks = detail === "low" ? [0, 1, 2] : [0, 1, 2, 3, 4];
   for (const k of ks) {
     const sag = d * 0.016 * (0.8 + 0.4 * rnd(a.seed, 20 + k)) * (k === 4 ? 1.3 : 1);
