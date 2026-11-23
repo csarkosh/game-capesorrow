@@ -24,17 +24,20 @@ import { roadGeometry } from "./roadGeometry.js";
 import { spurGeometry } from "./spurGeometry.js";
 import { stairGeometry } from "./stairGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
+import { SignAtlas } from "./signAtlas.js";
 import type { Detail, TownGround } from "./townTypes.js";
 
 /** The side of a batching cell, metres. */
 export const CELL = 128;
+
+const LAYER_ORDER = { flat: 0, solid: 1, glass: 2, sign: 3 } as const;
 
 export type TownBatch = {
   /** The cell's index along x and z (the world's coordinates over `CELL`). */
   readonly cx: number;
   readonly cz: number;
   /** What the arrays are: drawn flat on the ground, or standing. */
-  readonly layer: "flat" | "solid";
+  readonly layer: "flat" | "solid" | "glass" | "sign";
   readonly arrays: MeshArrays;
 };
 
@@ -47,20 +50,21 @@ export function townGround(worldSeed: number): TownGround {
 }
 
 /** Everything of the town, as batches. `from` is where the player starts: the cells nearest it come first. */
-export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; z: number }): Slices<TownBatch[]> {
-  const cells = new Map<string, { cx: number; cz: number; flat: MeshBuilder; solid: MeshBuilder }>();
-  const cell = (x: number, z: number): { flat: MeshBuilder; solid: MeshBuilder } => {
+export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; z: number }, atlas: SignAtlas = new SignAtlas(detail === "low" ? 2048 : 4096, detail === "low" ? 1024 : 2048, detail === "low" ? 36 : 56)): Slices<TownBatch[]> {
+  const cells = new Map<string, { cx: number; cz: number; flat: MeshBuilder; solid: MeshBuilder; glass: MeshBuilder; sign: MeshBuilder }>();
+  const cell = (x: number, z: number): { flat: MeshBuilder; solid: MeshBuilder; glass: MeshBuilder; sign: MeshBuilder } => {
     const cx = Math.floor(x / CELL);
     const cz = Math.floor(z / CELL);
     const key = `${cx},${cz}`;
     let c = cells.get(key);
     if (c === undefined) {
-      c = { cx, cz, flat: new MeshBuilder(), solid: new MeshBuilder() };
+      c = { cx, cz, flat: new MeshBuilder(), solid: new MeshBuilder(), glass: new MeshBuilder(), sign: new MeshBuilder() };
       cells.set(key, c);
     }
     return c;
   };
-  const sinks = { flat: (x: number, z: number) => cell(x, z).flat, solid: (x: number, z: number) => cell(x, z).solid };
+  const sinks = { flat: (x: number, z: number) => cell(x, z).flat, solid: (x: number, z: number) => cell(x, z).solid, glass: (x: number, z: number) => cell(x, z).glass, sign: (x: number, z: number) => cell(x, z).sign };
+  const extras = { glass: sinks.glass, sign: sinks.sign, atlas };
 
   streetGeometry(g, sinks.flat, sinks.solid, detail);
   stairGeometry(g, sinks.solid);
@@ -87,7 +91,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   for (const b of g.plan.buildings) {
     // A pier is its deck alone (drawn with the decks); a shed on piles is a building, standing on its deck.
     if (b.kind === "pier") continue;
-    buildingGeometry(g, b, roles.get(b.id) ?? null, sinks.solid, detail);
+    buildingGeometry(g, b, roles.get(b.id) ?? null, sinks.solid, detail, extras);
     if (sliceDue()) yield;
   }
 
@@ -95,6 +99,8 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   for (const c of cells.values()) {
     if (c.flat.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "flat", arrays: c.flat.finish() });
     if (c.solid.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "solid", arrays: c.solid.finish() });
+    if (c.glass.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "glass", arrays: c.glass.finish() });
+    if (c.sign.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "sign", arrays: c.sign.finish() });
   }
   const distance = (b: TownBatch): number => {
     const dx = (b.cx + 0.5) * CELL - from.x;

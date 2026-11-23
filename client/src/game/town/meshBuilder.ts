@@ -10,21 +10,22 @@
  * was before surfaces existed: its vertices carry no layer (`NO_LAYER`) and the renderer draws them as flat colour.
  */
 import { NO_LAYER, layerIndex } from "./townLayers.js";
-import { basisOf, tintOf, uvAt, type Surface } from "./townSurface.js";
+import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Fx, type Surface } from "./townSurface.js";
 
 export type Vec3 = readonly [number, number, number];
 export type Rgb = readonly [number, number, number];
 
 /**
  * A finished mesh's arrays, as `createMeshFromData` takes them (colours four floats a vertex), with the two a textured
- * material reads: `uvs` (two floats a vertex, in texture tiles: metres over the layer's tile size) and `surface` (eight floats
- * a vertex: the layer's index or `NO_LAYER`, the wear's amount 0 to 1, the wear's kind 0 for moss and 1 for rust, a float left
- * for a later use; then the tint, red, green, blue, and a float left). `colors` is the flat colour, as before.
+ * material reads: `uvs` (two floats a vertex, in texture tiles: metres over the layer's tile size) and `surface` (twelve floats
+ * a vertex: the layer's index or `NO_LAYER`, the wear's amount 0 to 1, the wear's kind (`WEAR_KIND_NUMBER`, plus a half for streaks), the glow
+ * (0 lit by the scene, 1 lit by itself); then the tint, red, green, blue, and how clear it is (0 opaque); then the second wear's amount and
+ * kind, and two floats left). `colors` is the flat colour, as before.
  */
 export type MeshArrays = { positions: Float32Array; normals: Float32Array; colors: Float32Array; uvs: Float32Array; surface: Float32Array; indices: Uint32Array };
 
 /** Floats a vertex's `surface` holds. */
-export const SURFACE_FLOATS = 8;
+export const SURFACE_FLOATS = 12;
 
 export class MeshBuilder {
   private pos: number[] = [];
@@ -47,7 +48,7 @@ export class MeshBuilder {
    * `hint`. Corners are shared by the fan of triangles it is cut into. Returns nothing for a polygon with no area. Given a
    * `surface`, each corner also gets its UV from the surface's frame and its layer and wear.
    */
-  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb, surface?: Surface): void {
+  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb, surface?: Surface, fx?: Fx): void {
     const n = points.length;
     if (n < 3) return;
     let nx = 0;
@@ -76,7 +77,10 @@ export class MeshBuilder {
     const base = this.vertices;
     const basis = surface === undefined ? null : basisOf(surface);
     const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
-    const kind = surface?.wearKind === "rust" ? 1 : 0;
+    const kind = (WEAR_KIND_NUMBER[surface?.wearKind ?? "moss"] ?? 0) + (surface?.streaks === true ? 0.5 : 0);
+    const kind2 = (WEAR_KIND_NUMBER[surface?.wearKind2 ?? "moss"] ?? 0) + (surface?.streaks2 === true ? 0.5 : 0);
+    const glow = fx?.glow ?? 0;
+    const clear = fx?.clear ?? 0;
     const tint = surface === undefined ? colour : tintOf(surface, colour);
     for (const p of points) {
       this.pos.push(p[0], p[1], p[2]);
@@ -84,12 +88,13 @@ export class MeshBuilder {
       this.col.push(colour[0], colour[1], colour[2], 1);
       if (basis === null || surface === undefined) {
         this.uv.push(0, 0);
-        this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, 0);
+        this.srf.push(NO_LAYER, 0, 0, glow, 1, 1, 1, clear, 0, 0, 0, 0);
       } else {
         const [u, v] = uvAt(basis, p);
         this.uv.push(u, v);
         const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
-        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, 0, tint[0], tint[1], tint[2], 0);
+        const w2 = surface.wear2 === undefined ? 0 : typeof surface.wear2 === "number" ? surface.wear2 : surface.wear2(p);
+        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, 0, 0);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
@@ -100,8 +105,8 @@ export class MeshBuilder {
     }
   }
 
-  quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface): void {
-    this.poly([a, b, c, d], hint, colour, surface);
+  quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface, fx?: Fx): void {
+    this.poly([a, b, c, d], hint, colour, surface, fx);
   }
 
   /**

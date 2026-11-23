@@ -20,7 +20,7 @@ import {
   addToScene, createMeshFromData, createPbrMaterial, disposeMeshGpu, markMaterialUboDirty, removeFromScene, setMeshVisible,
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
-import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
+import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import type { RenderGame, RenderHost, RenderPlayer, RenderSide, RenderState } from "@csarkosh/engine/game/lite/renderGame";
@@ -137,6 +137,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       // The town's own draw before the railroad's, so where a crossing's panel lies flush with a street the panel is drawn last.
       const wearsTextures = textures !== null;
       const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
+      // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
+      const glassMaterial = (): PbrMaterialProps => {
+        const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, ready, low)] : []), air()];
+        if (textures !== null) textured.push(m);
+        return m;
+      };
+      const seeThrough = wearsTextures ? { glass: glassMaterial() } : null;
       const materials = { flat: material(true, false), solid: material(false, false) };
       const worldSeed = forest.seed;
       const start = townStart(worldSeed);
@@ -149,10 +157,20 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
+          if ((batch.layer === "glass" || batch.layer === "sign") && seeThrough === null) {
+            left--;
+            continue;
+          }
           const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
           if (wearsTextures) mesh.pluginVertexData = a.surface;
-          mesh.material = town[batch.layer];
-          mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
+          if (batch.layer === "glass" || batch.layer === "sign") {
+            // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
+            mesh.material = (seeThrough as NonNullable<typeof seeThrough>).glass;
+            mesh.renderOrder = SEE_THROUGH_ORDER.glass;
+          } else {
+            mesh.material = town[batch.layer];
+            mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
+          }
           addToScene(scene, mesh);
           host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
           host.uploads.made();

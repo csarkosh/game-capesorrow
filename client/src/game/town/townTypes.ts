@@ -39,3 +39,29 @@ export type Detail = "low" | "full";
 
 /** The world's sea level: nothing is drawn on ground below it. */
 export const SEA = 0;
+
+/** Where a building's see-through parts and its lettering go, beside its solid ones: the blended glass layer and the signs' layer (each by cell), and the atlas the signs are lettered on. */
+export type BuildingExtras = { readonly glass: Sink; readonly sign: Sink; readonly atlas: SignAtlasLike };
+
+/** What the builders need of the lettering atlas (`signAtlas.ts`): a place for each sign's face, which the renderer's side paints. */
+export type SignAtlasLike = { place(widthM: number, heightM: number, spec: SignSpec): { u0: number; v0: number; u1: number; v1: number } | null };
+
+/** What the renderer's side is asked to paint on a sign's face (`signAtlas.ts` says how it is read). Plain data. */
+export type SignSpec = {
+  readonly kind: string;
+  readonly style: string;
+  readonly lines: readonly string[];
+  readonly decade: number;
+  readonly condition: number;
+  readonly lit: boolean;
+  /** A number of the sign's own (its building and place), from which its face, weight and layout are drawn. */
+  readonly seed: number;
+  /** The face's colours, 0 to 255, and whether the ground is transparent (lettering on glass, paint on a wall). */
+  readonly bg: readonly [number, number, number];
+  readonly fg: readonly [number, number, number];
+  readonly accent: readonly [number, number, number];
+  readonly clear: boolean;
+  /** The face's size in metres, which sets its letters' size. */
+  readonly w: number;
+  readonly h: number;
+};
