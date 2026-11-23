@@ -128,7 +128,8 @@ describe("the empty game's folder", () => {
     // No reach outside: the engine's shipped files stand in the engine, which the package's name reaches.
     expect([...outside]).toEqual([]);
     expect(code("assets.ts")).toContain('import { ENGINE_ASSETS } from "@csarkosh/engine/game/engineAssets";');
-    expect(code("assets.ts")).not.toMatch(/["']\.\.\//);
+    // The game's own textures stand in its own `assets/` folder, which `assets.ts` globs; nothing else is reached by a path.
+    expect(code("assets.ts")).not.toMatch(/["']\.\.\/(?!assets\/)/);
     // Nothing of Day Hike's own is asked for: no ranger, no car, no sign, no voice, no film. The engine's catalog is
     // what is registered, so its ids are what is held to that.
     const catalog = engineCatalog as Record<string, { id: string }[]>;

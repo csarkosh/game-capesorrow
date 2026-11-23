@@ -17,7 +17,7 @@
  *   (`Detail`); the geometry is otherwise the same on all three.
  */
 import {
-  addToScene, createMeshFromData, createPbrMaterial, disposeMeshGpu, removeFromScene, setMeshVisible,
+  addToScene, createMeshFromData, createPbrMaterial, disposeMeshGpu, markMaterialUboDirty, removeFromScene, setMeshVisible,
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
@@ -31,6 +31,8 @@ import { WET_CAP } from "@csarkosh/engine/game/wetSurface";
 import { townStart } from "../../sim/town/start.js";
 import { createRailStream, type RailStream } from "./railParts.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
+import { emptyTownReady, townSurfacePlugin } from "./townMaterial.js";
+import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
 type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean };
@@ -77,6 +79,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let standing: SceneContext | null = null;
   let seed: Mesh | null = null;
   let seedScene: SceneContext | null = null;
+  // The textures' arrays and the loads that fill them; the materials that read them.
+  let textures: TownTextures | null = null;
+  const loading = new AbortController();
+  const textured: PbrMaterialProps[] = [];
   // The railroad and the power line, streamed along the coast by the camera's place (`railParts.ts`).
   let rail: RailStream | null = null;
 
@@ -104,14 +110,34 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       standing = scene;
       const wet = wetAt(WET_CAP.prop);
       const orders = createDrawOrders(DRAW_ORDER.scenery);
-      const material = (flat: boolean): PbrMaterialProps => {
-        // The vertex colours carry the colour: the material's own is white.
+      const low = host.tier === "low";
+      const ready = emptyTownReady();
+      try {
+        textures = createTownTextures(engine, low, loading.signal, (filled) => {
+          if (!filled || disposed) return;
+          ready.townReady[0] = 1;
+          for (const m of textured) markMaterialUboDirty(m);
+        });
+      } catch (error) {
+        // The arrays could not be made (no device to make them on): the town stays flat colour, as it was.
+        console.warn("the town's texture arrays could not be made; the town stays flat colour:", error);
+        textures = null;
+      }
+      const material = (flat: boolean, wearsTextures: boolean): PbrMaterialProps => {
+        // The vertex colours carry the colour (or the paint the textures are multiplied by): the material's own is white.
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
-        m.plugins = [baseColourPlugin(), surfaceWetPlugin(wet, shared), ...(flat ? [ahead(FLAT_AHEAD_UNITS, FLAT_AHEAD_SLOPE)] : []), air()];
+        m.plugins = [
+          baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, ready, low)] : []),
+          surfaceWetPlugin(wet, shared), ...(flat ? [ahead(FLAT_AHEAD_UNITS, FLAT_AHEAD_SLOPE)] : []), air(),
+        ];
         orders.take(m);
+        if (wearsTextures) textured.push(m);
         return m;
       };
-      const materials = { flat: material(true), solid: material(false) };
+      // The town's own draw before the railroad's, so where a crossing's panel lies flush with a street the panel is drawn last.
+      const wearsTextures = textures !== null;
+      const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
+      const materials = { flat: material(true, false), solid: material(false, false) };
       const worldSeed = forest.seed;
       const start = townStart(worldSeed);
       rail = createRailStream(host, { engine, scene, materials, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
@@ -123,11 +149,12 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
-          const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, undefined, undefined, undefined, a.colors);
-          mesh.material = materials[batch.layer];
-          mesh.renderOrder = orders.of(materials[batch.layer]) ?? DRAW_ORDER.scenery;
+          const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
+          if (wearsTextures) mesh.pluginVertexData = a.surface;
+          mesh.material = town[batch.layer];
+          mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
           addToScene(scene, mesh);
-          host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.indices.byteLength, 4);
+          host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
           host.uploads.made();
           if (batch.layer === "solid") hardCover?.add(mesh);
           made.push({ mesh, layer: batch.layer, ...boundsOf(a.positions), shown: true });
@@ -155,7 +182,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
     },
 
-    waiting: () => (building ? Math.max(1, left) : 0),
+    waiting: () => (building ? Math.max(1, left) : 0) + (textures?.pending() ?? 0),
 
     release() {
       if (seed !== null && seedScene !== null) {
@@ -169,6 +196,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
     releaseBodies() {
       disposed = true;
+      loading.abort();
+      textures = null;
+      textured.length = 0;
       rail?.dispose();
       rail = null;
       host.jobs.cancel(owner);

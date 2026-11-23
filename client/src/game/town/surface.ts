@@ -7,6 +7,7 @@
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
+import { faceSurfaceFor, flatSurfaceFor } from "./groundSurfaces.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
 export type P2 = readonly [number, number];
@@ -138,14 +139,14 @@ export class Surface {
         cx += q.x;
         cz += q.z;
       }
-      this.sink(cx / piece.length, cz / piece.length).poly(pts, UP, colour);
+      this.sink(cx / piece.length, cz / piece.length).poly(pts, UP, colour, flatSurfaceFor(colour, this.g.anchor));
     }
   }
 
   /** A convex polygon laid on the engine's road itself (a crosswalk across the highway): not cut off the bed, and `lift` over the road's own height. */
   onRoad(pts: readonly P2[], lift: number, colour: Rgb): void {
     const v: Vec3[] = pts.map((q) => [q[0], this.g.heightAt(q[0], q[1]) + lift, q[1]]);
-    this.sink((pts[0] as P2)[0], (pts[0] as P2)[1]).poly(v, UP, colour);
+    this.sink((pts[0] as P2)[0], (pts[0] as P2)[1]).poly(v, UP, colour, flatSurfaceFor(colour, this.g.anchor));
   }
 
   /** A convex polygon (kept as one polygon) at corners' own lifts. */
@@ -210,7 +211,7 @@ export class Surface {
     const ga = this.g.heightAt(a[0], a[1]);
     const gb = this.g.heightAt(b[0], b[1]);
     if (ga + y1 < SEA + 0.1 && gb + y1 < SEA + 0.1) return;
-    this.sink((a[0] + b[0]) / 2, (a[1] + b[1]) / 2).poly([[a[0], ga + y0, a[1]], [b[0], gb + y0, b[1]], [b[0], gb + y1, b[1]], [a[0], ga + y1, a[1]]], [n[0], 0, n[1]], colour);
+    this.sink((a[0] + b[0]) / 2, (a[1] + b[1]) / 2).poly([[a[0], ga + y0, a[1]], [b[0], gb + y0, b[1]], [b[0], gb + y1, b[1]], [a[0], ga + y1, a[1]]], [n[0], 0, n[1]], colour, faceSurfaceFor(colour, a[0], a[1], b[0], b[1]));
   }
 }
 

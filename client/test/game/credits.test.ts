@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { creditsModel, requiresAttribution, type CreditEntry } from "@csarkosh/engine/game/credits";
+import { creditsModel, creditsRows, requiresAttribution, type CreditEntry } from "@csarkosh/engine/game/credits";
 import { ENGINE_CREDITS } from "@csarkosh/engine/game/engineCredits";
 import { creditsEntries, mergeCredits } from "../../src/game/credits.js";
 
@@ -20,12 +20,22 @@ const section = (id: string, licence: string): string => `
 const keyOf = (e: CreditEntry): string => JSON.stringify([e.source, e.author, e.url, e.license, e.modified]);
 
 describe("the game's own CREDITS.md", () => {
-  it("is a credits file with prose and no entry, so it parses to an empty list", () => {
+  const own = creditsModel(OWN_FILE);
+
+  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets, all CC0", () => {
     expect(OWN_FILE.startsWith("# Credits\n")).toBe(true);
     expect(OWN_FILE).toMatch(/engine/);
     expect(OWN_FILE).toMatch(/Credits screen/);
-    expect(OWN_FILE).not.toMatch(/^## /m);
-    expect(creditsModel(OWN_FILE)).toEqual([]);
+    // 21 works: the 22 layers of the town's textures, less the shingles the build script makes.
+    expect(own.length).toBe(21);
+    for (const e of own) {
+      expect(e.id, e.id).toMatch(/^town\./);
+      expect(e.license, e.id).toBe("CC0-1.0");
+      expect(e.author.length, e.id).toBeGreaterThan(0);
+      expect(e.url, e.id).toMatch(/^https:\/\/[a-z.]+\/a\/[A-Za-z0-9_]+$/);
+      expect(e.source, e.id).toMatch(/^[^:]+: .+/);
+    }
+    expect(new Set(own.map((e) => e.id)).size).toBe(own.length);
   });
 
   it("gives an empty list for any file with no entry: prose, a heading with no fields, or nothing at all", () => {
@@ -39,10 +49,10 @@ describe("the game's own CREDITS.md", () => {
 describe("the credits the screen shows", () => {
   const engineEntries = creditsModel(ENGINE_CREDITS);
 
-  it("are the engine's alone while the game has none of its own", () => {
+  it("are the engine's and the game's own, as one list", () => {
     const shown = creditsEntries();
     expect(shown.length).toBeGreaterThan(20);
-    expect(shown.map(keyOf).sort()).toEqual([...new Set(engineEntries.map(keyOf))].sort());
+    expect(shown.map(keyOf).sort()).toEqual([...new Set([...engineEntries, ...creditsModel(OWN_FILE)].map(keyOf))].sort());
   });
 
   it("hold every work the engine credits", () => {
@@ -70,6 +80,7 @@ describe("the credits the screen shows", () => {
 
   it("are the engine's list alone when the game's file has no entry, and the game's alone when the engine's has none", () => {
     expect(mergeCredits(OWN_FILE, ENGINE_CREDITS)).toEqual(creditsEntries());
+    expect(mergeCredits("# Credits\n", ENGINE_CREDITS).length).toBe(creditsRows(engineEntries).length);
     expect(mergeCredits("", "")).toEqual([]);
     expect(mergeCredits(section("only.mine", "MIT"), "").map((e) => e.id)).toEqual(["only.mine"]);
   });

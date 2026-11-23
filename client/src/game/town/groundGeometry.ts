@@ -9,6 +9,7 @@
  *
  * Yards of houses, the churchyard, the school's and the hospital's grounds have no patch: they are grass (`sim/town/clearing.ts`).
  */
+import { flatSurfaceFor } from "./groundSurfaces.js";
 import { isPaved } from "../../sim/town/clearing.js";
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import { bbox, clipHalfPlane, contains, dist, orient, type Vec } from "../../sim/town/geom.js";
@@ -84,7 +85,10 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
         // A little variation from tile to tile, so a yard is not one flat colour, with no random call.
         const colour = scaled(base, 0.9 + 0.2 * hash01(ix * 7919 + iz * 104729, 41));
         const c = cell[0] as Vec;
-        flat(c.x, c.z).poly(pts, UP, colour);
+        // The tile's flat colour varies a little; its texture takes the same shade as its tint.
+        const surface = flatSurfaceFor(base, g.anchor);
+        const shade = colour[0] / base[0];
+        flat(c.x, c.z).poly(pts, UP, colour, surface === undefined ? undefined : { ...surface, tint: [shade, shade, shade] });
       }
     }
     if (block.district === "highway strip") stalls(g, flat, poly, (footprints.get(block.id) ?? []).map((f) => f.map(world)));

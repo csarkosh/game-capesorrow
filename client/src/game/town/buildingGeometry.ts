@@ -18,6 +18,8 @@
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingKind, LandmarkRole } from "../../sim/town/types.js";
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { roofStyle, roofTint, wallStyle, wallTint, wallWearAt, wallWearBase } from "./buildingSurfaces.js";
+import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.js";
 import {
   BIG_DOOR, DOOR, FLAG_POLE, FLAG_RED, FRAME, GLASS, PLYWOOD, ROOF_METAL, ROOF_SHINGLE, ROOF_TAR, STONE_TRIM, vary, wallColour,
 } from "./palette.js";
@@ -78,7 +80,7 @@ type Wall = {
   topB: number;
 };
 
-type Opening = { s0: number; s1: number; y0: number; y1: number; colour: Rgb; frame: boolean };
+type Opening = { s0: number; s1: number; y0: number; y1: number; colour: Rgb; frame: boolean; layer?: "plywood" | "shutter"; shade?: number };
 
 /** The few numbers every part of one building is built from. */
 type Frame = {
@@ -186,6 +188,31 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   if (ruin) wall = scaled(greyed(wall, 0.45), 0.62);
   const inner = scaled(wall, 0.6);
 
+  // ---- Surfaces: the walls' texture, from the plan's material; its frame runs along the wall and up from the base, the
+  // walls end to end round the building (a, b, c, d in the order round) so the courses meet at the corners.
+  const style = wallStyle(b);
+  const wearBase = wallWearBase(b);
+  const around = [0, 2, 1, 3];
+  const alongAt: number[] = [0, 0, 0, 0];
+  let run = 0;
+  for (const i of around) {
+    alongAt[i] = run;
+    run += (walls[i] as Wall).length;
+  }
+  const frameOf = (i: number, turned: boolean): Surface["frame"] => {
+    const w = walls[i] as Wall;
+    return wallFrame(w.ax, w.az, (w.bx - w.ax) / w.length, (w.bz - w.az) / w.length, baseY, alongAt[i] as number, turned);
+  };
+  const wallSurface = (i: number): Surface => {
+    return {
+      layer: style.layer,
+      frame: frameOf(i, style.turned),
+      ...(style.paint ? {} : { tint: wallTint(b) }),
+      wear: (p: Vec3): number => wallWearAt(wearBase, baseY, p[1]),
+      wearKind: style.wearKind,
+    };
+  };
+
   if (role === "tsunami refuge") {
     refugeGeometry(g, f, b, out, baseY, H, walls, frontAt, floorY);
     return;
@@ -195,17 +222,22 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   for (const w of walls) {
     const hint: Vec3 = [w.nx, 0, w.nz];
     if (ruin) {
-      brokenWall(out, w, baseY, floorY, H, wall, inner, b.id);
+      brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
     } else {
-      out.poly([[w.ax, baseY, w.az], [w.bx, baseY, w.bz], [w.bx, w.topB, w.bz], [w.ax, w.topA, w.az]], hint, wall);
+      out.poly([[w.ax, baseY, w.az], [w.bx, baseY, w.bz], [w.bx, w.topB, w.bz], [w.ax, w.topA, w.az]], hint, wall, wallSurface(walls.indexOf(w)));
     }
   }
 
   // ---- the roof
   const P = (s1: number, s2: number, y: number): Vec3 => [f.cx + e1[0] * s1 + e2[0] * s2, y, f.cz + e1[1] * s1 + e2[1] * s2];
+  // A roof's texture: shingles and ribs run along the eave and down the slope; a flat roof's lies on the world's x and z.
+  const roofLook = roofKind === "ruin" ? null : roofStyle(b, roofKind);
+  const roofPaint = roofLook?.layer === "roof_shingle";
+  const roofSurface = (frame: Surface["frame"]): Surface | undefined =>
+    roofLook === null ? undefined : { layer: roofLook.layer, frame, ...(roofPaint ? {} : { tint: roofTint(b) }), wear: roofLook.wear, wearKind: roofLook.wearKind };
   if (roofKind === "flat") {
     const inset = 0.3;
-    out.poly([P(-L + inset, -S + inset, H), P(L - inset, -S + inset, H), P(L - inset, S - inset, H), P(-L + inset, S - inset, H)], [0, 1, 0], roofColour);
+    out.poly([P(-L + inset, -S + inset, H), P(L - inset, -S + inset, H), P(L - inset, S - inset, H), P(-L + inset, S - inset, H)], [0, 1, 0], roofColour, roofSurface(groundFrame(g.anchor)));
     // The parapet's inner faces, and its top.
     const e: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
     for (let i = 0; i < 4; i++) {
@@ -225,11 +257,13 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const Se = S + EAVE;
     const he = wallTop - 0.15;
     for (const side of [-1, 1]) {
-      out.poly([P(-Le, side * Se, he), P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour);
+      const a = P(-Le, side * Se, he);
+      out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-Le, 0, H))));
     }
-    // The gable ends, on the short walls.
+    // The gable ends, on the short walls: the wall's own texture, carried up from the wall below.
     for (const end of [-1, 1]) {
-      out.poly([P(end * L, -S, wallTop), P(end * L, S, wallTop), P(end * L, 0, H)], [e1[0] * end, 0, e1[1] * end], wall);
+      const i = walls.findIndex((w) => dot(w.nx, w.nz, e1[0] * end, e1[1] * end) > 0.9);
+      out.poly([P(end * L, -S, wallTop), P(end * L, S, wallTop), P(end * L, 0, H)], [e1[0] * end, 0, e1[1] * end], wall, i < 0 ? undefined : wallSurface(i));
     }
   } else if (roofKind === "hip") {
     const Le = L + EAVE;
@@ -237,15 +271,19 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const he = wallTop - 0.15;
     const r = Math.max(0.2, L - S);
     for (const side of [-1, 1]) {
-      out.poly([P(-Le, side * Se, he), P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour);
+      const a = P(-Le, side * Se, he);
+      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H))));
     }
     for (const end of [-1, 1]) {
-      out.poly([P(end * Le, -Se, he), P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92));
+      const a = P(end * Le, -Se, he);
+      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H))));
     }
   } else if (roofKind === "shed") {
     const Le = L + EAVE;
     const Se = S + EAVE;
-    out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, -shedSign * Se, H - shedDrop - 0.1)], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour);
+    const low0 = P(-Le, -shedSign * Se, H - shedDrop - 0.1);
+    out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour,
+      roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1))));
   }
 
   // ---- ruins: rubble inside the walls
@@ -276,7 +314,13 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
           out.poly([at(o.s0 - m, o.y0 - m, PROUD), at(o.s1 + m, o.y0 - m, PROUD), at(o.s1 + m, o.y1 + m, PROUD), at(o.s0 - m, o.y1 + m, PROUD)], hint, FRAME);
         }
         const lift = o.frame && detail === "full" ? PROUD + 0.015 : PROUD;
-        out.poly([at(o.s0, o.y0, lift), at(o.s1, o.y0, lift), at(o.s1, o.y1, lift), at(o.s0, o.y1, lift)], hint, o.colour);
+        // Boarded openings are plywood and big doors roll-up shutters; glass and ordinary doors stay flat colour.
+        const shade = o.shade ?? 1;
+        const surface: Surface | undefined = o.layer === undefined ? undefined : {
+          layer: o.layer, frame: frameOf(i, false), tint: [shade, shade, shade],
+          wear: o.layer === "plywood" ? 0.15 : 0.2, wearKind: o.layer === "plywood" ? "moss" : "rust",
+        };
+        out.poly([at(o.s0, o.y0, lift), at(o.s1, o.y0, lift), at(o.s1, o.y1, lift), at(o.s0, o.y1, lift)], hint, o.colour, surface);
       }
     }
   } else {
@@ -303,7 +347,7 @@ function wallRunTop(id: number, w: Wall, s: number, floorY: number, H: number): 
 }
 
 /** A ruin's wall: runs of about a metre, each to its own height, an inner face, and the top of each run left open. */
-function brokenWall(out: MeshBuilder, w: Wall, baseY: number, floorY: number, H: number, colour: Rgb, inner: Rgb, id: number): void {
+function brokenWall(out: MeshBuilder, w: Wall, baseY: number, floorY: number, H: number, colour: Rgb, inner: Rgb, id: number, surface: Surface): void {
   const runs = Math.max(1, Math.ceil(w.length / 1.2));
   const tx = (w.bx - w.ax) / w.length;
   const tz = (w.bz - w.az) / w.length;
@@ -318,7 +362,7 @@ function brokenWall(out: MeshBuilder, w: Wall, baseY: number, floorY: number, H:
     const b: Vec3 = [w.ax + tx * s1, 0, w.az + tz * s1];
     // A run stands level to the lower of its two ends' heights, so the line is stepped.
     const top = Math.min(h0, h1);
-    out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], out3, colour);
+    out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], out3, colour, surface);
     out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], in3, inner);
   }
 }
@@ -335,7 +379,8 @@ function openings(b: Building, walls: readonly Wall[], frontAt: number, floorY: 
     // Plywood in panels of about 1.2 m, each its own shade.
     const n = Math.max(1, Math.round((s1 - s0) / 1.2));
     for (let i = 0; i < n; i++) {
-      out.push({ s0: s0 + ((s1 - s0) * i) / n + 0.02, s1: s0 + ((s1 - s0) * (i + 1)) / n - 0.02, y0, y1, colour: scaled(PLYWOOD, 0.85 + hash01(b.id * 13 + i, 95) * 0.3), frame });
+      const shade = 0.85 + hash01(b.id * 13 + i, 95) * 0.3;
+      out.push({ s0: s0 + ((s1 - s0) * i) / n + 0.02, s1: s0 + ((s1 - s0) * (i + 1)) / n - 0.02, y0, y1, colour: scaled(PLYWOOD, shade), frame, layer: "plywood", shade });
     }
   };
   walls.forEach((w, i) => {
@@ -361,15 +406,15 @@ function openings(b: Building, walls: readonly Wall[], frontAt: number, floorY: 
         doorAt = sx + 0.15 + dw / 2;
         if (vacant) boards(sx + dw + 0.3, ex, y0, y1, false, out);
         else out.push({ s0: sx + dw + 0.3, s1: ex, y0, y1, colour: glassColour(0), frame: false });
-        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + 2.2, colour: vacant ? PLYWOOD : DOOR, frame: false });
+        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + 2.2, colour: vacant ? PLYWOOD : DOOR, frame: false, ...(vacant ? { layer: "plywood" as const } : {}) });
       } else if (profile === "industrial") {
         const dw = Math.min(3.6, w.length * 0.6);
         doorAt = w.length / 2;
-        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + Math.min(3.8, wallTop - floorY - 0.5), colour: vacant ? PLYWOOD : BIG_DOOR, frame: false });
+        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + Math.min(3.8, wallTop - floorY - 0.5), colour: vacant ? PLYWOOD : BIG_DOOR, frame: false, layer: vacant ? "plywood" : "shutter", shade: vacant ? 1 : 0.75 });
       } else {
         doorAt = w.length / 2;
         const dw = profile === "church" ? 1.8 : 1.1;
-        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + (profile === "church" ? 3 : 2.2), colour: vacant ? PLYWOOD : DOOR, frame: false });
+        out.push({ s0: doorAt - dw / 2, s1: doorAt + dw / 2, y0: floorY, y1: floorY + (profile === "church" ? 3 : 2.2), colour: vacant ? PLYWOOD : DOOR, frame: false, ...(vacant ? { layer: "plywood" as const } : {}) });
       }
     }
     if (profile === "industrial") {
