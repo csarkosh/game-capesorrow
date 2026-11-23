@@ -47,16 +47,21 @@ describe("the town's texture manifest", () => {
     expect(TOWN_LAYERS.find((l) => l.id === "Ground110")?.tile).toEqual([2.1, 2.1]);
   });
 
-  it("has two files for every layer, 512 x 512 WebP, real files and not LFS pointers, under 8 MB together", () => {
+  it("has two files for every layer, 512 x 512 WebP, under 8 MB together", () => {
+    // A checkout that has not fetched the Git LFS objects (the cloud's test job) holds each file's pointer: there the
+    // size is the one the pointer names and the header cannot be read. The deploy refuses to build from pointers
+    // (`tools/deploy/lib/lfsPointers.mjs`), which is where a pointer would do harm.
     let total = 0;
     for (const l of TOWN_LAYERS) {
       for (const file of [l.color, l.data]) {
         const path = TEXTURES + file;
         expect(existsSync(path), file).toBe(true);
         const bytes = readFileSync(path);
-        total += bytes.length;
-        expect(bytes.length, file).toBeGreaterThan(1000);
-        expect(webpSize(bytes), file).toEqual([512, 512]);
+        const pointer = bytes.length < 1024 && bytes.subarray(0, 12).toString() === "version http";
+        const size = pointer ? Number(/^size (\d+)$/m.exec(bytes.toString())?.[1]) : bytes.length;
+        total += size;
+        expect(size, file).toBeGreaterThan(1000);
+        if (!pointer) expect(webpSize(bytes), file).toEqual([512, 512]);
       }
     }
     expect(total).toBeLessThan(8 * 1000 * 1000);
