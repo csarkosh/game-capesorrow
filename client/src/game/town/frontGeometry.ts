@@ -14,8 +14,9 @@
  */
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
-import { displayWindow, roomGeometry, xp, type Xf } from "./roomGeometry.js";
+import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
 import { drawWindow, frameColour, type WinCtx } from "./windowGeometry.js";
+import { slatBlinds, slatColour, verticalBlinds } from "./windowDressing.js";
 import type { Building, BuildingUse, Unit } from "../../sim/town/types.js";
 import type { Detail, FillReport } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
@@ -65,13 +66,13 @@ export function planFront(i: FrontIn): FrontPlan {
   const drawers: (() => void)[] = [];
   const tallest = use.units.reduce((m, u) => Math.max(m, u.fascia), 3.2);
   const groundStoreyTop = tallest + 0.45;
-  const winCtx: WinCtx = { ...(i.report === undefined ? {} : { report: i.report }), out, glass, detail, id: b.id, era: b.era, surface: i.surface, trim: old ? [0.55, 0.52, 0.46] : TRIM_WHITE, wall: i.wall };
+  const winCtx: WinCtx = { ...(i.report === undefined ? {} : { report: i.report }), out, glass, detail, id: b.id, era: b.era, surface: i.surface, trim: old ? [0.55, 0.52, 0.46] : TRIM_WHITE, wall: i.wall, stoneSill: full && brick };
 
   // ---- the units
   use.units.forEach((u) => {
     const lit = u.state === "open";
-    const rv = old ? 0.28 : 0.12;
     const boardedUnit = u.state === "vacant boarded";
+    const vacantUnit = u.state.startsWith("vacant");
     const bulk = pickOf(BULKHEAD, b.id * 7 + u.id, 430);
     const widenedAt = u.remodel?.what === "widened window" ? u.openings.findIndex((o) => o.widened) : -1;
     u.openings.forEach((o, k) => {
@@ -95,28 +96,25 @@ export function planFront(i: FrontIn): FrontPlan {
         const rep = k === widenedAt && (u.remodel?.decade ?? 0) >= 1960;
         const wc: WinCtx = { ...winCtx, trim: scaled(frameC, 1), era: rep ? u.remodel?.decade ?? b.era : b.era };
         if (o.cover === "bricked") return;
+        // How grimy the glass is: a vacant unit's most, then a shut one's, and an old front's more than a new one's.
+        const dirt = Math.min(0.95, (vacantUnit ? 0.75 : u.state === "open" ? 0.22 : 0.45) + 0.2 * Math.min(1, (2026 - b.era) / 130) + 0.15 * hash01(b.id * 5 + u.id * 3 + k, 436));
+        const look = { lit, dirt, vacant: vacantUnit };
         if (o.cover === "boarded") {
-          drawWindow(wc, w, sa, sb, y0, y1, "boarded", "none", u.id * 5 + k, false, "boarded");
+          drawWindow(wc, w, sa, sb, y0, y1, "boarded", "none", u.id * 5 + k, false, "boarded", false, look);
         } else {
-          drawWindow({ ...wc, detail: full ? "full" : "low" }, w, sa, sb, y0, y1, "dark", "none", u.id * 5 + k, false, o.cover === "papered" ? "papered" : "none", true);
+          drawWindow({ ...wc, detail: full ? "full" : "low" }, w, sa, sb, y0, y1, "dark", "none", u.id * 5 + k, false, o.cover === "papered" ? "papered" : "none", true, look);
         }
-        if (o.cover === "blinds" || o.cover === "display") {
-          // Over the room, behind the glass.
-          if (o.cover === "display") displayWindow(out, xf, floorY, Math.min(o.s0, o.s1), Math.max(o.s0, o.s1), o.sill, o.head, b.id * 11 + u.id + k, u.tenant?.trade ?? null, lit, detail);
-          else {
-            const drop = (o.head - o.sill) * (0.45 + hash01(b.id * 3 + u.id + k, 432) * 0.45);
-            const n = full ? Math.max(3, Math.round(drop / 0.15)) : 1;
-            for (let j = 0; j < n; j++) {
-              const ya = y1 - (drop * j) / n;
-              const yb = y1 - (drop * (j + 1)) / n;
-              out.poly([wat(w, sa, yb, -rv * 0.6), wat(w, sb, yb, -rv * 0.6), wat(w, sb, ya, -rv * 0.6), wat(w, sa, ya, -rv * 0.6)], [w.nx, 0, w.nz], scaled([0.8, 0.76, 0.66], j % 2 === 0 ? 1 : 0.86), undefined, { glow: lit ? 0.7 : 0.3 });
-            }
-          }
+        if (o.cover === "blinds") {
+          // Slats with the room showing between them, part raised; some offices have vertical louvres instead.
+          const bseed = b.id * 3 + u.id + k;
+          const behind = { out, w, detail: full ? "full" as const : "low" as const, seed: bseed, glass: -0.07, lit };
+          if (u.interior.type === "office" && hash01(bseed, 437) < 0.3) verticalBlinds(behind, sa, sb, y1 - 0.02, y0 + 0.05, slatColour(bseed));
+          else slatBlinds(behind, sa, sb, y1 - 0.02, (o.head - o.sill) * (0.4 + hash01(bseed, 432) * 0.55), slatColour(bseed));
         }
         // The frame's bars proud of the face and, on the old fronts, the transom bar.
         if (full) {
-          frameBars(out, w, sa, sb, y0, y1, 0.06, 0.03, frameC);
-          if (b.era < 1930 && y1 - y0 > 1.8) wquad(out, w, sa, y1 - 0.5, sb, y1 - 0.45, -0.02, frameC);
+          frameBars(out, w, sa, sb, y0, y1, 0.06, 0.11, frameC);
+          if (b.era < 1930 && y1 - y0 > 1.8) wquad(out, w, sa, y1 - 0.5, sb, y1 - 0.45, -0.045, frameC);
         }
       });
     });
@@ -138,7 +136,7 @@ export function planFront(i: FrontIn): FrontPlan {
           if (old && sill > 0.35) {
             wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + sill, 0, 0.05, bulk, scaled(bulk, 1.4));
             // The panel's field, a shade off the frame.
-            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.055, scaled(bulk, 0.8));
+            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8));
           } else wquad(out, w, sa, floorY, sb, floorY + Math.min(0.5, sill), 0.03, [0.13, 0.13, 0.14]);
         }
       });
@@ -158,16 +156,17 @@ export function planFront(i: FrontIn): FrontPlan {
       reveal(out, w, da, db, floorY, dHead, rec > 0 ? rec : 0.1, scaled(i.wall, 0.8), [0.35, 0.34, 0.32]);
       if (rec > 0 && full) {
         // A doorstep of the old entries: a tiled floor, and the glass flanking it (the windows run to the recess).
-        out.poly([wat(w, da, floorY + 0.015, 0), wat(w, db, floorY + 0.015, 0), wat(w, db, floorY + 0.015, -rec), wat(w, da, floorY + 0.015, -rec)], [0, 1, 0], [0.42, 0.4, 0.37]);
+        out.poly([wat(w, da, floorY + 0.04, 0), wat(w, db, floorY + 0.04, 0), wat(w, db, floorY + 0.04, -rec), wat(w, da, floorY + 0.04, -rec)], [0, 1, 0], [0.42, 0.4, 0.37]);
       }
       const leafTop = floorY + 2.05;
       if (boardedUnit) {
-        wquad(out, w, da, floorY, db, dHead, 0.03, scaled([0.42, 0.31, 0.18], 0.9), { layer: "plywood", frame: i.surface(w).frame, tint: [0.92, 0.9, 0.9], wear: 0.2, wearKind: "peel" });
+        wquad(out, w, da, floorY, db, dHead, 0.03, scaled([0.6, 0.45, 0.28], 0.9), { layer: "plywood", frame: i.surface(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
         return;
       }
       wquad(out, w, da + 0.03, floorY, db - 0.03, floorY + 0.8, leafOff, scaled(timber, 0.9), undefined, undefined);
-      wquad(out, w, da + 0.03, floorY + 0.8, da + 0.14, leafTop, leafOff, timber);
-      wquad(out, w, db - 0.14, floorY + 0.8, db - 0.03, leafTop, leafOff, timber);
+      // The stiles run between the rails (no part of the leaf is drawn twice).
+      wquad(out, w, da + 0.03, floorY + 0.88, da + 0.14, leafTop - 0.1, leafOff, timber);
+      wquad(out, w, db - 0.14, floorY + 0.88, db - 0.03, leafTop - 0.1, leafOff, timber);
       wquad(out, w, da + 0.03, leafTop - 0.1, db - 0.03, leafTop, leafOff, timber);
       wquad(out, w, da + 0.03, floorY + 0.8, db - 0.03, floorY + 0.88, leafOff, timber);
       pane(glass, w, da + 0.14, floorY + 0.88, db - 0.14, leafTop - 0.1, leafOff - 0.01);
@@ -182,7 +181,7 @@ export function planFront(i: FrontIn): FrontPlan {
     if (!boardedUnit && u.interior.type !== undefined) {
       drawers.push(() => {
         const from = out.vertices;
-        roomGeometry(out, xf, floorY, u.s0 + 0.04, u.s1 - 0.04, u.interior, u.state, lit, u.tenant?.trade ?? null, b.id * 31 + u.id, b.era, detail);
+        roomGeometry(out, { xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width } });
         if (i.report !== undefined) {
           const ext = { s0: Infinity, s1: -Infinity, d0: Infinity, d1: -Infinity, y0: Infinity, y1: -Infinity };
           out.forEachPosition(from, (x, y, z) => {
@@ -214,10 +213,10 @@ export function planFront(i: FrontIn): FrontPlan {
       reveal(out, w, sa, sb, floorY, floorY + 2.3, 0.2, scaled(i.wall, 0.8), [0.35, 0.34, 0.32]);
       const col = pickOf([[0.12, 0.2, 0.14], [0.3, 0.1, 0.08], [0.14, 0.14, 0.15], [0.35, 0.3, 0.2]] as readonly Rgb[], b.id, 434);
       wquad(out, w, sa + 0.03, floorY, sb - 0.03, floorY + 2.2, -0.2, col);
-      wquad(out, w, sa + 0.1, floorY + 1.3, sb - 0.1, floorY + 2.0, -0.19, scaled(col, 0.8));
+      wquad(out, w, sa + 0.1, floorY + 1.3, sb - 0.1, floorY + 2.0, -0.17, scaled(col, 0.8));
       pane(glass, w, sa + 0.05, floorY + 2.22, sb - 0.05, floorY + 2.3, -0.21);
       // The number plate.
-      wquad(out, w, sb + 0.1, floorY + 1.5, sb + 0.24, floorY + 1.62, 0.02, [0.7, 0.68, 0.6]);
+      wquad(out, w, sb + 0.1, floorY + 1.5, sb + 0.24, floorY + 1.62, 0.03, [0.7, 0.68, 0.6]);
     });
   }
 
@@ -242,8 +241,8 @@ export function planFront(i: FrontIn): FrontPlan {
         drawWindow(winCtx, w, sa, sb, y0, y1, wnd.state, wnd.sill, up.storey * 50 + k, replaced);
         if (full && brick && !replaced) {
           // A stone sill and a lintel course over each opening of an old brick block.
-          wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.08, y0, 0, 0.09, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
-          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.16, 0.04, [0.45, 0.43, 0.4]);
+          wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.1, y0 - 0.02, 0, 0.1, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
+          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.16, 0.09, [0.45, 0.43, 0.4]);
         }
       });
     });
@@ -251,7 +250,7 @@ export function planFront(i: FrontIn): FrontPlan {
 
   // ---- piers, a cornice and a water table, across the whole front
   drawers.push(() => {
-    if (full && (brick || old)) wbox(out, w, 0, w.length, floorY - 0.05, floorY + 0.35, 0, 0.05, scaled([0.4, 0.4, 0.38], 0.9 + hash01(b.id, 436) * 0.2), [0.45, 0.45, 0.43]);
+    if (full && (brick || old)) wbox(out, w, 0, w.length, floorY - 0.05, floorY + 0.35, 0, 0.08, scaled([0.4, 0.4, 0.38], 0.9 + hash01(b.id, 436) * 0.2), [0.45, 0.45, 0.43]);
     // Pilasters on the line between two units, on the old brick fronts: the pier the plan leaves is as wide as it says.
     if (brick && b.era < 1940 && full) {
       for (const u of use.units) {

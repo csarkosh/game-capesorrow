@@ -112,13 +112,27 @@ export const WOOD_DARK: Rgb = [0.12, 0.08, 0.05];
 /** A unit's fill of light by what it is: the share of its surfaces' colour that lights itself. */
 export const ROOM_GLOW = { open: 0.5, shut: 0.16, vacant: 0.2 } as const;
 
-/** The colour of glass in daylight (its own tint; the sky's reflection is the material's) and how clear it is. Authored. */
+/** The colour of glass in daylight (its own tint; the sky's and the street's reflection are the material's) and how clear it is. Authored. */
 export const GLASS_TINT: Rgb = [0.34, 0.4, 0.44];
-export const GLASS_CLEAR = 0.82;
+export const GLASS_CLEAR = 0.93;
 
-/** A pane of glass in the blended layer: on the wall between two stations and heights, `off` off its face. */
-export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, clear = GLASS_CLEAR, tint: Rgb = GLASS_TINT): void {
-  wquad(glass, w, s0, y0, s1, y1, off, tint, undefined, { clear }, false);
+/** What a pane's glass is like: how grimy (0 to 1) and how far, at most, its reflecting normal is turned from the wall's (radians; old glass more). */
+export type PaneLook = { readonly dirt?: number; readonly tilt?: number };
+
+/**
+ * A pane of glass in the blended layer: on the wall between two stations and heights, `off` off its face. Each pane has a turn of its own
+ * (from where it is, so the same pane is the same every build): neighbouring panes reflect a little differently, as old glass does.
+ */
+export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, clear = GLASS_CLEAR, tint: Rgb = GLASS_TINT, look: PaneLook = {}): void {
+  const key = Math.round(w.ax * 7 + w.az * 13 + s0 * 101 + y0 * 211 + (s1 - s0) * 31);
+  const amp = look.tilt ?? 0.03;
+  const seed = hash01(key, 8801);
+  const fx: Fx = {
+    clear, dirt: look.dirt ?? 0.3, seed, size: [y1 - y0, s1 - s0],
+    tilt: [(hash01(key, 8802) * 2 - 1) * amp, (hash01(key, 8803) * 2 - 1) * amp],
+    uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
+  };
+  wquad(glass, w, s0, y0, s1, y1, off, tint, undefined, fx, false);
 }
 
 /** The four faces of a hole's reveal, `depth` deep (into the building), the hole running from station `sa` to `sb` (sa < sb) and from `y0` to `y1`. */

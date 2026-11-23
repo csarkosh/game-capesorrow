@@ -40,7 +40,16 @@ export type MeshArrays = { positions: Float32Array; normals: Float32Array; color
 /** Floats a vertex's `surface` holds. */
 export const SURFACE_FLOATS = 12;
 
+const ONE: Rgb = [1, 1, 1];
+
 export class MeshBuilder {
+  /** Debugging: when set, each polygon records where in the builders it was made (`tags`: its first triangle's index, and the callers), for a script that hunts overlaps. Off in the game. */
+  static trace = false;
+  readonly tags: [number, string][] = [];
+  private tag(from: number): void {
+    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder")).slice(0, 3);
+    this.tags.push([from, lines.map((l) => l.replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
+  }
   private pos: number[] = [];
   private nor: number[] = [];
   private col: number[] = [];
@@ -76,7 +85,7 @@ export class MeshBuilder {
    * `hint`. Corners are shared by the fan of triangles it is cut into. Returns nothing for a polygon with no area. Given a
    * `surface`, each corner also gets its UV from the surface's frame and its layer and wear.
    */
-  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb, surface?: Surface, fx?: Fx): void {
+  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], surface?: Surface, fx?: Fx): void {
     const n = points.length;
     if (n < 3) return;
     let nx = 0;
@@ -103,20 +112,31 @@ export class MeshBuilder {
       nz = -nz;
     }
     const base = this.vertices;
+    if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     const basis = surface === undefined ? null : basisOf(surface);
     const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
     const kind = (WEAR_KIND_NUMBER[surface?.wearKind ?? "moss"] ?? 0) + (surface?.streaks === true ? 0.5 : 0);
     const kind2 = (WEAR_KIND_NUMBER[surface?.wearKind2 ?? "moss"] ?? 0) + (surface?.streaks2 === true ? 0.5 : 0);
     const glow = fx?.glow ?? 0;
     const clear = fx?.clear ?? 0;
-    const tint = surface === undefined ? colour : tintOf(surface, colour);
-    for (const p of points) {
+    // One colour for the polygon, or one a corner (a baked light): then a textured corner's tint is its own colour.
+    const per = typeof (colour as readonly unknown[])[0] !== "number";
+    const flat = (per ? [1, 1, 1] : colour) as Rgb;
+    const tint0 = surface === undefined ? flat : tintOf(surface, flat);
+    for (let pointIndex = 0; pointIndex < n; pointIndex++) {
+      const p = points[pointIndex] as Vec3;
+      const colourHere = (per ? (colour as readonly Rgb[])[pointIndex] ?? flat : flat) as Rgb;
+      // A corner's own colour, times the surface's gain (a layer whose picture is darker than the paint it carries is lifted by it).
+      const gain = surface?.tint ?? ONE;
+      const tint: Rgb = per && surface !== undefined ? [colourHere[0] * gain[0], colourHere[1] * gain[1], colourHere[2] * gain[2]] : tint0;
       this.pos.push(p[0], p[1], p[2]);
       this.nor.push(nx, ny, nz);
-      this.col.push(colour[0], colour[1], colour[2], 1);
+      this.col.push(colourHere[0], colourHere[1], colourHere[2], 1);
       if (basis === null || surface === undefined) {
-        this.uv.push(0, 0);
-        this.srf.push(NO_LAYER, 0, 0, glow, 1, 1, 1, clear, 0, 0, 0, 0);
+        const cuv = fx?.uvs?.[pointIndex];
+        this.uv.push(cuv?.[0] ?? 0, cuv?.[1] ?? 0);
+        // A pane's own data rides in the floats a flat vertex does not use (`townMaterial.ts` says which).
+        this.srf.push(NO_LAYER, fx?.dirt ?? 0, fx?.seed ?? 0, glow, 1, 1, 1, clear, fx?.size?.[0] ?? 0, fx?.size?.[1] ?? 0, fx?.tilt?.[0] ?? 0, fx?.tilt?.[1] ?? 0);
       } else {
         const [u, v] = uvAt(basis, p);
         this.uv.push(u, v);
@@ -141,6 +161,7 @@ export class MeshBuilder {
     const base = this.vertices;
     const n = points.length;
     if (n < 3) return;
+    if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     let nx = 0;
     let ny = 0;
     let nz = 0;
@@ -166,6 +187,62 @@ export class MeshBuilder {
     for (let i = 1; i < n - 1; i++) {
       if (flip) this.idx.push(base, base + i, base + i + 1);
       else this.idx.push(base, base + i + 1, base + i);
+    }
+  }
+
+  /**
+   * A flat grid of quads with shared corners, for a surface lit by a baked light: from `origin` along `du` (to its end) and `dv`, with
+   * its lines at the fractions `us` and `vs` (each from 0 to 1, ascending), facing `hint`'s side. `colourAt(i, j, p)` is the colour at the
+   * corner on line `i` of `us` and `j` of `vs` (the paint times the light there); a textured grid takes it as its tint.
+   */
+  litGrid(origin: Vec3, du: Vec3, dv: Vec3, us: readonly number[], vs: readonly number[], hint: Vec3, colourAt: (i: number, j: number, p: Vec3) => Rgb, surface?: Surface, fx?: Fx): void {
+    const nu = us.length;
+    const nv = vs.length;
+    if (nu < 2 || nv < 2) return;
+    let nx = du[1] * dv[2] - du[2] * dv[1];
+    let ny = du[2] * dv[0] - du[0] * dv[2];
+    let nz = du[0] * dv[1] - du[1] * dv[0];
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (!(len > 1e-12)) return;
+    const flip = (nx * hint[0] + ny * hint[1] + nz * hint[2]) / len < 0;
+    const k = (flip ? -1 : 1) / len;
+    nx *= k;
+    ny *= k;
+    nz *= k;
+    const base = this.vertices;
+    if (MeshBuilder.trace) this.tag(this.idx.length / 3);
+    const basis = surface === undefined ? null : basisOf(surface);
+    const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
+    const glow = fx?.glow ?? 0;
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const a = us[i] as number;
+        const b = vs[j] as number;
+        const p: Vec3 = [origin[0] + du[0] * a + dv[0] * b, origin[1] + du[1] * a + dv[1] * b, origin[2] + du[2] * a + dv[2] * b];
+        const c = colourAt(i, j, p);
+        this.pos.push(p[0], p[1], p[2]);
+        this.nor.push(nx, ny, nz);
+        this.col.push(c[0], c[1], c[2], 1);
+        if (basis === null) {
+          this.uv.push(0, 0);
+          this.srf.push(NO_LAYER, 0, 0, glow, 1, 1, 1, 0, 0, 0, 0, 0);
+        } else {
+          const [u, v] = uvAt(basis, p);
+          this.uv.push(u, v);
+          const g = surface?.tint ?? ONE;
+          this.srf.push(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, 0, 0);
+        }
+      }
+    }
+    for (let j = 0; j + 1 < nv; j++) {
+      for (let i = 0; i + 1 < nu; i++) {
+        const q0 = base + j * nu + i;
+        const q1 = q0 + 1;
+        const q3 = q0 + nu;
+        const q2 = q3 + 1;
+        if (flip) this.idx.push(q0, q1, q2, q0, q2, q3);
+        else this.idx.push(q0, q2, q1, q0, q3, q2);
+      }
     }
   }
 

@@ -53,10 +53,32 @@ const longest = (lines: readonly string[]): number => lines.reduce((m, l) => Mat
 /** Width of a block of lines set `lineH` metres tall: about 0.6 of the line's height a letter, and a margin. */
 const textWidth = (lines: readonly string[], lineH: number): number => longest(lines) * lineH * 0.62 + 0.4;
 
+/** The faces drawn so far in a building's signs, to keep each a step from the next (`quad` in `drawSign`). */
+const FACES = new WeakMap<SignIn, { sg: number; nx: number; nz: number; off: number; x: number; z: number; w: number; y0: number; h: number }[]>();
+
+
+/** The offset a face is laid at: asked for, or a step (3 cm) in front of any face already laid over its place (`FACES`). */
+function stepOff(i: SignIn, pl: Pl, cx: number, y0: number, ww: number, hh: number, sg: number, offAsked: number): number {
+  const reg = FACES.get(i) ?? [];
+  FACES.set(i, reg);
+  const wx = pl.x + pl.rx * cx;
+  const wz = pl.z + pl.rz * cx;
+  let off = offAsked;
+  for (let tries = 0; tries < 6; tries++) {
+    const clash = reg.find((f) => f.sg === sg && f.nx === pl.nx && f.nz === pl.nz && Math.abs(f.off - off) < 0.03 && Math.abs((f.x - wx) * pl.rx + (f.z - wz) * pl.rz) < (f.w + ww) / 2 && f.y0 < y0 + hh && y0 < f.y0 + f.h);
+    if (clash === undefined) break;
+    off = clash.off + 0.03;
+  }
+  reg.push({ sg, nx: pl.nx, nz: pl.nz, off, x: wx, z: wz, w: ww, y0, h: hh });
+  return off;
+}
+
 export function signsGeometry(i: SignIn): void {
   const { use } = i;
+  // Every sign of the plan is drawn; faces that fall on one another are each a step in front of the last (`quad` in `drawSign`).
   use.units.forEach((u) => u.signs.forEach((s, k) => drawSign(i, s, u, k)));
   use.signs.forEach((s, k) => drawSign(i, s, null, k + 40));
+  windowLife(i);
 }
 
 function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
@@ -68,7 +90,10 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   const nLines = lines.length;
   const bay = unit === null ? xf.width : unit.s1 - unit.s0;
   const ground = pl.free ? g.heightAt(pl.x, pl.z) : i.floorY;
-  const y = (pl.free ? ground : i.floorY) + sign.place.h;
+  // A board of the building's own that would hang over a unit's sign on the same wall hangs a sign's height above it.
+  const over = unit === null ? i.use.units.flatMap((u) => u.signs).find((q) => q.place.wall === sign.place.wall && (q.kind === "fascia" || q.kind === "board" || q.kind === "banner") && Math.abs(q.place.s - sign.place.s) < 2.5 && Math.abs(q.place.h - sign.place.h) < 0.9) : undefined;
+  const lift = over === undefined ? 0 : over.place.h + 0.95 - sign.place.h;
+  const y = (pl.free ? ground : i.floorY) + sign.place.h + lift;
   const old = sign.style === "hand-painted";
   const neon = sign.style === "neon and porcelain";
   const box = sign.style === "backlit box";
@@ -97,15 +122,27 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     case "lease": w = 0.4; h = 0.55; break;
     default: h = 0.5 + nLines * 0.2; w = Math.min(2.4, textWidth(lines, 0.2) + 0.2); break;
   }
+  // Lettering on the glass stays inside the opening it is on (it is on the pane, not on the wall beside it); on an opening that is boarded or bricked up it is on the boards or the brick.
+  let glassOff = -0.015;
+  if (unit !== null && (sign.kind === "glass" || sign.kind === "open" || sign.kind === "lease")) {
+    const o = unit.openings.find((q) => sign.place.s >= Math.min(q.s0, q.s1) - 0.05 && sign.place.s <= Math.max(q.s0, q.s1) + 0.05);
+    if (o !== undefined) {
+      w = Math.min(w, Math.max(0.3, Math.abs(o.s1 - o.s0) - 0.14));
+      if (o.cover === "boarded") glassOff = 0.06;
+      else if (o.cover === "bricked") glassOff = 0.03;
+    }
+  }
   const spec: SignSpec = { kind: sign.kind, style: sign.style, lines, decade: sign.decade, condition: sign.condition, lit: sign.lit, seed, bg: col.bg, fg: col.fg, accent: col.accent, clear, w, h };
   const at = atlas.place(w, h, spec);
   const glow = !sign.lit ? 0 : neon || sign.kind === "open" ? 2.1 : box ? 1.05 : 0;
   const ink: Rgb = old ? [0.08, 0.07, 0.06] : [0.17, 0.17, 0.18];
 
   /** The face as a quad at `off` off the wall, centred `cx` along the viewer's right, its bottom `y0` up, facing out (or the other way when `back`). */
-  const quad = (cx: number, y0: number, ww: number, hh: number, off: number, back = false): void => {
+  const quad = (cx: number, y0: number, ww: number, hh: number, offAsked: number, back = false): void => {
     if (at === null) return;
     const sg = back ? -1 : 1;
+    // A face laid where another already is (a new board over an old, two records of one place) stands a step in front of it: never within 3 cm of another.
+    const off = stepOff(i, pl, cx, y0, ww, hh, sg, offAsked);
     const c = (dr: number, yy: number): Vec3 => [pl.x + pl.rx * (cx + sg * dr) + pl.nx * off, yy, pl.z + pl.rz * (cx + sg * dr) + pl.nz * off];
     i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx * sg, 0, pl.nz * sg], [1, 1, 1], { glow });
   };
@@ -123,8 +160,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       // The board spans the sign's width; its colour is dark and its edge a trim.
       const top = Math.min(y + h / 2, i.wallTop - 0.15);
       const y0 = top - h;
-      obox(0, y0 - 0.03, w + 0.1, h + 0.06, 0, 0.1, ink, scaled(ink, 1.6));
-      quad(0, y0, w, h, 0.105);
+      obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, 0.18, ink, scaled(ink, 1.6));
+      quad(0, y0, w, h, 0.21);
       break;
     }
     case "banner": {
@@ -142,7 +179,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         const pt = (dr: number, yy: number, off: number): Vec3 => [pl.x + pl.rx * dr + pl.nx * off, yy, pl.z + pl.rz * dr + pl.nz * off];
         const u = (m: number): number => at.u0 + ((at.u1 - at.u0) * m) / n;
         const vb = (yy: number): number => at.v0 + ((at.v1 - at.v0) * (yt - yy)) / h;
-        i.face.polyUv([pt(a, yt, 0.13 + 0.01 * c), pt(e, yt, 0.13 + 0.01 * (c + 1)), pt(e, ye, 0.14 + 0.01 * (c + 1)), pt(a, ya, 0.14 + 0.01 * c)], [[u(c), at.v0], [u(c + 1), at.v0], [u(c + 1), vb(ye)], [u(c), vb(ya)]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow: 0 });
+        i.face.polyUv([pt(a, yt, 0.3 + 0.01 * c), pt(e, yt, 0.3 + 0.01 * (c + 1)), pt(e, ye, 0.31 + 0.01 * (c + 1)), pt(a, ya, 0.31 + 0.01 * c)], [[u(c), at.v0], [u(c + 1), at.v0], [u(c + 1), vb(ye)], [u(c), vb(ya)]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow: 0 });
       }
       break;
     }
@@ -159,7 +196,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       if (at !== null) {
         for (const back of [false, true]) {
           const sg = back ? -1 : 1;
-          const c = (dr: number, yy: number): Vec3 => [pb.x + pb.rx * sg * dr + pb.nx * sg * 0.03, yy, pb.z + pb.rz * sg * dr + pb.nz * sg * 0.03];
+          const c = (dr: number, yy: number): Vec3 => [pb.x + pb.rx * sg * dr + pb.nx * sg * 0.05, yy, pb.z + pb.rz * sg * dr + pb.nz * sg * 0.05];
           i.face.polyUv([c(-ww / 2, yt - 0.05), c(ww / 2, yt - 0.05), c(ww / 2, yt - 0.05 - h), c(-ww / 2, yt - 0.05 - h)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pb.nx * sg, 0, pb.nz * sg], [1, 1, 1], { glow });
         }
       }
@@ -168,12 +205,12 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "glass": {
       // On the pane: just behind the window's face, the lettering alone.
-      quad(0, y - h / 2, w, h, -0.04);
+      quad(0, y - h / 2, w, h, glassOff);
       break;
     }
     case "wall":
     case "ghost": {
-      quad(0, y - h / 2, w, h, 0.015);
+      quad(0, y - h / 2, w, h, 0.03);
       break;
     }
     case "pole": {
@@ -182,11 +219,11 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       const top = ground + sign.place.h;
       const px = pl.x;
       const pz = pl.z;
-      solid.box(px, pz, ground - 0.1, pl.rx, pl.rz, 0.12, 0.12, top - ground, [0.28, 0.28, 0.3], [0.28, 0.28, 0.3]);
+      solid.box(px, pz, ground - 0.1, pl.rx, pl.rz, 0.08, 0.08, top - ground, [0.28, 0.28, 0.3], [0.28, 0.28, 0.3]);
       const y0 = top - (gas ? 0.2 : 0.1);
       solid.box(px, pz, y0 - h + 0.2, pl.rx, pl.rz, w / 2, 0.12, h, ink, scaled(ink, 1.5));
-      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, 0.125);
-      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, -0.125, true);
+      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, 0.15);
+      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, -0.15, true);
       break;
     }
     case "sandwich": {
@@ -207,28 +244,110 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "open": {
       // Hung in the glass on two cords: a small box with its tubes.
-      obox(0, y - h / 2, w, h, -0.14, -0.1, [0.05, 0.05, 0.06]);
-      quad(0, y - h / 2, w, h, -0.095);
+      obox(0, y - h / 2, w, h, -0.18, -0.14, [0.05, 0.05, 0.06]);
+      quad(0, y - h / 2, w, h, -0.11);
       break;
     }
     case "lease": {
-      quad(0, y - h / 2, w, h, -0.05);
+      // In the glass, or, on a boarded unit, taped to the plywood.
+      quad(0, y - h / 2, w, h, unit?.state === "vacant boarded" ? Math.max(glassOff, 0.06) : glassOff);
       break;
     }
     default: {
       // A board: on two posts at the lot's edge, or a plaque on the wall.
       if (pl.free) {
         const top = ground + sign.place.h + h / 2;
-        for (const sg of [-1, 1]) solid.box(pl.x + pl.rx * sg * (w / 2 - 0.05), pl.z + pl.rz * sg * (w / 2 - 0.05), ground - 0.1, pl.rx, pl.rz, 0.06, 0.06, top - ground + 0.1, [0.3, 0.2, 0.12], [0.3, 0.2, 0.12]);
+        for (const sg of [-1, 1]) solid.box(pl.x + pl.rx * sg * (w / 2 - 0.05), pl.z + pl.rz * sg * (w / 2 - 0.05), ground - 0.1, pl.rx, pl.rz, 0.12, 0.12, top - ground + 0.04, [0.3, 0.2, 0.12], [0.3, 0.2, 0.12]);
         obox(0, top - h, w, h, -0.05, 0.05, ink, scaled(ink, 1.5));
-        quad(0, top - h + 0.04, w - 0.08, h - 0.08, 0.055);
-        quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.055, true);
+        quad(0, top - h + 0.04, w - 0.08, h - 0.08, 0.08);
+        quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.08, true);
       } else {
         const y0 = y - h / 2;
         obox(0, y0 - 0.04, w + 0.12, h + 0.08, 0, 0.06, ink, scaled(ink, 1.4));
-        quad(0, y0, w, h, 0.065);
+        quad(0, y0, w, h, 0.09);
       }
       break;
     }
+  }
+}
+
+const PAPER_COLOURS: readonly [number, number, number][] = [[246, 240, 170], [250, 250, 245], [172, 214, 234], [244, 176, 170], [202, 230, 182], [240, 214, 160]];
+const NOTICES: readonly (readonly string[])[] = [
+  ["LOST CAT", "Gray tabby, Biscuit", "555-0161"], ["YARD SALE", "Saturday 8 to 2", "Fourth Street"], ["CHOWDER FEED", "Fire hall, Sat 5 pm", "$10 a bowl"],
+  ["HELP WANTED", "Apply within"], ["BOAT FOR SALE", "16 ft skiff", "555-0172"], ["BAKE SALE", "Sunday after church"],
+  ["LOST DOG", "Brown lab, collar", "555-0188"], ["PORT COMMISSION", "Thursday 7 pm", "Open to all"], ["FREE KITTENS", "Ask inside"],
+  ["TIDE TABLES", "Free, this month"], ["SEWING LESSONS", "Wednesdays", "555-0134"], ["FOUND KEYS", "Ask at the counter"],
+];
+const STICKERS: readonly (readonly string[])[] = [["ATM"], ["PUSH"], ["PULL"], ["WELCOME"], ["NO SMOKING"], ["EXIT"], ["COLD DRINKS"], ["OPEN"]];
+const HOURS: readonly (readonly string[])[] = [["Mon-Fri 9-5", "Closed weekends"], ["Mon-Sat 10-6", "Closed Sunday"], ["Daily 7-3"], ["Tue-Sat 11-7", "Closed Sun, Mon"], ["Mon-Fri 8-4:30", "Sat 9-noon"], ["Daily 6 am-9 pm"]];
+
+/**
+ * What a small-town shop window carries beyond its plan's signs (`unit.signs`): the hours on the door (a plate with the day's word on it:
+ * OPEN, or CLOSED and when it is back), flyers and the community's notices taped up at irregular places and slightly crooked, a faded
+ * poster, stickers by the door; on a boarded front the notices are taped to the plywood. Each is a small face in the sign layer, its
+ * lettering painted at 2.5 times the atlas's density (a plate 30 cm wide is the size of a page: it must be readable at the glass).
+ * Invented words, no names of businesses; which unit gets how many is rolled from the unit's own number and what its record says (a
+ * vacant unit's glass has more paper, a shut one's the hours).
+ */
+function windowLife(i: SignIn): void {
+  const { use, b, xf, face, atlas } = i;
+  if (i.detail !== "full" || (globalThis as { NOLIFE?: boolean }).NOLIFE === true) return;
+  const front = placeOf(xf, { wall: "front", s: 0, h: 0, out: 0, door: "none" });
+  const paint = (cx: number, y0: number, ww: number, hh: number, off: number, lines: readonly string[], seed: number, bg: readonly [number, number, number], fg: readonly [number, number, number], cond: number, tilt: number, k = 2): void => {
+    const spec: SignSpec = { kind: "board", style: "vinyl", lines, decade: 2020, condition: cond, lit: false, seed, bg, fg, accent: fg, clear: false, w: ww * k, h: hh * k };
+    const at = atlas.place(ww * k, hh * k, spec);
+    if (at === null) return;
+    const o = stepOff(i, front, cx, y0, ww, hh, 1, off);
+    const mx = cx;
+    const my = y0 + hh / 2;
+    const rot = (dr: number, dy: number): Vec3 => {
+      const c = Math.cos(tilt);
+      const sn = Math.sin(tilt);
+      return [front.x + front.rx * (mx + dr * c - dy * sn) + front.nx * o, my + dr * sn + dy * c, front.z + front.rz * (mx + dr * c - dy * sn) + front.nz * o];
+    };
+    face.polyUv([rot(-ww / 2, hh / 2), rot(ww / 2, hh / 2), rot(ww / 2, -hh / 2), rot(-ww / 2, -hh / 2)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [front.nx, 0, front.nz], [1, 1, 1], { glow: 0.12 });
+  };
+  for (const u of use.units) {
+    const seed = b.id * 977 + u.id * 53;
+    const r = (k: number): number => hash01(seed, 900 + k);
+    const boarded = u.state === "vacant boarded";
+    const vacant = u.state.startsWith("vacant");
+    const openings = u.openings.filter((o) => o.cover !== "bricked");
+    // The notices: more on glass that has been empty (boards and paper hold them), fewer where the plan has put its own lettering.
+    const n = Math.floor(r(0) * (vacant ? 3.2 : 2.6)) + (boarded ? 1 : 0) + (u.past.length >= 3 ? 1 : 0);
+    for (let k = 0; k < n && openings.length > 0; k++) {
+      const o = openings[Math.floor(r(1 + k * 5) * openings.length) % openings.length] as Unit["openings"][number];
+      const lo = Math.min(o.s0, o.s1);
+      const hi = Math.max(o.s0, o.s1);
+      const ww = 0.26;
+      const hh = 0.34;
+      if (hi - lo < ww + 0.3) continue;
+      // Near an edge of the glass, as they are taped; the height anywhere up the pane.
+      const left = r(3 + k * 5) < 0.5;
+      const cx = left ? lo + 0.12 + ww / 2 + r(4 + k * 5) * 0.25 : hi - 0.12 - ww / 2 - r(4 + k * 5) * 0.25;
+      const y0 = i.floorY + o.sill + 0.12 + r(5 + k * 5) * Math.max(0.05, o.head - o.sill - hh - 0.35);
+      const lines = NOTICES[Math.floor(r(6 + k * 5) * NOTICES.length) % NOTICES.length] as readonly string[];
+      const faded = vacant ? 0.3 + r(7 + k) * 0.3 : 0.55 + r(7 + k) * 0.4;
+      paint(cx, y0, ww, hh, boarded || o.cover === "boarded" ? 0.06 : -0.015, lines, seed + k * 31, PAPER_COLOURS[Math.floor(r(8 + k * 5) * PAPER_COLOURS.length) % PAPER_COLOURS.length] as [number, number, number], [30, 30, 36], faded, (r(9 + k * 5) - 0.5) * 0.12);
+    }
+    if (boarded || openings.length === 0) continue;
+    // A sticker or two by the door, at the height of a hand.
+    const stickers = r(20) < 0.55 ? 1 + Math.floor(r(21) * 2) : 0;
+    for (let k = 0; k < stickers; k++) {
+      const lines = STICKERS[Math.floor(r(22 + k) * STICKERS.length) % STICKERS.length] as readonly string[];
+      const side = r(24 + k) < 0.5 ? -1 : 1;
+      const cx = u.door.s + side * (u.door.width / 2 + 0.16);
+      paint(cx, i.floorY + 1.3 + r(26 + k) * 0.25, 0.14, 0.1, 0.06, lines, seed + 7 + k, [30, 50, 90], [240, 240, 235], 0.8, 0, 2.5);
+    }
+    // The hours, on the door's glass: a plate, white or black, with OPEN or CLOSED over the times.
+    const rec = u.door.recess;
+    const leaf = -(rec > 0 ? rec : 0.1) - 0.02;
+    const plateW = 0.26;
+    const plateH = 0.34;
+    const cx = u.door.s + (u.door.width / 2 - 0.14 - plateW / 2 - 0.02) * (r(30) < 0.5 ? 1 : -1);
+    const hours = HOURS[Math.floor(r(31) * HOURS.length) % HOURS.length] as readonly string[];
+    const shut = u.state === "closed for the day";
+    const lines = vacant ? [] : shut ? ["CLOSED", ...(r(32) < 0.5 ? ["Back at 1:30"] : hours.slice(0, 1))] : ["OPEN", ...hours];
+    if (lines.length > 0) paint(cx, i.floorY + 1.18, plateW, plateH, leaf + 0.03, lines, seed + 91, r(33) < 0.5 ? [238, 238, 230] : [28, 28, 32], r(33) < 0.5 ? [160, 30, 30] : [235, 235, 225], 0.9, (r(34) - 0.5) * 0.04, 2.5);
   }
 }

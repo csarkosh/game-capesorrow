@@ -28,8 +28,22 @@ export type WearKind = "moss" | "rust" | "peel" | "algae" | "grime";
 /** The kinds' numbers in a vertex (a streak adds one half). */
 export const WEAR_KIND_NUMBER: Readonly<Record<WearKind, number>> = { moss: 0, rust: 1, peel: 2, algae: 3, grime: 4 };
 
-/** Beside a polygon's colour: how much of it the renderer lights from itself (a lit sign, a room's light), and how see-through it is. */
-export type Fx = { /** 0 is lit by the scene, 1 and more is lit by itself (its colour times this is added; 1 replaces the scene's light). */ readonly glow?: number; /** 0 opaque, 1 invisible; for the blended layers. */ readonly clear?: number };
+/**
+ * Beside a polygon's colour: how much of it the renderer lights from itself (a lit sign, a room's light), and how see-through it is.
+ * A pane of glass (`clear` over 0) also carries what its own look needs, which the blended glass layer reads from the vertex: `tilt`
+ * (the small fixed turn of its reflecting normal, along the pane and up it, radians), `dirt` (how much grime it has, 0 to 1), `seed` (a
+ * number 0 to 1 of its own, for the noise in its dirt), `size` (the pane's height and width in metres) and `uvs` (a corner's place in the
+ * pane, 0 to 1, in the corners' order).
+ */
+export type Fx = {
+  /** 0 is lit by the scene, 1 and more is lit by itself (its colour times this is added; 1 replaces the scene's light). */ readonly glow?: number;
+  /** 0 opaque, 1 invisible; for the blended layers. */ readonly clear?: number;
+  readonly tilt?: readonly [number, number];
+  readonly dirt?: number;
+  readonly seed?: number;
+  readonly size?: readonly [number, number];
+  readonly uvs?: readonly (readonly [number, number])[];
+};
 
 /** Where a texture lies on a polygon: a point of its plane, and the directions of the texture's across (u) and up (v). */
 export type UvFrame = { readonly origin: Vec3; readonly u: Vec3; readonly v: Vec3 };

@@ -81,13 +81,13 @@ function housePart(i: PartsIn, full: boolean): void {
   const { age, neglect } = agingOf(b);
   const front = refs[frontAt] as WallRef;
   // The foundation: a concrete skirt round the base, from under the ground to a hand over the floor.
-  eachWall(i, (w) => wquad(out, w, 0, baseY, w.length, i.frontFloorY + 0.15, 0.025, CONCRETE, undefined));
+  eachWall(i, (w) => wquad(out, w, 0, baseY, w.length, i.frontFloorY + 0.15, 0.11, CONCRETE, undefined));
   if (full) {
     // Corner boards: painted boards up each corner, proud of the siding.
     const trim = b.material === "wood" ? scaled(TRIM, 0.95 + 0.1 * hash01(b.id, 500)) : scaled(i.wall, 1.15);
     i.refs.forEach((w) => {
-      wbox(out, w, -0.06, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim);
-      wbox(out, w, w.length - 0.1, w.length + 0.06, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim);
+      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim);
+      wbox(out, w, w.length - 0.1, w.length + 0.07, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim);
     });
   }
   // Steps and a porch at the front door.
@@ -109,8 +109,8 @@ function housePart(i: PartsIn, full: boolean): void {
       const roof = pickOf(SIDINGS, b.id, 503);
       if (closed) {
         wbox(out, front, s0, s1, floor + 0.05, top - 0.05, 0.02, pd, scaled(roof, 0.9), scaled(roof, 0.9));
-        wquad(out, front, s0 + 0.3, floor + 1.0, s1 - 0.3, floor + 1.9, pd + 0.01, [0.5, 0.55, 0.6], undefined, { glow: 0.3 });
-        pane(i.glass, front, s0 + 0.3, floor + 1.0, s1 - 0.3, floor + 1.9, pd + 0.03);
+        wquad(out, front, s0 + 0.3, floor + 1.0, s1 - 0.3, floor + 1.9, pd + 0.03, [0.5, 0.55, 0.6], undefined, { glow: 0.3 });
+        pane(i.glass, front, s0 + 0.3, floor + 1.0, s1 - 0.3, floor + 1.9, pd + 0.06);
       } else {
         for (const s of [s0 + 0.1, s1 - 0.1]) wbox(out, front, s - 0.07, s + 0.07, floor + 0.05, top, pd - 0.2, pd - 0.06, TRIM, TRIM);
         if (full) wbox(out, front, s0, s1, floor + 0.7, floor + 0.78, pd - 0.08, pd, TRIM, TRIM);
@@ -121,7 +121,7 @@ function housePart(i: PartsIn, full: boolean): void {
       // Steps: as many as the ground needs, in concrete or timber, with a stoop at the top.
       const n = Math.max(1, Math.min(6, Math.round((rise + 0.1) / 0.18)));
       const timber = hash01(b.id, 504) < 0.4;
-      for (let k = 0; k < n; k++) wbox(out, front, sw - 0.6, sw + 0.6, i.frontFloorY - (n - k) * (rise / n) - 0.02, i.frontFloorY - (n - k - 1) * (rise / n), 0, 0.3 * (n - k) + 0.1, timber ? [0.34, 0.25, 0.16] : CONCRETE, timber ? [0.4, 0.3, 0.2] : [0.45, 0.45, 0.43]);
+      for (let k = 0; k < n; k++) wbox(out, front, sw - 0.6, sw + 0.6, k === 0 ? i.frontFloorY - n * (rise / n) - 0.02 : i.frontFloorY - (n - k) * (rise / n), i.frontFloorY - (n - k - 1) * (rise / n), 0, 0.3 * (n - k) + 0.1, timber ? [0.34, 0.25, 0.16] : CONCRETE, timber ? [0.4, 0.3, 0.2] : [0.45, 0.45, 0.43]);
     }
   }
   // A chimney, on a pitched roof of a house built before 1980 (a flue: a stove, a furnace): brick, off the ridge's middle.
@@ -140,7 +140,7 @@ function housePart(i: PartsIn, full: boolean): void {
         const s = w.length * (0.25 + 0.5 * hash01(b.id, 510));
         const p = wat(w, s, 0, 0.5);
         i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
-        i.out.box(p[0] + w.nx * 0.2, p[2] + w.nz * 0.2, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
+        i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
       } else if (hash01(b.id, 511) < 0.3) {
         const s = w.length * (0.2 + 0.6 * hash01(b.id, 512));
         const p = wat(w, s, 0, 1.2);
@@ -203,9 +203,9 @@ function addition(i: PartsIn): void {
   const g = (s: number, off: number): number => i.g.heightAt(w.ax + w.tx * s + w.nx * off, w.az + w.tz * s + w.nz * off) - 0.3;
   if (carport) {
     // Posts and a roof: open on three sides, at the side of the house.
-    for (const [s, off] of [[s0, depth], [s1, depth], [s1, 0.05]] as const) {
+    for (const [s, off] of [[s0, depth], [s1, depth], [s1, 0]] as const) {
       const p = wat(w, s, 0, off);
-      i.out.box(p[0], p[2], g(s, off), w.tx, w.tz, 0.06, 0.06, low - g(s, off) + 0.2, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
+      i.out.box(p[0], p[2], g(s, off), w.tx, w.tz, 0.08, 0.08, low - g(s, off) + 0.2, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
     }
   } else {
     quad([wat(w, s0, base, depth), wat(w, s1, base, depth), wat(w, s1, low, depth), wat(w, s0, low, depth)], [w.nx, 0, w.nz], siding, surf);
@@ -213,8 +213,8 @@ function addition(i: PartsIn): void {
     quad([wat(w, s1, base, 0), wat(w, s1, base, depth), wat(w, s1, low, depth), wat(w, s1, top, 0)], [w.tx, 0, w.tz], siding, surf);
     // A window in the end, and a door in the face: they are lit and glassed, never dark.
     const ws = (s0 + s1) / 2;
-    wquad(out, w, ws - 0.5, i.floorY + 1.0, ws + 0.5, i.floorY + 1.9, depth + 0.012, [0.55, 0.5, 0.4], undefined, { glow: 0.4 });
-    pane(i.glass, w, ws - 0.5, i.floorY + 1.0, ws + 0.5, i.floorY + 1.9, depth + 0.03);
+    wquad(out, w, ws - 0.5, i.floorY + 1.0, ws + 0.5, i.floorY + 1.9, depth + 0.03, [0.55, 0.5, 0.4], undefined, { glow: 0.4 });
+    pane(i.glass, w, ws - 0.5, i.floorY + 1.0, ws + 0.5, i.floorY + 1.9, depth + 0.06);
   }
   out.poly([wat(w, s0 - 0.1, top + 0.1, 0), wat(w, s1 + 0.1, top + 0.1, 0), wat(w, s1 + 0.1, low, depth + 0.2), wat(w, s0 - 0.1, low, depth + 0.2)], [w.nx * 0.4, 1, w.nz * 0.4], rc, roofSurf);
 }
@@ -225,13 +225,15 @@ function repairs(i: PartsIn, age: number, neglect: number): void {
   if (i.detail !== "full") return;
   // One wall has a patch of siding of another batch: a rectangle where the owner replaced boards (a roll: one wall of one house in four).
   if (b.material === "wood" && hash01(b.id, 530) < 0.28 + 0.2 * age) {
-    const k = Math.floor(hash01(b.id, 531) * refs.length);
+    // Not the front, and low on the wall, under the sills: it is a patch of siding, never over a window or the door.
+    const k0 = Math.floor(hash01(b.id, 531) * refs.length);
+    const k = k0 === i.frontAt ? (k0 + 1) % refs.length : k0;
     const w = refs[k] as WallRef;
     if (!i.blocked[k] && w.length > 3) {
       const s = 0.8 + hash01(b.id, 532) * (w.length - 2.6);
       const sf = i.wallSurface(k);
       const tint: Rgb = hash01(b.id, 533) < 0.5 ? [1.2, 1.18, 1.1] : [0.8, 0.82, 0.85];
-      wquad(out, w, s, i.floorY + 0.3 + hash01(b.id, 534) * 0.8, s + 1.1 + hash01(b.id, 535) * 0.9, i.floorY + 1.8 + hash01(b.id, 534) * 0.8, 0.015, scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 });
+      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, s + 1.1 + hash01(b.id, 535) * 0.9, i.floorY + 0.55 + hash01(b.id, 534) * 0.3, 0.07, scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 });
     }
   }
   // The roof: a patch of newer shingle, or a tarp. A tarp is on a roof that is neglected or that a storm has taken a part of (a roll for one in eight of the old).
@@ -414,7 +416,7 @@ function gasStation(i: PartsIn): void {
   const top = ground + 4.4;
   const col: Rgb = pickOf([[0.75, 0.75, 0.72], [0.5, 0.1, 0.1], [0.15, 0.3, 0.2]] as readonly Rgb[], b.id, 570);
   wbox(out, front, s0, s1, top, top + 0.55, 0, depth, scaled(col, 0.9), [0.4, 0.4, 0.4], true);
-  wbox(out, front, s0, s1, top + 0.25, top + 0.3, depth, depth + 0.02, [0.95, 0.9, 0.8], [0.95, 0.9, 0.8]);
+  wbox(out, front, s0, s1, top + 0.25, top + 0.3, depth, depth + 0.04, [0.95, 0.9, 0.8], [0.95, 0.9, 0.8]);
   const cols = [s0 + 0.6, s1 - 0.6];
   for (const s of cols) for (const d of [depth - 0.4]) wbox(out, front, s - 0.2, s + 0.2, ground - 0.1, top, d - 0.2, d + 0.2, [0.7, 0.7, 0.68], [0.7, 0.7, 0.68]);
   const lit = b.state === "open";
@@ -440,12 +442,12 @@ function motelWalk(i: PartsIn): void {
   const door: Rgb = pickOf([[0.4, 0.1, 0.08], [0.1, 0.25, 0.3], [0.15, 0.15, 0.17]] as readonly Rgb[], b.id, 571);
   for (let s = 2.2, n = 101; s + 2.4 < front.length; s += 3.4, n++) {
     if (lobby !== undefined && stationOf(front, i.xf as Xf, lobby.s0) - 0.5 < s && s < stationOf(front, i.xf as Xf, lobby.s1) + 0.5) continue;
-    wquad(out, front, s, i.frontFloorY, s + 0.95, i.frontFloorY + 2.05, 0.03, door);
-    wquad(out, front, s + 0.2, i.frontFloorY + 1.75, s + 0.45, i.frontFloorY + 1.9, 0.04, [0.9, 0.85, 0.7]);
+    wquad(out, front, s, i.frontFloorY, s + 0.95, i.frontFloorY + 2.05, 0.07, door);
+    wquad(out, front, s + 0.2, i.frontFloorY + 1.75, s + 0.45, i.frontFloorY + 1.9, 0.1, [0.9, 0.85, 0.7]);
     // The window: a curtained pane lit from inside, in a frame.
     const lit = b.state === "open" && hash01(b.id * 7 + n, 572) < 0.35;
-    wquad(out, front, s + 1.3, i.frontFloorY + 0.95, s + 2.2, i.frontFloorY + 1.95, 0.02, lit ? [0.9, 0.75, 0.45] : [0.38, 0.34, 0.3], undefined, { glow: lit ? 1 : 0.2 });
-    pane(glass, front, s + 1.3, i.frontFloorY + 0.95, s + 2.2, i.frontFloorY + 1.95, 0.035);
-    wquad(out, front, s + 1.25, i.frontFloorY + 0.9, s + 2.25, i.frontFloorY + 0.95, 0.03, [0.7, 0.7, 0.66]);
+    wquad(out, front, s + 1.3, i.frontFloorY + 0.95, s + 2.2, i.frontFloorY + 1.95, 0.06, lit ? [0.9, 0.75, 0.45] : [0.38, 0.34, 0.3], undefined, { glow: lit ? 1 : 0.2 });
+    pane(glass, front, s + 1.3, i.frontFloorY + 0.95, s + 2.2, i.frontFloorY + 1.95, 0.09);
+    wquad(out, front, s + 1.25, i.frontFloorY + 0.9, s + 2.25, i.frontFloorY + 0.95, 0.12, [0.7, 0.7, 0.66]);
   }
 }

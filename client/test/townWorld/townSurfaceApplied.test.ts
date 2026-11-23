@@ -45,7 +45,9 @@ describe("the town's first surfaces", () => {
         const wear = a.surface[i * SURFACE_FLOATS + 1] as number;
         expect(wear >= 0 && wear <= 1).toBe(true);
         expect(Number.isFinite(a.uvs[i * 2] as number) && Number.isFinite(a.uvs[i * 2 + 1] as number)).toBe(true);
-        if (layer === NO_LAYER) expect(wear).toBe(0);
+        // A flat vertex has no wear; a pane of glass (see-through, `surface[7]` over 0) keeps its grime there (`townMaterial.ts`).
+        const clear = a.surface[i * SURFACE_FLOATS + 7] as number;
+        if (layer === NO_LAYER && clear === 0) expect(wear).toBe(0);
       }
     }
   });

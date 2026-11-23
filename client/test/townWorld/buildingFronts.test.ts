@@ -115,9 +115,9 @@ describe("a commercial front is drawn from its units", () => {
           const dz = z - (g.anchor.z + b.centre.z);
           const a = Math.abs(dx * u.x + dz * u.z) - b.halfAlong;
           const c = Math.abs(dx * v.x + dz * v.z) - b.halfAcross;
-          // Within a metre (a blade's bracket) of the footprint's outline.
+          // Within a metre (a blade's bracket) of the footprint's outline, and no deeper in than a recessed door (up to 1.4 m: the hours on its glass).
           expect(Math.max(a, c)).toBeLessThan(1.1);
-          expect(Math.max(a, c)).toBeGreaterThan(-0.6);
+          expect(Math.max(a, c)).toBeGreaterThan(-1.55);
           expect(Number.isFinite(y)).toBe(true);
           faces++;
         });
