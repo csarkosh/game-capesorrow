@@ -43,8 +43,8 @@ export const CURB_OUT = 0.3;
 export const HIDDEN = 0.2;
 export const HIDDEN_FADE = 1.4;
 /** Under a sidewalk's pours the terrain is cut this much (and fades out over `WALK_FADE` beyond them): a slab lies a centimetre or two over the ground, which the terrain's mesh would poke through. */
-export const HIDDEN_WALK = 0.05;
-export const WALK_FADE = 0.5;
+export const HIDDEN_WALK = 0.12;
+export const WALK_FADE = 0.6;
 /** A seam between two stretches of paving blends over this many metres. */
 export const SEAM = 1.2;
 /** A ditch: its depth, its width and how far beyond the pavement's edge its middle is (the shoulder's width, a metre and a half, and a little). */
