@@ -136,10 +136,17 @@ export function planFront(i: FrontIn): FrontPlan {
           const [sa, sb] = ends(x0, x1);
           if (old && sill > 0.35) {
             // Its top is at least 5 cm over the water table's (35 cm), which runs across the front.
-            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4), false, { layer: "planks_weathered", frame: i.surface(w).frame, tint: scaled(bulk, 2.2), ...bulkheadWear(b, vacantUnit, hash01(b.id * 7 + u.id, 450), floorY, false) });
-            // The panel's field, a shade off the frame.
-            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8), { layer: "planks_weathered", frame: i.surface(w).frame, tint: scaled(bulk, 1.8), ...bulkheadWear(b, vacantUnit, hash01(b.id * 7 + u.id, 450), floorY, false) });
-          } else wquad(out, w, sa, floorY, sb, floorY + Math.min(0.5, sill), 0.03, [0.13, 0.13, 0.14], { layer: "metal_painted", frame: i.surface(w).frame, tint: [0.5, 0.5, 0.52], ...bulkheadWear(b, vacantUnit, hash01(b.id * 7 + u.id, 450), floorY, true) });
+            const roll = hash01(b.id * 7 + u.id, 450);
+            const fr = i.surface(w).frame;
+            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4), false, { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 2.2), ...bulkheadWear(b, vacantUnit, roll, false, false) });
+            // The panel's field, a shade off the frame, and a kick plate at its foot that has taken the shoes and the mop.
+            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8), { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 1.8), ...bulkheadWear(b, vacantUnit, roll, false, false) });
+          } else {
+            const roll = hash01(b.id * 7 + u.id, 450);
+            const fr = i.surface(w).frame;
+            const top = floorY + Math.min(0.5, sill);
+            wquad(out, w, sa, floorY, sb, top, 0.03, [0.13, 0.13, 0.14], { layer: "metal_painted", frame: fr, tint: [0.5, 0.5, 0.52], ...bulkheadWear(b, vacantUnit, roll, true, false) });
+          }
         }
       });
     }

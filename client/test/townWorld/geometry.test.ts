@@ -156,7 +156,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 125, flat: 37, vertices: 997368, triangles: 534721 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 125, flat: 37, vertices: 977301, triangles: 536658 });
   });
 });
 

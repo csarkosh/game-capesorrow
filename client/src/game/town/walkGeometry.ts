@@ -191,7 +191,6 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         // Weeds along the back edge, more where the run is worn and the lot beside it neglected.
         const edgeWeeds = Math.floor(hashN(key, runIx, i, 15) * (0.5 + 2.4 * sw + 1.8 * neglected));
         if (edgeWeeds > 0) weeds(ss0, ss1, T1 - 0.45, T1 - Math.min(d0, d1), edgeWeeds, i, 0.8 + neglected);
-        litter(ss0, ss1, T0, T1 - Math.max(d0, d1), i, w, neglected);
       }
       // The joint after this slab: a dark groove, with weeds out of it where the run is old.
       if (i + 2 < st.length) {
@@ -263,54 +262,6 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
       const e = (atEnd ? l1 : l0) + 0.002;
       surf.poly([slabPoint(f, sigma, heightAt, sc, tc, lift(e)), slabPoint(f, sigma, heightAt, sc + sd * size * 1.1, tc, lift(e)), slabPoint(f, sigma, heightAt, sc + sd * size * 0.35, tc + td * size, lift(e))], SIDEWALK, { layer: "gravel", tint: [0.75, 0.7, 0.62], frame, dirt: 0.45, rank: RANK.top });
       void s0;
-    }
-
-    /**
-     * What blows onto a slab and stays: leaves drifted against the building's foot (a worn, shaded run more), cups and cans and paper caught at the kerb's edge (a worn run,
-     * and a neglected lot's, more), a few cigarette ends by the building where it is busy (the run is not neglected). Each has its place by its cause, and the items of one slab
-     * are 35 cm apart, so no two of one rank overlap.
-     */
-    function litter(s0: number, s1: number, t0: number, t1: number, i: number, wr: number, ng: number): void {
-      const chance = 0.12 + 0.3 * wr + 0.3 * ng + 0.2 * shady;
-      if (hashN(key, runIx, i, 100) > chance || s1 - s0 < 1.0 || t1 - t0 < 0.7) return;
-      const pieces = 1 + Math.floor(3 * hashN(key, runIx, i, 101) * (0.5 + wr + ng));
-      for (let c = 0; c < pieces; c++) {
-        tally.litter++;
-        const h = (n: number): number => hashN(key, runIx, i * 8 + c, 110 + n);
-        const kind = h(0);
-        const slot = (c + 0.5) / pieces;
-        const cs = s0 + 0.3 + (s1 - s0 - 0.6) * clamp01(slot + (h(1) - 0.5) * 0.25 / pieces);
-        const at = (ds: number, dt: number): P3 => slabPoint(f, sigma, heightAt, cs + ds, ct + dt, WALK_TOP + 0.006);
-        // Where it is: leaves at the building's foot, the rest along the kerb's side.
-        const leaf = kind < 0.38 + 0.2 * shady;
-        const ct = Math.max(t0 + 0.25, Math.min(t1 - 0.25, leaf ? t0 + 0.25 + 0.25 * h(2) : t1 - 0.25 - 0.4 * h(2) * h(3)));
-        const r = leaf ? 0.05 + 0.06 * h(4) : 0.035 + 0.05 * h(4);
-        const a = h(5) * 3.1;
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-        const q = (x: number, y: number): P3 => at(x * ca - y * sa, x * sa + y * ca);
-        if (leaf) {
-          // A drift: three to five leaves close together, brown to ochre, each a pointed oval.
-          const n = 3 + Math.floor(3 * h(6));
-          for (let k = 0; k < n; k++) {
-            const ox = (h(7 + k) - 0.5) * 0.3;
-            const oy = (h(20 + k) - 0.5) * 0.18;
-            const rr = r * (0.7 + 0.6 * h(30 + k));
-            const hue = h(40 + k);
-            surf.poly([q(ox - rr * 1.4, oy), q(ox - rr * 0.3, oy + rr * 0.8), q(ox + rr * 1.3, oy + rr * 0.1), q(ox + rr * 0.2, oy - rr * 0.7)], SIDEWALK, { layer: "moss", tint: [1.5 + 0.7 * hue, 0.8 + 0.35 * hue, 0.3], frame: slabFrame(f, key, runIx, 700 + c * 9 + k, sigma), rank: RANK.paint });
-          }
-        } else if (kind < 0.62) {
-          // A cup: a pale or red ring, seen from above.
-          surf.poly([q(-r, 0), q(-r * 0.7, r * 0.7), q(0, r), q(r * 0.7, r * 0.7), q(r, 0), q(r * 0.7, -r * 0.7), q(0, -r), q(-r * 0.7, -r * 0.7)], SIDEWALK, { layer: "metal_painted", tint: h(8) < 0.5 ? [2.2, 2.1, 1.9] : [1.9, 0.35, 0.28], frame: slabFrame(f, key, runIx, 800 + c, sigma), rank: RANK.paint });
-        } else if (kind < 0.8) {
-          // A can: a small silver rectangle.
-          surf.poly([q(-r * 1.2, -r * 0.5), q(r * 1.2, -r * 0.5), q(r * 1.2, r * 0.5), q(-r * 1.2, r * 0.5)], SIDEWALK, { layer: "metal_aged", tint: [2.0, 2.0, 2.1], frame: slabFrame(f, key, runIx, 810 + c, sigma), rank: RANK.paint });
-        } else {
-          // Paper or a flattened carton, folded and soaked: an irregular quad, wide.
-          const pw = 0.09 + 0.16 * h(9);
-          surf.poly([q(-pw, -pw * 0.55), q(pw * 0.9, -pw * 0.7), q(pw, pw * 0.45), q(-pw * 0.8, pw * 0.7)], SIDEWALK, { layer: "plywood", tint: h(10) < 0.5 ? [1.9, 1.8, 1.6] : [1.5, 1.1, 0.7], frame: slabFrame(f, key, runIx, 820 + c, sigma), wear: 0.3, rank: RANK.paint });
-        }
-      }
     }
 
     /** Weed and grass blobs in a rectangle of the slab: irregular fans of triangles in the moss layer, tinted green. */

@@ -88,14 +88,11 @@ export function sillStreak(base: Surface, strength: number, y0: number, drop: nu
  * bottom where it is metal, and grime in its field by the unit's state. `age` is the building's years over 130, `vacant` a unit with no tenant. Pure of the
  * plan: `roll` is this unit's own 0 to 1 (its own keeping).
  */
-export function bulkheadWear(b: Building, vacant: boolean, roll: number, floorY: number, metal: boolean): Pick<Surface, "wear" | "wearKind" | "streaks" | "wear2" | "wearKind2" | "streaks2"> {
+export function bulkheadWear(b: Building, vacant: boolean, roll: number, metal: boolean, kick: boolean): Pick<Surface, "wear" | "wearKind" | "streaks" | "wear2" | "wearKind2" | "streaks2"> {
   const { age, neglect } = agingOf(b);
   const keep = 0.5 + 0.9 * roll + (vacant ? 0.5 : 0);
-  return {
-    wear: (p: Vec3): number => clamp01(keep * (0.35 + 0.4 * age + 0.3 * neglect) * (1 - smooth(0.0, 0.42, p[1] - floorY)) + 0.06),
-    wearKind: "grime",
-    wear2: (p: Vec3): number => clamp01((metal ? 0.3 : 0.12) * keep * (0.5 + age) * (1 - smooth(0.0, 0.5, p[1] - floorY))),
-    wearKind2: metal ? "rust" : "peel",
-    streaks2: metal,
-  };
+  // Constants for each quad: a value that differs from corner to corner is interpolated across the quad and shades as spikes, so the foot is its own quad (the kick plate).
+  const grime = clamp01(kick ? 0.55 + 0.3 * keep * (0.5 + age) : 0.22 + 0.3 * keep * (0.3 + age + neglect));
+  const rust = clamp01((metal ? 0.3 : 0.1) * keep * (0.5 + age) * (kick ? 1.8 : 0.6));
+  return { wear: grime, wearKind: "grime", wear2: rust, wearKind2: metal ? "rust" : "algae" };
 }

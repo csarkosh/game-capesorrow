@@ -960,6 +960,14 @@ export type Mailbox = { readonly id: number; readonly kind: MailboxKind; readonl
 export type GearKind = "pots" | "buoys" | "totes" | "coil" | "net" | "firewood" | "propane" | "pallet stack";
 export type Gear = { readonly id: number; readonly kind: GearKind; readonly x: number; readonly z: number; readonly hx: number; readonly hz: number; readonly n: number; readonly colour: number; readonly lot: number; readonly seed: number };
 
+/** What stands on a sidewalk: a trash can (state 0 kept, 1 overflowing, 2 knocked over), a newspaper box (0 shut, 1 empty with its door open), a bench, a hydrant, a planter (0 weedy, 1 dead), a bike rack, a sign post (0 parking, 1 loading, 2 no parking) and a utility pedestal. `lean` is the sine of its tilt; `lot` is the lot it stands in front of. */
+export type FurnitureKind = "trash can" | "newspaper box" | "bench" | "hydrant" | "planter" | "bike rack" | "sign post" | "pedestal";
+export type Furniture = { readonly id: number; readonly kind: FurnitureKind; readonly x: number; readonly z: number; readonly hx: number; readonly hz: number; readonly state: number; readonly lean: number; readonly colour: number; readonly lot: number; readonly seed: number };
+
+/** A thing dropped or blown and caught: small and solid, never blocking. */
+export type LitterKind = "can" | "cup" | "box" | "bottle" | "paper" | "bag" | "butt";
+export type Litter = { readonly x: number; readonly z: number; readonly hx: number; readonly hz: number; readonly kind: LitterKind; readonly seed: number };
+
 /** What stands in the streets, yards and docks: decided from the history in `port/props/`, drawn by `game/town/props/`. */
 export type PlanProps = {
   readonly vehicles: readonly Vehicle[];
@@ -970,6 +978,8 @@ export type PlanProps = {
   readonly bins: readonly Bin[];
   readonly mailboxes: readonly Mailbox[];
   readonly gear: readonly Gear[];
+  readonly furniture: readonly Furniture[];
+  readonly litter: readonly Litter[];
   /** What a walker may not pass through, as boxes of the plan's frame: vehicles, trailers, fence runs, poles, bins, mailboxes, the gear that is heavy. */
   readonly solids: readonly Box[];
 };

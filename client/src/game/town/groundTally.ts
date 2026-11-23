@@ -8,7 +8,6 @@ export const tally = {
   slabCracks: 0,
   brokenCorners: 0,
   weedBlobs: 0,
-  litter: 0,
   utilityCuts: 0,
   roadCracks: 0,
   potholes: 0,

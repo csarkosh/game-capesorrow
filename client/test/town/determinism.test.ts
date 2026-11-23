@@ -51,13 +51,13 @@ describe("the plan is deterministic", () => {
 
   // Pinned digests of three named world seeds. A change here means the same site now gives a different plan:
   // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 6: junctions, where streets meet,
-  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 9: fewer blinds on offices' and bars' windows, so that the room shows. Version 10: what stands in the streets, yards and docks, `plan.props`. Version 11: the two together. Version 13: the town made to fit its houses: the grid held to the lots the houses fill, a short business street, the streets cut back to what the buildings serve, a shop's door on a sidewalk, `plan.gaps`. Version 14: each parked vehicle has a model of its own and its box is the model's footprint, `plan.props.vehicles[].model`. Version 15: the post office is named "Post Office", not "United States Post Office". Version 16: a banner says what the tenant's record allows, so no sale or grand opening on a post office, bank, clinic or office. Version 17: parked vehicles come in a rural spread of eighteen paints and no two of one model within 45 m share one.)
+  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 9: fewer blinds on offices' and bars' windows, so that the room shows. Version 10: what stands in the streets, yards and docks, `plan.props`. Version 11: the two together. Version 13: the town made to fit its houses: the grid held to the lots the houses fill, a short business street, the streets cut back to what the buildings serve, a shop's door on a sidewalk, `plan.gaps`. Version 14: each parked vehicle has a model of its own and its box is the model's footprint, `plan.props.vehicles[].model`. Version 15: the post office is named "Post Office", not "United States Post Office". Version 16: a banner says what the tenant's record allows, so no sale or grand opening on a post office, bank, clinic or office. Version 17: parked vehicles come in a rural spread of eighteen paints and no two of one model within 45 m share one. Version 18: what stands on the sidewalks and lies on them, `plan.props.furniture` and `plan.props.litter`.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(17);
+    expect(TOWN_GEN).toBe(18);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "f577a578",
-      1: "92856fe8",
-      7: "d57dcef7",
+      20261121: "28fc90b0",
+      1: "8f39ebb6",
+      7: "a2e5b31f",
     });
   });
 

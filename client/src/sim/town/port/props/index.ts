@@ -5,7 +5,7 @@
  * sub-stream of the stage's (`context.sub`), so a draw added to one moves no other. See `tuning.ts` for every authored number.
  *
  * The order matters, because the first to take a place keeps it: the keep-out boxes (junctions, drives, walks, alleys, ends, the spawn)
- * and the buildings come first, then fences (they stop at the drives), poles, yard props and mailboxes, and last the vehicles.
+ * and the buildings come first, then fences (they stop at the drives), poles, yard props and mailboxes, the sidewalk's furniture and litter (`street.ts`), and last the vehicles.
  */
 import type { PlanProps } from "../../types.js";
 import { stageRng } from "../../rng.js";
@@ -13,6 +13,7 @@ import { contextOf, type BasePlan } from "./context.js";
 import { planFences } from "./fences.js";
 import { Out } from "./out.js";
 import { planPoles } from "./poles.js";
+import { planStreet } from "./street.js";
 import { planVehicles } from "./vehicles.js";
 import { planYardProps } from "./yardProps.js";
 import { dedupe } from "./dedupe.js";
@@ -24,7 +25,8 @@ export function planProps(plan: BasePlan): PlanProps {
   planFences(ctx, out);
   planPoles(ctx, out);
   planYardProps(ctx, out);
+  planStreet(ctx, out);
   planVehicles(ctx, out);
-  const props: PlanProps = { vehicles: out.vehicles, trailers: out.trailers, poles: out.poles, drops: out.drops, fences: out.fences, bins: out.bins, mailboxes: out.mailboxes, gear: out.gear, solids: out.solids };
+  const props: PlanProps = { vehicles: out.vehicles, trailers: out.trailers, poles: out.poles, drops: out.drops, fences: out.fences, bins: out.bins, mailboxes: out.mailboxes, gear: out.gear, furniture: out.furniture, litter: out.litter, solids: out.solids };
   return dedupe(ctx, props);
 }
