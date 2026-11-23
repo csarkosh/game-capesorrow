@@ -260,7 +260,16 @@ describe("the town's buildings as walls", () => {
     const seed = WORLD_SEEDS[0] as number;
     const world = worldFor(seed);
     const plan = planFor(seed);
-    const b = plan.buildings.find((q) => solid(q) && q.bearing.deg !== 0 && q.halfAcross > 10 && q.halfAlong > 3) as Building;
+    // A long turned wall with no prop (a vehicle, a fence, a pole) standing by it: a prop in the way would stop the walker, as it should.
+    const clearOfProps = (q: Building): boolean => {
+      const qu = bearingU(q.bearing);
+      return !plan.props.solids.some((p) => {
+        const lu = (p.cx - q.centre.x) * qu.x + (p.cz - q.centre.z) * qu.z;
+        const lv = (p.cx - q.centre.x) * qu.z - (p.cz - q.centre.z) * qu.x;
+        return lu > -q.halfAlong - 5 && lu < -q.halfAlong + 1 && Math.abs(lv) < q.halfAcross + 3;
+      });
+    };
+    const b = plan.buildings.find((q) => solid(q) && q.bearing.deg !== 0 && q.halfAcross > 10 && q.halfAlong > 3 && clearOfProps(q)) as Building;
     expect(b).toBeDefined();
     const c = centreOf(seed, b);
     const u = bearingU(b.bearing);

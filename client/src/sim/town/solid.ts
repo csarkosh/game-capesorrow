@@ -26,6 +26,7 @@ import { constrainTrestle } from "./railDeck.js";
 import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
+import { constrainProps } from "./propSolid.js";
 
 const abs = Math.abs;
 const min = Math.min;
@@ -43,7 +44,7 @@ const CLEAR = 1e-6;
 /** How far past a building's own box a grid cell is listed for it: more than the hull's radius. */
 const REACH = 1;
 /** Numbers a building takes in `rects`: its centre (x, z), its along axis (x, z), its half extents (along, across). */
-const STRIDE = 6;
+export const STRIDE = 6;
 
 /** The solid buildings of a town, and the grid that names the ones near a place. */
 export type TownSolids = {
@@ -89,10 +90,6 @@ function makeSolids(worldSeed: number): TownSolids {
   const lowZ = new Float64Array(n);
   const highX = new Float64Array(n);
   const highZ = new Float64Array(n);
-  let minX = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxZ = -Infinity;
   const byId = plan.buildings;
   for (let i = 0; i < n; i++) {
     const b = byId[ids[i] as number];
@@ -114,12 +111,23 @@ function makeSolids(worldSeed: number): TownSolids {
     highX[i] = cx + ex;
     lowZ[i] = cz - ez;
     highZ[i] = cz + ez;
-    minX = min(minX, cx - ex);
-    maxX = max(maxX, cx + ex);
-    minZ = min(minZ, cz - ez);
-    maxZ = max(maxZ, cz + ez);
   }
-  if (n === 0) return { ids, rects, x0: 0, z0: 0, cols: 0, rows: 0, start: new Int32Array(1), list: new Int32Array(0) };
+  return { ids, ...gridOf(rects, n, lowX, highX, lowZ, highZ) };
+}
+
+/** The grid over `n` rectangles whose reaching boxes are given: shared with the props' solids (`propSolid.ts`). */
+export function gridOf(rects: Float64Array, n: number, lowX: Float64Array, highX: Float64Array, lowZ: Float64Array, highZ: Float64Array): Omit<TownSolids, "ids"> {
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+  for (let i = 0; i < n; i++) {
+    minX = min(minX, lowX[i] as number);
+    maxX = max(maxX, highX[i] as number);
+    minZ = min(minZ, lowZ[i] as number);
+    maxZ = max(maxZ, highZ[i] as number);
+  }
+  if (n === 0) return { rects, x0: 0, z0: 0, cols: 0, rows: 0, start: new Int32Array(1), list: new Int32Array(0) };
   const x0 = floor(minX / SOLID_CELL) * SOLID_CELL;
   const z0 = floor(minZ / SOLID_CELL) * SOLID_CELL;
   const cols = floor((maxX - x0) / SOLID_CELL) + 1;
@@ -149,7 +157,7 @@ function makeSolids(worldSeed: number): TownSolids {
       }
     }
   }
-  return { ids, rects, x0, z0, cols, rows, start, list };
+  return { rects, x0, z0, cols, rows, start, list };
 }
 
 /** A place and a velocity, as `Rules.constrain` is handed them. */
@@ -159,7 +167,7 @@ type Point = { x: number; y: number; z: number };
  * Moves a hull out of the building `i` it overlaps and takes the velocity's part into it away. Returns whether
  * it acted; a hull that touches nothing is left exactly as it was.
  */
-function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point): boolean {
+export function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point): boolean {
   const r = solids.rects;
   const o = i * STRIDE;
   const ux = r[o + 2] as number;
@@ -222,7 +230,8 @@ export function townConstrain(world: { readonly forest: { readonly seed: number 
   for (let pass = 0; pass < SOLID_PASSES; pass++) {
     const c = floor((pos.x - solids.x0) / SOLID_CELL);
     const r = floor((pos.z - solids.z0) / SOLID_CELL);
-    let moved = false;
+    // The props' boxes first (vehicles, trailers, fences, poles, bins, mailboxes: `propSolid.ts`), then the walls, so that where the two wedge a hull the buildings keep it out.
+    let moved = constrainProps(world.forest.seed, pos, vel);
     if (c >= 0 && r >= 0 && c < solids.cols && r < solids.rows) {
       const cell = r * solids.cols + c;
       const end = solids.start[cell + 1] as number;
