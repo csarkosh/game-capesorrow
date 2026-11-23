@@ -8,16 +8,16 @@ import { TEN_SEEDS } from "./seeds.js";
 const FIVE_SEEDS = TEN_SEEDS.slice(0, 5);
 
 describe("the town's site, read off the coast", () => {
-  it("is anchored on the highway's centre line at the cove, and sampled 512 m either way every 16 m", () => {
+  it("is anchored on the highway's centre line at the cove, and sampled 1008 m either way every 16 m", () => {
     for (const seed of FIVE_SEEDS) {
       const site = siteFor(seed);
       expect(site.anchor).toEqual({ x: roadCenterX(seed, COVE_Z), z: COVE_Z });
-      expect([site.step, site.z0, site.inland, site.shoreX.length, site.roadX.length]).toEqual([16, -512, 320, 65, 65]);
-      expect([SITE_STEP, SITE_SAMPLES, SITE_INLAND]).toEqual([16, 65, 320]);
-      expect(sampleZ(site, 32)).toBe(0);
+      expect([site.step, site.z0, site.inland, site.shoreX.length, site.roadX.length]).toEqual([16, -1008, 480, 127, 127]);
+      expect([SITE_STEP, SITE_SAMPLES, SITE_INLAND]).toEqual([16, 127, 480]);
+      expect(sampleZ(site, 63)).toBe(0);
       // The anchor's own sample is the anchor: the highway at 0.
-      expect(site.roadX[32]).toBe(0);
-      expect(site.shoreX[32]).toBeLessThan(0);
+      expect(site.roadX[63]).toBe(0);
+      expect(site.shoreX[63]).toBeLessThan(0);
       site.roadX.forEach((x, i) => expect(x + site.anchor.x).toBe(roadCenterX(seed, site.anchor.z + sampleZ(site, i))));
     }
   });
@@ -65,7 +65,7 @@ describe("the town's site, read off the coast", () => {
     for (const seed of TEN_SEEDS) {
       const site = siteFor(seed);
       const gap = site.shoreX.map((s, i) => (site.roadX[i] as number) - s);
-      const at = gap[32] as number;
+      const at = gap[63] as number;
       const least = Math.min(...gap);
       const greatest = Math.max(...gap);
       rows.push(`seed ${String(seed).padStart(9)}: highway to shore ${at.toFixed(1)} m at the anchor, least ${least.toFixed(1)} m, greatest ${greatest.toFixed(1)} m`);
