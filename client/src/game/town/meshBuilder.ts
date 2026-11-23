@@ -105,6 +105,42 @@ export class MeshBuilder {
     }
   }
 
+  /**
+   * A flat polygon mapped to explicit UVs (one per corner, in the corners' order): for a face of the sign atlas (`signAtlas.ts`), whose
+   * texels the sign's own plugin reads by the UV as given. It carries no layer (`NO_LAYER`), a tint and a glow.
+   */
+  polyUv(points: readonly Vec3[], uvs: readonly (readonly [number, number])[], hint: Vec3, tint: Rgb, fx?: Fx): void {
+    const base = this.vertices;
+    const n = points.length;
+    if (n < 3) return;
+    let nx = 0;
+    let ny = 0;
+    let nz = 0;
+    for (let i = 0; i < n; i++) {
+      const a = points[i] as Vec3;
+      const b = points[(i + 1) % n] as Vec3;
+      nx += (a[1] - b[1]) * (a[2] + b[2]);
+      ny += (a[2] - b[2]) * (a[0] + b[0]);
+      nz += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (!(len > 1e-9)) return;
+    const flip = (nx * hint[0] + ny * hint[1] + nz * hint[2]) / len < 0;
+    const k = flip ? -1 / len : 1 / len;
+    points.forEach((p, i) => {
+      this.pos.push(p[0], p[1], p[2]);
+      this.nor.push(nx * k, ny * k, nz * k);
+      this.col.push(tint[0], tint[1], tint[2], 1);
+      const uv = uvs[i] as readonly [number, number];
+      this.uv.push(uv[0], uv[1]);
+      this.srf.push(NO_LAYER, 0, 0, fx?.glow ?? 0, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, 0, 0);
+    });
+    for (let i = 1; i < n - 1; i++) {
+      if (flip) this.idx.push(base, base + i, base + i + 1);
+      else this.idx.push(base, base + i + 1, base + i);
+    }
+  }
+
   quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface, fx?: Fx): void {
     this.poly([a, b, c, d], hint, colour, surface, fx);
   }

@@ -31,7 +31,7 @@ type Pal = { wall: Rgb; floor: Rgb; floor2: Rgb; ceiling: Rgb };
 
 function palette(type: Interior["type"], id: number, era: number, vacant: boolean): Pal {
   const p = pickOf(PAINTS, id, 301);
-  const light = (c: Rgb): Rgb => [Math.min(0.85, c[0] * 1.2 + 0.12), Math.min(0.85, c[1] * 1.2 + 0.12), Math.min(0.85, c[2] * 1.2 + 0.1)];
+  const light = (c: Rgb): Rgb => [Math.min(0.8, c[0] * 1.05 + 0.04), Math.min(0.8, c[1] * 1.05 + 0.04), Math.min(0.8, c[2] * 1.05 + 0.03)];
   if (vacant) return { wall: scaled([0.58, 0.56, 0.5], 0.8 + hash01(id, 302) * 0.3), floor: [0.26, 0.24, 0.21], floor2: [0.3, 0.28, 0.24], ceiling: [0.42, 0.41, 0.38] };
   switch (type) {
     case "dining room":
@@ -383,9 +383,9 @@ export function roomGeometry(
     quad([s0 + 0.05, d0, fl + 0.004], [s1 - 0.05, d0, fl + 0.004], [s1 - 0.05, d1 * 0.5, fl + 0.004], [s0 + 0.05, d1 * 0.5, fl + 0.004], [0, 1, 0], pal.floor2);
   }
   quad([s0, d0, top], [s1, d0, top], [s1, d1, top], [s0, d1, top], [0, -1, 0], pal.ceiling);
-  quad([s0, d1, floorY], [s1, d1, floorY], [s1, d1, top], [s0, d1, top], toward(0, -1), pal.wall);
-  quad([s0, d0, floorY], [s0, d1, floorY], [s0, d1, top], [s0, d0, top], toward(1, 0), scaled(pal.wall, 0.9));
-  quad([s1, d0, floorY], [s1, d1, floorY], [s1, d1, top], [s1, d0, top], toward(-1, 0), scaled(pal.wall, 0.9));
+  quad([s0, d1, floorY], [s1, d1, floorY], [s1, d1, top], [s0, d1, top], toward(0, -1), scaled(pal.wall, 0.8));
+  quad([s0, d0, floorY], [s0, d1, floorY], [s0, d1, top], [s0, d0, top], toward(1, 0), scaled(pal.wall, 0.62));
+  quad([s1, d0, floorY], [s1, d1, floorY], [s1, d1, top], [s1, d0, top], toward(-1, 0), scaled(pal.wall, 0.62));
   if (detail !== "low") {
     // The back: a door, and over it the exit sign, which is lit whenever the building is kept up.
     const dw = Math.min(0.5, (s1 - s0) * 0.3);

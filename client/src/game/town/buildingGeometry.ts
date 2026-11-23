@@ -23,6 +23,7 @@ import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.j
 import { wallRef, type WallRef } from "./buildingKit.js";
 import { cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
 import type { Xf } from "./roomGeometry.js";
+import { signsGeometry } from "./shopSigns.js";
 import {
   BIG_DOOR, DOOR, FLAG_POLE, FLAG_RED, FRAME, GLASS, PLYWOOD, ROOF_METAL, ROOF_SHINGLE, ROOF_TAR, STONE_TRIM, vary, wallColour,
 } from "./palette.js";
@@ -226,13 +227,21 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const uf = use?.frame ?? null;
   const xf: Xf | null = uf === null || uf === undefined ? null : { ox: g.anchor.x + uf.origin.x, oz: g.anchor.z + uf.origin.z, nx: uf.n.x, nz: uf.n.z, tx: uf.t.x, tz: uf.t.z, width: uf.width, depth: uf.depth };
   const planCtx: PlanCtx = {
-    g, b, use, walls: refs, frontAt, xf, floorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind],
+    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY: floorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind],
     surfaceOf: (r) => wallSurface(refs.indexOf(r)),
   };
+  // The floor at the street door: the building stands on the highest ground under it, but a front on a slope is entered from the sidewalk.
+  const fw = refs[frontAt] as WallRef;
+  let frontGround = -Infinity;
+  for (let k = 0; k <= 6; k++) frontGround = Math.max(frontGround, g.heightAt(fw.ax + fw.tx * fw.length * (k / 6) + fw.nx * 1.2, fw.az + fw.tz * fw.length * (k / 6) + fw.nz * 1.2));
+  planCtx.frontFloorY = onPiles ? floorY : Math.max(baseY + 0.3, Math.min(floorY, frontGround + 0.12));
   if (ruin) {
     for (const w of walls) brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
   } else {
     cutWalls(planCtx, planWalls(planCtx), walls.map((w): [number, number] => [w.topA, w.topB]), baseY);
+    if (extra !== undefined && use !== undefined && xf !== null) {
+      signsGeometry({ solid: out, face: extra.sign(f.cx, f.cz), g, b, use, xf, atlas: extra.atlas, floorY: planCtx.frontFloorY, wallTop, detail });
+    }
   }
 
   // ---- the roof

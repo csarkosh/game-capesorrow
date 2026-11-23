@@ -105,6 +105,7 @@ export function townDefinitions(low: boolean): string {
     `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.0,0.97,0.92,1.0),vec4<f32>(0.62,0.9,0.5,0.55),vec4<f32>(0.5,0.45,0.4,0.85));`,
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
+    "var<private> townSignA:f32=1.0;",
     `var<private> townInfo:array<vec4<f32>,${TOWN_LAYERS.length}>=array<vec4<f32>,${TOWN_LAYERS.length}>(${table});`,
     "fn townHash(c:vec3<i32>)->f32{",
     "var h=bitcast<u32>(c.x)*374761393u+bitcast<u32>(c.y)*668265263u+bitcast<u32>(c.z)*2147483647u;",
@@ -178,6 +179,12 @@ export function townSurfaceCode(low: boolean): string {
   ].join("");
 }
 
+/**
+ * A sign's face: the lettering atlas read by the UV as given (v from the top), its colour times the tint, its alpha the atlas's (carried to the
+ * alpha term in `townSignA`). Added to the surface code of the sign layer's material alone.
+ */
+const SIGN_CODE = "let tsSg=textureSample(townSign,townSignSmp,input.uv,0);baseColor=tsSg.rgb*input.vTownTint.rgb;townSignA=tsSg.a;";
+
 /** The WGSL at `CUSTOM_FRAGMENT_BEFORE_LIGHTS`: a see-through surface's alpha, with the reflection of the sky added to it. */
 export function townAlphaCode(): string {
   return [
@@ -207,9 +214,9 @@ export function emptyTownReady(): TownReady {
 const READY_FIELDS: readonly UniformField[] = uniformFields(emptyTownReady());
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. */
-export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean): MaterialPlugin {
+export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray): MaterialPlugin {
   const definitions = townDefinitions(low);
-  const surface = townSurfaceCode(low);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low);
   return {
     name: "TownSurface",
     priority: 200,
@@ -217,7 +224,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"
-        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
+        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode() + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
         : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};` },
     getVertexAttributes: () => [
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 0 },
@@ -229,15 +236,18 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getSamplers: () => [
       { texture: "townColor", sampler: "townSmp", textureType: "texture_2d_array<f32>" },
       { texture: "townData", textureType: "texture_2d_array<f32>" },
+      ...(signAtlas === undefined ? [] : [{ texture: "townSign", sampler: "townSignSmp", textureType: "texture_2d_array<f32>" as const }]),
     ],
     writeUbo(data, offsets) {
       writeUniforms(data, offsets, ready);
     },
     bindTextures(out) {
       out.push({ texture: textures.color }, { texture: textures.data, sampler: false });
+      if (signAtlas !== undefined) out.push({ texture: signAtlas });
     },
     getActiveTextures(out) {
       out.push(textures.color, textures.data);
+      if (signAtlas !== undefined) out.push(signAtlas);
     },
   };
 }

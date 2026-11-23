@@ -30,6 +30,8 @@ export type PlanCtx = {
   readonly frontAt: number;
   readonly xf: Xf | null;
   readonly floorY: number;
+  /** The floor at the front door: lower than `floorY` where the lot slopes up from the street. Set by the builder after the context is made. */
+  frontFloorY: number;
   readonly wallTop: number;
   readonly out: MeshBuilder;
   readonly glass: MeshBuilder;
@@ -113,16 +115,16 @@ export function planWalls(c: PlanCtx): WallPlan[] {
   const units = use !== undefined && use.units.length > 0 && c.xf !== null;
 
   if (units && use !== undefined && c.xf !== null) {
-    const f = planFront({ out, glass, w: front, xf: c.xf, b, use, floorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
+    const f = planFront({ out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
     const p = plans[c.frontAt] as WallPlan;
     p.holes.push(...f.holes);
     p.draws.push(() => f.draw());
   } else if (c.profile === "house" && use !== undefined && c.xf !== null && use.windows.length + (use.door ? 1 : 0) > 0) {
-    houseWindows(c, plans, blocked, ctxW, fh);
+    houseWindows({ ...c, floorY: c.frontFloorY }, plans, blocked, ctxW, fh);
   } else if (c.profile === "industrial") {
-    industrialFront(c, plans);
+    industrialFront({ ...c, floorY: c.frontFloorY }, plans);
   } else {
-    plainFront(c, plans, ctxW, fh);
+    plainFront({ ...c, floorY: c.frontFloorY }, plans, ctxW, fh);
   }
 
   // The other walls: few, uneven openings; a back door; a loading door. Never an even grid, and none against a neighbour.
