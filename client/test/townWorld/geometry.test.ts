@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { finish } from "@csarkosh/engine/game/syncJobs";
-import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
+import { ROAD_BED_HALF, ROAD_CORRIDOR_HALF } from "@csarkosh/engine/sim/road";
 import { buildingGeometry, PROUD } from "../../src/game/town/buildingGeometry.js";
 import { MeshBuilder, hash01, type MeshArrays } from "../../src/game/town/meshBuilder.js";
-import { CURB, GLASS, PLYWOOD, DECK, PILE } from "../../src/game/town/palette.js";
+import { ALLEY, ASPHALT, CURB, GLASS, PLYWOOD, DECK, PILE, PAINT_WHITE, PAINT_YELLOW, SIDEWALK, SIGN_RED } from "../../src/game/town/palette.js";
 import { FACE_DEPTH, deckGeometry, wharfGeometry } from "../../src/game/town/pileGeometry.js";
 import { APRON, quayGeometry } from "../../src/game/town/quayGeometry.js";
 import { STEP_RISE, stairGeometry } from "../../src/game/town/stairGeometry.js";
-import { ASPHALT_OVER, RANK_LIFT, SLOT_LIFT, STREET_LIFT, streetGeometry } from "../../src/game/town/streetGeometry.js";
+import { CURB_WIDTH, ROADWAY_LIFT, WALK_LIFT, streetGeometry } from "../../src/game/town/streetGeometry.js";
+import { ENGINE_MARK_LIFT } from "../../src/game/town/junctionPaint.js";
+import { bladeText } from "../../src/game/town/signGeometry.js";
+import { textRuns } from "../../src/game/town/signFont.js";
 import { CELL, townGeometry, townGround } from "../../src/game/town/townGeometry.js";
 import { SEA, type TownGround } from "../../src/game/town/townTypes.js";
 import { bearingU, bearingV } from "../../src/sim/town/bearings.js";
+import { CROSSWALK_WIDTH } from "../../src/sim/town/junctions.js";
+import { pavementPolygon, insideStrictly } from "../../src/sim/town/junctionShape.js";
+import { overlapDepth } from "../../src/sim/town/geom.js";
 import type { Building, LandmarkRole } from "../../src/sim/town/types.js";
 import { WORLD_SEEDS } from "./world.js";
 
@@ -143,42 +149,50 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 73, flat: 36, vertices: 255713, triangles: 128063 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 74, flat: 36, vertices: 326046, triangles: 159534 });
   });
 });
 
 describe("the streets", () => {
-  /** The streets alone (the wharf is a deck, which stands where the water is, and is tested with the piles). */
-  function streetsOf(seed: number): { g: TownGround; a: MeshArrays } {
+  /** The streets alone (the wharf is a deck, which stands where the water is, and is tested with the piles): the flat surfaces, and the standing signs apart. */
+  function streetsOf(seed: number): { g: TownGround; a: MeshArrays; signs: MeshArrays } {
     const g = groundFor(seed);
     const only: TownGround = { ...g, plan: { ...g.plan, streets: g.plan.streets.filter((s) => s.kind !== "wharf") } };
     const builder = new MeshBuilder();
-    streetGeometry(only, () => builder);
-    return { g, a: builder.finish() };
+    const standing = new MeshBuilder();
+    streetGeometry(only, () => builder, () => standing);
+    return { g, a: builder.finish(), signs: standing.finish() };
   }
 
-  it("lie on the ground: every vertex is its ground's height plus a lift of 0.06 m (the verges) to 0.18 m (the curbs' tops), facing up but for the curbs' faces", () => {
+  it("lie on the ground: every surface is its ground's height plus a lift from the roadway's 0.08 m to a curb's top, 0.15 m higher; the standing faces run from the ground to it", () => {
     for (const seed of WORLD_SEEDS) {
       const { g, a } = streetsOf(seed);
       let least = Infinity;
       let most = -Infinity;
-      for (let v = 0; v < a.positions.length / 3; v++) {
-        const lift = (a.positions[v * 3 + 1] as number) - g.heightAt(a.positions[v * 3] as number, a.positions[v * 3 + 2] as number);
-        least = Math.min(least, lift);
-        most = Math.max(most, lift);
-      }
-      expect(least).toBeGreaterThan(STREET_LIFT - 0.002);
-      // The highest is a curb's top, `CURB_RISE` over the highest carriageway (under 0.125 and the paint's 0.012 on it).
-      expect(most).toBeLessThan(STREET_LIFT + 0.12 + 0.002);
-      let curbFaces = 0;
-      eachTriangle(a, (_p, n, c) => {
-        // A curb's faces stand up, in the curb's colour; every other surface faces the sky.
-        const curb = Math.abs(c[0] - CURB[0]) < 1e-6 && Math.abs(c[1] - CURB[1]) < 1e-6;
-        if (curb && Math.abs(n[1]) < 0.05) curbFaces++;
-        // A street that ends on the highway across a hillside meets the road's own cut there (the engine's bed is cut into the slope), and one along a rocky shore meets a stack the 8 m grid does not see: up to 88 percent over a tile.
-        else if (n[1] < 0.75) throw new Error(`${seed}: a street surface turned from the sky (${n[1]})`);
+      let faces = 0;
+      eachTriangle(a, (p, n) => {
+        for (const q of p) {
+          const lift = q[1] - g.heightAt(q[0], q[2]);
+          if (n[1] >= 0.75) {
+            // A crosswalk across the highway lies on the engine's road, at the lift the engine's marks take.
+            if (Math.abs((q[0] as number) - g.roadX(q[2] as number)) < ROAD_BED_HALF + 0.5) continue;
+            least = Math.min(least, lift);
+            most = Math.max(most, lift);
+          } else {
+            // A curb's face or a sidewalk's outer skirt: from the ground (a skirt's foot) to the curb's top.
+            expect(lift).toBeGreaterThan(-0.002);
+            expect(lift).toBeLessThan(WALK_LIFT + 0.002);
+          }
+        }
+        // A street that ends on the highway across a hillside meets the road's own cut there (the ground stands nearly on end within the road's corridor), and one along a rocky shore meets a stack the 8 m grid does not see.
+        const nearRoad = p.some((q) => Math.abs((q[0] as number) - g.roadX(q[2] as number)) < ROAD_CORRIDOR_HALF);
+        if (n[1] < 0.75 && Math.abs(n[1]) > 0.05 && !nearRoad) throw new Error(`${seed}: a street surface turned from the sky (${n[1]})`);
+        if (Math.abs(n[1]) < 0.05) faces++;
       });
-      expect(curbFaces).toBeGreaterThan(100);
+      // Roadways at 0.08 (ramps start there); the highest is a landing or a dome over the sidewalk, or a marked crosswalk on the engine's road.
+      expect(least).toBeGreaterThan(ROADWAY_LIFT - 0.002);
+      expect(most).toBeLessThan(WALK_LIFT + 0.01);
+      expect(faces).toBeGreaterThan(100);
       console.log(`street lifts for ${seed}: ${least.toFixed(4)} to ${most.toFixed(4)} m`);
     }
   });
@@ -187,12 +201,12 @@ describe("the streets", () => {
     const g = groundFor(GAME_SEED);
     const main = g.plan.streets.find((s) => s.kind === "main");
     const street = main ?? (g.plan.streets.find((s) => s.kind === "street") as NonNullable<typeof main>);
-    const only: TownGround = { ...g, plan: { ...g.plan, streets: [street] } };
+    // The street alone: no junction, so no cut of its strips (its ends stand free).
+    const only: TownGround = { ...g, plan: { ...g.plan, streets: [street], junctions: [] } };
     const builder = new MeshBuilder();
     streetGeometry(only, () => builder);
     const a = builder.finish();
     // Every quad is a strip tile: its long edge is at most 4 m (a tile is cut at 4 m and the street's length divided evenly).
-    const xs = new Set<number>();
     let longest = 0;
     eachTriangle(a, (p) => {
       for (let k = 0; k < 3; k++) {
@@ -200,7 +214,6 @@ describe("the streets", () => {
         const r = p[(k + 1) % 3] as number[];
         longest = Math.max(longest, Math.hypot((q[0] as number) - (r[0] as number), (q[2] as number) - (r[2] as number)));
       }
-      xs.add(Math.round((p[0] as number[])[0] as number * 100));
     });
     // The longest edge of a tile of at most 4 m by at most half the street's width: a diagonal under 4 + width / 2.
     expect(longest).toBeLessThan(Math.hypot(4.01, street.width / 2));
@@ -210,71 +223,303 @@ describe("the streets", () => {
     expect(a.indices.length / 6).toBeGreaterThanOrEqual(tiles * 2);
   });
 
-  it("end at the highway's bed: no vertex stands within the bed of the road the engine paints", () => {
+  it("end at the highway's bed: no street surface stands within the bed of the road the engine paints, but a marked crosswalk across it, which lies on its surface", () => {
     for (const seed of WORLD_SEEDS) {
       const { g, a } = streetsOf(seed);
       let nearest = Infinity;
-      for (let v = 0; v < a.positions.length / 3; v++) {
-        const x = a.positions[v * 3] as number;
-        const z = a.positions[v * 3 + 2] as number;
-        nearest = Math.min(nearest, Math.abs(x - g.roadX(z)));
-      }
+      let crosswalks = 0;
+      eachTriangle(a, (p, _n, c) => {
+        const white = Math.abs(c[0] - PAINT_WHITE[0]) < 1e-6 && Math.abs(c[1] - PAINT_WHITE[1]) < 1e-6;
+        for (const q of p) {
+          const off = Math.abs((q[0] as number) - g.roadX(q[2] as number));
+          if (white && off < ROAD_BED_HALF - 0.02) {
+            // A crosswalk's bar on the engine's road: its lift is the one the engine's marks take.
+            expect((q[1] as number) - g.heightAt(q[0] as number, q[2] as number)).toBeCloseTo(ENGINE_MARK_LIFT, 2);
+            crosswalks++;
+          } else nearest = Math.min(nearest, off);
+        }
+      });
       // Float32 positions, and the clip is on a line through the tile's corners while the road curves a little.
       expect(nearest).toBeGreaterThan(ROAD_BED_HALF - 0.02);
+      console.log(`${seed}: ${crosswalks} crosswalk vertices on the highway`);
     }
   });
 
-  it("draw a crossing once: at a crossing's middle one layer is highest, by a clear margin over the next", () => {
-    const seed = GAME_SEED;
-    const { g, a } = streetsOf(seed);
-    const triangles: { p: [number, number, number][] }[] = [];
-    eachTriangle(a, (p) => triangles.push({ p }));
-    // The streets' crossings: where two carriageways' centre lines meet.
-    const streets = g.plan.streets.filter((s) => s.kind === "street" || s.kind === "main" || s.kind === "avenue");
-    let crossings = 0;
-    let worstGap = Infinity;
-    for (let i = 0; i < streets.length; i++) {
-      for (let j = i + 1; j < streets.length; j++) {
-        const s = streets[i] as (typeof streets)[number];
-        const t = streets[j] as (typeof streets)[number];
-        const d1x = s.b.x - s.a.x;
-        const d1z = s.b.z - s.a.z;
-        const d2x = t.b.x - t.a.x;
-        const d2z = t.b.z - t.a.z;
-        const den = d1x * d2z - d1z * d2x;
-        if (Math.abs(den) < 1e-6) continue;
-        const u = ((t.a.x - s.a.x) * d2z - (t.a.z - s.a.z) * d2x) / den;
-        const w = ((t.a.x - s.a.x) * d1z - (t.a.z - s.a.z) * d1x) / den;
-        if (u < 0.02 || u > 0.98 || w < 0.02 || w > 0.98) continue;
-        const x = g.anchor.x + s.a.x + d1x * u;
-        const z = g.anchor.z + s.a.z + d1z * u;
-        // Out of the highway's bed.
-        if (Math.abs(x - g.roadX(z)) < ROAD_BED_HALF + 1) continue;
-        for (const [dx, dz] of [[0, 0], [1.3, 0.7], [-1.9, 1.1], [0.6, -2.2]] as const) {
-          const px = x + dx;
-          const pz = z + dz;
-          const ys: number[] = [];
-          for (const tri of triangles) {
-            const [q0, q1, q2] = tri.p as unknown as [number[], number[], number[]];
-            const d = ((q1[2] as number) - (q2[2] as number)) * ((q0[0] as number) - (q2[0] as number)) + ((q2[0] as number) - (q1[0] as number)) * ((q0[2] as number) - (q2[2] as number));
-            if (Math.abs(d) < 1e-12) continue;
-            const l0 = (((q1[2] as number) - (q2[2] as number)) * (px - (q2[0] as number)) + ((q2[0] as number) - (q1[0] as number)) * (pz - (q2[2] as number))) / d;
-            const l1 = (((q2[2] as number) - (q0[2] as number)) * (px - (q2[0] as number)) + ((q0[0] as number) - (q2[0] as number)) * (pz - (q2[2] as number))) / d;
-            const l2 = 1 - l0 - l1;
-            if (l0 < 0 || l1 < 0 || l2 < 0) continue;
-            ys.push(l0 * (q0[1] as number) + l1 * (q1[1] as number) + l2 * (q2[1] as number));
-          }
-          if (ys.length < 2) continue;
-          ys.sort((m, k) => k - m);
-          worstGap = Math.min(worstGap, (ys[0] as number) - (ys[1] as number));
-        }
-        crossings++;
+  describe("at their junctions", () => {
+    /** The game's seed, one with a main street and a seam of sharp crossings, and a third. */
+    const JUNCTION_SEEDS = [GAME_SEED, 894932655, 1];
+    type Tri = { p: [number, number][]; y: [number, number, number]; c: [number, number, number] };
+    /** The flat layer's triangles of a colour, from the whole town as it is built, hashed by 8 m cells. */
+    function layer(seed: number): { tris: Tri[]; of: (c: readonly number[]) => Tri[]; cells: Map<string, Tri[]> } {
+      const tris: Tri[] = [];
+      for (const b of townFor(seed)) {
+        if (b.layer !== "flat") continue;
+        eachTriangle(b.arrays, (p, _n, c) => tris.push({ p: p.map((q) => [q[0], q[2]] as [number, number]), y: [p[0]![1], p[1]![1], p[2]![1]], c }));
       }
+      const cells = new Map<string, Tri[]>();
+      for (const t of tris) {
+        const xs = t.p.map((q) => q[0]);
+        const zs = t.p.map((q) => q[1]);
+        for (let ix = Math.floor(Math.min(...xs) / 8); ix <= Math.floor(Math.max(...xs) / 8); ix++) {
+          for (let iz = Math.floor(Math.min(...zs) / 8); iz <= Math.floor(Math.max(...zs) / 8); iz++) {
+            const k = `${ix},${iz}`;
+            const list = cells.get(k);
+            if (list === undefined) cells.set(k, [t]);
+            else list.push(t);
+          }
+        }
+      }
+      const is = (t: Tri, c: readonly number[]): boolean => Math.abs(t.c[0] - (c[0] as number)) < 1e-4 && Math.abs(t.c[1] - (c[1] as number)) < 1e-4 && Math.abs(t.c[2] - (c[2] as number)) < 1e-4;
+      return { tris, cells, of: (c) => tris.filter((t) => is(t, c)) };
     }
-    expect(crossings).toBeGreaterThan(5);
-    // Layers differ by at least a sidewalk's step (ASPHALT_OVER) or a rank's (RANK_LIFT) or a slot's (SLOT_LIFT): the least of them, less the ground's own tilt across a 4 m tile.
-    expect(worstGap).toBeGreaterThan(SLOT_LIFT / 2);
-    console.log(`crossings checked: ${crossings}, least gap between the top layer and the next: ${worstGap.toFixed(5)} m (ASPHALT_OVER ${ASPHALT_OVER}, RANK_LIFT ${RANK_LIFT}, SLOT_LIFT ${SLOT_LIFT})`);
+    const inside = (t: Tri, x: number, z: number): boolean => {
+      const [a, b, c] = t.p as [[number, number], [number, number], [number, number]];
+      const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+      if (Math.abs(d) < 1e-12) return false;
+      const l0 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (z - c[1])) / d;
+      const l1 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (z - c[1])) / d;
+      return l0 >= -1e-6 && l1 >= -1e-6 && 1 - l0 - l1 >= -1e-6;
+    };
+    const coveredBy = (l: ReturnType<typeof layer>, colour: readonly number[], x: number, z: number): boolean =>
+      (l.cells.get(`${Math.floor(x / 8)},${Math.floor(z / 8)}`) ?? []).some((t) => Math.abs(t.c[0] - (colour[0] as number)) < 1e-4 && Math.abs(t.c[1] - (colour[1] as number)) < 1e-4 && inside(t, x, z));
+
+    it("leave no two roadway surfaces over each other anywhere in the town: no two roadway triangles share area", () => {
+      for (const seed of JUNCTION_SEEDS) {
+        const l = layer(seed);
+        const road = [...l.of(ASPHALT), ...l.of(ALLEY)];
+        const cells = new Map<string, Tri[]>();
+        for (const t of road) {
+          const xs = t.p.map((q) => q[0]);
+          const zs = t.p.map((q) => q[1]);
+          for (let ix = Math.floor(Math.min(...xs) / 8); ix <= Math.floor(Math.max(...xs) / 8); ix++) {
+            for (let iz = Math.floor(Math.min(...zs) / 8); iz <= Math.floor(Math.max(...zs) / 8); iz++) {
+              const k = `${ix},${iz}`;
+              const list = cells.get(k);
+              if (list === undefined) cells.set(k, [t]);
+              else list.push(t);
+            }
+          }
+        }
+        let overlaps = 0;
+        let worst = 0;
+        const seen = new Set<string>();
+        const index = new Map<Tri, number>(road.map((t, i) => [t, i]));
+        for (const list of cells.values()) {
+          for (let i = 0; i < list.length; i++) {
+            for (let j = i + 1; j < list.length; j++) {
+              const a = list[i] as Tri;
+              const b = list[j] as Tri;
+              const key = `${index.get(a)},${index.get(b)}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const depth = overlapDepth(a.p.map(([x, z]) => ({ x, z })), b.p.map(([x, z]) => ({ x, z })));
+              if (depth > 0.004) {
+                overlaps++;
+                worst = Math.max(worst, depth);
+              }
+            }
+          }
+        }
+        console.log(`${seed}: ${road.length} roadway triangles, ${overlaps} overlapping (deepest ${worst.toFixed(4)} m)`);
+        expect(overlaps).toBe(0);
+      }
+    });
+
+    it("end every leg's strip on its junction's edge: a roadway at both sides of each mouth, vertices that meet, no step in height", () => {
+      for (const seed of JUNCTION_SEEDS) {
+        const g = groundFor(seed);
+        const l = layer(seed);
+        let mouths = 0;
+        for (const j of g.plan.junctions) {
+          if (!(j.kind === "four-way" || j.kind === "tee" || j.kind === "skew" || j.kind === "highway" || j.kind === "bend")) continue;
+          for (const leg of j.legs) {
+            if (leg.engine || leg.to - leg.mouth < 3) continue;
+            const wx = (s: number, t: number): [number, number] => [g.anchor.x + leg.x + leg.dx * s - leg.dz * t, g.anchor.z + leg.z + leg.dz * s + leg.dx * t];
+            for (const t of [-leg.half + 0.1, 0, leg.half - 0.1]) {
+              // Roadway on the junction's side and on the strip's: no gap at the mouth.
+              const [x0, z0] = wx(leg.mouth - 0.03, t);
+              const [x1, z1] = wx(leg.mouth + 0.03, t);
+              expect(coveredBy(l, ASPHALT, x0, z0), `seed ${seed} junction ${j.id}: no pavement just inside a mouth`).toBe(true);
+              expect(coveredBy(l, ASPHALT, x1, z1), `seed ${seed} junction ${j.id}: no strip just outside a mouth`).toBe(true);
+            }
+            mouths++;
+          }
+        }
+        // No step: two roadway vertices within 2 cm in plan stand at one height (within 3 mm).
+        const roadVertices = new Map<string, number[]>();
+        for (const t of l.of(ASPHALT)) {
+          for (let k = 0; k < 3; k++) {
+            const key = `${Math.round((t.p[k] as [number, number])[0] * 50)},${Math.round((t.p[k] as [number, number])[1] * 50)}`;
+            const list = roadVertices.get(key);
+            if (list === undefined) roadVertices.set(key, [t.y[k] as number]);
+            else list.push(t.y[k] as number);
+          }
+        }
+        let worst = 0;
+        for (const ys of roadVertices.values()) worst = Math.max(worst, Math.max(...ys) - Math.min(...ys));
+        console.log(`${seed}: ${mouths} mouths checked; the largest step between roadway vertices at one place ${worst.toFixed(5)} m`);
+        expect(mouths).toBeGreaterThan(40);
+        expect(worst).toBeLessThan(0.003);
+      }
+    });
+
+    it("lay every marked crosswalk's bars on its leg's roadway just outside the pavement, and no paint inside a quiet junction's pavement", () => {
+      for (const seed of JUNCTION_SEEDS) {
+        const g = groundFor(seed);
+        const l = layer(seed);
+        const white = l.of(PAINT_WHITE);
+        let bars = 0;
+        for (const j of g.plan.junctions) {
+          if (!(j.kind === "four-way" || j.kind === "tee" || j.kind === "skew" || j.kind === "highway" || j.kind === "bend")) continue;
+          for (const leg of j.legs) {
+            if (!leg.marked || leg.engine) continue;
+            const frame = (x: number, z: number): { s: number; t: number } => {
+              const dx = x - g.anchor.x - leg.x;
+              const dz = z - g.anchor.z - leg.z;
+              return { s: dx * leg.dx + dz * leg.dz, t: -dx * leg.dz + dz * leg.dx };
+            };
+            // The bars: the white triangles of a bar's size that lie wholly in the leg's crosswalk, over its roadway.
+            const mine = white.filter((t) => {
+              // The bars are 2 ft wide; the parking lines are thinner and the stop line wider.
+              const e = t.p.map((q, k) => Math.hypot(q[0] - (t.p[(k + 1) % 3] as [number, number])[0], q[1] - (t.p[(k + 1) % 3] as [number, number])[1]));
+              if (Math.min(...e) < 0.3) return false;
+              return t.p.every((q) => {
+                const f = frame(q[0], q[1]);
+                return f.s >= leg.mouth - 0.002 && f.s <= leg.mouth + CROSSWALK_WIDTH + 0.002 && Math.abs(f.t) <= leg.half + 0.002;
+              });
+            });
+            expect(mine.length, `seed ${seed} junction ${j.id}: a marked leg's bars`).toBeGreaterThanOrEqual(4);
+            bars += mine.length;
+          }
+          if (j.legs.every((leg) => !leg.marked && !leg.stops) && j.dotted === false) {
+            // A quiet junction has no paint at all: nothing white or yellow stands inside its pavement.
+            const poly = pavementPolygon(j.legs, j.corners).map((q) => ({ x: q.x + g.anchor.x, z: q.z + g.anchor.z }));
+            if (poly.length < 3) continue;
+            for (const t of l.tris) {
+              if (t.c[0] < 0.3) continue;
+              const cx = (t.p[0]![0] + t.p[1]![0] + t.p[2]![0]) / 3;
+              const cz = (t.p[0]![1] + t.p[1]![1] + t.p[2]![1]) / 3;
+              if (cx < Math.min(...poly.map((q) => q.x)) || cx > Math.max(...poly.map((q) => q.x)) || cz < Math.min(...poly.map((q) => q.z)) || cz > Math.max(...poly.map((q) => q.z))) continue;
+              // Paint colours only (white and yellow); the sidewalk, ramps and domes stand outside the pavement.
+              const isPaint = (Math.abs(t.c[0] - PAINT_WHITE[0]) < 1e-4 && Math.abs(t.c[1] - PAINT_WHITE[1]) < 1e-4) || (Math.abs(t.c[0] - PAINT_YELLOW[0]) < 1e-4 && Math.abs(t.c[1] - PAINT_YELLOW[1]) < 1e-4);
+              if (isPaint) expect(insideStrictly(poly, { x: cx, z: cz }), `seed ${seed} junction ${j.id}: paint in a quiet junction`).toBe(false);
+            }
+          }
+        }
+        expect(bars).toBeGreaterThan(8);
+        // No bar or line of white stands inside any junction's pavement (the crosswalks lie just outside it).
+        for (const j of g.plan.junctions) {
+          if (!(j.kind === "four-way" || j.kind === "tee" || j.kind === "skew" || j.kind === "highway" || j.kind === "bend")) continue;
+          const poly = pavementPolygon(j.legs, j.corners).map((q) => ({ x: q.x + g.anchor.x, z: q.z + g.anchor.z }));
+          if (poly.length < 3) continue;
+          for (const t of white) {
+            const cx = (t.p[0]![0] + t.p[1]![0] + t.p[2]![0]) / 3;
+            const cz = (t.p[0]![1] + t.p[1]![1] + t.p[2]![1]) / 3;
+            expect(insideStrictly(poly, { x: cx, z: cz }), `seed ${seed} junction ${j.id}: white paint inside the pavement`).toBe(false);
+          }
+        }
+      }
+    });
+
+    it("hold parking back from the corners: no stall's line of the main street within 20 ft of a crosswalk or 30 ft of a STOP sign", () => {
+      let checked = 0;
+      for (const seed of JUNCTION_SEEDS) {
+        const g = groundFor(seed);
+        const l = layer(seed);
+        // The lines of a stall are the white marks 0.1 m wide.
+        const thin = l.of(PAINT_WHITE).filter((t) => {
+          const e = t.p.map((q, k) => Math.hypot(q[0] - (t.p[(k + 1) % 3] as [number, number])[0], q[1] - (t.p[(k + 1) % 3] as [number, number])[1]));
+          return Math.min(...e) < 0.12 && Math.max(...e) > 0.3;
+        });
+        for (const j of g.plan.junctions) {
+          for (const leg of j.legs) {
+            if (leg.kind !== "main" || leg.engine || leg.closed) continue;
+            for (const t of thin) {
+              const cx = (t.p[0]![0] + t.p[1]![0] + t.p[2]![0]) / 3 - g.anchor.x - leg.x;
+              const cz = (t.p[0]![1] + t.p[1]![1] + t.p[2]![1]) / 3 - g.anchor.z - leg.z;
+              const s = cx * leg.dx + cz * leg.dz;
+              const lat = Math.abs(-cx * leg.dz + cz * leg.dx);
+              // On this leg's roadway side, in a parking lane, within the held-back distance from its mouth.
+              if (s > leg.mouth && s < leg.mouth + leg.holdBack - 0.01 && lat > leg.half - 2.5 && lat < leg.half) throw new Error(`seed ${seed} junction ${j.id}: a stall's line ${(s - leg.mouth).toFixed(1)} m from the mouth, held back ${leg.holdBack.toFixed(1)}`);
+            }
+            checked++;
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(5);
+    });
+
+    it("carry a through street's sidewalk and curb unbroken across a tee's top, and an alley's mouth breaks no sidewalk", () => {
+      let tees = 0;
+      let mouths = 0;
+      for (const seed of JUNCTION_SEEDS) {
+        const g = groundFor(seed);
+        const l = layer(seed);
+        for (const j of g.plan.junctions) {
+          if (j.kind === "tee" && j.legacy === null && j.stem >= 0) {
+            const through = j.legs.filter((_, i) => i !== j.stem);
+            const a = through[0] as (typeof through)[number];
+            const b = through[1] as (typeof through)[number];
+            if (a.street !== b.street) continue;
+            // The far side of the through street is the side the stem is not on: left of `a` if the stem's direction points to its right.
+            const stem = j.legs[j.stem] as (typeof j.legs)[number];
+            const farSide = stem.dx * -a.dz + stem.dz * a.dx > 0 ? -1 : 1;
+            const lotLat = farSide * (a.outer - Math.min(a.walk, a.outer - a.half - CURB_WIDTH) / 2);
+            const curbLat = farSide * (a.half + CURB_WIDTH / 2);
+            // Across the tee's top, from where one leg's roadway begins to where the other's does (and a metre beyond each), stepping half a metre.
+            for (let s = -(b.mouth + 1); s <= a.mouth + 1; s += 0.5) {
+              const x = g.anchor.x + a.x + a.dx * s - a.dz * lotLat;
+              const z = g.anchor.z + a.z + a.dz * s + a.dx * lotLat;
+              // The engine's road bed is cut from every surface.
+              if (Math.abs(x - g.roadX(z)) < ROAD_BED_HALF + 0.5) continue;
+              expect(coveredBy(l, SIDEWALK, x, z), `seed ${seed} junction ${j.id}: the sidewalk broken at ${s}`).toBe(true);
+              const cx = g.anchor.x + a.x + a.dx * s - a.dz * curbLat;
+              const cz = g.anchor.z + a.z + a.dz * s + a.dx * curbLat;
+              if (Math.abs(cx - g.roadX(cz)) < ROAD_BED_HALF + 0.5) continue;
+              // A ramp opens the curb over its crosswalk's width (at each leg's mouth), and a driveway's apron over its own.
+              const along = s >= 0 ? s - a.mouth : -s - b.mouth;
+              if (along > 0 && along < CROSSWALK_WIDTH + 0.3) continue;
+              if (g.plan.junctions.some((q) => q.kind === "alley" && Math.abs((g.anchor.x + q.legs[0]!.x - cx) * a.dx + (g.anchor.z + q.legs[0]!.z - cz) * a.dz) < 3.4 && Math.hypot(g.anchor.x + q.legs[0]!.x - cx, g.anchor.z + q.legs[0]!.z - cz) < 9)) continue;
+              expect(coveredBy(l, CURB, cx, cz), `seed ${seed} junction ${j.id}: the curb broken at ${s}`).toBe(true);
+            }
+            tees++;
+          }
+          if (j.kind === "alley" && j.alley !== null) {
+            const st = g.plan.streets[j.alley.street] as (typeof g.plan.streets)[number];
+            const leg = j.legs[0] as (typeof j.legs)[number];
+            const side = j.alley.dx * -leg.dz + j.alley.dz * leg.dx > 0 ? 1 : -1;
+            // The middle of the sidewalk, across the mouth.
+            const lat = side * (st.width / 2 - st.walk / 2);
+            for (let s = -4; s <= 4; s += 0.5) {
+              const x = g.anchor.x + leg.x + leg.dx * s - leg.dz * lat;
+              const z = g.anchor.z + leg.z + leg.dz * s + leg.dx * lat;
+              expect(coveredBy(l, SIDEWALK, x, z), `seed ${seed} junction ${j.id}: an alley's mouth breaks the sidewalk at ${s}`).toBe(true);
+            }
+            mouths++;
+          }
+        }
+      }
+      expect(tees).toBeGreaterThan(10);
+      expect(mouths).toBeGreaterThan(30);
+    });
+
+    it("stand a STOP sign beside the road before the crosswalk on each leg that stops, and none elsewhere; each blade names its two streets", () => {
+      for (const seed of WORLD_SEEDS) {
+        const g = groundFor(seed);
+        let stops = 0;
+        for (const j of g.plan.junctions) for (const leg of j.legs) if (leg.stops) stops++;
+        const { signs } = streetsOf(seed);
+        // A STOP sign is a red octagon: its back and front are two polygons of eight corners, six triangles each; the end markers are red too (four-cornered), so count by octagons' triangles.
+        let redTriangles = 0;
+        eachTriangle(signs, (_p, _n, c) => {
+          if (Math.abs(c[0] - SIGN_RED[0]) < 1e-6 && Math.abs(c[1] - SIGN_RED[1]) < 1e-6) redTriangles++;
+        });
+        // Each stopping leg's sign: one red octagon (six triangles), and its post. A planter's or a marker's red is none of the street's.
+        expect(redTriangles).toBe(stops * 6);
+        // Every street's name can be drawn: its letters are all in the face.
+        for (const st of g.plan.streets) for (const ch of bladeText(st.name).replace(/ /g, "")) expect(textRuns(ch).length, `${st.name}: ${ch}`).toBeGreaterThan(0);
+      }
+    });
   });
 });
 
