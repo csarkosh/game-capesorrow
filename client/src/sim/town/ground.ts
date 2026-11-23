@@ -17,6 +17,7 @@ import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { fbm2d } from "@csarkosh/engine/sim/field";
 import { COVER_FADE, COVER_HOLD, coverD } from "./cover.js";
 import { QUAY_BANK, fillWindowD, smootherstepD, type FillArea } from "./fill.js";
+import { QUAY_HEIGHT } from "./levels.js";
 import { planFor } from "./planFor.js";
 import { SITE_HALF, SITE_INLAND, SITE_STEP, siteFor } from "./siteFor.js";
 import { shoreSplineOf, shoreXAt, type ShoreSpline } from "./shoreSpline.js";
@@ -26,7 +27,7 @@ import type { TownPlan } from "./types.js";
 export { smootherstepD };
 
 /** The fill's height above the sea at the water's edge, metres. */
-export const QUAY = 2.5;
+export const QUAY = QUAY_HEIGHT;
 /** The blend from the made ground to the coast's own, metres. */
 export const EDGE = 40;
 /** The footprint's reach along the shore either side of the anchor, metres. */
@@ -137,7 +138,7 @@ function footD(y: number): { v: number; d: number } {
 
 /** What the made ground declares of itself for the level id: every constant that shapes it. */
 export const GROUND_TUNABLES: Readonly<Record<string, number>> = {
-  TOWN_GROUND: 3,
+  TOWN_GROUND: 4,
   QUAY,
   EDGE,
   TOWN_Z_HALF,

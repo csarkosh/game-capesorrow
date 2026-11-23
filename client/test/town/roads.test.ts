@@ -75,6 +75,23 @@ describe("roads out of town", () => {
     process.stderr.write(`roads out over 40 seeds: ${roads}\n`);
   });
 
+  it("keep off the harbour: no road and no made end runs over a deck, and no road crosses a building on piles", () => {
+    for (const seed of SEEDS) {
+      const { plan } = townFor(seed);
+      const onDeck = (p: { x: number; z: number }, grow: number): boolean =>
+        plan.decks.some((d) => {
+          const along = Math.abs((p.x - d.centre.x) * d.axis.x + (p.z - d.centre.z) * d.axis.z);
+          const across = Math.abs((p.x - d.centre.x) * -d.axis.z + (p.z - d.centre.z) * d.axis.x);
+          return along <= d.halfAlong + grow && across <= d.halfAcross + grow;
+        });
+      for (const road of plan.roads) for (const p of sampled(road)) expect(onDeck(p, 3), `seed ${seed} ${road.name} on a deck`).toBe(false);
+      // A made end's gravel, bumper or barricade (up to 6 m beyond the street's end, 3 for a landing) is not on a deck either.
+      for (const e of plan.ends) {
+        for (const s of e.kind === "landing" ? [0, 1.5, 3] : [0, 3, 6]) expect(onDeck({ x: e.x + e.dx * s, z: e.z + e.dz * s }, 0), `seed ${seed} end of street ${e.street}`).toBe(false);
+      }
+    }
+  });
+
   it("narrow from paved to gravel to two wheel tracks and end at a destination, each surface after the last", () => {
     const order = { paved: 0, gravel: 1, tracks: 2 } as const;
     let tracks = 0;

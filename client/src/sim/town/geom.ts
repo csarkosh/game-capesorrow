@@ -249,3 +249,23 @@ export function orientedRect(c: Vec, halfU: number, halfV: number, U: Vec, V: Ve
   });
   return orient([mk(-1, -1), mk(1, -1), mk(1, 1), mk(-1, 1)]);
 }
+
+/** The convex hull of points in a plane of (u, v), counter-clockwise (Andrew's monotone chain; collinear points are dropped). */
+export function convexHull(points: readonly { u: number; v: number }[]): { u: number; v: number }[] {
+  const p = points.slice().sort((a, b) => a.u - b.u || a.v - b.v);
+  const cross = (o: { u: number; v: number }, a: { u: number; v: number }, b: { u: number; v: number }): number => (a.u - o.u) * (b.v - o.v) - (a.v - o.v) * (b.u - o.u);
+  const lower: { u: number; v: number }[] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, q) <= 1e-9) lower.pop();
+    lower.push(q);
+  }
+  const upper: { u: number; v: number }[] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, q) <= 1e-9) upper.pop();
+    upper.push(q);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}

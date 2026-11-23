@@ -40,6 +40,8 @@ type Draft = {
   /** The lot's draw and its district's chance of being built on: built when the draw is under the chance (plus the town's fill). */
   u: number;
   occ: number;
+  /** The lot is the public port's terminal yard: the town's fill does not raise its chance (the cargo needs the open ground). */
+  yard: boolean;
 };
 
 const ROLE_KIND: Record<string, BuildingKind> = {
@@ -412,6 +414,8 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
   }
 
   const occupancy = (district: string, kind: string, m: BlockMeta): number => {
+    // The public port's terminal is mostly yard: about half its lots are open ground for the cargo (`harbour.ts` fills them).
+    if (m.site === "terminal" && district !== "civic") return 0.42;
     switch (district) {
       case "core":
         return fire ? 0.92 : 0.95;
@@ -494,6 +498,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
       keep: forced,
       u,
       occ,
+      yard: m.site === "terminal" && district !== "civic",
     });
   }
 
@@ -504,8 +509,8 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
   // The town's fill: the chance of each district is raised, together, until enough of the plan is built (a plan of few blocks is built fuller).
   const MIN_BUILT = 285;
   let boost = 0;
-  while (boost < 0.6 && onLand.filter((d) => d.keep || d.u < d.occ + boost).length < MIN_BUILT) boost += 0.03;
-  let kept = onLand.filter((d) => d.keep || d.u < d.occ + boost);
+  while (boost < 0.6 && onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost)).length < MIN_BUILT) boost += 0.03;
+  let kept = onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost));
 
   // The core's vacancy, exactly: the share of its storefronts the present layer says stand empty.
   const shops = kept.filter((d) => !d.keep && SHOP_KINDS.includes(d.kind) && blocks[lots[d.lot]!.block]!.district === "core");
@@ -560,6 +565,7 @@ export function buildPort(input: BuildInput, rng: Rng): Building[] {
         keep: false,
         u: 0,
         occ: 1,
+        yard: false,
       };
     };
     const pierState: BuildingState = millClosed && shoreSite === "mill" && chance(rng, 0.5) ? "ruin" : "open";

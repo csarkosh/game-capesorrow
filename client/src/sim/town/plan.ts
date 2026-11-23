@@ -30,6 +30,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     lots: stageRng(seed, "lots"),
     buildings: stageRng(seed, "buildings"),
     landmarks: stageRng(seed, "landmarks"),
+    harbour: stageRng(seed, "harbour"),
   };
   const names = makeNames(stageRng(seed, "names"));
   const { history, townName } = recipe.history(streams.history, names, analyseShore(site));
@@ -77,12 +78,17 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   // The roads out: a sentence of the history for each, and each destination among the landmarks.
   const described = describeRoads(roads, streets, names, townName, history.founding.year, rngRoads);
   const landmarks: Landmark[] = [...bound, ...described.landmarks.map((l, i) => ({ ...l, id: bound.length + i }))];
-  const eventOrder = [...history.events, ...described.events].map((e, i) => ({ e, i }));
-  eventOrder.sort((p, q) => p.e.year - q.e.year || p.i - q.i);
-  const withRoads: History = { ...history, events: eventOrder.map((o) => o.e) };
   const fbi = landmarks.find((l) => l.role === "fbi");
   if (!fbi) throw new Error("the plan has no FBI office");
   const spawn = recipe.spawn(buildings[fbi.building]!);
+
+  const oldDecks = recipe.decks(layout, buildings, streets);
+  const harbourOut = recipe.harbour({ site, layout, history, buildings, streets, decks: oldDecks }, streams.harbour);
+  const decks = [...oldDecks, ...harbourOut.decks];
+  // What the roads out and the harbour have to tell joins the history's list, in order of year and then of the order they were told.
+  const told = [...history.events, ...described.events, ...harbourOut.harbour.events].map((e, i) => ({ e, i }));
+  told.sort((p, q) => p.e.year - q.e.year || p.i - q.i);
+  const fullHistory: History = { ...history, events: told.map((t) => t.e) };
 
   const all: Poly[] = [...blocks.map((b) => b.polygon), ...streets.map((s) => [s.a, s.b])];
   const bb = bbox(all.flat());
@@ -99,7 +105,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     kind,
     seed,
     name: townName,
-    history: withRoads,
+    history: fullHistory,
     plats: layout.plats,
     seams: layout.seams,
     streets,
@@ -110,6 +116,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     buildings,
     landmarks,
     spawn,
+    decks,
+    harbour: harbourOut.harbour,
     fill: layout.fill,
     quay: layout.quay,
     bounds: bb,

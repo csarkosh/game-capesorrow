@@ -123,6 +123,58 @@ function view(plan: TownPlan, site: TownSite): { x0: number; z0: number; x1: num
   return { x0, z0: z0r, x1: x1r, z1: z1r };
 }
 
+/** The colour a boat is drawn in: by kind, faded for a derelict, black for a sunk one. */
+export const BOAT_FILL: Record<string, string> = {
+  troller: "#4fb0e8",
+  gillnetter: "#f0a030",
+  crabber: "#e05a4a",
+  tug: "#f0e060",
+  skiff: "#c8c8c8",
+  sailboat: "#ffffff",
+  pleasure: "#d890f0",
+};
+
+function harbourSvg(plan: TownPlan, out: string[], X: (x: number) => number, Y: (z: number) => number): void {
+  const h = plan.harbour;
+  const P = (p: { x: number; z: number }): string => `${X(p.x)},${Y(p.z)}`;
+  const rect = (c: { x: number; z: number }, ax: { x: number; z: number }, hA: number, hB: number): string => {
+    const bx = ax.z;
+    const bz = -ax.x;
+    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => P({ x: c.x + ax.x * hA * a! + bx * hB * b!, z: c.z + ax.z * hA * a! + bz * hB * b! })).join(" ");
+  };
+  // The quay's apron, floats and gangways.
+  for (const d of plan.decks) {
+    if (d.kind === "float") out.push(`<polygon points="${rect(d.centre, d.axis, d.halfAlong, d.halfAcross)}" fill="#a88a5a" stroke="#2a2014" stroke-width="0.3"/>`);
+    else if (d.kind === "gangway") out.push(`<polygon points="${rect(d.centre, d.axis, d.halfAlong, d.halfAcross)}" fill="#d8c090" stroke="#2a2014" stroke-width="0.3"/>`);
+    else if (d.kind === "apron") out.push(`<polygon points="${rect(d.centre, d.axis, d.halfAlong, d.halfAcross)}" fill="#9a9a90" fill-opacity="0.8"/>`);
+  }
+  // The mill's pond: its boom as a dashed line, its logs, the jack ladder; and the burner.
+  if (h.logPond !== null) {
+    const p = h.logPond;
+    out.push(`<polygon points="${rect(p.centre, { x: 0, z: 1 }, p.halfZ, p.halfX)}" fill="#1c3a40" fill-opacity="0.5" stroke="#c8a060" stroke-width="0.8" stroke-dasharray="3 2"/>`);
+    for (const l of p.logs) out.push(`<line x1="${X(l.x - l.heading.x * l.length / 2)}" y1="${Y(l.z - l.heading.z * l.length / 2)}" x2="${X(l.x + l.heading.x * l.length / 2)}" y2="${Y(l.z + l.heading.z * l.length / 2)}" stroke="#7a5a32" stroke-width="${f(l.radius * 2)}"/>`);
+    for (const q of p.piles) out.push(`<circle cx="${X(q.x)}" cy="${Y(q.z)}" r="0.7" fill="#d8c8a0"/>`);
+    if (p.jackLadder) out.push(`<line x1="${X(p.jackLadder.a.x)}" y1="${Y(p.jackLadder.a.z)}" x2="${X(p.jackLadder.b.x)}" y2="${Y(p.jackLadder.b.z)}" stroke="#e8d098" stroke-width="2"/>`);
+  }
+  if (h.burner) out.push(`<circle cx="${X(h.burner.x)}" cy="${Y(h.burner.z)}" r="${h.burner.radius}" fill="#a0502a" fill-opacity="0.7" stroke="#e08040" stroke-width="0.8"/>`);
+  // Dead pilings and dolphins.
+  for (const field of h.pilings) for (const q of field.piles) out.push(`<circle cx="${X(q.x)}" cy="${Y(q.z)}" r="0.55" fill="#b0a890"/>`);
+  for (const q of h.dolphins) out.push(`<circle cx="${X(q.x)}" cy="${Y(q.z)}" r="0.5" fill="#e8d098"/>`);
+  // The terminal's yard and barge.
+  if (h.terminal) {
+    for (const y of h.terminal.yard) out.push(`<rect x="${X(y.x - y.halfX)}" y="${Y(y.z + y.halfZ)}" width="${f(y.halfX * 2)}" height="${f(y.halfZ * 2)}" fill="#6aa4de" fill-opacity="0.45" stroke="#c0e0ff" stroke-width="0.5"/>`);
+    const b = h.terminal.barge;
+    if (b) out.push(`<polygon points="${rect(b, b.heading, b.length / 2, b.beam / 2)}" fill="#8a8a92" stroke="#f0f0f0" stroke-width="0.5"/>`);
+  }
+  // Boats.
+  for (const b of h.boats) {
+    const fill = b.state === "working" ? (BOAT_FILL[b.kind] ?? "#cccccc") : b.state === "derelict" ? "#7a7066" : "#2a2a2a";
+    out.push(`<polygon points="${rect(b, b.heading, b.length / 2, b.beam / 2)}" fill="${fill}" stroke="${b.state === "working" ? "#101010" : "#d04040"}" stroke-width="0.4"/>`);
+  }
+  // Lights.
+  for (const l of h.lights) out.push(`<circle cx="${X(l.x)}" cy="${Y(l.z)}" r="3" fill="${l.kind === "harbour light" ? "#ffffff" : l.kind === "day beacon" ? "#e04040" : "#ffe070"}" stroke="#101010" stroke-width="0.6"/>`);
+}
+
 export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}): string {
   const v = view(plan, site);
   const W = v.x1 - v.x0;
@@ -203,6 +255,9 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
     const stroke = b.state === "ruin" ? "#d04040" : b.state === "vacant" ? "#e8c050" : "#101010";
     out.push(`<polygon points="${poly(footprint(b))}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
   }
+
+  // The harbour: floats and gangways, the pond, pilings, the yard, boats by kind and state, the barge, the lights.
+  harbourSvg(plan, out, X, Y);
 
   // Landmarks: a marker and a label each, the FBI office the most prominent.
   const labels = options.labels ?? "all";

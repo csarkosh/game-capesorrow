@@ -96,6 +96,78 @@ export class MeshBuilder {
     this.poly([[p00[0], y1, p00[1]], [p10[0], y1, p10[1]], [p11[0], y1, p11[1]], [p01[0], y1, p01[1]]], [0, 1, 0], top);
   }
 
+  /**
+   * A round post or drum: an upright prism of `sides` sides of radius `radius` from base `y0` up `height`, with its top (and no bottom).
+   * Its sides' normals point out from the axis; `sides` is at least 3. A radius of 0 at the top is a cone (`topRadius`).
+   */
+  cylinder(cx: number, cz: number, y0: number, radius: number, height: number, sides: number, side: Rgb, top: Rgb, topRadius = radius): void {
+    const y1 = y0 + height;
+    // Corners round the axis by rotating with exact steps of the angle's own cosine and sine (a table, so no call to trigonometry is needed here).
+    const ring: [number, number][] = [];
+    for (let i = 0; i < sides; i++) {
+      const a = (i / sides) * Math.PI * 2;
+      ring.push([Math.cos(a), Math.sin(a)]);
+    }
+    for (let i = 0; i < sides; i++) {
+      const [c0, s0] = ring[i] as [number, number];
+      const [c1, s1] = ring[(i + 1) % sides] as [number, number];
+      const mx = c0 + c1;
+      const mz = s0 + s1;
+      this.poly(
+        [[cx + c0 * radius, y0, cz + s0 * radius], [cx + c1 * radius, y0, cz + s1 * radius], [cx + c1 * topRadius, y1, cz + s1 * topRadius], [cx + c0 * topRadius, y1, cz + s0 * topRadius]],
+        [mx, 0, mz],
+        side,
+      );
+    }
+    if (topRadius > 0) this.poly(ring.map(([c, s]): Vec3 => [cx + c * topRadius, y1, cz + s * topRadius]), [0, 1, 0], top);
+  }
+
+  /**
+   * A straight prism of `sides` sides and radius `radius` from `p0` to `p1` (any direction): a timber, a pole, a log lying down, a
+   * leaning pile. Its ends are capped in `cap` (left open when null). Radius 0 at either end is not allowed; use `cone` for a point.
+   */
+  prism(p0: Vec3, p1: Vec3, radius: number, sides: number, side: Rgb, cap: Rgb | null = side): void {
+    let ax = p1[0] - p0[0];
+    let ay = p1[1] - p0[1];
+    let az = p1[2] - p0[2];
+    const len = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (!(len > 1e-9)) return;
+    ax /= len;
+    ay /= len;
+    az /= len;
+    // Two axes across it: u is the axis crossed with the up (or with x when it is upright), v completes the turn.
+    let ux = ay * 0 - az * 1;
+    let uy = az * 0 - ax * 0;
+    let uz = ax * 1 - ay * 0;
+    if (Math.abs(ay) > 0.95) {
+      ux = 0;
+      uy = az;
+      uz = -ay;
+    }
+    const ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
+    ux /= ul;
+    uy /= ul;
+    uz /= ul;
+    const vx = ay * uz - az * uy;
+    const vy = az * ux - ax * uz;
+    const vz = ax * uy - ay * ux;
+    const ring = (c: Vec3, i: number): Vec3 => {
+      const a = (i / sides) * Math.PI * 2;
+      const cs = Math.cos(a) * radius;
+      const sn = Math.sin(a) * radius;
+      return [c[0] + ux * cs + vx * sn, c[1] + uy * cs + vy * sn, c[2] + uz * cs + vz * sn];
+    };
+    for (let i = 0; i < sides; i++) {
+      const a = (i / sides + 0.5 / sides) * Math.PI * 2;
+      const hint: Vec3 = [ux * Math.cos(a) + vx * Math.sin(a), uy * Math.cos(a) + vy * Math.sin(a), uz * Math.cos(a) + vz * Math.sin(a)];
+      this.poly([ring(p0, i), ring(p0, i + 1), ring(p1, i + 1), ring(p1, i)], hint, side);
+    }
+    if (cap !== null) {
+      this.poly(Array.from({ length: sides }, (_, i) => ring(p1, i)), [ax, ay, az], cap);
+      this.poly(Array.from({ length: sides }, (_, i) => ring(p0, i)), [-ax, -ay, -az], cap);
+    }
+  }
+
   finish(): MeshArrays {
     return { positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col), indices: Uint32Array.from(this.idx) };
   }
