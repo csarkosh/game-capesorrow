@@ -4,7 +4,7 @@
  * door opens onto a sidewalk. Pure functions of a `TownPlan`.
  */
 import { bearingU, bearingV } from "../../src/sim/town/bearings.js";
-import { dist, orientedRect, segDist, type Vec } from "../../src/sim/town/geom.js";
+import { contains, dist, orient, orientedRect, segDist, type Vec } from "../../src/sim/town/geom.js";
 import type { Building, BuildingUse, Street, TownPlan } from "../../src/sim/town/types.js";
 import { walkAt } from "../../src/sim/town/port/edges.js";
 
@@ -103,6 +103,51 @@ export function woodsEnclosed(plan: TownPlan): { land: number; budget: number; l
     }
   }
   return out;
+}
+
+/**
+ * The length of the grid's streets (not alleys or the highway) with woods the plan left on both sides of them (a point 8 m past the right of way on
+ * each side is in a woods block), sampled every 10 m, and with woods on one side: the owner's "no street runs past woods on both sides unless it is the way to something".
+ */
+export function streetsBesideWoods(plan: TownPlan): { both: number; one: number; total: number } {
+  const woods = plan.woods.map((w) => ({ poly: orient(w.polygon), ...bounds(w.polygon) }));
+  const inWoods = (p: Vec): boolean => woods.some((w) => p.x >= w.x0 && p.x <= w.x1 && p.z >= w.z0 && p.z <= w.z1 && contains(w.poly, p));
+  let both = 0;
+  let one = 0;
+  let total = 0;
+  for (const st of plan.streets) {
+    if (st.kind !== "street" && st.kind !== "main" && st.kind !== "avenue") continue;
+    const len = dist(st.a, st.b);
+    const n = Math.max(1, Math.round(len / 10));
+    const dx = (st.b.x - st.a.x) / len;
+    const dz = (st.b.z - st.a.z) / len;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const x = st.a.x + (st.b.x - st.a.x) * t;
+      const z = st.a.z + (st.b.z - st.a.z) * t;
+      const off = st.width / 2 + 8;
+      const l = inWoods({ x: x - dz * off, z: z + dx * off });
+      const r = inWoods({ x: x + dz * off, z: z - dx * off });
+      total += len / n;
+      if (l && r) both += len / n;
+      else if (l || r) one += len / n;
+    }
+  }
+  return { both, one, total };
+}
+
+function bounds(poly: readonly Vec[]): { x0: number; x1: number; z0: number; z1: number } {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const p of poly) {
+    x0 = Math.min(x0, p.x);
+    x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z);
+    z1 = Math.max(z1, p.z);
+  }
+  return { x0, x1, z0, z1 };
 }
 
 /**

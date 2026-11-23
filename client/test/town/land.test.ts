@@ -269,7 +269,8 @@ describe("the town grown over the land, over forty world seeds", () => {
     expect(ratio((s) => s.blocks)).toBeGreaterThanOrEqual(1.8);
     // Long and thin: more than two and a half times as long as deep. Deep: 600 m or more from the water to the last block.
     expect(shapes.filter((s) => s.length / s.depth >= 2.5).length).toBeGreaterThanOrEqual(3);
-    expect(shapes.filter((s) => s.depth >= 600).length).toBeGreaterThanOrEqual(3);
+    // (Two: the grid is held to the lots its houses fill, so fewer towns reach a long way inland; it was three.)
+    expect(shapes.filter((s) => s.depth >= 600).length).toBeGreaterThanOrEqual(2);
     // And the bay explains the land: a narrow shelf has less buildable land than a plain.
     const ha = towns.map((t) => ({ end: bayOf(t.seed).end, ha: landOf(t.site).hectares })).sort((a, b) => a.end - b.end);
     const low = ha.slice(0, 10).reduce((s, t) => s + t.ha, 0);

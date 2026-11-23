@@ -4,7 +4,7 @@ import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { RAIL_GAUGE, railCenterX } from "../../src/sim/town/rail.js";
-import { TRESTLE_HALF, TRESTLE_TOP, constrainTrestle, spurTrestleTopAt, trestleTopAt } from "../../src/sim/town/railDeck.js";
+import { TRESTLE_HALF, TRESTLE_TAPER, TRESTLE_TOP, constrainTrestle, spurTrestleTopAt, trestleTopAt } from "../../src/sim/town/railDeck.js";
 import { SPUR_GRADE, spurOf } from "../../src/sim/town/railSpur.js";
 import { DECK_TOP } from "../../src/sim/town/levels.js";
 import { planFor } from "../../src/sim/town/planFor.js";
@@ -50,7 +50,10 @@ describe("the town's spur, as the world has it", () => {
         const mid = track.points[Math.floor((run.from + run.to) / 2)]!;
         expect(mid.h).toBe(DECK_TOP);
         const top = spurTrestleTopAt(seed, mid.x, mid.z) as number;
-        expect(top, `seed ${seed}`).toBeCloseTo(DECK_TOP + TRESTLE_TOP, 9);
+        // (The top comes up from the bed over `TRESTLE_TAPER` metres at each end: a run under twice that has no flat middle, and the town made to fit its houses has some of 5 m.)
+        const length = (track.points[run.to] as { s: number }).s - (track.points[run.from] as { s: number }).s;
+        if (length >= 2 * TRESTLE_TAPER + 1) expect(top, `seed ${seed}`).toBeCloseTo(DECK_TOP + TRESTLE_TOP, 9);
+        else expect(top, `seed ${seed}`).toBeGreaterThan(DECK_TOP);
         expect(trestleTopAt(seed, mid.x, mid.z)).toBe(top);
         // Beside the deck there is none; and a hull on the deck is held inboard of its guard rails, one below it outboard of the deck.
         const a = track.points[Math.floor((run.from + run.to) / 2) - 1]!;

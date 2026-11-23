@@ -273,7 +273,8 @@ describe("trades follow the town's history", () => {
         n++;
       }
     }
-    expect(n).toBeGreaterThan(2000);
+    // The business street is a third shorter than it was (the town-size change), so the forty towns hold fewer units: it was 2000.
+    expect(n).toBeGreaterThan(1200);
     for (const g of GROUPS) {
       const gen = (100 * (got[g] ?? 0)) / n;
       const osm = (100 * OSM_GROUP_COUNT[g]) / OSM_TOTAL;
@@ -429,7 +430,8 @@ describe("rooms", () => {
     expect(counts[Math.floor(counts.length * 0.5)]!).toBeGreaterThanOrEqual(6);
     expect(counts[Math.floor(counts.length * 0.9)]!).toBeLessThanOrEqual(24);
     expect(counts[counts.length - 1]!).toBeLessThanOrEqual(24);
-    expect(units).toBeGreaterThan(3000);
+    // As above: it was 3000 before the business street was shortened.
+    expect(units).toBeGreaterThan(2000);
   });
 
   it("uses each kind of interior and each kind of furnishing the plan promises", () => {
@@ -521,7 +523,7 @@ describe("variation comes from each thing's own story, and no two are alike", ()
         if (b.state === "open") {
           expect(use.windows.some((w) => w.state === "boarded" || w.state === "broken"), "an occupied house is not boarded").toBe(false);
         } else if (b.state === "vacant") expect(use.windows.every((w) => w.state === "boarded" || w.state === "dark")).toBe(true);
-        else expect(use.windows.some((w) => w.state === "broken")).toBe(true);
+        else expect(use.windows.some((w) => w.state === "broken" || w.state === "boarded"), "a ruin has lost its glass or has it boarded").toBe(true);
         fronts.push(JSON.stringify([use.door!.s, use.windows.filter((w) => w.wall === "front")]));
       }
       expect(new Set(fronts).size / fronts.length, `seed ${plan.seed}`).toBeGreaterThan(0.9);

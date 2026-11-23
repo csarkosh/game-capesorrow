@@ -119,7 +119,7 @@ function junctionCentre(c: Cur, cur: readonly (Cur | null)[], me: number, p: Vec
   for (let j = 0; j < cur.length; j++) {
     const o = cur[j];
     if (j === me || o === null || o === undefined || o.st.kind === "alley") continue;
-    if (segDist(p, o.a, o.b) > (c.st.width + o.st.width) / 2 + TOUCH) continue;
+    if (segDist(p, o.a, o.b) > o.st.width / 2 + TOUCH) continue;
     // The other street's line run on a little at each end, so that a street whose end stops just short of this one still crosses it.
     const ol = dist(o.a, o.b);
     if (ol < 1e-6) continue;
@@ -201,7 +201,8 @@ function trim(streets: readonly Street[], buildings: readonly Building[], lots: 
         for (let j = 0; j < cur.length && !m; j++) {
           const o = cur[j];
           if (j === i || o === null || o === undefined || o.st.kind === "alley") continue;
-          if (segDist(p, o.a, o.b) <= (c.st.width + o.st.width) / 2 + TOUCH) m = true;
+          // (A station is a junction where it stands on the other street's right of way, as `findEnds` has it: not merely near it.)
+          if (segDist(p, o.a, o.b) <= o.st.width / 2 + TOUCH) m = true;
         }
         meets.push(m);
       }

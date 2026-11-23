@@ -189,7 +189,8 @@ describe("the ground under the streets (the roadway lies a curb's height under t
       for (let t = cw + 0.6; t >= cw - 0.6; t -= 0.05) h.push(field.heightAt(anchor.x + st.a.x + tx * s - tz * t, anchor.z + st.a.z + tz * s + tx * t));
       // Down across the curb by about the street's own curb (the ground's own fall over a metre and a bit aside), and no slope a foot cannot stand on (0.7 of a normal, 1.02 of a grade) bar the ground's own.
       const curb = e.paving.find((p) => s < p.s1)!.curb;
-      expect(Math.abs(h[0]! - h[h.length - 1]! - curb)).toBeLessThan(0.1);
+      // (0.13: the town made to fit its houses has this street on a steeper hillside; it was 0.1.)
+      expect(Math.abs(h[0]! - h[h.length - 1]! - curb)).toBeLessThan(0.13);
       for (let i = 1; i < h.length; i++) expect(Math.abs(h[i]! - h[i - 1]!) / 0.05).toBeLessThan(1.02 + 0.2);
       void PLAYER_HALF;
       crossed++;
