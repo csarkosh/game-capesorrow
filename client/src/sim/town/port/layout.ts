@@ -23,6 +23,7 @@ import {
   bbox,
   centroid,
   clipHalfPlane,
+  convexHull,
   contains,
   dist,
   frameOf,
@@ -43,7 +44,7 @@ import { ordinal, type TownNames } from "../names.js";
 import { chance, int, pick, range, type Rng } from "../rng.js";
 import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
-import type { Block, District, History, Plat, Seam, Street, StreetKind } from "../types.js";
+import type { Block, District, History, Plat, Quay, Seam, Street, StreetKind } from "../types.js";
 
 const FT = 0.3048;
 export const HIGHWAY_WIDTH = 24;
@@ -110,7 +111,7 @@ export type Layout = {
   };
   company: { frame: Frame; pU: number; pV: number; streetWidth: number };
   fill: { polygon: Poly }[];
-  quay: { a: Vec; b: Vec };
+  quay: Quay;
   pierSpots: PierSpot[];
   coreCentre: Vec;
   millCentre: Vec;
@@ -457,29 +458,42 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     return m;
   };
   const fill: { polygon: Poly }[] = [];
+  /** The stretches of the quay with water seaward of them: where a wall stands and the made ground is a polygon of its own. */
+  const quayWet: { a: Vec; b: Vec }[] = [];
   {
+    // One convex polygon of fill for each stretch of columns that has water beyond the quay. Its quay-side edge is the
+    // stretch's own piece of the quay line (so the edges of every polygon are collinear and no two overlap, and the bank
+    // along the quay is one smooth slope); its landward side is the hull of the columns' deepest shore points.
     const step = 6;
     const cols = ceilOf((uHi - uLo) / step);
-    let runStart = 0;
-    let runMax = -Infinity;
+    let start = -1;
+    let reach: { u: number; v: number }[] = [];
     const flush = (end: number): void => {
-      if (end > runStart && runMax > quayV + 1) {
-        const ua = uLo + runStart * step;
-        const ub = Math.min(uHi, uLo + end * step);
-        fill.push({ polygon: localRect(oldFrame, ua - 0.2, ub + 0.2, quayV, Math.min(runMax + 1, vBack)) });
-      }
+      if (start < 0) return;
+      const ua = uLo + start * step;
+      const ub = Math.min(uHi, uLo + end * step);
+      const hull = convexHull([{ u: ua, v: quayV }, { u: ub, v: quayV }, ...reach]);
+      fill.push({ polygon: orient(hull.map((q) => toWorld(oldFrame, q.u, q.v))) });
+      quayWet.push({ a: O(ua, quayV), b: O(ub, quayV) });
+      start = -1;
+      reach = [];
     };
     for (let k = 0; k < cols; k++) {
-      const m = vShoreIn(uLo + k * step, uLo + (k + 1) * step);
-      if (k > runStart && Math.abs(m - runMax) > 3) {
-        flush(k);
-        runStart = k;
-        runMax = m;
-      } else runMax = Math.max(runMax, m);
+      const ua = uLo + k * step;
+      const ub = Math.min(uHi, uLo + (k + 1) * step);
+      const m = vShoreIn(ua, ub);
+      if (m > quayV + 1) {
+        if (start < 0) start = k;
+        const v = Math.min(m + 1, vBack);
+        reach.push({ u: ua, v }, { u: ub, v });
+      } else flush(k);
     }
     flush(cols);
   }
-  const quay = { a: O(uLo, quayV), b: O(uHi, quayV) };
+  const quay = { a: O(uLo, quayV), b: O(uHi, quayV), wet: quayWet,
+    seaward: { x: -oldFrame.V.x, z: -oldFrame.V.z },
+    wall: history.fire !== null && history.fire.burned === "both" && history.fire.year >= 1922 ? ("sheet" as const) : ("timber" as const),
+  };
 
   // ---- The flats' limits: the west boundary of the compass plat, the shore's envelope or the rail's line.
   const shoreMargin = railPresent ? 7 : 6;

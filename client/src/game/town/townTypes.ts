@@ -5,6 +5,7 @@
  * every builder runs with no renderer.
  */
 import type { MeshBuilder } from "./meshBuilder.js";
+import type { Rail } from "../../sim/town/decks.js";
 import type { TownPlan } from "../../sim/town/types.js";
 
 /** Heights are the world's, metres; x and z are the world's too (the plan's frame plus `anchor`). */
@@ -15,8 +16,10 @@ export type TownGround = {
   heightAt(x: number, z: number): number;
   /** The x of the highway's centre line at a world z (the engine paints the road: the town's streets end at its edge). */
   roadX(z: number): number;
-  /** The height of a deck over the water at a world position: the quay's top where the nearest quay is. */
+  /** The top of the deck over a world position (the plan's decks, `sim/town/decks.ts`), or minus infinity where none stands over it. */
   deckAt(x: number, z: number): number;
+  /** The railed edges of the decks, in the world: where a walker is held back (`sim/town/decks.ts`). */
+  readonly rails: readonly Rail[];
 };
 
 /** Which builder takes the geometry at a world position: the town's cells. */

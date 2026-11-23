@@ -30,6 +30,7 @@ export type EventKind =
   | "county seat"
   | "port"
   | "mill"
+  | "harbour"
   | "present";
 
 export type HistoryEvent = {
@@ -234,6 +235,147 @@ export type Seam = {
   readonly street: number;
 };
 
+/** The quay: the straight line along the old plat, and the stretches of it that have water seaward. */
+export type Quay = {
+  readonly a: Vec;
+  readonly b: Vec;
+  /** The stretches (pieces of the line a to b) where the harbour lies seaward: a wall stands along each, and the made ground is a polygon of its own. */
+  readonly wet: readonly { readonly a: Vec; readonly b: Vec }[];
+  /** The unit vector from the quay out over the water. */
+  readonly seaward: Vec;
+  /**
+   * What the wall is built of: timber cribwork under a timber cap (the quay the port built in its first years, and kept), or steel
+   * sheet piling under a concrete cap (where a fire after 1921 took the waterfront and it was rebuilt in concrete).
+   */
+  readonly wall: "timber" | "sheet";
+};
+
+export type DeckKind = "apron" | "pier" | "wharf" | "shed" | "float" | "gangway";
+
+/**
+ * A deck a person can walk on, standing over the water: an oriented rectangle in the town's frame, and the height of its
+ * top. A flat deck has `top` and `topEnd` equal; a gangway's top is `top` at the end at `-halfAlong` along `axis` and
+ * `topEnd` at the other, and rises or falls evenly between. Heights are the world's (the sea is 0). It is the one list the
+ * walking (`sim/town/decks.ts`) and the drawing (`game/town/pileGeometry.ts`) both read.
+ */
+export type Deck = {
+  readonly id: number;
+  readonly kind: DeckKind;
+  readonly centre: Vec;
+  /** The unit vector along the deck's length. */
+  readonly axis: Vec;
+  readonly halfAlong: number;
+  readonly halfAcross: number;
+  readonly top: number;
+  readonly topEnd: number;
+  /** The building (a pier, a shed) it is the platform of, or null. */
+  readonly building: number | null;
+};
+
+export type BoatKind = "troller" | "gillnetter" | "crabber" | "tug" | "skiff" | "sailboat" | "pleasure";
+/** Working boats are kept and used; a derelict lists, is faded and has lost its gear; a sunk one lies at its mooring with its wheelhouse above water. */
+export type BoatState = "working" | "derelict" | "sunk";
+
+/**
+ * A boat on the water, in the town's frame. Its waterline is the sea's level; `heading` is the unit vector from stern to bow
+ * (made from a grid's bearing, so exact). Boats do not move. `colour` and `name` are indices into the drawing's colour table
+ * and `BOAT_NAMES` (`port/harbour.ts`).
+ */
+export type Boat = {
+  readonly id: number;
+  readonly kind: BoatKind;
+  readonly x: number;
+  readonly z: number;
+  readonly heading: Vec;
+  readonly length: number;
+  readonly beam: number;
+  /** How deep the keel lies under the waterline. */
+  readonly draft: number;
+  readonly state: BoatState;
+  readonly colour: number;
+  readonly name: number;
+  readonly mooring: "slip" | "pier" | "anchor" | "terminal";
+};
+
+/** A berth between two finger floats. */
+export type Slip = { readonly x: number; readonly z: number; readonly heading: Vec; readonly width: number; readonly length: number; readonly boat: number | null };
+
+/** A pile: a post standing in the water from the sea floor to `top` (a height above the sea), leaning by `lean` (metres of top's offset in x, z per metre of height). */
+export type Piling = {
+  readonly x: number;
+  readonly z: number;
+  readonly top: number;
+  readonly lean: Vec;
+  readonly radius: number;
+  readonly kind: "dead" | "dolphin" | "boom";
+};
+
+export type PilingField = { readonly origin: "cannery" | "mill" | "dock"; readonly year: number; readonly piles: readonly Piling[] };
+
+export type FloatingLog = { readonly x: number; readonly z: number; readonly heading: Vec; readonly length: number; readonly radius: number };
+
+/** The mill's water: a pond held by a boom of sticks chained between piles; a working mill floats logs in it, a closed one's lies empty. */
+export type LogPond = {
+  readonly centre: Vec;
+  readonly halfX: number;
+  readonly halfZ: number;
+  readonly working: boolean;
+  /** The boom's sticks: each from one pile to the next (indices into `piles`). */
+  readonly piles: readonly Piling[];
+  readonly logs: readonly FloatingLog[];
+  /** The jack ladder, a ramp from the water up to the mill, ending in a house; null if no place for one was found. */
+  readonly jackLadder: { readonly a: Vec; readonly b: Vec; readonly bottom: number; readonly top: number; readonly width: number } | null;
+};
+
+/** The rusting cone of a wigwam burner on a closed mill's site. */
+export type Burner = { readonly x: number; readonly z: number; readonly radius: number; readonly height: number };
+
+export type CargoKind = "logs" | "grain" | "seafood" | "autos" | "general cargo";
+
+/** Something on the terminal's yard: a deck of logs, a chip pile, a silo, a row of cargo or of parked cars, on compass axes. */
+export type YardItem = {
+  readonly kind: "log stack" | "chip pile" | "silo" | "bulk shed" | "containers" | "cars";
+  readonly x: number;
+  readonly z: number;
+  /** Half extents along x and along z (a cone or a silo's radius is in both). */
+  readonly halfX: number;
+  readonly halfZ: number;
+  readonly height: number;
+  /** A count the drawing uses: logs in the stack's bottom row, containers in a row, cars. */
+  readonly n: number;
+};
+
+export type Barge = { readonly x: number; readonly z: number; readonly heading: Vec; readonly length: number; readonly beam: number; readonly cargo: "logs" | "chips" | "containers" | "vehicles" | "grain" };
+
+export type Terminal = {
+  readonly cargo: CargoKind;
+  /** The history says it stands idle: an empty yard and no barge. */
+  readonly idle: boolean;
+  readonly yard: readonly YardItem[];
+  readonly barge: Barge | null;
+  /** A loading spout at the wharf (grain and chips), at this place. */
+  readonly spout: Vec | null;
+};
+
+export type Light = { readonly kind: "harbour light" | "day beacon" | "pier light"; readonly x: number; readonly z: number; readonly height: number };
+
+/** What a working harbour has, as plan data in the town's frame. The floats and gangways are decks (`plan.decks`). */
+export type Harbour = {
+  readonly boats: readonly Boat[];
+  readonly slips: readonly Slip[];
+  /** The ids of the decks that are main floats, finger floats and gangways. */
+  readonly floats: readonly number[];
+  readonly gangways: readonly number[];
+  readonly pilings: readonly PilingField[];
+  readonly dolphins: readonly Piling[];
+  readonly logPond: LogPond | null;
+  readonly burner: Burner | null;
+  readonly terminal: Terminal | null;
+  readonly lights: readonly Light[];
+  /** The sentences that say what is there, with their years: they join the history's list. */
+  readonly events: readonly HistoryEvent[];
+};
+
 export type Spawn = { readonly x: number; readonly z: number; readonly yaw: number };
 
 export type TownPlan = {
@@ -254,7 +396,11 @@ export type TownPlan = {
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
   readonly fill: readonly { readonly polygon: Poly }[];
   /** The quay: the straight edge of the made ground along the old plat, seaward of it the harbour. */
-  readonly quay: { readonly a: Vec; readonly b: Vec };
+  readonly quay: Quay;
+  /** Every deck a person can walk on over the water: aprons, piers, the wharf, sheds' platforms, floats and gangways. */
+  readonly decks: readonly Deck[];
+  /** The boat basin, boats, pilings, the mill's water, the terminal's yard and barge, and the lights. */
+  readonly harbour: Harbour;
   readonly bounds: { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number };
   readonly counts: {
     readonly plats: number;

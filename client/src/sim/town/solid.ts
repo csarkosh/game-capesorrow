@@ -15,12 +15,14 @@
  * a column from the ground to the sky: nothing here reads the player's height (a jump reaches a metre and a
  * third; every wall is higher, a ruin's the lowest at 2.5 m).
  *
- * Skipped: every building of no lot (`lot === -1`): the piers, and the sheds on piles at the quay. They
- * stand on piles over water, with open space under the deck, so the sea floor under them is not blocked.
+ * Skipped: the piers (kind `pier`): a pier is its deck, which is ground (`decks.ts`), and no wall. The sheds on piles stand
+ * on their decks and are solid like any building. The harbour's rails are held to after the walls, in the same passes.
  *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only, and the cache is only a lookup.
  */
 import { bearingU } from "./bearings.js";
+import { constrainRails } from "./decks.js";
+import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
 
@@ -30,8 +32,7 @@ const max = Math.max;
 const floor = Math.floor;
 const sqrt = Math.sqrt;
 
-/** The player's hull in plan: a circle of this radius, metres (`PLAYER_HALF`'s 0.4). */
-export const HULL_RADIUS = 0.4;
+export { HULL_RADIUS };
 /** The grid's cell, metres. */
 export const SOLID_CELL = 16;
 /** The passes a position gets: a corner of two buildings is settled in two or three, a narrow wedge between two walls in a few more. */
@@ -71,11 +72,16 @@ export function townSolids(worldSeed: number): TownSolids {
   return made;
 }
 
+/** A pier is its deck and no wall; every other building is solid, a shed on piles among them (it stands on its deck). */
+export function isSolid(b: { readonly kind: string }): boolean {
+  return b.kind !== "pier";
+}
+
 function makeSolids(worldSeed: number): TownSolids {
   const { anchor } = siteFor(worldSeed);
   const plan = planFor(worldSeed);
   const ids: number[] = [];
-  for (const b of plan.buildings) if (b.lot !== -1) ids.push(b.id);
+  for (const b of plan.buildings) if (isSolid(b)) ids.push(b.id);
   const n = ids.length;
   const rects = new Float64Array(n * STRIDE);
   const lowX = new Float64Array(n);
@@ -215,13 +221,16 @@ export function townConstrain(world: { readonly forest: { readonly seed: number 
   for (let pass = 0; pass < SOLID_PASSES; pass++) {
     const c = floor((pos.x - solids.x0) / SOLID_CELL);
     const r = floor((pos.z - solids.z0) / SOLID_CELL);
-    if (c < 0 || r < 0 || c >= solids.cols || r >= solids.rows) return;
-    const cell = r * solids.cols + c;
     let moved = false;
-    const end = solids.start[cell + 1] as number;
-    for (let k = solids.start[cell] as number; k < end; k++) {
-      if (pushOut(solids, solids.list[k] as number, pos, vel)) moved = true;
+    if (c >= 0 && r >= 0 && c < solids.cols && r < solids.rows) {
+      const cell = r * solids.cols + c;
+      const end = solids.start[cell + 1] as number;
+      for (let k = solids.start[cell] as number; k < end; k++) {
+        if (pushOut(solids, solids.list[k] as number, pos, vel)) moved = true;
+      }
     }
+    // The harbour's rails, after the walls: a hull on a deck is held to it (`decks.ts`).
+    if (constrainRails(world.forest.seed, pos, vel)) moved = true;
     if (!moved) return;
   }
 }

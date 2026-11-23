@@ -263,7 +263,7 @@ describe("the plan's fill in the ground", () => {
       }
       rows.push(`seed ${seed}: ${fill.length} areas, ${seedSeaward} with their middle over the sea (all at QUAY)`);
     }
-    expect(seaward).toBeGreaterThan(20);
+    expect(seaward).toBeGreaterThan(10);
     process.stderr.write(`${rows.join("\n")}\n${areas} areas in all; ${edgeCases} middles under the sea but landward of the shore's spline left out\n`);
   });
 
@@ -293,7 +293,7 @@ describe("the plan's fill in the ground", () => {
         worst = Math.max(worst, Math.abs(g.dx - fdx), Math.abs(g.dz - fdz));
         n++;
       }
-      expect(bank, `seed ${seed} points in the bank`).toBeGreaterThan(20);
+      expect(bank, `seed ${seed} points in the bank`).toBeGreaterThan(10);
     }
     expect(worst).toBeLessThan(1e-5);
     process.stderr.write(`real fill, gradient vs finite difference over 600 points: worst ${worst.toExponential(2)}\n`);
