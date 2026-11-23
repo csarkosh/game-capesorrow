@@ -447,10 +447,26 @@ export type Spur = {
   readonly radius: number;
   /** Where along it it serves: the mill, the quay (and its depot), the public port's terminal, in the order it reaches them. */
   readonly serves: readonly ("mill" | "quay" | "terminal")[];
+  /** The stretches of it that cross open water (indices of the first and last point, inclusive): they are carried on a trestle. */
+  readonly wet: readonly { readonly from: number; readonly to: number }[];
 };
 
-/** A street crossing the railroad's main line at grade: where, and which street (an index into `plan.streets`). */
-export type RailCrossing = { readonly x: number; readonly z: number; readonly street: number };
+/**
+ * A way crossing the railroad's main line at grade, in the town's frame: where (on the line's centre), which street (`road` false: an
+ * index into `plan.streets`) or road out (`road` true: its id), the way's unit direction there (running seaward, so `dx` is not
+ * positive), its roadway and whole right of way, and whether it is paved. The drawing (`railCrossings.ts`) reads these.
+ */
+export type RailCrossing = {
+  readonly x: number;
+  readonly z: number;
+  readonly way: number;
+  readonly road: boolean;
+  readonly dx: number;
+  readonly dz: number;
+  readonly roadway: number;
+  readonly width: number;
+  readonly paved: boolean;
+};
 
 /** What the plan says of the railroad (the main line itself, `rail.ts`, is the world's): the streets that cross it and the town's own spur. */
 export type TownRail = {

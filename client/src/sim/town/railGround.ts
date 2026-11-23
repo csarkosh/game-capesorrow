@@ -24,18 +24,13 @@ import { roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { corridorD } from "@csarkosh/engine/sim/road";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { RAIL_BED_HALF, RAIL_OFFSET } from "./rail.js";
+import { RAIL_BANK_EXTRA, RAIL_BANK_MIN, RAIL_BANK_SLOPE, RAIL_BENCH_HALF, RAIL_SHOULDER, bankWidthD } from "./railBank.js";
 import { SPAN_TUNABLES, trestleWeightAt } from "./railSpans.js";
 
-/** The bench's flat shoulder beyond the ballast, metres: the bench is `RAIL_BENCH_HALF` wide each side of the centre. */
-export const RAIL_SHOULDER = 0.75;
-export const RAIL_BENCH_HALF = RAIL_BED_HALF + RAIL_SHOULDER;
-/** The bank's width on level ground, metres. */
-export const RAIL_BANK_MIN = 2;
-/** The bank's metres of width for each metre the grade line stands off the land (saturating), and the most it adds. */
-export const RAIL_BANK_SLOPE = 5;
-export const RAIL_BANK_EXTRA = 28;
 /** Beyond this offset from the line's centre the bed has no say: the widest the bench and its bank can be. */
 export const RAIL_REACH = RAIL_BENCH_HALF + RAIL_BANK_MIN + RAIL_BANK_EXTRA + 0.5;
+
+export { RAIL_BANK_EXTRA, RAIL_BANK_MIN, RAIL_BANK_SLOPE, RAIL_BENCH_HALF, RAIL_SHOULDER };
 
 /** What the bed declares of itself for the level id: every constant that shapes the ground it lays. */
 export const RAIL_TUNABLES: Readonly<Record<string, number>> = {
@@ -48,16 +43,6 @@ export const RAIL_TUNABLES: Readonly<Record<string, number>> = {
   RAIL_GROUND: 1,
   ...SPAN_TUNABLES,
 };
-
-/** The bank's width and its slope in the mismatch `m`: `BANK_MIN + saturate(SLOPE (sqrt(m^2 + 1) - 1))`. */
-function bankWidthD(m: number): { v: number; dm: number } {
-  const s = Math.sqrt(m * m + 1);
-  const q = RAIL_BANK_SLOPE * (s - 1);
-  const dq = (RAIL_BANK_SLOPE * m) / s;
-  const L = RAIL_BANK_EXTRA;
-  const den = L + q;
-  return { v: RAIL_BANK_MIN + (L * q) / den, dm: ((L * L) / (den * den)) * dq };
-}
 
 /**
  * The bed's weight at a point of offset `u` from the highway's centre (the line stands `RAIL_OFFSET` seaward of it), 1 on the

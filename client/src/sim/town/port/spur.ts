@@ -6,8 +6,9 @@
  */
 import { dist, type Vec } from "../geom.js";
 
-/** The tightest radius a spur's curve has, metres (a short-line railroad's practical least). */
+/** The radius the spur's corners are rounded with, and the least any bend of it may have (a short-line railroad's practical least), metres. */
 export const SPUR_RADIUS = 85;
+export const SPUR_MIN_RADIUS = 65;
 /** An arc is sampled by bisecting this many times: 2^n + 1 points. */
 const ARC_BISECTIONS = 3;
 /** A corner turning less than this (the cosine of its angle) is left as it is. */
@@ -100,3 +101,79 @@ export function leastRadius(points: readonly Vec[]): number {
   }
   return least;
 }
+
+/**
+ * The runs of a polyline's points for which `wet` holds, each widened by one point either side where `widen` holds for it (so the trestle's ends stand on the ground
+ * the track comes from, and not on a pier's deck), as indices of the first and last point inclusive; runs that touch are one.
+ */
+export function wetRuns(points: readonly Vec[], wet: (p: Vec) => boolean, widen: (p: Vec) => boolean = () => true): { from: number; to: number }[] {
+  const out: { from: number; to: number }[] = [];
+  let start = -1;
+  for (let i = 0; i <= points.length; i++) {
+    const w = i < points.length && wet(points[i] as Vec);
+    if (w && start < 0) start = i;
+    if (!w && start >= 0) {
+      const from = start > 0 && widen(points[start - 1] as Vec) ? start - 1 : start;
+      const to = i < points.length && widen(points[i] as Vec) ? i : i - 1;
+      const last = out[out.length - 1];
+      if (last !== undefined && from <= last.to) last.to = to;
+      else out.push({ from, to });
+      start = -1;
+    }
+  }
+  return out;
+}
+
+/** The polyline with points added along its long legs so that no two are more than `step` metres apart (every point of the original is kept). */
+export function densify(points: readonly Vec[], step: number): Vec[] {
+  const out: Vec[] = [points[0] as Vec];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as Vec;
+    const b = points[i] as Vec;
+    const n = Math.max(1, -Math.floor(-dist(a, b) / step));
+    for (let k = 1; k <= n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / n, z: a.z + ((b.z - a.z) * k) / n });
+  }
+  return out;
+}
+
+/** The circumradius of three points (Infinity where they lie on a line). */
+function circum(a: Vec, b: Vec, c: Vec): number {
+  const cross = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x));
+  if (cross < 1e-9) return Infinity;
+  return (dist(a, b) * dist(b, c) * dist(c, a)) / (2 * cross);
+}
+
+/**
+ * A polyline whose every bend has a radius of at least `minRadius`: where the points still turn tighter (a corner the arcs could not round, the
+ * legs being too short) each such point and its neighbours are drawn toward the average of theirs, pass after pass, until none does (or
+ * `SPUR_SMOOTH_PASSES` passes are spent). The first `keepStart` points and the last are held, so the turnout's tangent and the end stand.
+ */
+export function relaxed(points: readonly Vec[], minRadius: number, keepStart: number): Vec[] {
+  let cur = points.map((p) => ({ x: p.x, z: p.z }));
+  for (let pass = 0; pass < SPUR_SMOOTH_PASSES; pass++) {
+    const tight: boolean[] = cur.map(() => false);
+    let any = false;
+    for (let i = 1; i < cur.length - 1; i++) {
+      if (circum(cur[i - 1] as Vec, cur[i] as Vec, cur[i + 1] as Vec) < minRadius) {
+        any = true;
+        tight[i - 1] = true;
+        tight[i] = true;
+        tight[i + 1] = true;
+      }
+    }
+    if (!any) break;
+    const next = cur.map((p) => ({ x: p.x, z: p.z }));
+    for (let i = keepStart; i < cur.length - 1; i++) {
+      if (!tight[i]) continue;
+      const a = cur[i - 1] as Vec;
+      const b = cur[i] as Vec;
+      const c = cur[i + 1] as Vec;
+      next[i] = { x: 0.5 * b.x + 0.25 * (a.x + c.x), z: 0.5 * b.z + 0.25 * (a.z + c.z) };
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+/** The most passes of `relaxed`. */
+export const SPUR_SMOOTH_PASSES = 3000;

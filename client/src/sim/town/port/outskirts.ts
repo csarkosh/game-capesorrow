@@ -235,7 +235,8 @@ export function planOutskirts(input: OutskirtsInput, rng: Rng): OutskirtsOut {
       if (z > zEdge || z < zFar) break;
       const left = 1 - off / OUT_REACH;
       const p = OUT_P0 * left * Math.sqrt(Math.sqrt(left));
-      for (const side of ["east", "west"] as const) {
+      // Only the highway's inland side: a lot on the sea's side would have to reach the highway across the railroad's line, and the plan records its crossings only for streets and roads.
+      for (const side of ["east"] as const) {
         if (!chance(rng, p)) continue;
         const near = off;
         const key = choose(near, false, gas, motel);

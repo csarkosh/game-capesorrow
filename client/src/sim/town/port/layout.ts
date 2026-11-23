@@ -32,6 +32,7 @@ import {
   orient,
   overlapDepth,
   segCross,
+  segDist,
   segSegDist,
   simplifyTo,
   toLocal,
@@ -44,11 +45,13 @@ import { ordinal, type TownNames } from "../names.js";
 import { chance, int, pick, range, type Rng } from "../rng.js";
 import { groundUnder, gradedHeight, landOf, buildableAt, LAND_FIT, type Land } from "../land.js";
 import { RAIL_CORRIDOR_HALF, RAIL_OFFSET } from "../rail.js";
+import { RAIL_BENCH_HALF, bankWidthD } from "../railBank.js";
+import { QUAY_HEIGHT } from "../levels.js";
 import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
 import { ALLEY_WIDTH, wayOf } from "../ways.js";
 import { pruneStreets } from "./ends.js";
-import { roundedPath, leastRadius } from "./spur.js";
+import { densify, relaxed, roundedPath, leastRadius, SPUR_MIN_RADIUS } from "./spur.js";
 import { splitAtStairs } from "./stairs.js";
 import { GROW_MAX_SLOPE, GROW_MIN_SHARE, blockBudget, eligible, grow, neighbours, type GrowCell } from "./growth.js";
 import type { Block, District, History, Plat, Quay, Seam, Spur, Street, StreetKind, Woods } from "../types.js";
@@ -61,7 +64,31 @@ const Z_HALF_MAX = 480;
 /** The compass plat is laid over the land this far north and south of the anchor, and the town takes only the blocks the land and the budget allow. */
 const Z_REACH = 600;
 /** Blocks keep this far clear of the highway's centre line on its seaward side: the rail's offset and half its corridor, and 3 m of margin. */
+/** The spur leaves the main line where it stands no higher than this over the sea, metres. */
+const JUNCTION_HEIGHT = 4.5;
+/** The spur's points are at most this far apart, metres. */
+const SPUR_POINT_STEP = 8;
+/** ... and where the main line stands higher than this at both ends within 800 m of the town (it climbs a headland there), the town has no spur: a train cannot come down to the shore strip. */
+const JUNCTION_HEIGHT_MAX = 10;
 const RAIL_CLEAR = RAIL_OFFSET + RAIL_CORRIDOR_HALF + 3;
+
+/**
+ * How far from the highway's centre line, seaward, blocks keep clear at a z: the main line's bench and the bank the ground makes down to the town's
+ * (`railBank.ts`; the bank's width grows with how far the grade line stands over the made ground at the line, which the plane makes `QUAY_HEIGHT`
+ * at the water and the grade line at the highway), and 1.5 m more; never under `RAIL_CLEAR`.
+ */
+export function railClear(site: TownSite, z: number): number {
+  if (site.grade === undefined) return RAIL_CLEAR;
+  const f = Math.max(0, Math.min(site.grade.length - 1, (z - site.z0) / site.step));
+  const i = Math.min(site.grade.length - 2, Math.floor(f));
+  const g = (site.grade[i] as number) + ((site.grade[i + 1] as number) - (site.grade[i] as number)) * (f - i);
+  const d = roadAt(site, z) - shoreAt(site, z);
+  if (!(d > 20)) return RAIL_CLEAR;
+  const m = ((g - QUAY_HEIGHT) * RAIL_OFFSET) / d;
+  return Math.max(RAIL_CLEAR, RAIL_OFFSET + RAIL_BENCH_HALF + bankWidthD(m < 0 ? -m : m).v + 1.5);
+}
+/** A street cut back from the railroad's corridor is dropped if under this long, metres. */
+const LEAST_STREET = 8;
 const MIN_BLOCK_AREA = 900;
 const MIN_BLOCK_WIDTH = 16;
 /** The rail's corridor on the quay, seaward of the old plat's quay street. */
@@ -232,7 +259,9 @@ function aroundHighway(site: TownSite, poly: Poly): { poly: Poly; east: boolean 
   }
   const m = HIGHWAY_WIDTH / 2 + dev + 3;
   // On the seaward side the main line's corridor lies between the blocks and the highway: they keep clear of it too.
-  const mW = RAIL_CLEAR + dev;
+  let clear = RAIL_CLEAR;
+  for (let z = zlo; z <= zhi + 8; z += 16) clear = Math.max(clear, railClear(site, Math.min(z, zhi)));
+  const mW = clear + dev;
   if (bb.x1 < Math.min(xlo, xhi) - mW) return [{ poly, east: false }];
   if (bb.x0 > Math.max(xlo, xhi) + m) return [{ poly, east: true }];
   let nx = 1;
@@ -683,7 +712,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
   const oldGone = (p: Vec): boolean => contains(oldExcl, p, -0.05);
   const hwBand = (p: Vec, hw: number): boolean => {
     const off = p.x - roadAt(site, p.z);
-    return off < HIGHWAY_WIDTH / 2 + hw + 2 && off > -(RAIL_CLEAR + hw);
+    return off < HIGHWAY_WIDTH / 2 + hw + 2 && off > -(railClear(site, p.z) + hw);
   };
   const westX = (z: number): number => {
     // The knots' polyline, extended flat beyond its ends.
@@ -770,6 +799,49 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     const kept = pruneStreets(raw, [...oldPieces.map((p) => p.poly), ...comp.pieces.map((p) => p.poly)]);
     raw.length = 0;
     raw.push(...kept);
+  }
+
+  // A street that ends inside the railroad's corridor (it reaches the line and stops: the old plat's back street, or a cross street ending on it) is cut back to the corridor's edge: a street meets the line only by crossing it.
+  {
+    const corridor = RAIL_CORRIDOR_HALF + 1;
+    const offOf = (q: Vec): number => Math.abs(q.x - (roadAt(site, q.z) - RAIL_OFFSET));
+    const trimmed: RawStreet[] = [];
+    for (const st of raw) {
+      if (st.kind === "highway" || st.kind === "wharf" || st.kind === "rail") {
+        trimmed.push(st);
+        continue;
+      }
+      const len = dist(st.a, st.b);
+      const n = Math.max(2, -Math.floor(-len / 1));
+      const inside = (k: number): boolean => offOf(lerpVec(st.a, st.b, k / n)) <= corridor;
+      let lo = 0;
+      let hi = n;
+      // From each end inward while inside the corridor; a street that crosses has the corridor's middle inside, not an end.
+      while (lo < n && inside(lo) && inside(lo + 1) && lo < hi) lo++;
+      while (hi > 0 && inside(hi) && inside(hi - 1) && hi > lo) hi--;
+      const endsOutside = !inside(0) && !inside(n);
+      if (endsOutside) {
+        trimmed.push(st);
+        continue;
+      }
+      // Cut back to the corridor's edge, unless the street can run on across it to the highway (it then crosses the line, and the plan records the crossing).
+      let a = lerpVec(st.a, st.b, lo / n);
+      let b = lerpVec(st.a, st.b, hi / n);
+      /** Where the street's line, run on from `end` away from `other`, meets the highway's centre within 70 m, or null. */
+      const reachTo = (end: Vec, other: Vec): Vec | null => {
+        const d = dist(end, other);
+        if (!(d > 1e-6)) return null;
+        const far = { x: end.x + ((end.x - other.x) / d) * 70, z: end.z + ((end.z - other.z) / d) * 70 };
+        const ts = highwayCrossings(site, end, far);
+        return ts.length > 0 ? lerpVec(end, far, ts[0] as number) : null;
+      };
+      if (inside(n) && !inside(0)) b = reachTo(st.b, st.a) ?? b;
+      if (inside(0) && !inside(n)) a = reachTo(st.a, st.b) ?? a;
+      if (dist(a, b) < LEAST_STREET) continue;
+      trimmed.push({ ...st, a, b });
+    }
+    raw.length = 0;
+    raw.push(...trimmed);
   }
 
   // A street that would climb more than 15 percent is a public stair there (`stairs.ts`).
@@ -952,20 +1024,55 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     const back: Vec[] = [];
     for (const k of knots) if (k.z > qHigh.z + 25 && k.z < zHi + 40) back.push({ x: k.x - shoreMargin / 2, z: k.z });
     const line: Vec[] = [...front, qLow, qHigh, ...back];
-    const fromNorth = history.millSide === "north";
+    // The spur leaves the main line where the line stands low enough to come down to the shore strip at a railroad's grade: beyond the end of the town on the mill's side if
+    // the line is no higher than `JUNCTION_HEIGHT` there within reach, else on the other side's (and then it serves the terminal first).
+    const zMax = site.z0 + (site.shoreX.length - 1) * site.step - 40;
+    const zMin = site.z0 + 40;
+    const lineHeight = (z: number): number => {
+      if (site.grade === undefined) return 0;
+      const f = Math.max(0, Math.min(site.grade.length - 1, (z - site.z0) / site.step));
+      const i = Math.min(site.grade.length - 2, Math.floor(f));
+      return (site.grade[i] as number) + ((site.grade[i + 1] as number) - (site.grade[i] as number)) * (f - i);
+    };
+    const bestJunction = (north: boolean): { z: number; h: number } => {
+      const sign = north ? 1 : -1;
+      const from = (north ? ordered0(true) : ordered0(false)).z;
+      let best = { z: clamp(from + sign * 220, zMin, zMax), h: Infinity };
+      for (let d = 80; d <= 800; d += 16) {
+        const z = clamp(from + sign * d, zMin, zMax);
+        const h = lineHeight(z);
+        if (h <= JUNCTION_HEIGHT) return { z, h };
+        if (h < best.h) best = { z, h };
+      }
+      return best;
+    };
+    const ordered0 = (north: boolean): Vec => (north ? (line[line.length - 1] as Vec) : (line[0] as Vec));
+    const millNorth = history.millSide === "north";
+    let fromNorth = millNorth;
+    let pick = bestJunction(fromNorth);
+    if (pick.h > JUNCTION_HEIGHT) {
+      const other = bestJunction(!fromNorth);
+      if (other.h < pick.h) {
+        fromNorth = !fromNorth;
+        pick = other;
+      }
+    }
+    if (pick.h <= JUNCTION_HEIGHT_MAX) {
     const ordered = fromNorth ? line.slice().reverse() : line;
     const end = ordered[0] as Vec;
     const sign = fromNorth ? 1 : -1;
-    const zJ = clamp(end.z + sign * 220, site.z0 + 40, site.z0 + (site.shoreX.length - 1) * site.step - 40);
+    const zJ = pick.z;
     const mainAt = (z: number): Vec => ({ x: roadAt(site, z) - RAIL_OFFSET, z });
     const junction = mainAt(zJ);
     const beyond = mainAt(clamp(zJ + sign * 60, site.z0 + 8, site.z0 + (site.shoreX.length - 1) * site.step - 8));
     const way: Vec[] = [beyond, junction, ...ordered];
-    const points = roundedPath(way);
+    const points = relaxed(densify(roundedPath(way), SPUR_POINT_STEP), SPUR_MIN_RADIUS, 4);
     // The spur starts on the main line: its first point is the junction.
     const trimmed = points.slice(1);
-    // It comes in on the mill's side, so it serves the mill first, then the quay, then the terminal.
-    spurs.push({ id: 0, name: `${names.railroad} spur`, points: trimmed, radius: leastRadius(trimmed), serves: ["mill", "quay", "terminal"] });
+    // It serves first what lies on the side it comes in from: the mill if that is the mill's side, else the terminal.
+    const serves: ("mill" | "quay" | "terminal")[] = fromNorth === millNorth ? ["mill", "quay", "terminal"] : ["terminal", "quay", "mill"];
+    spurs.push({ id: 0, name: `${names.railroad} spur`, points: trimmed, radius: leastRadius(trimmed), serves, wet: [] });
+    }
   }
 
   // ---- The plats as records, and the seam: where the old plat's edge meets the company's blocks.

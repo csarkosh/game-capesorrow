@@ -8,7 +8,7 @@
  * Everything here is the simulation's arithmetic: the shore is found by a scan and then a fixed
  * number of bisection steps, so every machine finds the same bits.
  */
-import { SEA_LEVEL, COVE_Z, coastGround, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { SEA_LEVEL, COVE_Z, coastGround, roadCenterX, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { whileReadingSite } from "./reading.js";
 import type { GroundGrid, TownSite } from "./site.js";
 
@@ -87,13 +87,15 @@ function readSiteNow(worldSeed: number): TownSite {
   const z0 = -SITE_HALF;
   const shoreX: number[] = [];
   const roadX: number[] = [];
+  const grade: number[] = [];
   for (let i = 0; i < SITE_SAMPLES; i++) {
     const z = anchor.z + z0 + i * SITE_STEP;
     const road = roadCenterX(worldSeed, z);
     roadX.push(road - anchor.x);
+    grade.push(roadGradeAt(worldSeed, z).h);
     shoreX.push(shoreAt(worldSeed, road, z) - anchor.x);
   }
-  return { seed: townSeedOf(worldSeed), anchor, step: SITE_STEP, z0, shoreX, roadX, inland: SITE_INLAND, ground: readGround(worldSeed, anchor) };
+  return { seed: townSeedOf(worldSeed), anchor, step: SITE_STEP, z0, shoreX, roadX, grade, inland: SITE_INLAND, ground: readGround(worldSeed, anchor) };
 }
 
 const SITES = new Map<number, TownSite>();

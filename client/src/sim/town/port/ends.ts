@@ -20,7 +20,7 @@ export const PAST_LAST_LOT = 4;
 /** An intersection counts where a block corner lies within the two streets' half widths and this much, metres. */
 const JUNCTION_REACH = 10;
 /** A street that crosses the highway stays to it where a block stands this much further off: the main line's corridor lies between the blocks and the highway on the seaward side, metres. */
-const HIGHWAY_APPROACH = 24;
+const HIGHWAY_APPROACH = 60;
 /** The least a street may be left, metres. */
 const LEAST = 8;
 /** Ends this near the water are landings, metres. */

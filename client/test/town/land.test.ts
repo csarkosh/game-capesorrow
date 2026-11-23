@@ -129,14 +129,39 @@ describe("the town grown over the land, over forty world seeds", () => {
     let total = 0;
     for (const { seed, site, plan } of towns) {
       for (const c of plan.rail.crossings) {
-        const st = plan.streets[c.street]!;
-        expect(["highway", "wharf", "alley", "rail"]).not.toContain(st.kind);
-        expect(segDist(c, st.a, st.b), `seed ${seed}`).toBeLessThan(0.01);
+        if (c.road) {
+          const r = plan.roads[c.way]!;
+          let near = Infinity;
+          for (let i = 1; i < r.points.length; i++) near = Math.min(near, segDist(c, r.points[i - 1]!, r.points[i]!));
+          expect(near, `seed ${seed}`).toBeLessThan(0.01);
+        } else {
+          const st = plan.streets[c.way]!;
+          expect(["highway", "wharf", "alley", "rail"]).not.toContain(st.kind);
+          expect(segDist(c, st.a, st.b), `seed ${seed}`).toBeLessThan(0.01);
+        }
         expect(Math.abs(c.x - (roadAt(site, c.z) - RAIL_OFFSET)), `seed ${seed}`).toBeLessThan(0.1);
         total++;
       }
     }
     expect(total).toBeGreaterThan(200);
+  });
+
+  it("keeps every street and road out clear of the main line's corridor but at a recorded crossing", () => {
+    for (const { seed, site, plan } of towns) {
+      const off = (p: Vec): number => Math.abs(p.x - (roadAt(site, p.z) - RAIL_OFFSET));
+      // A street's end may stand in the corridor where it meets another street that crosses the line there (a T on the crossing): so any recorded crossing within 40 m will do.
+      const near = (p: Vec): boolean => plan.rail.crossings.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 40);
+      for (const st of plan.streets) {
+        if (st.kind === "highway" || st.kind === "wharf" || st.kind === "rail") continue;
+        for (let t = 0; t <= 1; t += 1 / Math.max(2, Math.floor(Math.hypot(st.b.x - st.a.x, st.b.z - st.a.z) / 3))) {
+          const p = { x: st.a.x + (st.b.x - st.a.x) * t, z: st.a.z + (st.b.z - st.a.z) * t };
+          if (off(p) <= RAIL_CORRIDOR_HALF) expect(near(p), `seed ${seed} street ${st.id} (${st.name}) in the corridor away from a crossing`).toBe(true);
+        }
+      }
+      for (const r of plan.roads) {
+        for (const p of r.points) if (off(p) <= RAIL_CORRIDOR_HALF) expect(near(p), `seed ${seed} road ${r.id} in the corridor away from a crossing`).toBe(true);
+      }
+    }
   });
 
   it("leaves no street steeper than 15 percent over 16 m on the coast's own ground: where it would be, it is a stair", () => {
