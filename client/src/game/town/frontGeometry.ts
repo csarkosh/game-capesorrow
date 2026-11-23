@@ -266,7 +266,7 @@ export function planFront(i: FrontIn): FrontPlan {
       wbox(out, w, 0, w.length, top - 0.28, top - 0.08, 0, 0.14, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true);
       if (shape === 1) wbox(out, w, 0, w.length, top - 0.55, top - 0.4, 0, 0.07, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true);
       if (shape === 2) for (let s = 0.2; s < w.length - 0.2; s += 0.4) wbox(out, w, s, s + 0.2, top - 0.42, top - 0.28, 0, 0.1, scaled(i.wall, 1.15), scaled(i.wall, 1.2), true);
-      wbox(out, w, -0.04, w.length + 0.04, top - 0.08, top + 0.02, 0, 0.2, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
+      wbox(out, w, -0.1, w.length + 0.1, top - 0.08, top + 0.03, 0, 0.2, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
     }
   });
 

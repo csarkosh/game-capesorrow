@@ -105,8 +105,8 @@ export function curtainFolds(b: Behind, sa: number, sb: number, top: number, bot
     const a = sa + ((sb - sa) * i) / n;
     const c = sa + ((sb - sa) * (i + 1)) / n;
     const k = style === 0 ? 1 : style === 1 ? (i % 2 === 0 ? 0.75 : 1.08) : i % 4 < 2 ? 0.8 : 1.15;
-    // Alternate folds stand a little out, between the layers' steps (they do not overlap: each strip is its own span).
-    const o = at(b, layer) - (style === 1 && i % 2 === 0 ? 0.012 : 0);
+    // The strips are side by side in one plane (each its own span, two tones): none stands out of it, so none is within 2 cm of what lies over or under it.
+    const o = at(b, layer);
     out.poly([wat(w, a, bottom, o), wat(w, c, bottom, o), wat(w, c, top, o), wat(w, a, top, o)], [w.nx, 0, w.nz], scaled(col, k), undefined, { glow });
   }
 }

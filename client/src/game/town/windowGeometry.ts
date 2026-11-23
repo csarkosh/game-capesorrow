@@ -85,7 +85,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
       const shade = 0.82 + hash01(seed + i, 402) * 0.3;
       const a = sa + (width * i) / n + 0.01;
       const b = sa + (width * (i + 1)) / n - 0.01;
-      wquad(out, w, a, y0, b, y1, 0.02, scaled(PLYWOOD, shade), { layer: "plywood", frame: c.surface(w).frame, tint: [shade * 2.4, shade * 2.4, shade * 2.4], wear: 0.18, wearKind: "peel" });
+      wquad(out, w, a, y0, b, y1, 0.06, scaled(PLYWOOD, shade), { layer: "plywood", frame: c.surface(w).frame, tint: [shade * 2.4, shade * 2.4, shade * 2.4], wear: 0.18, wearKind: "peel" });
     }
     return;
   }
@@ -109,8 +109,8 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
         out.poly([wat(w, sa - 0.1, y0, 0), wat(w, sb + 0.1, y0, 0), wat(w, sb + 0.1, y0, 0.1), wat(w, sa - 0.1, y0, 0.1)], [0, 1, 0], c.trim);
       }
     } else {
-      wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.03, fr);
-      wquad(out, w, sa - 0.03, y0 - 0.03, sb + 0.03, y0, 0.03, fr);
+      wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.06, fr);
+      wquad(out, w, sa - 0.03, y0 - 0.03, sb + 0.03, y0, 0.06, fr);
     }
   }
   const behind: Behind = { out, w, detail, seed, glass: gOff, lit: look.lit === true };
@@ -183,16 +183,21 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     else if (x < 0.11 && c.era >= 1950 && width <= 1.2) acUnit(out, w, (sa + sb) / 2, y0, Math.min(0.55, width - 0.15), seed);
     else if (x < 0.14 && lampOn) boxFan(behind, (sa + sb) / 2, y0, Math.min(0.5, width - 0.2), seed);
   }
-  // On the sill.
   if (shop) return;
+  // On the sill, behind the glass: a pot and a lamp stand a hand behind the pane (their near faces well clear of it), their leaves apart.
   if (sill === "plant") {
     const s = (sa + sb) / 2 + (hash01(seed, 418) - 0.5) * width * 0.4;
-    const p = wat(w, s, y0, gOff - STEP * 2);
+    const p = wat(w, s, y0, gOff - 0.2);
     out.cylinder(p[0], p[2], y0, 0.07, 0.13, 6, [0.5, 0.25, 0.15], [0.2, 0.12, 0.08]);
-    for (let k = 0; k < 4; k++) out.cylinder(p[0] + (hash01(seed + k, 419) - 0.5) * 0.08, p[2] + (hash01(seed + k, 420) - 0.5) * 0.08, y0 + 0.12, 0.05 + hash01(seed + k, 421) * 0.03, 0.14 + k * 0.06, 5, [0.12, 0.3, 0.1], [0.2, 0.42, 0.14], 0.012);
+    // Four leaves at the corners of a square, each narrower than the gap between them, so no two stand through one another.
+    const corners: readonly (readonly [number, number])[] = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    corners.forEach(([cu, cv], k) => {
+      const q = wat(w, s + cu * 0.045, y0, gOff - 0.2 - cv * 0.045);
+      out.cylinder(q[0], q[2], y0 + 0.12, 0.03 + hash01(seed + k, 421) * 0.012, 0.14 + k * 0.06, 5, [0.12, 0.3, 0.1], [0.2, 0.42, 0.14], 0.012);
+    });
   } else if (sill === "lamp") {
     const s = (sa + sb) / 2 + (hash01(seed, 422) - 0.5) * width * 0.4;
-    const p = wat(w, s, y0, gOff - STEP * 2);
+    const p = wat(w, s, y0, gOff - 0.2);
     out.cylinder(p[0], p[2], y0, 0.04, 0.2, 5, [0.4, 0.3, 0.2], [0.4, 0.3, 0.2]);
     out.cylinder(p[0], p[2], y0 + 0.18, 0.11, 0.16, 6, [1, 0.85, 0.55], [1, 0.9, 0.6], 0.07);
   }
