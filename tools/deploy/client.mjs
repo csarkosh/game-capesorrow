@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs';
 import { parseDeployArgs, USAGE } from './lib/args.mjs';
 import { sitePathOf } from './lib/buildEnv.mjs';
 import { buildClient } from './lib/buildClient.mjs';
+import { lfsPointersUnder } from './lib/lfsPointers.mjs';
 import { fail, production, requireCommand, requireGcloudProject, runLoud, treeIsDirty } from './lib/preconditions.mjs';
 import { deployRefusal, SITE_TOOL, SITE_TOOL_MISSING, siteDeployArgs } from './lib/siteDeploy.mjs';
 
@@ -32,6 +33,12 @@ if (refusal !== null) fail(refusal);
 
 // Before the build, which takes a while: the tool that ships it must be there.
 if (!existsSync(SITE_TOOL)) fail(SITE_TOOL_MISSING);
+
+// The textures are Git LFS objects. Unfetched, the build would ship their pointer files as if they were images.
+if (existsSync('client/assets')) {
+  const pointers = lfsPointersUnder('client/assets');
+  if (pointers.length > 0) fail(`${pointers.length} file(s) under client/assets are Git LFS pointers, not the files (the first: ${pointers[0]}). Run: git lfs install && git lfs pull`);
+}
 
 console.log(`→ site      ${prod.hosting_site_id} (project ${prod.gcp_project_id}), path ${sitePathOf(prod.site_url)}`);
 if (channel !== null) console.log(`→ channel   ${channel}`);
