@@ -426,7 +426,8 @@ export function displayWindow(out: MeshBuilder, xf: Xf, floorY: number, sa: numb
   const quad = (s0: number, s1: number, y0: number, y1: number, d: number, col: Rgb): void => {
     out.poly([xp(xf, s0, d, floorY + y0), xp(xf, s1, d, floorY + y0), xp(xf, s1, d, floorY + y1), xp(xf, s0, d, floorY + y1)], xd(xf, 0, -1), col, undefined, { glow: c.glow });
   };
-  quad(sa, sb, sill, head - 0.15, 0.9, back);
+  // A backdrop behind the goods, half the glass high: the room shows over it.
+  quad(sa, sb, sill, sill + (head - sill) * 0.55, 0.9, scaled(back, 0.8));
   if (detail === "low") return;
   const mid = (sa + sb) / 2;
   const n = Math.max(2, Math.floor((sb - sa) / 0.45));

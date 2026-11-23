@@ -87,9 +87,9 @@ describe("a commercial front is drawn from its units", () => {
         const f = use.frame!;
         const built = build(seed, b);
         for (const r of built.report.rooms) {
-          // A hair of tolerance for a tilted box's corner and a skewed furnishing's.
-          expect(r.extent.s0).toBeGreaterThan(-0.05);
-          expect(r.extent.s1).toBeLessThan(f.width + 0.05);
+          // A hand of tolerance: a counter top overhangs its body by 5 cm, a box turned on a skew has corners past its centre line.
+          expect(r.extent.s0).toBeGreaterThan(-0.1);
+          expect(r.extent.s1).toBeLessThan(f.width + 0.1);
           expect(r.extent.d0).toBeGreaterThan(-0.1);
           expect(r.extent.d1).toBeLessThan(f.depth + 0.05);
           expect(r.extent.y1 - r.extent.y0).toBeLessThan(6);
