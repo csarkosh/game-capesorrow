@@ -15,27 +15,31 @@ export type PropSinks = { readonly solid: Sink; readonly glass: Sink; readonly f
 
 export function* propsGeometry(g: TownGround, sinks: PropSinks, detail: Detail, slice: () => boolean): Generator<void, void, void> {
   const p = g.plan.props;
+  // The builders name a place in the plan's frame (a prop's own); the cells are the world's.
+  const ax = g.anchor.x;
+  const az = g.anchor.z;
+  const world: PropSinks = { solid: (x, z) => sinks.solid(x + ax, z + az), glass: (x, z) => sinks.glass(x + ax, z + az), flat: (x, z) => sinks.flat(x + ax, z + az) };
   for (const v of p.vehicles) {
-    vehicleGeometry(g, sinks, v, detail);
+    vehicleGeometry(g, world, v, detail);
     if (slice()) yield;
   }
   for (const t of p.trailers) {
-    trailerGeometry(g, sinks, t, detail);
+    trailerGeometry(g, world, t, detail);
     if (slice()) yield;
   }
   for (const pole of p.poles) {
     const next = pole.next >= 0 ? (p.poles[pole.next] ?? null) : null;
-    poleGeometry(g, sinks.solid, pole, next, detail);
-    if (next !== null) wireGeometry(g, sinks.solid, pole, next, detail);
+    poleGeometry(g, world.solid, pole, next, detail);
+    if (next !== null) wireGeometry(g, world.solid, pole, next, detail);
     if (slice()) yield;
   }
-  for (const d of p.drops) dropGeometry(g, sinks.solid, d, p.poles[d.pole]!, detail);
+  for (const d of p.drops) dropGeometry(g, world.solid, d, p.poles[d.pole]!, detail);
   yield;
   for (const f of p.fences) {
     fenceGeometry(g, sinks, f, detail);
     if (slice()) yield;
   }
-  for (const b of p.bins) binGeometry(g, sinks.solid, b, detail);
-  for (const mb of p.mailboxes) mailboxGeometry(g, sinks.solid, mb, detail);
-  for (const o of p.gear) gearGeometry(g, sinks.solid, o, detail);
+  for (const b of p.bins) binGeometry(g, world.solid, b, detail);
+  for (const mb of p.mailboxes) mailboxGeometry(g, world.solid, mb, detail);
+  for (const o of p.gear) gearGeometry(g, world.solid, o, detail);
 }

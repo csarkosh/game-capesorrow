@@ -324,9 +324,11 @@ export class MeshBuilder {
       for (let j = 0; j < nc; j++) {
         const p = (rows[i] as readonly Vec3[])[j] as Vec3;
         const k = (i * nc + j) * 3;
-        const l = Math.sqrt((nor[k] as number) * (nor[k] as number) + (nor[k + 1] as number) * (nor[k + 1] as number) + (nor[k + 2] as number) * (nor[k + 2] as number)) || 1;
+        const l = Math.sqrt((nor[k] as number) * (nor[k] as number) + (nor[k + 1] as number) * (nor[k + 1] as number) + (nor[k + 2] as number) * (nor[k + 2] as number));
         this.pos.push(p[0], p[1], p[2]);
-        this.nor.push((nor[k] as number) / l, (nor[k + 1] as number) / l, (nor[k + 2] as number) / l);
+        // A corner of no area (a point where the sheet closes) has no normal of its own: it takes up.
+        if (l > 1e-12) this.nor.push((nor[k] as number) / l, (nor[k + 1] as number) / l, (nor[k + 2] as number) / l);
+        else this.nor.push(0, 1, 0);
         const c = typeof v.colour === "function" ? v.colour(i, j) : v.colour;
         this.col.push(c[0], c[1], c[2], 1);
         if (layer === NO_LAYER) {

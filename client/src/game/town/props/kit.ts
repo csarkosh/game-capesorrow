@@ -137,7 +137,7 @@ export function tube(m: MeshBuilder, pts: readonly Vec3[], r: number, colour: Rg
     tz /= tl;
     // u: across the tube, horizontal where it can be.
     let ux = -tz;
-    let uy = 0;
+    const uy = 0;
     let uz = tx;
     let ul = Math.sqrt(ux * ux + uz * uz);
     if (ul < 1e-6) {

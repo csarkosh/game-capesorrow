@@ -9,7 +9,7 @@
  *
  * The low tier lofts through fewer stations and columns, with simpler wheels, and leaves off the interior, mirrors, seams and handles.
  */
-import { scaled, type MeshBuilder, type Rgb, type Vec3 } from "../meshBuilder.js";
+import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
@@ -379,7 +379,6 @@ function profileAt(sh: Shape, o: Opts): { wAt: (x: number) => number; beltAt: (x
 
 function loads(m: MeshBuilder, pl: Place, v: Vehicle, sh: Shape, o: Opts): void {
   const rear = o.xOff - o.len / 2;
-  const dark: Rgb = [0.03, 0.03, 0.035];
   const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, c: Rgb): void => lbox(m, pl, rear + x0, rear + x1, y0, y1, z0, z1, c);
   if (v.kind === "pickup" && sh.bed !== undefined) {
     const f = sh.bed.floor * o.sy;
