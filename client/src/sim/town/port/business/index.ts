@@ -241,9 +241,9 @@ export function planUses(input: BizInput, townRng: Rng): BuildingUse[] {
 }
 
 
-/** A town's post office is the United States', named so; a second would be the town's. */
+/** A town's post office is named "Post Office"; a second would be the town's. */
 function postOfficeName(ctx: BizCtx): string {
-  const name = ctx.taken("United States Post Office") ? `${ctx.town} Post Office` : "United States Post Office";
+  const name = ctx.taken("Post Office") ? `${ctx.town} Post Office` : "Post Office";
   ctx.take(name);
   return name;
 }
