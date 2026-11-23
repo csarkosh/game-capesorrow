@@ -1,0 +1,359 @@
+{
+  "size": 512,
+  "paintGain": 2.0,
+  "about": "Written by tools/textures/build.py: do not edit. Tile sizes are metres across and up the 512 x 512 layer. Where a work came from is in CREDITS.md, under the layer's credit id.",
+  "layers": [
+    {
+      "name": "siding_painted",
+      "index": 0,
+      "id": "WoodSiding009",
+      "credit": "town.WoodSiding009",
+      "generated": false,
+      "tile": [
+        2.4,
+        1.2
+      ],
+      "tileEstimated": true,
+      "paintable": true,
+      "color": "town.siding_painted.color.webp",
+      "data": "town.siding_painted.data.webp",
+      "note": "painted lap siding; 8 boards of about 15 cm over the picture's height"
+    },
+    {
+      "name": "planks_peeling",
+      "index": 1,
+      "id": "green_rough_planks",
+      "credit": "town.green_rough_planks",
+      "generated": false,
+      "tile": [
+        1.5,
+        1.5
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.planks_peeling.color.webp",
+      "data": "town.planks_peeling.data.webp",
+      "note": "peeling painted boards"
+    },
+    {
+      "name": "shingle_siding",
+      "index": 2,
+      "id": "WoodSiding010",
+      "credit": "town.WoodSiding010",
+      "generated": false,
+      "tile": [
+        1.4,
+        1.4
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.shingle_siding.color.webp",
+      "data": "town.shingle_siding.data.webp",
+      "note": "weathered cedar shingle siding"
+    },
+    {
+      "name": "planks_weathered",
+      "index": 3,
+      "id": "dark_planks",
+      "credit": "town.dark_planks",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.planks_weathered.color.webp",
+      "data": "town.planks_weathered.data.webp",
+      "note": "weathered boards, horizontal in the image; rotate the frame for vertical boards"
+    },
+    {
+      "name": "brick",
+      "index": 4,
+      "id": "Bricks097",
+      "credit": "town.Bricks097",
+      "generated": false,
+      "tile": [
+        3.0,
+        1.5
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "color": "town.brick.color.webp",
+      "data": "town.brick.data.webp",
+      "note": "old red brick; 20 courses of 7.5 cm over the picture's height, 2:1"
+    },
+    {
+      "name": "metal_aged",
+      "index": 5,
+      "id": "corrugated_iron_02",
+      "credit": "town.corrugated_iron_02",
+      "generated": false,
+      "tile": [
+        2.7,
+        2.7
+      ],
+      "tileEstimated": false,
+      "paintable": true,
+      "color": "town.metal_aged.color.webp",
+      "data": "town.metal_aged.data.webp",
+      "note": "aged corrugated metal, ribs vertical in the image"
+    },
+    {
+      "name": "metal_painted",
+      "index": 6,
+      "id": "CorrugatedSteel006A",
+      "credit": "town.CorrugatedSteel006A",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "color": "town.metal_painted.color.webp",
+      "data": "town.metal_painted.data.webp",
+      "note": "painted corrugated metal, ribs vertical in the image; four panels of 50 cm"
+    },
+    {
+      "name": "concrete_board",
+      "index": 7,
+      "id": "concrete",
+      "credit": "town.concrete",
+      "generated": false,
+      "tile": [
+        4.0,
+        4.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.concrete_board.color.webp",
+      "data": "town.concrete_board.data.webp",
+      "note": "board-formed stained concrete, joints vertical in the image"
+    },
+    {
+      "name": "stucco",
+      "index": 8,
+      "id": "Plaster007",
+      "credit": "town.Plaster007",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": true,
+      "paintable": true,
+      "color": "town.stucco.color.webp",
+      "data": "town.stucco.data.webp",
+      "note": "old stained stucco"
+    },
+    {
+      "name": "stone",
+      "index": 9,
+      "id": "mossy_stone_wall",
+      "credit": "town.mossy_stone_wall",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.stone.color.webp",
+      "data": "town.stone.data.webp",
+      "note": "stone wall"
+    },
+    {
+      "name": "plywood",
+      "index": 10,
+      "id": "plywood",
+      "credit": "town.plywood",
+      "generated": false,
+      "tile": [
+        0.5,
+        0.5
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.plywood.color.webp",
+      "data": "town.plywood.data.webp",
+      "note": "boarded openings"
+    },
+    {
+      "name": "shutter",
+      "index": 11,
+      "id": "painted_metal_shutter",
+      "credit": "town.painted_metal_shutter",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.shutter.color.webp",
+      "data": "town.shutter.data.webp",
+      "note": "roll-up doors, slats horizontal in the image"
+    },
+    {
+      "name": "roof_metal",
+      "index": 12,
+      "id": "corrugated_iron_03",
+      "credit": "town.corrugated_iron_03",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.roof_metal.color.webp",
+      "data": "town.roof_metal.data.webp",
+      "note": "metal roofing, ribs vertical in the image"
+    },
+    {
+      "name": "roof_bitumen",
+      "index": 13,
+      "id": "bitumen",
+      "credit": "town.bitumen",
+      "generated": false,
+      "tile": [
+        20.0,
+        20.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.roof_bitumen.color.webp",
+      "data": "town.roof_bitumen.data.webp",
+      "note": "flat roofs"
+    },
+    {
+      "name": "roof_shingle",
+      "index": 14,
+      "id": "shingles",
+      "credit": null,
+      "generated": true,
+      "tile": [
+        2.4,
+        2.24
+      ],
+      "tileEstimated": false,
+      "paintable": true,
+      "color": "town.roof_shingle.color.webp",
+      "data": "town.roof_shingle.data.webp",
+      "note": "three-tab asphalt shingles made by this script: 16 courses of 14 cm, 8 tabs of 30 cm"
+    },
+    {
+      "name": "sidewalk",
+      "index": 15,
+      "id": "Concrete047A",
+      "credit": "town.Concrete047A",
+      "generated": false,
+      "tile": [
+        1.5,
+        1.5
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "color": "town.sidewalk.color.webp",
+      "data": "town.sidewalk.data.webp",
+      "note": "sidewalk concrete"
+    },
+    {
+      "name": "asphalt",
+      "index": 16,
+      "id": "asphalt_02",
+      "credit": "town.asphalt_02",
+      "generated": false,
+      "tile": [
+        3.0,
+        3.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.asphalt.color.webp",
+      "data": "town.asphalt.data.webp",
+      "note": "cracked street asphalt, cracks run up the image"
+    },
+    {
+      "name": "asphalt_dark",
+      "index": 17,
+      "id": "Road012B",
+      "credit": "town.Road012B",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "color": "town.asphalt_dark.color.webp",
+      "data": "town.asphalt_dark.data.webp",
+      "note": "darker asphalt, for patches"
+    },
+    {
+      "name": "gravel",
+      "index": 18,
+      "id": "Ground110",
+      "credit": "town.Ground110",
+      "generated": false,
+      "tile": [
+        2.1,
+        2.1
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.gravel.color.webp",
+      "data": "town.gravel.data.webp",
+      "note": "gravel and dirt"
+    },
+    {
+      "name": "mud",
+      "index": 19,
+      "id": "Ground051",
+      "credit": "town.Ground051",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.mud.color.webp",
+      "data": "town.mud.data.webp",
+      "note": "mud"
+    },
+    {
+      "name": "moss",
+      "index": 20,
+      "id": "concrete_moss",
+      "credit": "town.concrete_moss",
+      "generated": false,
+      "tile": [
+        3.0,
+        3.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "color": "town.moss.color.webp",
+      "data": "town.moss.data.webp",
+      "note": "the wear overlay for moss and grime"
+    },
+    {
+      "name": "rust",
+      "index": 21,
+      "id": "PaintedMetal013",
+      "credit": "town.PaintedMetal013",
+      "generated": false,
+      "tile": [
+        1.0,
+        1.0
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "color": "town.rust.color.webp",
+      "data": "town.rust.data.webp",
+      "note": "rust and peeling paint: metal things, and the rust overlay"
+    }
+  ]
+}

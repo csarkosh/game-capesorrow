@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { noParts } from "@csarkosh/engine/game/lite/noParts";
 import type { RenderHost, RenderMakeLate } from "@csarkosh/engine/game/lite/renderGame";
 import type { Slices } from "@csarkosh/engine/game/syncJobs";
@@ -47,7 +47,12 @@ describe("the town's part of the renderer", () => {
   it("builds the town as a job of the renderer's scheduler, a slice at a time, and says what it waits for until it is made", () => {
     const { host, begun, cancelled } = fakeHost(createForest(20261121));
     const { side } = townParts(host);
+    // The fake engine has no device to make the texture arrays on: the town is then built as flat colour, and says so once.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     side.late(fakeMake);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(/texture arrays could not be made/);
+    warn.mockRestore();
     expect(begun.length).toBe(1);
     expect((begun[0] as (typeof begun)[number]).name).toBe("town");
     expect(side.waiting()).toBe(1);

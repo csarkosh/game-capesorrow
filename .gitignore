@@ -25,3 +25,6 @@ docs/superpowers/
 *.tar.gz
 *.tgz
 *.dmg
+
+# Python bytecode (the texture build script)
+__pycache__/

@@ -1,21 +1,37 @@
 /**
- * Plain arrays for a mesh: positions, normals, vertex colours and indices, grown a polygon at a time. The town's
+ * Plain arrays for a mesh: positions, normals, vertex colours, UVs, surface data and indices, grown a polygon at a time. The town's
  * geometry builders write into these and know nothing of the renderer; `townParts.ts` hands the finished arrays to
  * Babylon Lite. A polygon is given with a direction it must face (its "outward"), and is wound so that it does, as
  * the engine winds its own boxes (`propBoxes.ts`: the turn from a triangle's first edge to its second runs against
  * the face's normal), whatever order its corners were listed in.
+ *
+ * A polygon is flat shaded in one colour, and may also be given a `Surface` (`townSurface.ts`): a texture layer, a frame in
+ * metres, and a wear. The colour is then the tint the texture is multiplied by. A polygon with no surface is exactly what it
+ * was before surfaces existed: its vertices carry no layer (`NO_LAYER`) and the renderer draws them as flat colour.
  */
+import { NO_LAYER, layerIndex } from "./townLayers.js";
+import { basisOf, tintOf, uvAt, type Surface } from "./townSurface.js";
 
 export type Vec3 = readonly [number, number, number];
 export type Rgb = readonly [number, number, number];
 
-/** A finished mesh's arrays, as `createMeshFromData` takes them (colours four floats a vertex). */
-export type MeshArrays = { positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array };
+/**
+ * A finished mesh's arrays, as `createMeshFromData` takes them (colours four floats a vertex), with the two a textured
+ * material reads: `uvs` (two floats a vertex, in texture tiles: metres over the layer's tile size) and `surface` (eight floats
+ * a vertex: the layer's index or `NO_LAYER`, the wear's amount 0 to 1, the wear's kind 0 for moss and 1 for rust, a float left
+ * for a later use; then the tint, red, green, blue, and a float left). `colors` is the flat colour, as before.
+ */
+export type MeshArrays = { positions: Float32Array; normals: Float32Array; colors: Float32Array; uvs: Float32Array; surface: Float32Array; indices: Uint32Array };
+
+/** Floats a vertex's `surface` holds. */
+export const SURFACE_FLOATS = 8;
 
 export class MeshBuilder {
   private pos: number[] = [];
   private nor: number[] = [];
   private col: number[] = [];
+  private uv: number[] = [];
+  private srf: number[] = [];
   private idx: number[] = [];
 
   get vertices(): number {
@@ -28,9 +44,10 @@ export class MeshBuilder {
 
   /**
    * A convex polygon, flat shaded in one colour, its normal from its corners by Newell's rule and turned to face
-   * `hint`. Corners are shared by the fan of triangles it is cut into. Returns nothing for a polygon with no area.
+   * `hint`. Corners are shared by the fan of triangles it is cut into. Returns nothing for a polygon with no area. Given a
+   * `surface`, each corner also gets its UV from the surface's frame and its layer and wear.
    */
-  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb): void {
+  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb, surface?: Surface): void {
     const n = points.length;
     if (n < 3) return;
     let nx = 0;
@@ -57,10 +74,23 @@ export class MeshBuilder {
       nz = -nz;
     }
     const base = this.vertices;
+    const basis = surface === undefined ? null : basisOf(surface);
+    const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
+    const kind = surface?.wearKind === "rust" ? 1 : 0;
+    const tint = surface === undefined ? colour : tintOf(surface, colour);
     for (const p of points) {
       this.pos.push(p[0], p[1], p[2]);
       this.nor.push(nx, ny, nz);
       this.col.push(colour[0], colour[1], colour[2], 1);
+      if (basis === null || surface === undefined) {
+        this.uv.push(0, 0);
+        this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, 0);
+      } else {
+        const [u, v] = uvAt(basis, p);
+        this.uv.push(u, v);
+        const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
+        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, 0, tint[0], tint[1], tint[2], 0);
+      }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
     // wind it against the normal, as the engine's boxes are (reversed from the fan when the order already faces the hint).
@@ -70,16 +100,16 @@ export class MeshBuilder {
     }
   }
 
-  quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb): void {
-    this.poly([a, b, c, d], hint, colour);
+  quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface): void {
+    this.poly([a, b, c, d], hint, colour, surface);
   }
 
   /**
    * A vertical wall from `a` to `b` (two points of one height, or any two) up to `top` and down to `bottom`, facing
    * `hint`'s side: the horizontal direction it looks along.
    */
-  wall(ax: number, az: number, bx: number, bz: number, bottom: number, top: number, hint: Vec3, colour: Rgb): void {
-    this.poly([[ax, bottom, az], [bx, bottom, bz], [bx, top, bz], [ax, top, az]], hint, colour);
+  wall(ax: number, az: number, bx: number, bz: number, bottom: number, top: number, hint: Vec3, colour: Rgb, surface?: Surface): void {
+    this.poly([[ax, bottom, az], [bx, bottom, bz], [bx, top, bz], [ax, top, az]], hint, colour, surface);
   }
 
   /** An axis-aligned-in-a-turned-frame box: centre (x, z), base y, along axis (ux, uz), half extents, height; every face but the bottom. */
@@ -169,7 +199,10 @@ export class MeshBuilder {
   }
 
   finish(): MeshArrays {
-    return { positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col), indices: Uint32Array.from(this.idx) };
+    return {
+      positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col),
+      uvs: new Float32Array(this.uv), surface: new Float32Array(this.srf), indices: Uint32Array.from(this.idx),
+    };
   }
 }
 

@@ -8,6 +8,7 @@
  *
  * Gravel lies on the ground a little over a verge (`END_LIFT`); posts, boards and the bumper stand, in the solid layer.
  */
+import { flatSurfaceFor } from "./groundSurfaces.js";
 import { BARRICADE_RED, BARRICADE_WHITE, GRAVEL, TIMBER, PILE } from "./palette.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { endMarker } from "./signGeometry.js";
@@ -40,7 +41,7 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
       const corners = pts.map(([px, pz]): Vec3 => [px, g.heightAt(px, pz) + END_LIFT, pz]);
       if (corners.every((c) => c[1] - END_LIFT < SEA + 0.1)) return;
       const [cx, cz] = pts[0] as [number, number];
-      flat(cx, cz).poly(corners, UP, colour);
+      flat(cx, cz).poly(corners, UP, colour, flatSurfaceFor(colour, g.anchor));
     };
     if (e.kind === "turnaround") {
       // A bulb of gravel whose near edge is the pavement's end line.
