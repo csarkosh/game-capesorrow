@@ -113,7 +113,7 @@ export function planFront(i: FrontIn): FrontPlan {
         }
         // The frame's bars proud of the face and, on the old fronts, the transom bar.
         if (full) {
-          frameBars(out, w, sa, sb, y0, y1, 0.06, 0.14, frameC);
+          frameBars(out, w, sa, sb, y0, y1, 0.06, 0.11, frameC);
           if (b.era < 1930 && y1 - y0 > 1.8) wquad(out, w, sa, y1 - 0.5, sb, y1 - 0.45, -0.045, frameC);
         }
       });

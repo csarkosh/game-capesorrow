@@ -383,10 +383,11 @@ function coverAll(rng: Rng, g: Geo, state: UnitState, def: TradeDef | null): Ope
       const r = range(rng, 0, 1);
       switch (def.interior) {
         case "office":
-          cover = r < 0.55 ? "blinds" : "none";
+          // Blinds on a quarter of an office's windows (not half: an office looks into the street like a shop does, and a drawn blind hides the room).
+          cover = r < 0.25 ? "blinds" : "none";
           break;
         case "bar":
-          cover = r < 0.4 ? "blinds" : "none";
+          cover = r < 0.18 ? "blinds" : "none";
           break;
         case "retail aisles":
           cover = r < 0.5 ? "display" : "none";

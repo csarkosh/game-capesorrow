@@ -267,14 +267,10 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
   const pa = [sa + 0.08, sb - 0.08];
   const p = [wallPointFrame(c, pa[0] as number, bd, sill + 0.15), wallPointFrame(c, pa[1] as number, bd, sill + 0.15), wallPointFrame(c, pa[1] as number, bd, sill + 0.15 + bh), wallPointFrame(c, pa[0] as number, bd, sill + 0.15 + bh)];
   c.out.poly(p, [c.xf.nx, 0, c.xf.nz], [shade(c, scaled(back, 0.8), pa[0] as number, bd, sill + 0.15, 0), shade(c, scaled(back, 0.8), pa[1] as number, bd, sill + 0.15, 0), shade(c, back, pa[1] as number, bd, sill + 0.15 + bh, 0), shade(c, back, pa[0] as number, bd, sill + 0.15 + bh, 0)], undefined, { glow: 1 });
+  if (!full) return;
   const mid = (sa + sb) / 2;
   const width = sb - sa - 0.3;
   fbox(c, mid, 0.5, sill - 0.02, 0.1 + hash01(seed, 799) * 0.07, width / 2, 0.36, AX, [0.3, 0.22, 0.14], [0.42, 0.32, 0.2]);
-  if (!full) {
-    const n = Math.max(2, Math.floor(width / 0.5));
-    for (let k = 0; k < n; k++) fbox(c, sa + 0.15 + ((k + 0.5) * width) / n, 0.5, sill + 0.12, 0.25 + hash01(seed + k, 341) * 0.3, (width / n) * 0.35, 0.12, AX, goodsOf(t, seed + k), goodsOf(t, seed + k), BAKED, false);
-    return;
-  }
   const y0 = sill + 0.12;
   const u = (k: number, n: number): number => sa + 0.15 + ((k + 0.5) * width) / n;
   const n = Math.max(2, Math.floor(width / 0.42));
@@ -369,10 +365,18 @@ export function dressRoom(c: Ctx, r: RoomIn, fin: Finish, dw: { s: number; open:
   if (full) {
     placeBack(c, backWallItems(c, seed), dw, seed);
     sideWalls(c, seed);
-  } else {
-    // The low tier: one board or poster on the back wall.
-    const items = backWallItems(c, seed).slice(0, 1);
-    placeBack(c, items, dw, seed);
+  }
+  // A plant or two on the sill of a window that is not covered: a pot of green at one end, a trailing one in the corner of another.
+  for (const [k, o] of r.openings.entries()) {
+    if (o.cover !== "none" && o.cover !== "blinds") continue;
+    if (full && hash01(seed + k * 7, 800) < 0.28) {
+      const lo = Math.min(o.s0, o.s1);
+      const hi = Math.max(o.s0, o.s1);
+      const s = hash01(seed + k, 801) < 0.5 ? lo + 0.22 : hi - 0.22;
+      const green: Rgb = pickOf([[0.14, 0.36, 0.14], [0.2, 0.42, 0.18], [0.1, 0.3, 0.16]] as readonly Rgb[], seed + k, 802);
+      fcyl(c, s, 0.3, o.sill, 0.09, 0.16, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], seed + k, 803), [0.2, 0.12, 0.08]);
+      for (let q = 0; q < 3; q++) fcyl(c, s + (q - 1) * 0.06, 0.3, o.sill + 0.16, 0.07, 0.2 + q * 0.07, 5, green, scaled(green, 1.3), 0.015);
+    }
   }
   for (const [k, o] of r.openings.entries()) {
     if (o.cover !== "display") continue;

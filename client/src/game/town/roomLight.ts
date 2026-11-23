@@ -35,7 +35,7 @@ export type FieldIn = {
 };
 
 export type RoomField = {
-  /** The light at a point of the room (`s` along, `d` in, `y` over the floor) on a surface that faces `up` (1 a floor, 0 a wall, -1 a ceiling). */
+  /** The light at a point of the room (`s` along, `d` in, `y` over the floor) on a surface that faces `up` (1 a floor, 0 a wall, -1 a ceiling). The array is the field's own, reused: read it before the next call. */
   at(s: number, d: number, y: number, up: number): Rgb;
   /** How much of the floor's light is left at a point after the furnishings' shadows, 0.35 to 1. */
   under(s: number, d: number): number;
@@ -153,6 +153,8 @@ export function roomField(i: FieldIn): RoomField {
     .filter((f) => f.sx * f.sd >= 0.35 && f.kind !== "ladder" && f.kind !== "paint cans")
     .map((f) => ({ s: f.s, d: f.d, hx: f.sx / 2, hz: f.sd / 2, ax: f.dir.x, az: f.dir.z, h: f.h }));
   const out: [number, number, number] = [0, 0, 0];
+  /** What `at` hands back: one array reused, to be read before the next call. */
+  const scratch: [number, number, number] = [0, 0, 0];
   const sample = (s: number, d: number): void => {
     const u = Math.min(nS - 1.0001, Math.max(0, (s - i.s0) / cs));
     const v = Math.min(nD - 1.0001, Math.max(0, d / cd));
@@ -177,7 +179,10 @@ export function roomField(i: FieldIn): RoomField {
       sample(s, d);
       // A floor is lit square on, a wall less, and more nearer the lights at its top; a ceiling takes what bounces up.
       const k = up > 0.5 ? 1 : up < -0.5 ? 0.4 : 0.55 + 0.45 * Math.min(1, Math.max(0, y / i.ceiling));
-      return [out[0] * k, out[1] * k, out[2] * k];
+      scratch[0] = out[0] * k;
+      scratch[1] = out[1] * k;
+      scratch[2] = out[2] * k;
+      return scratch;
     },
     under(s, d) {
       let k = 1;

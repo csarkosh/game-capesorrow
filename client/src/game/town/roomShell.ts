@@ -180,7 +180,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
   const { s0, s1 } = c;
   const top = c.ceiling;
   const vacant = c.vacant;
-  const step = full ? 0.8 : 2.2;
+  const step = full ? 1.0 : 2.2;
   const noise = (a: number, b: number, k: number): number => hash01(c.seed * 131 + a * 17 + b * 29, 740 + k) - 0.5;
   const surf = (f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | undefined => (f.layer === null ? undefined : { layer: f.layer, frame: { origin, u: unit3(u), v: unit3(v) } as UvFrame, tint: f.gain });
   const stain = fin.stain;
@@ -191,8 +191,8 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
 
   // ---- floor
   {
-    const us = lines(s0, s1, step, anchors.s, full ? 12 : 5);
-    const vs = lines(d0, d1, step, anchors.d, full ? 22 : 6);
+    const us = lines(s0, s1, full ? step : 4, anchors.s, full ? 12 : 3);
+    const vs = lines(d0, d1, full ? step : 4, anchors.d, full ? 22 : 4);
     const origin = xp(xf, s0, d0, floorY + 0.08);
     out.litGrid(origin, xd(xf, s1 - s0, 0), xd(xf, 0, d1 - d0), frac(us), frac(vs), [0, 1, 0], (i, j) => {
       const s = us[i] as number;
@@ -204,7 +204,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
   }
   // ---- ceiling
   {
-    const cstep = full ? 1.6 : 3;
+    const cstep = full ? 1.6 : 99;
     const us = lines(s0, s1, cstep, [], 8);
     const vs = lines(d0, d1, cstep, [], 12);
     const origin = xp(xf, s0, d0, floorY + top);
@@ -225,7 +225,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
       y = 0.12;
     }
     const wh = fin.wainscot !== null ? Math.min(fin.wainscot.h, top - 0.8) : 0;
-    if (fin.wainscot !== null && wh > y) {
+    if (full && fin.wainscot !== null && wh > y) {
       bands.push({ y0: y, y1: wh, f: fin.wainscot, kind: "wain" });
       y = wh;
     }
@@ -240,9 +240,9 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
   const bands = bandsOf();
   const wallGrid = (wall: "back" | "left" | "right", a0: number, a1: number, y0: number, y1: number, f: Layered, kind: string, k: number): void => {
     if (a1 - a0 < 0.05 || y1 - y0 < 0.02) return;
-    const cstep = kind === "base" ? 3 : kind === "wain" || kind === "stripe" ? 1.6 : full ? 1.0 : 2.6;
+    const cstep = kind === "base" ? 3 : kind === "wain" || kind === "stripe" ? 1.6 : full ? 1.25 : 5;
     const us = lines(a0, a1, cstep, [], 40);
-    const rows = kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (full ? 0.95 : 1.8))) : 1;
+    const rows = kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (full ? 0.95 : 3.6))) : 1;
     const vs: number[] = [];
     for (let q = 0; q <= rows; q++) vs.push(y0 + ((y1 - y0) * q) / rows);
     const origin = wallPoint(c, wall, a0, y0, 0);
@@ -266,14 +266,17 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     const y0 = b.y0;
     const y1 = b.y1;
     // The back wall round the doorway: left of it, right of it, and over it.
-    wallGrid("back", s0, ds - doorW - 0.06, y0, y1, b.f, b.kind, 1);
-    wallGrid("back", ds + doorW + 0.06, s1, y0, y1, b.f, b.kind, 2);
-    if (y1 > doorTop) wallGrid("back", ds - doorW - 0.06, ds + doorW + 0.06, Math.max(y0, doorTop), y1, b.f, b.kind, 3);
+    if (full) {
+      wallGrid("back", s0, ds - doorW - 0.06, y0, y1, b.f, b.kind, 1);
+      wallGrid("back", ds + doorW + 0.06, s1, y0, y1, b.f, b.kind, 2);
+      if (y1 > doorTop) wallGrid("back", ds - doorW - 0.06, ds + doorW + 0.06, Math.max(y0, doorTop), y1, b.f, b.kind, 3);
+    } else wallGrid("back", s0, s1, y0, y1, b.f, b.kind, 1);
     wallGrid("left", d0, d1, y0, y1, b.f, b.kind, 4);
     wallGrid("right", d0, d1, y0, y1, b.f, b.kind, 5);
   }
 
-  // ---- the doorway at the back
+  // ---- the doorway at the back (the low tier's back wall is whole)
+  if (!full) return { doorS: ds, doorW, open: false };
   const dj = 0.06;
   const trim = vacant ? [0.35, 0.33, 0.3] as Rgb : [0.55, 0.52, 0.45] as Rgb;
   if (full) {

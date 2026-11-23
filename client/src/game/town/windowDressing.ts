@@ -34,16 +34,12 @@ export function slatBlinds(b: Behind, sa: number, sb: number, top: number, drop:
   // The head rail and the stack of raised slats, a box at the top.
   const stack = 0.05 + (full ? hash01(seed, 600) * 0.05 : 0.04);
   const topOff = at(b, 1.5);
-  out.poly([wat(w, sa, top - stack, topOff), wat(w, sb, top - stack, topOff), wat(w, sb, top, topOff), wat(w, sa, top, topOff)], [w.nx, 0, w.nz], scaled(warm, 0.7), undefined, { glow });
+  if (full) out.poly([wat(w, sa, top - stack, topOff), wat(w, sb, top - stack, topOff), wat(w, sb, top, topOff), wat(w, sa, top, topOff)], [w.nx, 0, w.nz], scaled(warm, 0.7), undefined, { glow });
   const y0 = top - stack;
   const hang = Math.max(0.05, drop - stack);
   if (!full) {
-    // The low tier: three bands with the gaps between them.
-    for (let k = 0; k < 3; k++) {
-      const a = y0 - (hang * k) / 3;
-      const c = a - hang / 3 + 0.04;
-      out.poly([wat(w, sa, c, off), wat(w, sb, c, off), wat(w, sb, a, off), wat(w, sa, a, off)], [w.nx, 0, w.nz], scaled(warm, k % 2 === 0 ? 1 : 0.88), undefined, { glow });
-    }
+    // The low tier: one band, the head rail and the slats as a single face (the stack above it is left out).
+    out.poly([wat(w, sa, top - drop, off), wat(w, sb, top - drop, off), wat(w, sb, top, off), wat(w, sa, top, off)], [w.nx, 0, w.nz], scaled(warm, 0.9), undefined, { glow });
     return;
   }
   const pitch = Math.max(0.05, hang / 20);
@@ -77,7 +73,12 @@ export function verticalBlinds(b: Behind, sa: number, sb: number, top: number, b
   const off = at(b, 2.5);
   const glow = b.lit ? 0.5 : 0.1;
   const wid = sb - sa;
-  const n = Math.max(3, Math.min(b.detail === "full" ? 26 : 6, Math.round(wid / 0.1)));
+  if (b.detail !== "full") {
+    // The low tier: one pale panel for the whole set.
+    out.poly([wat(w, sa, bottom, off), wat(w, sb, bottom, off), wat(w, sb, top, off), wat(w, sa, top, off)], [w.nx, 0, w.nz], scaled(col, 0.9), undefined, { glow });
+    return;
+  }
+  const n = Math.max(3, Math.min(26, Math.round(wid / 0.1)));
   const open = hash01(seed, 610) < 0.5;
   const pitch = wid / n;
   // The louvres are drawn with their faces turned about the vertical: an open set is all at one angle, a shut one overlaps in a shingle.
