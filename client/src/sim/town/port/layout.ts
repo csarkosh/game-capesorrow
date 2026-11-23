@@ -44,6 +44,7 @@ import { chance, int, pick, range, type Rng } from "../rng.js";
 import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
 import { ALLEY_WIDTH, wayOf } from "../ways.js";
+import { pruneStreets } from "./ends.js";
 import type { Block, District, History, Plat, Seam, Street, StreetKind } from "../types.js";
 
 const FT = 0.3048;
@@ -663,6 +664,13 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     for (const [p, q] of runsOf(a, b, keep, [], 30)) {
       raw.push({ a: p, b: q, width: wCo, kind: "street", plat: "company", name: `${names.named[j % names.named.length]!} Street` });
     }
+  }
+
+  // A grid street runs only as far as the last block it serves (`ends.ts`).
+  {
+    const kept = pruneStreets(raw, [...oldPieces.map((p) => p.poly), ...comp.pieces.map((p) => p.poly)]);
+    raw.length = 0;
+    raw.push(...kept);
   }
 
   // Streets cut off from the rest are dropped, and a block that touches none of those left goes with them.

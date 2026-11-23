@@ -10,6 +10,7 @@ import { bbox, segSegDist, type Poly } from "./geom.js";
 import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
+import { findEnds } from "./port/ends.js";
 import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
 import { analyseShore } from "./shore.js";
@@ -66,6 +67,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     }
   }
 
+  const ends = findEnds(streets, site, layout.quay, layout.fill, stageRng(seed, "ends"));
   const buildings = recipe.buildings({ site, history, layout, blocks, lots, drafts }, streams.buildings);
   const landmarks = recipe.bindLandmarks(history, names, townName, lots, buildings);
   const fbi = landmarks.find((l) => l.role === "fbi");
@@ -91,6 +93,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     plats: layout.plats,
     seams: layout.seams,
     streets,
+    ends,
     blocks,
     lots,
     buildings,

@@ -243,7 +243,7 @@ describe("the town's made ground", () => {
         streets++;
         if (coverD(plan, (st.a.x + st.b.x) / 2, (st.a.z + st.b.z) / 2).v >= 0.999) covered++;
       }
-      expect(covered / streets, `seed ${seed} streets covered`).toBeGreaterThan(0.9);
+      expect(covered / streets, `seed ${seed} streets covered`).toBeGreaterThan(0.97);
       // Beyond COVER_HOLD + COVER_FADE of every block the ground is the coast's own, the same values.
       let own = 0;
       for (let zr = -700; zr <= 700; zr += 20) {

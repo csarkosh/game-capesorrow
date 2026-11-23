@@ -115,6 +115,20 @@ export type Street = {
   readonly seam?: boolean;
 };
 
+/** What a street's end made by the plan is: a turnaround (a gravel bulb to turn in), a barricade, or a landing at the water. */
+export type EndKind = "turnaround" | "barricade" | "landing";
+
+/** A street's end that is no junction: where it is, which way it points (out of the street) and what is made there. */
+export type StreetEnd = {
+  readonly street: number;
+  readonly at: "a" | "b";
+  readonly x: number;
+  readonly z: number;
+  readonly dx: number;
+  readonly dz: number;
+  readonly kind: EndKind;
+};
+
 export type District =
   | "core"
   | "dock"
@@ -250,6 +264,8 @@ export type TownPlan = {
   readonly plats: readonly Plat[];
   readonly seams: readonly Seam[];
   readonly streets: readonly Street[];
+  /** The ends of streets that no junction makes, each with what is made there. */
+  readonly ends: readonly StreetEnd[];
   readonly blocks: readonly Block[];
   readonly lots: readonly Lot[];
   readonly buildings: readonly Building[];

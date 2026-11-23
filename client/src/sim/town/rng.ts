@@ -15,6 +15,8 @@ export const STAGE = {
   buildings: 0x626c6467,
   landmarks: 0x6c6e646b,
   names: 0x6e616d65,
+  ends: 0x656e6473,
+  roads: 0x726f6164,
 } as const;
 
 export type Stage = keyof typeof STAGE;
