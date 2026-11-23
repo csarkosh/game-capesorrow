@@ -39,9 +39,9 @@ import { RULE, describe as where, townFaces, unsafePatches } from "./townFaces.j
  * turns there, the pile and rail posts of a quay against its cap, the tarp on a truck against its roof, a motel's door plates against
  * the window frames of the front they hang on, a blind's overlapping slats. Each is under 3 m^2 (most under 1 m^2) and found at 5 mm to 2.4 cm.
  */
-const LEFT: Record<string, number> = { "20261121 full": 51, "1 full": 61, "6 full": 36, "20261121 low": 23 };
+const LEFT: Record<string, number> = { "20261121 full": 51, "1 full": 45, "6 full": 30, "20261121 low": 23 };
 /** Flat ground against flat ground: the sidewalks' slabs, joints, cracks and weeds, the roadway's paint and patches. See the header. */
-const FLAT_GROUND: Record<string, number> = { "20261121 full": 3126, "1 full": 3549, "6 full": 2594, "20261121 low": 3130 };
+const FLAT_GROUND: Record<string, number> = { "20261121 full": 3126, "1 full": 3548, "6 full": 2595, "20261121 low": 3130 };
 
 function check(seed: number, detail: Detail): { found: number; flat: number; lines: string[] } {
   const g = townGround(seed);

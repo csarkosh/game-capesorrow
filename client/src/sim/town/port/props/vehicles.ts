@@ -64,7 +64,7 @@ export function makeVehicle(out: Out, rng: Rng, v: VehicleSpec, eraAge = 0.5): V
   const load = loadFor(rng, v.kind, v.state);
   const seed = Math.floor(next(rng) * 0x7fffffff);
   // The model is the vehicle's own (drawn from what it already is), and its box is the model's: the walker's box is the file's footprint.
-  const model = vehicleModelFor(v.kind, v.state, load, age, seed);
+  const model = vehicleModelFor(v.kind, v.state, load, age, seed, v.spot);
   const [length, width] = model === "" ? dims(v.kind, age) : [(VEHICLE_MODELS[model] as VehicleModel).length, (VEHICLE_MODELS[model] as VehicleModel).width];
   return {
     id: out.id(), kind: v.kind, x: v.x, z: v.z, hx: v.hx, hz: v.hz, colour, age, state: v.state, load, spot: v.spot, lot: v.lot, idle, seed, length, width, model,

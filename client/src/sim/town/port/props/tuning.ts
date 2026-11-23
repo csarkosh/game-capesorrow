@@ -157,7 +157,7 @@ export const POLE_VERGE_MIN = 0.9;
 export const POLE_ON_WALK = 0.32;
 export const POLE_SHOULDER_IN = 0.25;
 
-/** Overall length and width of each kind of vehicle, metres (`[length, width]`; typical sizes of the types, the spec's: a mid-size pickup about 5.4 x 1.9, a compact sedan about 4.6 x 1.8). An old pickup is shorter, a new full-size one longer. */
+/** The room a kind of vehicle is planned for, metres (`[length, width]`): the largest footprint of its models (`vehicleModels.ts`), so a stall or a curb space planned by it holds whichever model the vehicle turns out to be. A vehicle's own box is its model's; a camper has no model and keeps this size. */
 export const DIMS: Readonly<Record<VehicleKind | "pickup old" | "pickup new", readonly [number, number]>> = {
-  pickup: [5.4, 1.9], "pickup old": [5.2, 1.85], "pickup new": [5.8, 2.0], sedan: [4.6, 1.8], suv: [4.8, 1.9], van: [5.3, 2.0], "work truck": [6.1, 2.1], camper: [6.6, 2.3],
+  pickup: [5.22, 2.12], "pickup old": [5.13, 1.91], "pickup new": [5.22, 2.12], sedan: [5.0, 1.84], suv: [5.03, 1.86], van: [4.9, 2.37], "work truck": [6.03, 2.64], camper: [6.6, 2.3],
 };

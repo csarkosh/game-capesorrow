@@ -8,7 +8,7 @@
  * work truck the flatbed or the box truck by its load; a project car is the one under a dust sheet; a derelict one of the two left to rot
  * with their doors open (or the dust sheet, where it has a tarp over it). A camper has no model and stays as it was drawn in code.
  */
-import type { VehicleKind, VehicleLoad, VehicleState } from "../../types.js";
+import type { VehicleKind, VehicleLoad, VehicleSpot, VehicleState } from "../../types.js";
 
 /** A model's id and its footprint (m): length along the vehicle, width across. */
 export type VehicleModel = { readonly length: number; readonly width: number };
@@ -29,13 +29,14 @@ export const VEHICLE_MODELS: Readonly<Record<string, VehicleModel>> = {
 };
 
 /** The model for a vehicle, or "" for one with none (a camper). `seed` is the vehicle's own, 0 to 0x7fffffff. */
-export function vehicleModelFor(kind: VehicleKind, state: VehicleState, load: VehicleLoad, age: number, seed: number): string {
+export function vehicleModelFor(kind: VehicleKind, state: VehicleState, load: VehicleLoad, age: number, seed: number, spot: VehicleSpot): string {
   if (kind === "camper") return "";
   // A fraction from the seed, by floor and not by a remainder.
   const u = (seed - Math.floor(seed / 1024) * 1024) / 1024;
   if (state === "project") return "vehicle.covered";
   if (state === "derelict") {
-    if (load === "tarp") return "vehicle.covered";
+    // The two derelicts have their doors open, which a lane or a curb has no room for: a derelict left in the street is under a sheet.
+    if (load === "tarp" || spot === "curb" || spot === "pull-off") return "vehicle.covered";
     return kind === "pickup" || kind === "work truck" || kind === "van" ? "vehicle.derelict_truck" : "vehicle.derelict_sedan";
   }
   if (kind === "pickup") return u < age ? "vehicle.pickup_b" : "vehicle.pickup_a";

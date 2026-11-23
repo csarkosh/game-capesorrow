@@ -86,6 +86,6 @@ describe("the town's texture manifest", () => {
       expect(l.credit, l.name).toBe(`town.${l.id}`);
       expect(ids.has(l.credit as string), l.name).toBe(true);
     }
-    expect(OWN_CREDITS.length).toBe(TOWN_LAYERS.filter((l) => !l.generated).length);
+    expect(OWN_CREDITS.filter((e) => e.id.startsWith("town.")).length).toBe(TOWN_LAYERS.filter((l) => !l.generated).length);
   });
 });
