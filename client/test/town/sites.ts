@@ -13,7 +13,7 @@ export const SEEDS: readonly number[] = [20261121, 424242, 123, 99, ...Array.fro
 const cache: { seed: number; site: TownSite; plan: TownPlan }[] = [];
 
 /** The real site and the large port's plan for a world seed, made once. */
-export function townFor(seed: number): { site: TownSite; plan: TownPlan } {
+export function townFor(seed: number): { seed: number; site: TownSite; plan: TownPlan } {
   const hit = cache.find((c) => c.seed === seed);
   if (hit) return hit;
   const site = realSite(seed);

@@ -6,20 +6,40 @@
  * first and everything after it is derived from it. Nothing here asks which kind of town it is making:
  * the recipe (`recipes.ts`) supplies each step.
  */
-import { bbox, segSegDist, type Poly } from "./geom.js";
+import { bbox, lerpVec, segCross, segSegDist, type Poly } from "./geom.js";
+import { RAIL_OFFSET } from "./rail.js";
 import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
 import { findEnds } from "./port/ends.js";
+import { planOutskirts } from "./port/outskirts.js";
+import { landOf } from "./land.js";
 import { describeRoads, planRoads } from "./port/roads.js";
 import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
 import { analyseShore } from "./shore.js";
 import type { TownSite } from "./site.js";
 import { TOWN_GEN } from "./version.js";
-import type { Block, History, Landmark, Lot, Street, TownKind, TownPlan } from "./types.js";
+import type { Block, History, Landmark, Lot, RailCrossing, Street, TownKind, TownPlan } from "./types.js";
 
 /** Makes the plan of a town on a site. Deterministic: every machine computes the same plan. */
+/** Where each street crosses the railroad's main line (`rail.ts`, the highway's line shifted `RAIL_OFFSET` seaward) at grade. */
+function railCrossings(site: TownSite, streets: readonly Street[]): RailCrossing[] {
+  const out: RailCrossing[] = [];
+  for (const st of streets) {
+    if (st.kind === "highway" || st.kind === "rail" || st.kind === "wharf" || st.kind === "alley") continue;
+    for (let i = 0; i < site.roadX.length - 1; i++) {
+      const z0 = site.z0 + i * site.step;
+      const c = segCross(st.a, st.b, { x: site.roadX[i]! - RAIL_OFFSET, z: z0 }, { x: site.roadX[i + 1]! - RAIL_OFFSET, z: z0 + site.step });
+      if (c) {
+        const p = lerpVec(st.a, st.b, c.t);
+        out.push({ x: p.x, z: p.z, street: st.id });
+      }
+    }
+  }
+  return out;
+}
+
 export function planTown(site: TownSite, kind: TownKind): TownPlan {
   const recipe = RECIPES[kind];
   const seed = site.seed;
@@ -90,6 +110,12 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   told.sort((p, q) => p.e.year - q.e.year || p.i - q.i);
   const fullHistory: History = { ...history, events: told.map((t) => t.e) };
 
+  // The town thins out past its last full blocks: single buildings on lots of their own, appended to the blocks, lots and buildings.
+  const edge = planOutskirts({ site, land: landOf(site), history, blocks, roads, streets, nextBlock: blocks.length, nextLot: lots.length, nextBuilding: buildings.length }, stageRng(seed, "outskirts"));
+  blocks.push(...edge.blocks);
+  lots.push(...edge.lots);
+  buildings.push(...edge.buildings);
+
   const all: Poly[] = [...blocks.map((b) => b.polygon), ...streets.map((s) => [s.a, s.b])];
   const bb = bbox(all.flat());
   let open = 0;
@@ -115,12 +141,15 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     lots,
     buildings,
     landmarks,
+    rail: { crossings: railCrossings(site, streets), spurs: layout.spurs },
+    outskirts: edge.outskirts,
+    woods: layout.woods,
     spawn,
     decks,
     harbour: harbourOut.harbour,
     fill: layout.fill,
     quay: layout.quay,
     bounds: bb,
-    counts: { plats: layout.plats.length, streets: streets.length, blocks: blocks.length, lots: lots.length, buildings: buildings.length, open, vacant, ruin },
+    counts: { plats: layout.plats.length, streets: streets.length, blocks: blocks.length - edge.blocks.length, outskirts: edge.outskirts.length, lots: lots.length, buildings: buildings.length, open, vacant, ruin },
   };
 }

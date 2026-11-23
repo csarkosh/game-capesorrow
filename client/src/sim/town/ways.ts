@@ -7,6 +7,8 @@
  * - **The main street** has 11 m of roadway with parking along both sides and sidewalks of 3.5 m up to the storefronts in a
  *   right of way of 18 m; 12 m of roadway and sidewalks of 4 m in 20 m where the fire's rebuilding widened it.
  * - **The avenue** has 12 m of roadway with a painted median between sidewalks of 2 m and verges of 2 m, in 20 m.
+ * - **A stair** is a public flight of steps on a right of way where the street would climb more than 15 percent: its
+ *   steps are `STAIR_WIDTH` wide in a right of way of the street's own width, with no sidewalk (the handrail is drawn).
  * - **An alley** is 4 m of gravel with no sidewalk. The highway's roadway is the engine's own bed, 11 m, and the widest
  *   road in the world: nothing here is wider.
  */
@@ -28,6 +30,8 @@ export const AVENUE_ROADWAY = 12;
 export const AVENUE_WALK = 2;
 /** The highway's roadway, the engine's road bed. */
 export const HIGHWAY_ROADWAY = 11;
+/** The width of a flight of public steps, metres. */
+export const STAIR_WIDTH = 3.5;
 /** An alley's width, all of it gravel. */
 export const ALLEY_WIDTH = 4;
 
@@ -44,6 +48,8 @@ export function wayOf(kind: StreetKind, width: number, shops = false): { roadway
       const roadway = Math.min(STREET_ROADWAY_MAX, width - STREET_EDGES);
       return { roadway, walk: shops ? (width - roadway) / 2 : STREET_WALK };
     }
+    case "stair":
+      return { roadway: Math.min(STAIR_WIDTH, width), walk: 0 };
     case "alley":
     case "wharf":
     case "rail":

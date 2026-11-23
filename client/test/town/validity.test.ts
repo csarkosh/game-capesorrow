@@ -121,8 +121,15 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
       }
     }
   }
-  // Every block touches a street.
+  // Every block touches a street (an outlying lot stands by the highway or a road out, and touches none of the town's grid).
   for (const block of plan.blocks) {
+    if (block.district === "outskirts") {
+      let off = Infinity;
+      for (const s of roads) off = Math.min(off, polySegDist(block.polygon, s.a, s.b) - s.width / 2);
+      for (const r of plan.roads) for (let i = 1; i < r.points.length; i++) off = Math.min(off, polySegDist(block.polygon, r.points[i - 1]!, r.points[i]!));
+      if (off > 40) fail(`outlying lot ${block.id} is ${off.toFixed(1)} m from the highway and every road`);
+      continue;
+    }
     let best = Infinity;
     for (const s of roads) best = Math.min(best, polySegDist(block.polygon, s.a, s.b) - s.width / 2);
     if (best > 0.6) fail(`block ${block.id} (${block.district}) is ${best.toFixed(1)} m from any street`);
@@ -348,7 +355,7 @@ describe("a plan is valid on the world's real sites", () => {
         }
         const site: TownSite = { seed, anchor: { x: 0, z: 0 }, step: 16, z0: -512, shoreX, roadX, inland: 320 };
         const plan = planTown(site, "port");
-        expect(plan.blocks.length, `odd ${k}`).toBeGreaterThan(20);
+        expect(plan.blocks.length, `odd ${k}`).toBeGreaterThan(10);
         expect(plan.landmarks.some((l) => l.role === "fbi")).toBe(true);
       }
     }

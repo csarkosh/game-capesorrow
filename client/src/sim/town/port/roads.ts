@@ -47,7 +47,7 @@ export const GRADE_RUN = 0.07;
 export const BLOCK_CLEAR = 10;
 /** Past the first steps a road keeps this far from every block: the made ground's fade lies about the town, and a road there would not lie on the ground it was stepped over. */
 export const BLOCK_FAR = 110;
-export const HIGHWAY_CLEAR = 18;
+export const HIGHWAY_CLEAR = 36;
 export const ROAD_CLEAR = 26;
 /** A shore road keeps this far west of the highway, and from the water, metres; the ground it runs on is at least this high. */
 export const SHORE_ROAD_FROM_HIGHWAY = 26;
@@ -60,6 +60,8 @@ export const MOST_LENGTH = 480;
 export const FLAT_ENOUGH = 0.08;
 /** Steps held out of the clearances at a road's start, where it leaves the town. */
 const FREE_STEPS = 14;
+/** A road may leave a junction where no block stands within this of the line ahead of it, metres. */
+const EXIT_CLEAR = 14;
 
 export const ROAD_TUNABLES = { STEP, GRADE_HARD, GRADE_SOFT, GRADE_RUN, GRADE_RELAX, BLOCK_CLEAR, BLOCK_FAR, HIGHWAY_CLEAR, ROAD_CLEAR, SHORE_ROAD_FROM_HIGHWAY, SHORE_CLEAR, LAND_HEIGHT, LEAST_LENGTH, MOST_LENGTH, FLAT_ENOUGH };
 
@@ -195,7 +197,8 @@ function nextStep(c: Course, line: readonly Vec[], d: Vec, step: number): { p: V
     const nx = nd.z;
     const nz = -nd.x;
     const cross = Math.abs(t.h(q.x + nx * 4, q.z + nz * 4) - t.h(q.x - nx * 4, q.z - nz * 4)) / 8;
-    if (blockDistance(c, q, BLOCK_CLEAR) < BLOCK_CLEAR && step >= 2) continue;
+    // The first steps leave the street's end, near the blocks about it, but never into one.
+    if (blockDistance(c, q, BLOCK_CLEAR) < (step >= 2 ? BLOCK_CLEAR : 3)) continue;
     if (step >= FREE_STEPS) {
       if (blockDistance(c, q, BLOCK_FAR) < BLOCK_FAR) continue;
       let near = false;
@@ -243,6 +246,39 @@ function route(c: Course, start: Vec, dir: Vec): Vec[] | null {
 
 const DESTINATION_RADIUS: Record<DestinationKind, number> = { cemetery: 28, landing: 22, "gravel pit": 18, "water tank": 9, gate: 7 };
 
+/**
+ * Where a grid street's end is a junction (the grown town closes its outer edge with a street across) and nothing stands beyond it: a road
+ * may leave from there, straight on past the last intersection, as a country road leaves a town's last corner.
+ */
+function outwardEnds(streets: readonly Street[], ends: readonly StreetEnd[], blocks: readonly Poly[], boxes: readonly Box[]): StreetEnd[] {
+  const out: StreetEnd[] = [];
+  const clearAhead = (p: Vec): boolean => {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = boxes[i] as Box;
+      if (p.x < b.x0 - EXIT_CLEAR || p.x > b.x1 + EXIT_CLEAR || p.z < b.z0 - EXIT_CLEAR || p.z > b.z1 + EXIT_CLEAR) continue;
+      const poly = blocks[i] as Poly;
+      if (inside(poly, p)) return false;
+      for (let k = 0; k < poly.length; k++) if (segDist(p, poly[k] as Vec, poly[(k + 1) % poly.length] as Vec) < EXIT_CLEAR) return false;
+    }
+    return true;
+  };
+  for (const st of streets) {
+    if (st.kind !== "street" && st.kind !== "main" && st.kind !== "avenue") continue;
+    for (const at of ["a", "b"] as const) {
+      if (ends.some((e) => e.street === st.id && e.at === at)) continue;
+      const p = at === "a" ? st.a : st.b;
+      const q = at === "a" ? st.b : st.a;
+      const len = dist(p, q);
+      if (len < 1e-6) continue;
+      const dir = { x: (p.x - q.x) / len, z: (p.z - q.z) / len };
+      let free = true;
+      for (const t of [20, 40, 65]) if (!clearAhead({ x: p.x + dir.x * t, z: p.z + dir.z * t })) free = false;
+      if (free) out.push({ street: st.id, at, x: p.x, z: p.z, dx: dir.x, dz: dir.z, kind: "turnaround" });
+    }
+  }
+  return out;
+}
+
 /** The roads out of a town. `ends` are the plan's street ends: the road that continues one is no end, and is left out of the list returned. */
 export function planRoads(
   site: TownSite,
@@ -260,7 +296,8 @@ export function planRoads(
   const taken: StreetEnd[] = [];
   const boxes = blocks.map(boxOf);
   const grid: readonly Street["kind"][] = ["street", "main", "avenue"];
-  const usable = ends.filter((e) => e.kind !== "landing" && grid.includes((streets[e.street] as Street).kind));
+  const exits = outwardEnds(streets, ends, blocks, boxes);
+  const usable = [...ends.filter((e) => e.kind !== "landing" && grid.includes((streets[e.street] as Street).kind)), ...exits];
   const named = names.named.length > 0 ? names.named : ["Back"];
 
   const make = (kind: Road["kind"], end: StreetEnd, toward: Vec, dest: DestinationKind, label: string, relax = 0): boolean => {

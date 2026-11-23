@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SEEDS, townFor } from "./sites.js";
 
 describe("towns that a person would see as different", () => {
-  const plans = SEEDS.map((s) => ({ seed: s, ...townFor(s) }));
+  const plans = SEEDS.map((s) => townFor(s));
 
   it("prints a one-line summary per seed", () => {
     const lines = plans.map(({ seed, plan }) => {

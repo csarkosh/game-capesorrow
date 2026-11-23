@@ -251,9 +251,14 @@ describe("the forest by the lot", () => {
       const H = 0.0005;
       const keepAtX = (x: number, zz: number): number => townKeepD(x - road(zz), -(road(zz + 0.01) - road(zz - 0.01)) / 0.02, zz, seed).v;
       let tested = 0;
-      for (let k = 0; k < 400 && tested < 12; k++) {
-        const x = road(z) + u + 20 + k * 1.5;
-        const zz = z + ((k * 7) % 40) - 20;
+      // Points ringed about the town's blocks, 30 to 140 m off their centres: some lie on the cover's fall.
+      for (let k = 0; k < 600 && tested < 12; k++) {
+        const bl = plan.blocks[(k * 7) % plan.blocks.length] as (typeof plan.blocks)[number];
+        const cc = bl.polygon.reduce((acc, p) => ({ x: acc.x + p.x / bl.polygon.length, z: acc.z + p.z / bl.polygon.length }), { x: 0, z: 0 });
+        const dir = k % 4;
+        const reach = 30 + ((k * 13) % 110);
+        const x = site.anchor.x + cc.x + (dir === 0 ? reach : dir === 1 ? -reach : 0);
+        const zz = COVE_Z + cc.z + (dir === 2 ? reach : dir === 3 ? -reach : 0);
         const uu = x - road(zz);
         const uDz = -(road(zz + 0.01) - road(zz - 0.01)) / 0.02;
         const kp = townKeepD(uu, uDz, zz, seed);

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { COMPASS, gridAngle } from "../../src/sim/town/bearings.js";
-import { contains } from "../../src/sim/town/geom.js";
-import { analyseShore, shoreAt } from "../../src/sim/town/shore.js";
+import { contains, dist, segDist } from "../../src/sim/town/geom.js";
+import { RAIL_OFFSET } from "../../src/sim/town/rail.js";
+import { analyseShore, roadAt, shoreAt } from "../../src/sim/town/shore.js";
 import { SEEDS, townFor } from "./sites.js";
 
 const dec = (y: number): number => Math.floor(y / 10) * 10;
@@ -78,19 +79,21 @@ describe("form follows history", () => {
     expect(wood).toBeGreaterThan(0);
   });
 
-  it("the rail line is there when the history has a railroad, and only then", () => {
+  it("the town's spur and its depot are there when the history has a railroad, and only then (the main line is the world's, whatever the history)", () => {
     let with_ = 0;
     let without = 0;
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       const rails = plan.streets.filter((s) => s.kind === "rail");
+      // The town's own track is a spur (`plan.rail.spurs`), no longer a street.
+      expect(rails).toEqual([]);
       if (plan.history.railroad) {
         with_++;
-        expect(rails.length).toBeGreaterThan(0);
+        expect(plan.rail.spurs.length).toBe(1);
         expect(plan.landmarks.some((l) => l.role === "depot")).toBe(true);
       } else {
         without++;
-        expect(rails).toEqual([]);
+        expect(plan.rail.spurs).toEqual([]);
         expect(plan.landmarks.some((l) => l.role === "depot")).toBe(false);
       }
     }
@@ -98,18 +101,24 @@ describe("form follows history", () => {
     expect(without).toBeGreaterThan(0);
   });
 
-  it("the rail line runs along the quay and the flats' shore, landward of the water", () => {
+  it("the spur leaves the main line, runs along the waterfront landward of the water, and bends no tighter than a train can", () => {
     for (const seed of SEEDS) {
       const { plan, site } = townFor(seed);
-      const rails = plan.streets.filter((s) => s.kind === "rail");
-      if (!plan.history.railroad) continue;
-      // One piece along the quay, and pieces along the shore of the flats.
-      expect(rails.some((r) => r.plat === "old"), `seed ${seed}`).toBe(true);
-      expect(rails.some((r) => r.plat === "company"), `seed ${seed}`).toBe(true);
-      for (const r of rails) {
-        const mid = { x: (r.a.x + r.b.x) / 2, z: (r.a.z + r.b.z) / 2 };
-        const onMade = mid.x > shoreAt(site, mid.z) || plan.fill.some((f) => contains(f.polygon, mid, 0.5));
-        expect(onMade, `seed ${seed}: the rail stands in the sea`).toBe(true);
+      for (const sp of plan.rail.spurs) {
+        expect(sp.points.length, `seed ${seed}`).toBeGreaterThan(10);
+        const first = sp.points[0]!;
+        // It leaves the main line: the highway's line shifted RAIL_OFFSET seaward, to within a few metres at its first point.
+        expect(Math.abs(first.x - (roadAt(site, first.z) - RAIL_OFFSET)), `seed ${seed}: the spur's first point is off the main line`).toBeLessThan(4);
+        expect(sp.radius, `seed ${seed}`).toBeGreaterThanOrEqual(60);
+        // Landward of the water or on the fill, but where it passes the cove's head: from the quay's ends it may run out over the water (a trestle) for up to 180 m, and never for more than a quarter of its points.
+        let wet = 0;
+        for (const p of sp.points) {
+          const onMade = p.x > shoreAt(site, p.z) || plan.fill.some((f) => contains(f.polygon, p, 0.5)) || segDist(p, plan.quay.a, plan.quay.b) <= 15;
+          if (onMade) continue;
+          wet++;
+          expect(Math.min(dist(p, plan.quay.a), dist(p, plan.quay.b)), `seed ${seed}: the spur stands in the sea away from the quay`).toBeLessThanOrEqual(180);
+        }
+        expect(wet / sp.points.length, `seed ${seed}`).toBeLessThan(0.25);
       }
     }
   });
@@ -173,6 +182,7 @@ describe("form follows history", () => {
 
   it("the seam exists whenever two plats do and their bearings differ by at least 25 degrees, and is where they actually touch", () => {
     let wide = 0;
+    let seamless = 0;
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       expect(plan.plats.length).toBeGreaterThanOrEqual(2);
@@ -182,16 +192,33 @@ describe("form follows history", () => {
       expect(angle, `seed ${seed}`).toBeGreaterThanOrEqual(12);
       expect(angle, `seed ${seed}`).toBeLessThanOrEqual(37.5);
       if (angle >= 25) wide++;
-      // The two plats touch (the compass blocks wrap the old plat), so there is a seam.
-      expect(plan.seams.length, `seed ${seed}`).toBeGreaterThanOrEqual(1);
+      // Where the town's company blocks touch the old plat (and they do not where the land between them was left as woods) there is a seam.
+      const poly = plan.plats[0]!.polygon;
+      const touching = plan.blocks.some(
+        (x) =>
+          x.plat === "company" &&
+          x.polygon.some((c) =>
+            poly.some((a, i) => {
+              // The plat's first edge is its quay; the seam is the other three.
+              const b = poly[(i + 1) % poly.length]!;
+              if (segDist({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }, plan.quay.a, plan.quay.b) < 5) return false;
+              const l2 = (b.x - a.x) ** 2 + (b.z - a.z) ** 2;
+              const t = ((c.x - a.x) * (b.x - a.x) + (c.z - a.z) * (b.z - a.z)) / l2;
+              return t > 0.02 && t < 0.98 && segDist(c, a, b) < 0.3;
+            }),
+          ),
+      );
+      if (touching) expect(plan.seams.length, `seed ${seed}`).toBeGreaterThanOrEqual(1);
+      else seamless++;
       for (const seam of plan.seams) {
         expect(seam.angle).toBeCloseTo(angle, 5);
         expect(plan.streets[seam.street]!.seam, `seed ${seed}`).toBe(true);
       }
-      // Company blocks are cut: some have 3, 5 or 6 corners.
-      expect(plan.blocks.filter((x) => x.plat === "company" && x.polygon.length !== 4).length, `seed ${seed}`).toBeGreaterThan(0);
+      // Company blocks are cut: some have 3, 5 or 6 corners (where the company's plat stands at all).
+      if (plan.blocks.some((x) => x.plat === "company")) expect(plan.blocks.filter((x) => x.plat === "company" && x.polygon.length !== 4).length, `seed ${seed}`).toBeGreaterThan(0);
     }
     expect(wide).toBeGreaterThan(10);
+    expect(seamless).toBeLessThan(8);
   });
 
   it("the old plat is laid to what the history says: the highway's own line, the first wharf or a railroad's survey", () => {
@@ -246,15 +273,18 @@ describe("form follows history", () => {
   });
 
   it("the main street is wider after a fire, and one wide avenue is 20 m", () => {
+    let avenues = 0;
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       const main = plan.streets.find((s) => s.kind === "main");
       // Where the highway is the old town's main street there is no other; elsewhere it is 20 m after a fire and 18 m before.
       if (main) expect(main.width).toBe(plan.history.fire ? 20 : 18);
       const avenue = plan.streets.filter((s) => s.kind === "avenue");
-      expect(avenue.length).toBeGreaterThan(0);
+      // The avenue is one line of the company's plat: where the grown town does not reach it, it is not built.
+      if (avenue.length > 0) avenues++;
       for (const a of avenue) expect(a.width).toBe(20);
       expect(new Set(plan.streets.filter((s) => s.kind !== "alley" && s.kind !== "wharf" && s.kind !== "rail").map((s) => s.width)).size).toBeLessThanOrEqual(6);
     }
+    expect(avenues).toBeGreaterThan(20);
   });
 });

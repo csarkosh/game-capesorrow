@@ -35,14 +35,14 @@ describe("the plan is deterministic", () => {
   });
 
   // Pinned digests of three named world seeds. A change here means the same site now gives a different plan:
-  // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 3: streets at
-  // their true widths, their ends made, roads out of town, and the harbour.)
+  // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 4: the town laid over the
+  // land, with stairs, the railroad's corridor, crossings and spur, and the outskirts.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(3);
+    expect(TOWN_GEN).toBe(4);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "662fec85",
-      1: "fc6dc10a",
-      7: "9df1991a",
+      20261121: "66b4a6c2",
+      1: "04794905",
+      7: "574a47c7",
     });
   });
 });

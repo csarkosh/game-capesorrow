@@ -19,6 +19,8 @@ export const ADJACENT = 1.2;
 export const PAST_LAST_LOT = 4;
 /** An intersection counts where a block corner lies within the two streets' half widths and this much, metres. */
 const JUNCTION_REACH = 10;
+/** A street that crosses the highway stays to it where a block stands this much further off: the main line's corridor lies between the blocks and the highway on the seaward side, metres. */
+const HIGHWAY_APPROACH = 24;
 /** The least a street may be left, metres. */
 const LEAST = 8;
 /** Ends this near the water are landings, metres. */
@@ -97,7 +99,7 @@ export function pruneStreets<T extends Way>(raw: readonly T[], blocks: readonly 
         else if (segDist(o.b, st.a, st.b) < TOUCH) s = project(st, o.b, len);
         if (Number.isNaN(s)) continue;
         const at = lerpVec(st.a, st.b, s / len);
-        const reach = hw + o.width / 2 + JUNCTION_REACH;
+        const reach = hw + o.width / 2 + JUNCTION_REACH + (o.kind === "highway" ? HIGHWAY_APPROACH : 0);
         let supported = false;
         for (let b = 0; b < blocks.length && !supported; b++) if (polyDist(blocks[b] as Poly, boxes[b] as Box, at, reach) <= reach) supported = true;
         if (supported) {
