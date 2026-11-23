@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { COVE_Z, HEAD_HALF_WIDTH, SEA_LEVEL, coastGround, coveFor, roadCenterX, roadCorridorOverD, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt, type TerrainSample } from "@csarkosh/engine/sim/terrain";
-import { BANK, EDGE, HILL_FROM, HILL_GRADE, HILL_TO, QUAY, QUAY_JOIN, TOWN_INLAND, TOWN_Z_HALF, bankD, townGroundD } from "../../src/sim/town/ground.js";
+import { BANK, EDGE, HILL_FROM, HILL_GRADE, HILL_TO, OWN_FLATS, OWN_HILL, QUAY, QUAY_JOIN, RELIEF_LIMIT, TOWN_INLAND, TOWN_Z_HALF, bankD, madePlaneD, townGroundD } from "../../src/sim/town/ground.js";
+import { COVER_FADE, COVER_HOLD, coverD } from "../../src/sim/town/cover.js";
+import { planFor } from "../../src/sim/town/planFor.js";
 import { fillWindowD, townFillFor } from "../../src/sim/town/fill.js";
 import { shoreSplineOf, shoreXAt } from "../../src/sim/town/shoreSpline.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
@@ -21,6 +23,20 @@ function lcg(seed: number): () => number {
 function made(seed: number, x: number, z: number): TerrainSample {
   const { u, uDz, ground } = coastGround(seed, x, z);
   return townGroundD(seed, x, z, u, uDz, ground);
+}
+
+/** The graded plane alone at a world point (no relief, no weight): what the made ground is built over. */
+function planeAt(seed: number, x: number, z: number): TerrainSample {
+  const { u, uDz } = coastGround(seed, x, z);
+  const plane = madePlaneD(seed, x, z, u, uDz);
+  if (plane === null) throw new Error("no plane here");
+  return plane;
+}
+
+/** The town's cover at a world point. */
+function cover(seed: number, x: number, z: number): number {
+  const site = siteFor(seed);
+  return coverD(planFor(seed), x - site.anchor.x, z - COVE_Z).v;
 }
 
 /** Whether the plan's fill, its bank included, reaches a world point: there the ground is made, and not the coast's own, whatever the footprint says. */
@@ -122,7 +138,7 @@ describe("the town's made ground", () => {
     process.stderr.write(`largest step beyond the slope between points 0.25 m apart, across the edges: ${(worst * 100).toFixed(3)} cm\n`);
   });
 
-  it("is a plane of constant grade on the flats and a hill of constant grade east of the highway's corridor, both set by the quay and the highway's height", () => {
+  it("is built over a plane of constant grade on the flats and a hill of constant grade east of the highway's corridor, both set by the quay and the highway's height", () => {
     // What the flats' grade makes up for the ease into the hill, across the highway: the rise of the join at u = 0.
     const span = HILL_TO - HILL_FROM;
     const t0 = -HILL_FROM / span;
@@ -140,16 +156,16 @@ describe("the town's made ground", () => {
         const q = shoreXAt(shoreSplineOf(site), zr).dz;
         const clear = QUAY_JOIN * Math.sqrt(1 + q * q) + 5;
         for (const s of [clear, clear + 15, road - shore - 40]) {
-          expect(made(seed, shore + s, z).dx, `seed ${seed} z ${z} s ${s}`).toBeCloseTo(flats, 9);
+          expect(planeAt(seed, shore + s, z).dx, `seed ${seed} z ${z} s ${s}`).toBeCloseTo(flats, 9);
         }
         for (const u of [HILL_TO, 60, 150, TOWN_INLAND - 10]) {
-          expect(made(seed, road + u, z).dx, `seed ${seed} z ${z} u ${u}`).toBeCloseTo(HILL_GRADE, 9);
+          expect(planeAt(seed, road + u, z).dx, `seed ${seed} z ${z} u ${u}`).toBeCloseTo(HILL_GRADE, 9);
         }
         // QUAY above the sea at the water's edge, and the grade line's height where the highway runs.
-        expect(made(seed, shore, z).h).toBeCloseTo(QUAY, 9);
-        expect(made(seed, road, z).h).toBeCloseTo(roadGradeAt(seed, z).h, 9);
+        expect(planeAt(seed, shore, z).h).toBeCloseTo(QUAY, 9);
+        expect(planeAt(seed, road, z).h).toBeCloseTo(roadGradeAt(seed, z).h, 9);
         // The hill rises at its grade: the same rise over the same run, anywhere on it.
-        expect(made(seed, road + 300, z).h - made(seed, road + 100, z).h).toBeCloseTo(200 * HILL_GRADE, 9);
+        expect(planeAt(seed, road + 300, z).h - planeAt(seed, road + 100, z).h).toBeCloseTo(200 * HILL_GRADE, 9);
       }
     }
   });
@@ -159,10 +175,10 @@ describe("the town's made ground", () => {
     for (const seed of [20261121, 1, 424242]) {
       for (const z of [-300, 0, 200]) {
         const road = roadCenterX(seed, z);
-        let last = made(seed, road + HILL_FROM - 6, z).dx;
+        let last = planeAt(seed, road + HILL_FROM - 6, z).dx;
         const first = last;
         for (let u = HILL_FROM - 6; u <= HILL_TO + 6; u += 0.25) {
-          const d = made(seed, road + u, z).dx;
+          const d = planeAt(seed, road + u, z).dx;
           step = Math.max(step, Math.abs(d - last));
           // The grade only rises from the flats' to the hill's.
           expect(d).toBeGreaterThanOrEqual(last - 1e-12);
@@ -177,54 +193,150 @@ describe("the town's made ground", () => {
     process.stderr.write(`largest change of the x-slope between points 0.25 m apart across the highway: ${step.toExponential(2)}\n`);
   });
 
-  it("never exceeds a slope of 0.10 on the made ground, the highway's corridor laid over it included: streets there are walkable and drivable", () => {
+  it("keeps the town's ground walkable: where the plan stands, all but a few of 1000 points are under a slope of 0.10, and the highway's own width is under 0.02", () => {
+    let total = 0;
+    let steep = 0;
     let worst = 0;
-    let where = "";
-    let edgeLeast = Infinity;
-    let edgeGreatest = -Infinity;
-    let edgeAbs = 0;
-    let edgeN = 0;
+    let corridorWorst = 0;
     for (const seed of TEN_SEEDS) {
       const site = siteFor(seed);
       const line = shoreSplineOf(site);
-      for (let z = -TOWN_Z_HALF; z <= TOWN_Z_HALF; z += 8) {
-        const shore = site.anchor.x + shoreXAt(line, z - COVE_Z).v;
+      for (let zr = -TOWN_Z_HALF; zr <= TOWN_Z_HALF; zr += 6) {
+        const shore = site.anchor.x + shoreXAt(line, zr).v;
+        const z = COVE_Z + zr;
         const road = roadCenterX(seed, z);
-        // From the water's edge to the inland edge: the bank and the outer blend are outside.
-        for (let x = shore; x <= road + TOWN_INLAND; x += 3) {
+        // From 14 m inland of the water's edge (the bank is tested apart), where the plan stands whole.
+        for (let x = shore + 14; x <= road + TOWN_INLAND; x += 6) {
+          if (cover(seed, x, z) < 0.999) continue;
           const s = elevationSampleAt(seed, x, z);
           const g = Math.hypot(s.dx, s.dz);
-          if (g > worst) {
-            worst = g;
-            where = `seed ${seed} z ${z} s ${(x - shore).toFixed(0)} u ${(x - road).toFixed(0)}`;
+          if (Math.abs(x - road) <= 14) corridorWorst = Math.max(corridorWorst, g);
+          else {
+            total++;
+            if (g > 0.1) steep++;
+            worst = Math.max(worst, g);
           }
-        }
-        if (z % 40 === 0) {
-          // The cut or fill where the made ground meets the coast's own at the inland edge: the plane less the coast's ground there.
-          const x = road + TOWN_INLAND;
-          const gap = elevationSampleAt(seed, x, z).h - coastGround(seed, x, z).ground.h;
-          edgeLeast = Math.min(edgeLeast, gap);
-          edgeGreatest = Math.max(edgeGreatest, gap);
-          edgeAbs += Math.abs(gap);
-          edgeN++;
         }
       }
     }
-    process.stderr.write(`steepest slope on the made ground over ten seeds: ${worst.toFixed(3)} (${where}); at the inland edge the cut (-) or fill (+) is ${edgeLeast.toFixed(1)} to ${edgeGreatest.toFixed(1)} m, mean ${(edgeAbs / edgeN).toFixed(1)} m\n`);
-    expect(worst).toBeLessThan(0.1);
-    // The coast's climb is drawn out behind the town so the hill does not stand under a wall of ground: no more than this either way.
-    expect(edgeLeast).toBeGreaterThan(-10);
-    expect(edgeGreatest).toBeLessThan(10);
+    process.stderr.write(`slope where the plan stands over ten seeds: ${steep} of ${total} points over 0.10 (${((steep / total) * 100).toFixed(2)}%), steepest ${worst.toFixed(2)}; within 14 m of the highway steepest ${corridorWorst.toFixed(3)}\n`);
+    expect(total).toBeGreaterThan(10000);
+    expect(steep / total).toBeLessThan(0.005);
+    expect(corridorWorst).toBeLessThan(0.02);
   });
 
-  it("is the coast's own, exactly, outside the footprint and its blend", () => {
+  it("follows the plan, not a rectangle: the cover is 1 on every block, on the streets between them and on the highway beside them, falls to 0 beyond, and the made ground is the coast's own where it is 0", () => {
+    for (const seed of TEN_SEEDS.slice(0, 6)) {
+      const plan = planFor(seed);
+      const site = siteFor(seed);
+      let inside = 0;
+      for (const b of plan.blocks) {
+        const c = b.polygon.reduce((acc, p) => ({ x: acc.x + p.x / b.polygon.length, z: acc.z + p.z / b.polygon.length }), { x: 0, z: 0 });
+        expect(coverD(plan, c.x, c.z).v, `seed ${seed} block ${b.id}`).toBe(1);
+        inside++;
+      }
+      // The streets: a point on each (its middle) is covered whole, whatever else lies about it.
+      let covered = 0;
+      let streets = 0;
+      for (const st of plan.streets) {
+        if (st.kind === "highway" || st.kind === "rail" || st.kind === "wharf") continue;
+        streets++;
+        if (coverD(plan, (st.a.x + st.b.x) / 2, (st.a.z + st.b.z) / 2).v >= 0.999) covered++;
+      }
+      expect(covered / streets, `seed ${seed} streets covered`).toBeGreaterThan(0.9);
+      // Beyond COVER_HOLD + COVER_FADE of every block the ground is the coast's own, the same values.
+      let own = 0;
+      for (let zr = -700; zr <= 700; zr += 20) {
+        for (let xf = -400; xf <= 700; xf += 20) {
+          if (coverD(plan, xf, zr).v !== 0) continue;
+          const x = site.anchor.x + xf;
+          const z = COVE_Z + zr;
+          if (fillReaches(seed, x, z)) continue;
+          const here = coastGround(seed, x, z);
+          expect(townGroundD(seed, x, z, here.u, here.uDz, here.ground)).toBe(here.ground);
+          own++;
+        }
+      }
+      expect(own, `seed ${seed} points with no cover`).toBeGreaterThan(300);
+      expect(inside).toBeGreaterThan(20);
+    }
+    process.stderr.write(`cover: whole on every block, hold ${COVER_HOLD} m and fade ${COVER_FADE} m\n`);
+  });
+
+  it("has the exact gradient at 300 points of the plan: inside its blocks, in the fade beyond them and in the relief's own windows", () => {
+    const rnd = lcg(21);
+    const H = 0.0002;
+    let worst = 0;
+    for (const seed of [20261121, 1, 424242]) {
+      const plan = planFor(seed);
+      const site = siteFor(seed);
+      for (let k = 0; k < 100; k++) {
+        const b = plan.blocks[Math.floor(rnd() * plan.blocks.length)] as (typeof plan.blocks)[number];
+        const p = b.polygon[Math.floor(rnd() * b.polygon.length)] as { x: number; z: number };
+        const c = b.polygon.reduce((acc, q) => ({ x: acc.x + q.x / b.polygon.length, z: acc.z + q.z / b.polygon.length }), { x: 0, z: 0 });
+        // From the block's middle out to well beyond its corner: inside, the hold, the fade.
+        const t = rnd() * (k % 2 === 0 ? 1 : 3.2);
+        const x = site.anchor.x + c.x + (p.x - c.x) * t;
+        const z = site.anchor.z + c.z + (p.z - c.z) * t;
+        const sample = made(seed, x, z);
+        const fdx = (made(seed, x + H, z).h - made(seed, x - H, z).h) / (2 * H);
+        const fdz = (made(seed, x, z + H).h - made(seed, x, z - H).h) / (2 * H);
+        worst = Math.max(worst, Math.abs(sample.dx - fdx), Math.abs(sample.dz - fdz));
+        expect(sample.dx, `seed ${seed} at ${x.toFixed(2)}, ${z.toFixed(2)}`).toBeCloseTo(fdx, 5);
+        expect(sample.dz, `seed ${seed} at ${x.toFixed(2)}, ${z.toFixed(2)}`).toBeCloseTo(fdz, 5);
+      }
+    }
+    process.stderr.write(`gradient vs finite difference at 300 points of the plan: worst ${worst.toExponential(2)}\n`);
+  });
+
+  it("keeps relief inside what it declares: the made ground is the plane where the relief window is shut (the fill, the quay's 14 m, the highway's 14 m), and elsewhere within RELIEF_LIMIT and the town's own amplitude of it", () => {
+    let shut = 0;
+    let open = 0;
+    let worst = 0;
+    for (const seed of TEN_SEEDS.slice(0, 5)) {
+      const site = siteFor(seed);
+      const plan = planFor(seed);
+      for (let zr = -400; zr <= 400; zr += 16) {
+        const z = COVE_Z + zr;
+        const road = roadCenterX(seed, z);
+        // Within the highway's own width, and the plan standing whole: exactly the plane.
+        for (const u of [-10, -4, 0, 5, 12]) {
+          const x = road + u;
+          if (cover(seed, x, z) < 1) continue;
+          const here = coastGround(seed, x, z);
+          const plane = madePlaneD(seed, x, z, here.u, here.uDz);
+          if (plane === null || !(x - site.anchor.x > shoreXAt(shoreSplineOf(site), zr).v + 20)) continue;
+          expect(Math.abs(townGroundD(seed, x, z, here.u, here.uDz, here.ground).h - plane.h), `seed ${seed} z ${z} u ${u}`).toBeLessThan(1e-9);
+          shut++;
+        }
+        // Where it is open: the ground is within the limit and the own relief of the plane.
+        for (const u of [-60, 100, 200]) {
+          const x = road + u;
+          if (cover(seed, x, z) < 1) continue;
+          const here = coastGround(seed, x, z);
+          const plane = madePlaneD(seed, x, z, here.u, here.uDz);
+          if (plane === null) continue;
+          const off = Math.abs(townGroundD(seed, x, z, here.u, here.uDz, here.ground).h - plane.h);
+          worst = Math.max(worst, off);
+          expect(off, `seed ${seed} z ${z} u ${u}`).toBeLessThanOrEqual(RELIEF_LIMIT + Math.max(OWN_FLATS, OWN_HILL) + 1e-9);
+          open++;
+        }
+      }
+      expect(plan.blocks.length).toBeGreaterThan(0);
+    }
+    expect(shut).toBeGreaterThan(50);
+    expect(open).toBeGreaterThan(50);
+    process.stderr.write(`relief: ${shut} points where the window is shut equal the plane; ${open} where it is open stand within ${worst.toFixed(2)} m of it\n`);
+  });
+
+  it("is the coast's own, exactly, beyond the plan's cover", () => {
     const rnd = lcg(3);
     let checked = 0;
     // The plan's fill reaches seaward of the natural shore at the cove, and its bank is made ground: a point it
     // reaches is left out here (and tested as the quay's bank in fill.test.ts), and counted.
     let inFill = 0;
     for (const seed of [20261121, 1, 424242]) {
-      for (let k = 0; k < 60; k++) {
+      for (let k = 0; k < 120; k++) {
         const z = (rnd() * 2 - 1) * 900;
         const f = frame(seed, z);
         const x = k % 2 === 0 ? f.road + TOWN_INLAND + EDGE + 1 + rnd() * 300 : f.at(-f.foot - 1 - rnd() * 100);
@@ -232,6 +344,7 @@ describe("the town's made ground", () => {
           inFill++;
           continue;
         }
+        if (cover(seed, x, z) !== 0) continue;
         const own = coastGround(seed, x, z);
         const got = elevationSampleAt(seed, x, z);
         expect(got).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
@@ -245,6 +358,7 @@ describe("the town's made ground", () => {
             inFill++;
             continue;
           }
+          if (cover(seed, f.at(s), z) !== 0) continue;
           const own = coastGround(seed, f.at(s), z);
           expect(elevationSampleAt(seed, f.at(s), z)).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
           checked++;
@@ -252,11 +366,12 @@ describe("the town's made ground", () => {
       }
     }
     expect(checked).toBeGreaterThan(150);
-    process.stderr.write(`the coast's own outside the footprint: ${checked} points checked, ${inFill} left out for lying in the plan's fill or its bank\n`);
+    process.stderr.write(`the coast's own beyond the cover: ${checked} points checked, ${inFill} left out for lying in the plan's fill or its bank\n`);
   });
 
-  it("follows the highway's grade line along the whole town: its height at the highway is the grade line's, worst case over ten seeds", () => {
+  it("follows the highway's grade line wherever the plan stands along it: its height at the highway is the grade line's, worst case over ten seeds", () => {
     let worst = 0;
+    let checked = 0;
     const rows: string[] = [];
     for (const seed of TEN_SEEDS) {
       let seedWorst = 0;
@@ -265,16 +380,19 @@ describe("the town's made ground", () => {
       for (let z = -TOWN_Z_HALF; z <= TOWN_Z_HALF; z += 4) {
         const road = roadCenterX(seed, z);
         const { u, uDz, ground } = coastGround(seed, road, z);
+        if (cover(seed, road, z) < 1) continue;
         const h = townGroundD(seed, road, z, u, uDz, ground).h;
         seedWorst = Math.max(seedWorst, Math.abs(h - roadGradeAt(seed, z).h));
+        checked++;
         const f = frame(seed, z);
-        const grade = made(seed, f.at(60), z).dx;
+        const grade = planeAt(seed, f.at(60), z).dx;
         gradeLeast = Math.min(gradeLeast, grade);
         gradeGreatest = Math.max(gradeGreatest, grade);
       }
       worst = Math.max(worst, seedWorst);
       rows.push(`seed ${String(seed).padStart(9)}: highway grade ${roadGradeAt(seed, 0).h.toFixed(2)} m at the anchor, plane grade ${gradeLeast.toFixed(4)} to ${gradeGreatest.toFixed(4)}, mismatch at the highway ${seedWorst.toExponential(1)} m`);
     }
+    expect(checked).toBeGreaterThan(500);
     expect(worst).toBeLessThan(1e-9);
     process.stderr.write(`${rows.join("\n")}\nworst mismatch with the highway's grade over ten seeds: ${worst.toExponential(2)} m\n`);
   });
@@ -291,6 +409,8 @@ describe("the town's made ground", () => {
     for (const seed of TEN_SEEDS) {
       const heads = coveFor(seed).heads;
       for (let z = -TOWN_Z_HALF + 8; z < TOWN_Z_HALF; z += 8) {
+        // Where the plan stands at the water's edge.
+        if (cover(seed, frame(seed, z).at(0), z) < 1) continue;
         // The cove's two headlands reach 100 to 150 m seaward of the waterline in a ridge 60 m across: on their
         // flanks the shore runs east and west and the coast's own ground beyond the bank is the ridge's.
         const atHeadland = heads.some((h) => Math.abs(z - h.z) < HEAD_HALF_WIDTH + 16);

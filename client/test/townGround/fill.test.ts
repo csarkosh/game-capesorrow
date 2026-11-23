@@ -6,6 +6,8 @@ import { QUAY_BANK, fillWindowD, townFillFor, type FillArea } from "../../src/si
 import { townCover } from "../../src/sim/town/clearing.js";
 import { QUAY, townGroundD } from "../../src/sim/town/ground.js";
 import { shoreSplineOf, shoreXAt } from "../../src/sim/town/shoreSpline.js";
+import { coverD } from "../../src/sim/town/cover.js";
+import { planFor } from "../../src/sim/town/planFor.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { TEN_SEEDS } from "./seeds.js";
 
@@ -151,7 +153,10 @@ describe("the made ground with fill laid over the sea", () => {
     for (const seed of SEEDS) {
       const site = siteFor(seed);
       const shore = (z: number) => site.anchor.x + shoreXAt(shoreSplineOf(site), z).v;
-      for (const z of [-300, -40, 0, 70, 300]) {
+      // Where the plan stands at the water's edge (elsewhere the ground is the coast's own, which this is not about).
+      const stands = [-300, -240, -170, -100, -40, 0, 70, 120, 200, 300].filter((z) => coverD(planFor(seed), shore(z) + 14 - site.anchor.x, z).v === 1);
+      expect(stands.length).toBeGreaterThan(1);
+      for (const z of stands) {
         let last = madeWith(seed, [], shore(z) - 14, z).out.dx;
         for (let x = shore(z) - 14; x <= shore(z) + 14; x += 0.25) {
           const d = madeWith(seed, [], x, z).out.dx;
