@@ -6,4 +6,4 @@
  * seed is only a promise for one version; the pinned digests in `test/town/determinism.test.ts`
  * fail when this is forgotten, and the fix for a failing digest is to raise this number and re-pin.
  */
-export const TOWN_GEN = 15;
+export const TOWN_GEN = 16;

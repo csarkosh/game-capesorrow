@@ -16,6 +16,7 @@ import { BAKED, fbox, shade as lightShade, xd, xp, type Ctx } from "./roomKit.js
 import { roomField, type DayOpening } from "./roomLight.js";
 import { finishOf, roomShell, type RoomIn } from "./roomShell.js";
 import { dressRoom, goodsOf } from "./roomDressing.js";
+import { benchSet, bin, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
 import type { Furnishing, RoomLight } from "../../sim/town/types.js";
 
 export { xp, type Xf } from "./roomKit.js";
@@ -72,50 +73,7 @@ function counter(c: Ctx, f: Furnishing, i: number): void {
   fbox(c, f.s, f.d, f.h * 0.92, 0.05, f.sx / 2 + 0.03, f.sd / 2 + 0.05, dir, shade(wood, 0.7), [0.6, 0.58, 0.52]);
   // The till: a dark box with its screen.
   fbox(c, f.s - dir.x * f.sx * 0.15, f.d - dir.z * f.sx * 0.15, f.h * 0.92 + 0.05, 0.2, 0.18, 0.15, dir, [0.1, 0.1, 0.11], [0.12, 0.2, 0.15], c.lit ? 0.8 : BAKED);
-}
-
-function table(c: Ctx, f: Furnishing, i: number): void {
-  const dir = dirOf(f);
-  const top: Rgb = hash01(c.seed + i, 313) < 0.5 ? [0.55, 0.5, 0.42] : [0.3, 0.2, 0.12];
-  fbox(c, f.s, f.d, 0.7, 0.05, f.sx / 2, f.sd / 2, dir, shade(top, 0.8), top);
-  fbox(c, f.s, f.d, 0, 0.7, 0.05, 0.05, dir, [0.15, 0.15, 0.16], [0.15, 0.15, 0.16], BAKED, false);
-  if (c.detail === "low") return;
-  const chair: Rgb = pickOf([[0.6, 0.15, 0.1], [0.15, 0.3, 0.35], [0.3, 0.2, 0.12], [0.35, 0.36, 0.38]] as readonly Rgb[], c.seed + i, 314);
-  for (const sg of [-1, 1]) {
-    const cs = f.s + dir.z * sg * (f.sd / 2 + 0.3);
-    const cd = f.d - dir.x * sg * (f.sd / 2 + 0.3);
-    // A chair that would stand in the window (or through the front wall) is left out; so is one that would stand behind the back wall.
-    if (cd < 0.55 || cd > c.xf.depth - 0.5 || cs < 0.3 || cs > c.xf.width - 0.3) continue;
-    // Two tables' chairs never stand on one spot.
-    if (c.chairs.some(([a, b]) => Math.abs(a - cs) < 0.45 && Math.abs(b - cd) < 0.45)) continue;
-    c.chairs.push([cs, cd]);
-    fbox(c, cs, cd, 0.04, 0.42, 0.2, 0.2, AX, chair, shade(chair, 1.15), BAKED, false);
-    fbox(c, cs, cd + sg * 0.19, 0.46, 0.45, 0.2, 0.03, AX, chair, chair, BAKED, false);
-  }
-}
-
-function booth(c: Ctx, f: Furnishing, i: number): void {
-  const dir = dirOf(f);
-  const vinyl: Rgb = pickOf([[0.6, 0.12, 0.1], [0.1, 0.3, 0.32], [0.14, 0.3, 0.16], [0.3, 0.18, 0.1]] as readonly Rgb[], c.seed, 315);
-  fbox(c, f.s, f.d, 0, 0.46, f.sx / 2, f.sd / 2, dir, vinyl, shade(vinyl, 1.2));
-  // The back: along the long side away from the window's middle.
-  const px = -dir.z;
-  const pd = dir.x;
-  const k = hash01(c.seed + i, 316) < 0.5 ? 1 : -1;
-  fbox(c, f.s + px * k * (f.sd / 2 - 0.06), f.d + pd * k * (f.sd / 2 - 0.06), 0.46, 0.65, f.sx / 2, 0.06, dir, vinyl, shade(vinyl, 1.05));
-  void i;
-}
-
-function stools(c: Ctx, f: Furnishing): void {
-  const dir = dirOf(f);
-  const n = Math.max(1, Math.floor(f.sx / 0.62));
-  for (let k = 0; k < n; k++) {
-    const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
-    const s = f.s + dir.x * u;
-    const d = f.d + dir.z * u;
-    fbox(c, s, d, 0, 0.6, 0.03, 0.03, dir, [0.55, 0.55, 0.58], [0.55, 0.55, 0.58], BAKED, false);
-    fbox(c, s, d, 0.6, 0.07, 0.17, 0.17, dir, [0.55, 0.1, 0.08], [0.65, 0.14, 0.1], BAKED, false);
-  }
+  counterTop(c, f, i);
 }
 
 function displayCase(c: Ctx, f: Furnishing, i: number): void {
@@ -168,16 +126,6 @@ function washers(c: Ctx, f: Furnishing): void {
   }
 }
 
-function desk(c: Ctx, f: Furnishing, i: number): void {
-  const dir = dirOf(f);
-  const wood: Rgb = hash01(c.seed + i, 317) < 0.5 ? [0.42, 0.3, 0.18] : [0.45, 0.46, 0.46];
-  fbox(c, f.s, f.d, 0.7, 0.05, f.sx / 2, f.sd / 2, dir, shade(wood, 0.8), wood);
-  fbox(c, f.s + dir.x * f.sx * 0.35, f.d + dir.z * f.sx * 0.35, 0, 0.7, f.sx * 0.12, f.sd / 2 - 0.04, dir, shade(wood, 0.9), shade(wood, 0.9), BAKED, false);
-  if (c.detail === "low") return;
-  fbox(c, f.s, f.d, 0.75, 0.3, 0.2, 0.03, dir, [0.07, 0.07, 0.08], [0.1, 0.1, 0.1], c.lit ? 0.9 : BAKED);
-  fbox(c, f.s - dir.z * (f.sd / 2 + 0.35), f.d + dir.x * (f.sd / 2 + 0.35), 0.04, 0.9, 0.24, 0.24, AX, [0.1, 0.12, 0.2], [0.14, 0.16, 0.26], BAKED, false);
-}
-
 function rack(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
   const rail: Rgb = [0.5, 0.5, 0.52];
@@ -207,7 +155,7 @@ function crates(c: Ctx, f: Furnishing, i: number): void {
     const col: Rgb = hash01(c.seed + i * 5 + k, 320) < 0.5 ? [0.45, 0.32, 0.18] : [0.2, 0.3, 0.45];
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
     const stack = 1 + Math.floor(hash01(c.seed + i * 7 + k, 321) * 3);
-    for (let t = 0; t < stack; t++) fbox(c, f.s + dir.x * u, f.d + dir.z * u, t * 0.3, 0.28, Math.min(0.3, f.sx / n / 2), f.sd / 2, dir, col, shade(col, 1.15));
+    for (let t = 0; t < stack; t++) fbox(c, f.s + dir.x * u, f.d + dir.z * u, t * 0.31, 0.3, Math.min(0.3, f.sx / n / 2), f.sd / 2, dir, col, shade(col, 1.15));
   }
 }
 
@@ -234,10 +182,6 @@ function paintCans(c: Ctx, f: Furnishing, i: number): void {
   }
 }
 
-function bench(c: Ctx, f: Furnishing): void {
-  fbox(c, f.s, f.d, 0, f.h, f.sx / 2, f.sd / 2, dirOf(f), [0.3, 0.2, 0.12], [0.38, 0.27, 0.16]);
-}
-
 function poolTable(c: Ctx, f: Furnishing): void {
   const dir = dirOf(f);
   fbox(c, f.s, f.d, 0, 0.78, f.sx / 2, f.sd / 2, dir, [0.2, 0.12, 0.07], [0.1, 0.35, 0.2]);
@@ -255,23 +199,33 @@ function furnishing(c: Ctx, f: Furnishing, i: number): void {
   switch (f.kind) {
     case "shelf run": return shelfRun(c, f, i);
     case "counter": return counter(c, f, i);
-    case "table": return table(c, f, i);
+    case "table": return tableSet(c, f, i);
     case "booth": return booth(c, f, i);
-    case "stool row": return stools(c, f);
+    case "stool row": return stools(c, f, i);
     case "display case": return displayCase(c, f, i);
     case "cooler": return cooler(c, f, i);
     case "washer row": return washers(c, f);
-    case "desk": return desk(c, f, i);
+    case "desk": return deskSet(c, f, i);
     case "rack": return rack(c, f, i);
     case "stacked crates": return crates(c, f, i);
     case "ladder": return ladder(c, f);
     case "paint cans": return paintCans(c, f, i);
-    case "bench": return bench(c, f);
+    case "bench": return benchSet(c, f, i);
     case "pool table": return poolTable(c, f);
     case "lift": return lift(c, f, i);
+    case "partition": return partition(c, f, i);
+    case "endcap": return endcap(c, f, i);
+    case "checkout": return checkout(c, f, i);
+    case "bin": return bin(c, f, i);
+    case "cart": return cart(c, f, i);
+    case "couch": return couch(c, f, i);
+    case "machine": return machine(c, f, i);
+    case "cabinet": return cabinets(c, f, i);
+    case "water cooler": return waterCooler(c, f);
+    case "plant": return plant(c, f, i);
+    case "sheet": return sheet(c, f, i);
   }
 }
-
 
 function lights(c: Ctx, list: readonly RoomLight[], ceiling: number, dead: readonly boolean[]): void {
   const NEON: readonly Rgb[] = [[1, 0.15, 0.12], [0.2, 0.55, 1], [1, 0.5, 0.15], [0.3, 1, 0.45]];
@@ -305,10 +259,30 @@ function lights(c: Ctx, list: readonly RoomLight[], ceiling: number, dead: reado
 /** How much of the day an opening lets into the room, by what covers it. */
 const THROUGH: Record<string, number> = { none: 1, display: 0.7, blinds: 0.5, papered: 0.45, boarded: 0, bricked: 0 };
 
-/** Where the doorway at the back is, from the unit's own number: a station of the back wall, and whether it is open on a back room (else a shut door). */
-export function doorwayOf(seed: number, s0: number, s1: number): { s: number; open: boolean; w: number } {
+/**
+ * Where the doorway in the back partition is, from the unit's own number: a station of the back wall clear of what stands against it (a jog or a
+ * half wall hides the stretch behind it), and whether it is open on a back room (else a shut door).
+ */
+export function doorwayOf(seed: number, s0: number, s1: number, blocked: readonly (readonly [number, number])[] = []): { s: number; open: boolean; w: number } {
   const w = 0.45;
-  return { s: s0 + w + 0.35 + hash01(seed, 327) * Math.max(0.1, s1 - s0 - 2 * (w + 0.35)), open: hash01(seed, 741) < 0.55, w };
+  const lo0 = s0 + w + 0.35;
+  const hi0 = s1 - w - 0.35;
+  // The free stretches between the blocked ones; the doorway goes in the widest.
+  let segs: [number, number][] = [[lo0, Math.max(lo0 + 0.1, hi0)]];
+  for (const [b0, b1] of blocked) {
+    const next: [number, number][] = [];
+    for (const [a, b] of segs) {
+      if (b1 + w < a || b0 - w > b) next.push([a, b]);
+      else {
+        if (b0 - w - a > 0.05) next.push([a, b0 - w]);
+        if (b - (b1 + w) > 0.05) next.push([b1 + w, b]);
+      }
+    }
+    segs = next;
+  }
+  if (segs.length === 0) segs = [[lo0, Math.max(lo0 + 0.1, hi0)]];
+  const best = segs.reduce((p, q) => (q[1] - q[0] > p[1] - p[0] ? q : p));
+  return { s: best[0] + hash01(seed, 327) * Math.max(0.1, best[1] - best[0]), open: hash01(seed, 741) < 0.55, w };
 }
 
 /** The room of one unit: between `r.s0` and `r.s1` across, from the face (`d` 0) to `interior.depth`, from the floor to the ceiling. */
@@ -317,7 +291,14 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
   const full = detail === "full";
   const vacant = r.state === "vacant for lease" || r.state === "vacant boarded";
   const lit = r.lit;
-  const dw = doorwayOf(r.id, r.s0, r.s1);
+  // What stands against the back wall hides the stretch behind it: the doorway goes where the partition shows.
+  const blocked: [number, number][] = [];
+  for (const f of interior.furnishings) {
+    if (f.kind !== "partition") continue;
+    const ex = (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
+    blocked.push([f.s - ex, f.s + ex]);
+  }
+  const dw = doorwayOf(r.id, r.s0, r.s1, blocked);
   const day: DayOpening[] = r.openings.map((o) => ({ s0: Math.min(o.s0, o.s1), s1: Math.max(o.s0, o.s1), through: THROUGH[o.cover] ?? 1 }));
   // A tube has failed more often in an old unit that has had many tenants (nobody replaced it).
   const wear = vacant ? 0 : Math.min(0.3, 0.04 + 0.03 * r.past.length + (r.era < 1950 ? 0.03 : 0));
@@ -325,11 +306,19 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
     s0: r.s0, s1: r.s1, depth: interior.depth, ceiling: interior.ceiling, lights: interior.lights, openings: day, lit, vacant, furnishings: interior.furnishings,
     seed: r.id, wear, step: full ? 0.75 : 2.0, backLamp: dw.open && !vacant ? dw.s : null,
   });
-  const c: Ctx = { out, xf, floorY, seed: r.id, lit, vacant, detail, trade: r.trade, field, ceiling: interior.ceiling, s0: r.s0, s1: r.s1, d1: interior.depth, era: r.era, n: 0, chairs: [] };
   const fin = finishOf(r);
+  const feet: Foot[] = interior.furnishings.map((f, i) => {
+    const ex = (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
+    const ez = (Math.abs(f.dir.z) * f.sx + Math.abs(f.dir.x) * f.sd) / 2;
+    return { i, s0: f.s - ex, s1: f.s + ex, d0: f.d - ez, d1: f.d + ez, h: f.h };
+  });
+  const c: Ctx = {
+    out, xf, floorY, seed: r.id, lit, vacant, detail, trade: r.trade, field, ceiling: interior.ceiling, s0: r.s0, s1: r.s1, d1: interior.depth, era: r.era, n: 0, chairs: [],
+    type: interior.type, paint: fin.wall.paint, base: fin.base, door: { s: r.door.s, w: r.door.width }, feet, style: styleOf(r.id, r.trade, r.era, r.opened, r.remodel?.decade ?? 0),
+  };
   // The furnishings: all of them on the full tier, the largest few on the low.
   let list = interior.furnishings.map((f, i) => ({ f, i }));
-  if (!full) list = [...list].sort((a, b) => b.f.sx * b.f.sd - a.f.sx * a.f.sd).slice(0, 6);
+  if (!full) list = [...list.filter(({ f }) => f.kind === "partition"), ...[...list].filter(({ f }) => f.kind !== "partition").sort((a, b) => b.f.sx * b.f.sd - a.f.sx * a.f.sd).slice(0, 6)];
   // The grid lines of the floor at the edges of what stands on it.
   const big = list.filter(({ f }) => f.sx * f.sd >= 0.5 && f.h >= 0.4).sort((a, b) => b.f.sx * b.f.sd - a.f.sx * a.f.sd).slice(0, 6);
   const anchors = { s: [] as number[], d: [] as number[] };
@@ -339,9 +328,11 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
     anchors.s.push(f.s - ex - 0.05, f.s + ex + 0.05);
     anchors.d.push(f.d - ez - 0.05, f.d + ez + 0.05);
   }
-  roomShell(c, r, fin, anchors);
+  roomShell(c, r, fin, anchors, dw);
   for (const { f, i } of list) furnishing({ ...c, n: i }, f, i);
+  floorThings(c, fin.checker);
   dressRoom(c, r, fin, dw);
+  ceilingThings(c, interior.furnishings, interior.lights.map((l) => l.s));
   // The room's fixtures are drawn at the floor's height: their y is metres over the floor.
   lights(c, interior.lights, interior.ceiling, field.dead);
   if (!lit && !vacant) {

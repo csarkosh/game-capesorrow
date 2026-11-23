@@ -726,7 +726,8 @@ export type UnitState = "open" | "closed for the day" | "vacant for lease" | "va
 export type InteriorType = "retail aisles" | "counter service" | "dining room" | "bar" | "office" | "laundromat" | "workshop" | "lobby" | "empty";
 export type FurnishingKind =
   | "shelf run" | "counter" | "table" | "booth" | "stool row" | "display case" | "cooler" | "washer row" | "desk"
-  | "rack" | "stacked crates" | "ladder" | "paint cans" | "bench" | "pool table" | "lift";
+  | "rack" | "stacked crates" | "ladder" | "paint cans" | "bench" | "pool table" | "lift"
+  | "partition" | "endcap" | "checkout" | "bin" | "cart" | "couch" | "machine" | "cabinet" | "water cooler" | "plant" | "sheet";
 export type SignKind = "fascia" | "blade" | "glass" | "wall" | "pole" | "sandwich" | "banner" | "open" | "lease" | "ghost" | "board";
 /** Hand-painted wood or paint (before 1950), neon and porcelain enamel (1950s and 60s), backlit plastic boxes (1970 to 1999), vinyl (2000 on). */
 export type SignStyle = "hand-painted" | "neon and porcelain" | "backlit box" | "vinyl";

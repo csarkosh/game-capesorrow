@@ -12,9 +12,9 @@
  */
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
-import { BAKED, fbox, fcyl, shade, wallBox, wallPoint, wallQuad, type Ctx, type WallName } from "./roomKit.js";
+import { BAKED, fbox, fcyl, shade, wallBox, wallPoint, wallPoly, wallQuad, type Ctx, type WallName } from "./roomKit.js";
 import type { Finish, RoomIn } from "./roomShell.js";
-import type { Trade } from "../../sim/town/types.js";
+import type { Furnishing, Trade } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
 
@@ -184,6 +184,7 @@ function backWallItems(c: Ctx, seed: number): Item[] {
       break;
     case "clothing": case "thrift store": case "gift shop": case "antiques": case "gallery": case "bookstore": case "jeweler":
       items.push(pst(3), pst(5), clk());
+      if (t === "clothing" || t === "thrift store") items.push({ w: 1.1, draw: (a) => curtain(c, a, seed) }, { w: 0.7, draw: (a) => mirror(c, "back", a, 0.5, 0.6, 1.7) });
       items.push({ w: 1.8, draw: (a) => wallShelves(c, "back", a, 1.7, 0.9, 3, seed) });
       break;
     case "dentist": case "medical clinic": case "veterinarian": case "pharmacy":
@@ -201,9 +202,31 @@ function backWallItems(c: Ctx, seed: number): Item[] {
   return items;
 }
 
-/** The back wall's free stretches (between the walls' ends and the doorway), and the items spread along them in an order of the unit's own. */
-function placeBack(c: Ctx, items: Item[], dw: { s: number; w: number }, seed: number): void {
-  const segs: [number, number][] = [[c.s0 + 0.25, dw.s - dw.w - 0.3], [dw.s + dw.w + 0.3, c.s1 - 0.25]];
+/** The back wall's free stretches: between the walls' ends, minus the doorway and what stands in front of it (a jog, a half wall). */
+function backSegs(c: Ctx, r: RoomIn, dw: { s: number; w: number }): [number, number][] {
+  let segs: [number, number][] = [[c.s0 + 0.25, c.s1 - 0.25]];
+  const cut = (b0: number, b1: number): void => {
+    const next: [number, number][] = [];
+    for (const [a, b] of segs) {
+      if (b1 <= a || b0 >= b) next.push([a, b]);
+      else {
+        if (b0 - a > 0.3) next.push([a, b0]);
+        if (b - b1 > 0.3) next.push([b1, b]);
+      }
+    }
+    segs = next;
+  };
+  cut(dw.s - dw.w - 0.3, dw.s + dw.w + 0.3);
+  for (const f of r.interior.furnishings) {
+    if (f.kind !== "partition") continue;
+    const ex = (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
+    cut(f.s - ex - 0.1, f.s + ex + 0.1);
+  }
+  return segs;
+}
+
+/** The items spread along the free stretches, in an order of the unit's own. */
+function placeBack(c: Ctx, items: Item[], segs: [number, number][], seed: number): void {
   const order = items.map((it, i) => ({ it, k: hash01(seed + i * 11, 775) })).sort((p, q) => p.k - q.k).map((x) => x.it);
   let idx = 0;
   for (const [a, b] of segs) {
@@ -218,17 +241,150 @@ function placeBack(c: Ctx, items: Item[], dw: { s: number; w: number }, seed: nu
   }
 }
 
-/** A few things on the party walls: a poster, a notice board, a clock, a shelf. */
-function sideWalls(c: Ctx, seed: number): void {
-  const wallsOf: WallName[] = ["left", "right"];
-  wallsOf.forEach((wall, wi) => {
-    const a = 3.2 + hash01(seed + wi, 778) * Math.max(0.5, c.d1 - 6);
-    const kind = Math.floor(hash01(seed + wi * 5, 779) * 4);
-    if (a > c.d1 - 1) return;
-    if (kind === 0) poster(c, wall, a, 1.4, 0.6, 0.85, seed + wi);
-    else if (kind === 1) noticeBoard(c, wall, a, 1.3, 0.9, 0.7, seed + wi);
-    else if (kind === 2) wallShelves(c, wall, a, 1.2, 1.1, 2, seed + wi * 9);
-    else clock(c, wall, a, 2.3, 0.18);
+/** A kitchen's pass-through in the partition: a lit opening in a frame, a shelf with plates on it and a rail of order tickets. */
+function passThrough(c: Ctx, a: number, seed: number): void {
+  const w = 0.65;
+  wallQuad(c, "back", a - w, a + w, 1.0, 1.75, 0.03, [1, 0.86, 0.58], c.lit ? 0.95 : 0.15);
+  const frame: Rgb = hash01(seed, 790) < 0.5 ? [0.5, 0.5, 0.52] : [0.3, 0.2, 0.12];
+  wallQuad(c, "back", a - w - 0.07, a - w, 0.96, 1.8, 0.06, frame);
+  wallQuad(c, "back", a + w, a + w + 0.07, 0.96, 1.8, 0.06, frame);
+  wallQuad(c, "back", a - w, a + w, 1.75, 1.8, 0.06, frame);
+  wallBox(c, "back", a - w - 0.07, a + w + 0.07, 0.94, 0.99, 0.16, frame);
+  for (let k = 0; k < 3; k++) {
+    if (hash01(seed + k, 791) < 0.25) continue;
+    const x = a - w + 0.15 + k * 0.4 + hash01(seed + k, 792) * 0.1;
+    wallBox(c, "back", x, x + 0.22, 0.99, 0.99 + 0.04 * (1 + (k % 2)), 0.1, [0.9, 0.9, 0.86]);
+  }
+  wallBox(c, "back", a - w, a + w, 1.64, 1.67, 0.09, [0.6, 0.6, 0.62]);
+  for (let k = 0; k < 4; k++) if (hash01(seed + k * 5, 793) > 0.3) wallQuad(c, "back", a - w + 0.2 + k * 0.28, a - w + 0.27 + k * 0.28, 1.5, 1.64, 0.12, [0.92, 0.92, 0.85]);
+}
+
+function exitSign(c: Ctx, a: number): void {
+  wallQuad(c, "back", a - 0.19, a + 0.19, 2.22, 2.34, 0.06, [0.08, 0.5, 0.18], c.lit ? 2.2 : 0.2);
+}
+
+/** A framed picture hung not quite level: a dark frame, a sky and a darker foot, each polygon turned about its middle by `tilt`. */
+function framed(c: Ctx, wall: WallName, a: number, y: number, w: number, h: number, tilt: number, seed: number): void {
+  const cs = Math.cos(tilt);
+  const sn = Math.sin(tilt);
+  const cx = a;
+  const cy = y + h / 2;
+  const at = (fx: number, fy: number): [number, number] => [cx + fx * cs - fy * sn, cy + fx * sn + fy * cs];
+  const rect = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)];
+  const f: Rgb = pickOf([[0.34, 0.22, 0.12], [0.12, 0.1, 0.09], [0.72, 0.66, 0.5], [0.45, 0.45, 0.42]] as readonly Rgb[], seed, 810);
+  wallPoly(c, wall, rect(-w / 2, -h / 2, w / 2, h / 2), 0.03, f);
+  const sky: Rgb = pickOf([[0.62, 0.7, 0.76], [0.78, 0.72, 0.6], [0.55, 0.6, 0.66]] as readonly Rgb[], seed + 1, 811);
+  const ground: Rgb = pickOf([[0.2, 0.32, 0.4], [0.18, 0.34, 0.2], [0.4, 0.28, 0.18], [0.3, 0.3, 0.34]] as readonly Rgb[], seed + 2, 812);
+  const m = Math.min(0.04, w * 0.1);
+  const split = -h / 2 + m + (h - 2 * m) * (0.3 + hash01(seed, 813) * 0.25);
+  wallPoly(c, wall, rect(-w / 2 + m, -h / 2 + m, w / 2 - m, split), 0.06, ground);
+  wallPoly(c, wall, rect(-w / 2 + m, split, w / 2 - m, h / 2 - m), 0.06, sky);
+}
+
+function coatHooks(c: Ctx, wall: WallName, a: number, seed: number): void {
+  wallQuad(c, wall, a - 0.4, a + 0.4, 1.55, 1.63, 0.03, [0.3, 0.2, 0.12]);
+  for (let k = 0; k < 4; k++) {
+    const x = a - 0.3 + k * 0.2;
+    wallQuad(c, wall, x - 0.015, x + 0.015, 1.5, 1.55, 0.06, [0.5, 0.5, 0.52]);
+    if (hash01(seed + k, 820) < 0.55) {
+      const col = pickOf([[0.2, 0.25, 0.35], [0.45, 0.2, 0.15], [0.3, 0.32, 0.25], [0.7, 0.6, 0.2]] as readonly Rgb[], seed + k, 821);
+      wallQuad(c, wall, x - 0.09, x + 0.09, 0.85 + hash01(seed + k, 822) * 0.2, 1.5, 0.09, col);
+    }
+  }
+}
+
+function mirror(c: Ctx, wall: WallName, a: number, y: number, w: number, h: number): void {
+  wallQuad(c, wall, a - w / 2, a + w / 2, y, y + h, 0.03, [0.35, 0.3, 0.22]);
+  wallQuad(c, wall, a - w / 2 + 0.04, a + w / 2 - 0.04, y + 0.04, y + h - 0.04, 0.06, [0.62, 0.7, 0.74], BAKED, [0.42, 0.48, 0.52]);
+}
+
+function dartBoard(c: Ctx, wall: WallName, a: number, y: number): void {
+  const ring = (r: number): [number, number][] => Array.from({ length: 8 }, (_, i) => [a + Math.cos((i / 8) * Math.PI * 2 + 0.39) * r, y + Math.sin((i / 8) * Math.PI * 2 + 0.39) * r]);
+  wallPoly(c, wall, ring(0.3), 0.03, [0.08, 0.08, 0.08]);
+  wallPoly(c, wall, ring(0.22), 0.06, [0.12, 0.35, 0.18]);
+  wallPoly(c, wall, ring(0.12), 0.09, [0.7, 0.14, 0.1]);
+  wallPoly(c, wall, ring(0.04), 0.12, [0.1, 0.1, 0.1]);
+}
+
+function curtain(c: Ctx, a: number, seed: number): void {
+  const col = pickOf([[0.5, 0.15, 0.2], [0.2, 0.3, 0.45], [0.35, 0.4, 0.25]] as readonly Rgb[], seed, 830);
+  wallQuad(c, "back", a - 0.55, a + 0.55, 2.1, 2.14, 0.03, [0.2, 0.2, 0.22]);
+  for (let k = 0; k < 6; k++) wallQuad(c, "back", a - 0.5 + k * 0.17, a - 0.5 + (k + 1) * 0.17, 0.12, 2.08, 0.06, scaled(col, k % 2 === 0 ? 1 : 0.78));
+}
+
+/**
+ * The party walls: a run of things from near the front to the partition, one after another with a gap between, chosen by the trade and the
+ * unit's own rolls, and left out where a tall piece of furniture stands against the wall or the partition's jog meets it. The menu board
+ * hangs over a service counter on its wall.
+ */
+function sideWalls(c: Ctx, r: RoomIn, seed: number): void {
+  const fs = r.interior.furnishings;
+  const food = c.trade !== null && ["cafe", "diner", "restaurant", "bakery", "espresso stand", "pizza and burgers"].includes(c.trade);
+  const bar = c.type === "bar";
+  const office = c.type === "office" || c.type === "lobby";
+  const clothes = c.trade !== null && ["clothing", "thrift store"].includes(c.trade);
+  (["left", "right"] as WallName[]).forEach((wall, wi) => {
+    const wallS = wall === "left" ? c.s0 : c.s1;
+    const reach = (f: Furnishing): number => (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
+    const near = (f: Furnishing): boolean => Math.abs(f.s - wallS) - reach(f) < 0.7;
+    const span = (f: Furnishing): [number, number] => {
+      const ez = (Math.abs(f.dir.z) * f.sx + Math.abs(f.dir.x) * f.sd) / 2;
+      return [f.d - ez, f.d + ez];
+    };
+    let end = c.d1 - 0.4;
+    for (const f of fs) if (f.kind === "partition" && near(f)) end = Math.min(end, span(f)[0] - 0.3);
+    const taken: [number, number][] = [];
+    for (const f of fs) if (near(f) && (f.h > 1.25 || f.kind === "partition")) taken.push(span(f));
+    // The menu board over the service counter on this wall.
+    if (food || bar) {
+      const cn = fs.find((f) => f.kind === "counter" && Math.abs(f.dir.z) > 0.7 && near(f) && f.sx >= 1.8);
+      if (cn !== undefined && c.ceiling >= 2.9) {
+        const w = Math.min(2.2, cn.sx - 0.3);
+        board(c, wall, cn.d, 1.78, w, 0.8, [0.1, 0.13, 0.1], WOOD, bar ? 3 : 6, CHALK, seed + wi);
+        taken.push([cn.d - w / 2 - 0.1, cn.d + w / 2 + 0.1]);
+      }
+    }
+    const blocked = (a0: number, a1: number): boolean => taken.some(([t0, t1]) => a1 > t0 - 0.15 && a0 < t1 + 0.15);
+    let x = 0.9 + hash01(seed + wi, 840) * 0.9;
+    let k = 0;
+    while (x < end - 0.6 && k < 6) {
+      const roll = hash01(seed + wi * 17 + k * 5, 841);
+      const kind = food ? (roll < 0.35 ? 0 : roll < 0.55 ? 1 : roll < 0.7 ? 2 : roll < 0.85 ? 3 : 4)
+        : bar ? (roll < 0.25 ? 0 : roll < 0.45 ? 5 : roll < 0.65 ? 1 : roll < 0.8 ? 6 : 3)
+          : office ? (roll < 0.4 ? 0 : roll < 0.6 ? 2 : roll < 0.8 ? 3 : 7)
+            : clothes ? (roll < 0.3 ? 0 : roll < 0.5 ? 8 : roll < 0.7 ? 4 : 1)
+              : (roll < 0.25 ? 0 : roll < 0.45 ? 1 : roll < 0.65 ? 2 : roll < 0.8 ? 3 : 4);
+      const w = [0.6, 0.7, 1.3, 0.5, 0.9, 0.8, 0.7, 0.5, 0.7][kind] as number;
+      const a = x + w / 2;
+      if (a + w / 2 > end) break;
+      if (!blocked(a - w / 2, a + w / 2)) {
+        const s = seed + wi * 31 + k * 7;
+        const tilt = (hash01(s, 842) - 0.5) * 0.12;
+        switch (kind) {
+          case 0: framed(c, wall, a, 1.35 + hash01(s, 843) * 0.4, 0.45 + hash01(s, 844) * 0.25, 0.35 + hash01(s, 845) * 0.25, tilt, s); break;
+          case 1: poster(c, wall, a, 1.3 + hash01(s, 846) * 0.3, 0.5 + hash01(s, 847) * 0.2, 0.7 + hash01(s, 848) * 0.2, s); break;
+          case 2: noticeBoard(c, wall, a, 1.3, 1.0, 0.7, s); break;
+          case 3: clock(c, wall, a, 1.75 + hash01(s, 849) * 0.2, 0.18); break;
+          case 4: coatHooks(c, wall, a, s); break;
+          case 5: dartBoard(c, wall, a, 1.6); break;
+          case 6: neonSign(c, wall, a, 1.9, 0.55, pickOf([[1, 0.2, 0.15], [0.3, 0.6, 1], [1, 0.55, 0.2]] as readonly Rgb[], s, 850)); break;
+          case 7: calendar(c, wall, a, 1.45); break;
+          default: mirror(c, wall, a, 0.9, 0.5, 1.2); break;
+        }
+      }
+      x += w + 0.5 + hash01(seed + k, 851) * 0.9;
+      k++;
+    }
+    // A high shelf of stock or crockery along the wall over everything else: the room's upper walls are what the street sees first.
+    if (c.ceiling >= 2.9 && hash01(seed + wi, 860) < 0.85) {
+      const y0 = Math.min(2.8, c.ceiling - 0.95);
+      let xs = 0.8 + hash01(seed + wi, 861) * 0.6;
+      while (xs + 0.9 < end) {
+        const w = Math.min(1.1 + hash01(seed + xs * 7, 862) * 1.1, end - xs - 0.05);
+        if (!blocked(xs, xs + w)) wallShelves(c, wall, xs + w / 2, w, y0, 1, seed + wi * 53 + Math.floor(xs * 3));
+        xs += w + 0.25 + hash01(seed + xs * 3, 863) * 0.5;
+      }
+    }
   });
 }
 
@@ -363,8 +519,21 @@ export function dressRoom(c: Ctx, r: RoomIn, fin: Finish, dw: { s: number; open:
     return;
   }
   if (full) {
-    placeBack(c, backWallItems(c, seed), dw, seed);
-    sideWalls(c, seed);
+    const segs = backSegs(c, r, dw);
+    const food = c.trade !== null && ["cafe", "diner", "restaurant", "bakery", "espresso stand", "pizza and burgers"].includes(c.trade);
+    if (food) {
+      // The kitchen's pass-through takes the first stretch wide enough; what is left takes the rest.
+      const i = segs.findIndex(([a, b]) => b - a >= 1.9);
+      if (i >= 0) {
+        const [a, b] = segs[i] as [number, number];
+        const mid = a + 0.8 + hash01(seed, 794) * Math.max(0, b - a - 1.6);
+        passThrough(c, mid, seed);
+        segs.splice(i, 1, ...([[a, mid - 0.85], [mid + 0.85, b]] as [number, number][]).filter(([p, q]) => q - p > 0.3));
+      }
+    }
+    placeBack(c, backWallItems(c, seed), segs, seed);
+    if (c.ceiling >= 2.6 && hash01(seed, 795) < 0.85) exitSign(c, dw.s);
+    sideWalls(c, r, seed);
   }
   // A plant or two on the sill of a window that is not covered: a pot of green at one end, a trailing one in the corner of another.
   for (const [k, o] of r.openings.entries()) {

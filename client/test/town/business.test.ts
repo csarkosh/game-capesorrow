@@ -426,10 +426,11 @@ describe("rooms", () => {
     }
     counts.sort((a, b) => a - b);
     expect(boxes).toBeGreaterThan(1000);
-    expect(counts[Math.floor(counts.length * 0.1)]!, "a typical unit holds 6 to 20 boxes (tenth percentile)").toBeGreaterThanOrEqual(4);
+    expect(counts[Math.floor(counts.length * 0.1)]!, "a typical unit holds 6 to 40 boxes (tenth percentile)").toBeGreaterThanOrEqual(4);
     expect(counts[Math.floor(counts.length * 0.5)]!).toBeGreaterThanOrEqual(6);
-    expect(counts[Math.floor(counts.length * 0.9)]!).toBeLessThanOrEqual(24);
-    expect(counts[counts.length - 1]!).toBeLessThanOrEqual(24);
+    // The cap rose from 24 to 80 with the rows of tables, the aisles with their endcaps and the checkout lanes (the chairs, the stock and what stands on them are drawn from the anchors, not planned).
+    expect(counts[Math.floor(counts.length * 0.9)]!).toBeLessThanOrEqual(40);
+    expect(counts[counts.length - 1]!).toBeLessThanOrEqual(80);
     // As above: it was 3000 before the business street was shortened.
     expect(units).toBeGreaterThan(2000);
   });
@@ -442,7 +443,7 @@ describe("rooms", () => {
       for (const f of unit.interior.furnishings) kinds.add(f.kind);
     }
     for (const t of ["retail aisles", "counter service", "dining room", "bar", "office", "laundromat", "workshop", "lobby", "empty"]) expect(types.has(t), t).toBe(true);
-    for (const k of ["shelf run", "counter", "table", "booth", "stool row", "display case", "cooler", "washer row", "desk", "rack", "stacked crates", "ladder", "paint cans"]) expect(kinds.has(k), k).toBe(true);
+    for (const k of ["shelf run", "counter", "table", "booth", "stool row", "display case", "cooler", "washer row", "desk", "rack", "stacked crates", "ladder", "paint cans", "partition", "endcap", "checkout", "bin", "cart", "couch", "machine", "cabinet", "water cooler", "plant", "sheet"]) expect(kinds.has(k), k).toBe(true);
   });
 });
 
