@@ -49,8 +49,8 @@ export function wallWear(b: Building, style: WallStyle, nx: number, nz: number, 
   const high = (p: Vec3): number => p[1] - baseY;
   const metal = style.wearKind === "rust";
   // The foot: dirt thrown up by the rain, and algae where the sun does not reach.
-  const splash = (p: Vec3): number => clamp01(kept * (0.3 + 0.35 * age + 0.3 * neglect) * (1 - smooth(0.1, FOOT, high(p))) + 0.04);
-  const algaeFoot = (p: Vec3): number => clamp01(kept * (0.1 + 0.45 * e.shade + 0.2 * neglect + 0.15 * age) * (1 - smooth(0.6, 2.8, high(p))));
+  const splash = (p: Vec3): number => clamp01(kept * (0.42 + 0.35 * age + 0.3 * neglect) * (1 - smooth(0.05, FOOT, high(p))) + 0.1 * (1 - smooth(0, 0.35, high(p))) + 0.04);
+  const algaeFoot = (p: Vec3): number => clamp01(kept * (0.18 + 0.5 * e.shade + 0.2 * neglect + 0.15 * age) * (1 - smooth(0.6, 2.8, high(p))));
   // Above it: the weather side fails (wood), the shaded side greens (masonry), metal rusts.
   const primary = (p: Vec3): number => {
     const h = smooth(0.8, 3.5, high(p));
@@ -81,4 +81,21 @@ export function roofWear(b: Building, kind: "flat" | "gable" | "hip" | "shed", m
 /** A decal of dirt under a sill: wide as the window, tall as `drop`, strongest at the top. Its surface is the wall's own. */
 export function sillStreak(base: Surface, strength: number, y0: number, drop: number): Surface {
   return { ...base, wear: (p: Vec3): number => clamp01(strength * (1 - clamp01((y0 - p[1]) / drop))), wearKind: "grime", streaks: true, wear2: 0 };
+}
+
+/**
+ * A storefront's bulkhead (the panel under the glass): kicked and scuffed at its foot where shoes, mops and the sidewalk's splash reach, rust running from the
+ * bottom where it is metal, and grime in its field by the unit's state. `age` is the building's years over 130, `vacant` a unit with no tenant. Pure of the
+ * plan: `roll` is this unit's own 0 to 1 (its own keeping).
+ */
+export function bulkheadWear(b: Building, vacant: boolean, roll: number, floorY: number, metal: boolean): Pick<Surface, "wear" | "wearKind" | "streaks" | "wear2" | "wearKind2" | "streaks2"> {
+  const { age, neglect } = agingOf(b);
+  const keep = 0.5 + 0.9 * roll + (vacant ? 0.5 : 0);
+  return {
+    wear: (p: Vec3): number => clamp01(keep * (0.35 + 0.4 * age + 0.3 * neglect) * (1 - smooth(0.0, 0.42, p[1] - floorY)) + 0.06),
+    wearKind: "grime",
+    wear2: (p: Vec3): number => clamp01((metal ? 0.3 : 0.12) * keep * (0.5 + age) * (1 - smooth(0.0, 0.5, p[1] - floorY))),
+    wearKind2: metal ? "rust" : "peel",
+    streaks2: metal,
+  };
 }
