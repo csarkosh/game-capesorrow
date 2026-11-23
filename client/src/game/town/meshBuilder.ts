@@ -122,6 +122,52 @@ export class MeshBuilder {
     if (topRadius > 0) this.poly(ring.map(([c, s]): Vec3 => [cx + c * topRadius, y1, cz + s * topRadius]), [0, 1, 0], top);
   }
 
+  /**
+   * A straight prism of `sides` sides and radius `radius` from `p0` to `p1` (any direction): a timber, a pole, a log lying down, a
+   * leaning pile. Its ends are capped in `cap` (left open when null). Radius 0 at either end is not allowed; use `cone` for a point.
+   */
+  prism(p0: Vec3, p1: Vec3, radius: number, sides: number, side: Rgb, cap: Rgb | null = side): void {
+    let ax = p1[0] - p0[0];
+    let ay = p1[1] - p0[1];
+    let az = p1[2] - p0[2];
+    const len = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (!(len > 1e-9)) return;
+    ax /= len;
+    ay /= len;
+    az /= len;
+    // Two axes across it: u is the axis crossed with the up (or with x when it is upright), v completes the turn.
+    let ux = ay * 0 - az * 1;
+    let uy = az * 0 - ax * 0;
+    let uz = ax * 1 - ay * 0;
+    if (Math.abs(ay) > 0.95) {
+      ux = 0;
+      uy = az;
+      uz = -ay;
+    }
+    const ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
+    ux /= ul;
+    uy /= ul;
+    uz /= ul;
+    const vx = ay * uz - az * uy;
+    const vy = az * ux - ax * uz;
+    const vz = ax * uy - ay * ux;
+    const ring = (c: Vec3, i: number): Vec3 => {
+      const a = (i / sides) * Math.PI * 2;
+      const cs = Math.cos(a) * radius;
+      const sn = Math.sin(a) * radius;
+      return [c[0] + ux * cs + vx * sn, c[1] + uy * cs + vy * sn, c[2] + uz * cs + vz * sn];
+    };
+    for (let i = 0; i < sides; i++) {
+      const a = (i / sides + 0.5 / sides) * Math.PI * 2;
+      const hint: Vec3 = [ux * Math.cos(a) + vx * Math.sin(a), uy * Math.cos(a) + vy * Math.sin(a), uz * Math.cos(a) + vz * Math.sin(a)];
+      this.poly([ring(p0, i), ring(p0, i + 1), ring(p1, i + 1), ring(p1, i)], hint, side);
+    }
+    if (cap !== null) {
+      this.poly(Array.from({ length: sides }, (_, i) => ring(p1, i)), [ax, ay, az], cap);
+      this.poly(Array.from({ length: sides }, (_, i) => ring(p0, i)), [-ax, -ay, -az], cap);
+    }
+  }
+
   finish(): MeshArrays {
     return { positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col), indices: Uint32Array.from(this.idx) };
   }
