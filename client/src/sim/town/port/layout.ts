@@ -32,7 +32,6 @@ import {
   orient,
   overlapDepth,
   segCross,
-  segDist,
   segSegDist,
   simplifyTo,
   toLocal,
@@ -1059,7 +1058,6 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     }
     if (pick.h <= JUNCTION_HEIGHT_MAX) {
     const ordered = fromNorth ? line.slice().reverse() : line;
-    const end = ordered[0] as Vec;
     const sign = fromNorth ? 1 : -1;
     const zJ = pick.z;
     const mainAt = (z: number): Vec => ({ x: roadAt(site, z) - RAIL_OFFSET, z });
