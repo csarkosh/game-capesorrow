@@ -124,7 +124,14 @@ export function unitSigns(i: UnitSignInput): Sign[] {
       make("sandwich", [tag ?? def.plain ?? name], Math.max(dec0, 1970), { wall: "sidewalk", s: r2(i.door.s + (left ? -1 : 1) * (i.door.width / 2 + 0.9)), h: 0, out: 0.7, door: left ? "left" : "right" });
     }
     if (def.interior !== "office" && def.interior !== "lobby" && chance(rng, 0.14)) {
-      make("banner", [chance(rng, 0.5) ? "SALE" : chance(rng, 0.5) ? "NOW HIRING" : "GRAND OPENING"], 2020, front(mid, i.fascia + 0.6, "over"), { style: "vinyl" });
+      // What a banner says follows from the tenant's record: only a business that opened within two years is "grand opening",
+      // and a post office, bank, clinic or office never has a sale.
+      const civic = def.group === "post" || def.group === "bank" || def.group === "medical" || def.group === "office" || def.group === "newspaper";
+      // The record keeps only the decade a tenant opened in; those of the 2020s opened in a year of 2020 to 2026, so a bit under half opened in the last two.
+      const fresh = i.opened >= 2020 && chance(rng, 0.4);
+      const roll = chance(rng, 0.5) ? "SALE" : chance(rng, 0.5) ? "NOW HIRING" : "GRAND OPENING";
+      const text = fresh && !civic ? (roll === "NOW HIRING" ? "NOW HIRING" : "GRAND OPENING") : civic ? (roll === "NOW HIRING" ? "NOW HIRING" : "") : roll === "GRAND OPENING" ? "SALE" : roll;
+      if (text !== "") make("banner", [text], 2020, front(mid, i.fascia + 0.6, "over"), { style: "vinyl" });
     }
     if (end !== null && chance(rng, old ? 0.2 : 0.07)) {
       make("wall", [name, tag ?? def.plain ?? ""].filter((x) => x !== ""), dec0, { wall: end, s: r2(range(rng, 1.5, Math.min(8, frame.depth * 0.4))), h: r2(b.storeys > 1 ? range(rng, 4.4, 6.5) : range(rng, 3, 3.8)), out: 0, door: "none" });
