@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planTown } from "../../src/sim/town/plan.js";
 import { TOWN_GEN } from "../../src/sim/town/version.js";
+import type { TownPlan } from "../../src/sim/town/types.js";
 import { SEEDS, digest, realSite, syntheticSite, townFor } from "./sites.js";
 
 describe("the plan is deterministic", () => {
@@ -36,13 +37,25 @@ describe("the plan is deterministic", () => {
 
   // Pinned digests of three named world seeds. A change here means the same site now gives a different plan:
   // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 6: junctions, where streets meet,
-  // each with its legs, corners, control, crosswalks and ramps.)
+  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(6);
+    expect(TOWN_GEN).toBe(7);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "40e58504",
-      1: "c13783ab",
-      7: "e69e527e",
+      20261121: "3b860448",
+      1: "aa345116",
+      7: "b1723a5f",
     });
+  });
+
+  // What the business stage added is added alone: the plan of a seed, with `version` and `uses` taken out, is byte for byte what
+  // origin/main (f09b897, generator 6) made, which these digests were taken from before the stage existed.
+  it("changes nothing earlier in the plan: with its new fields removed it is what version 6 made", () => {
+    const BEFORE: Record<number, string> = { 20261121: "4674c34c", 1: "b46785b3", 7: "7e9ee956" };
+    for (const seed of [20261121, 1, 7]) {
+      const rest: Record<string, unknown> = { ...townFor(seed).plan };
+      delete rest.version;
+      delete rest.uses;
+      expect(digest(rest as unknown as TownPlan), `seed ${seed}`).toBe(BEFORE[seed]);
+    }
   });
 });
