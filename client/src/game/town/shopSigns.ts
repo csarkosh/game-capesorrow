@@ -53,8 +53,12 @@ const longest = (lines: readonly string[]): number => lines.reduce((m, l) => Mat
 /** Width of a block of lines set `lineH` metres tall: about 0.6 of the line's height a letter, and a margin. */
 const textWidth = (lines: readonly string[], lineH: number): number => longest(lines) * lineH * 0.62 + 0.4;
 
+/** The faces drawn so far in a building's signs, to keep each a step from the next (`quad` in `drawSign`). */
+const FACES = new WeakMap<SignIn, { sg: number; nx: number; nz: number; off: number; x: number; z: number; w: number; y0: number; h: number }[]>();
+
 export function signsGeometry(i: SignIn): void {
   const { use } = i;
+  // Every sign of the plan is drawn; faces that fall on one another are each a step in front of the last (`quad` in `drawSign`).
   use.units.forEach((u) => u.signs.forEach((s, k) => drawSign(i, s, u, k)));
   use.signs.forEach((s, k) => drawSign(i, s, null, k + 40));
 }
@@ -97,15 +101,37 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     case "lease": w = 0.4; h = 0.55; break;
     default: h = 0.5 + nLines * 0.2; w = Math.min(2.4, textWidth(lines, 0.2) + 0.2); break;
   }
+  // Lettering on the glass stays inside the opening it is on (it is on the pane, not on the wall beside it); on an opening that is boarded or bricked up it is on the boards or the brick.
+  let glassOff = -0.015;
+  if (unit !== null && (sign.kind === "glass" || sign.kind === "open" || sign.kind === "lease")) {
+    const o = unit.openings.find((q) => sign.place.s >= Math.min(q.s0, q.s1) - 0.05 && sign.place.s <= Math.max(q.s0, q.s1) + 0.05);
+    if (o !== undefined) {
+      w = Math.min(w, Math.max(0.3, Math.abs(o.s1 - o.s0) - 0.14));
+      if (o.cover === "boarded") glassOff = 0.06;
+      else if (o.cover === "bricked") glassOff = 0.03;
+    }
+  }
   const spec: SignSpec = { kind: sign.kind, style: sign.style, lines, decade: sign.decade, condition: sign.condition, lit: sign.lit, seed, bg: col.bg, fg: col.fg, accent: col.accent, clear, w, h };
   const at = atlas.place(w, h, spec);
   const glow = !sign.lit ? 0 : neon || sign.kind === "open" ? 2.1 : box ? 1.05 : 0;
   const ink: Rgb = old ? [0.08, 0.07, 0.06] : [0.17, 0.17, 0.18];
 
   /** The face as a quad at `off` off the wall, centred `cx` along the viewer's right, its bottom `y0` up, facing out (or the other way when `back`). */
-  const quad = (cx: number, y0: number, ww: number, hh: number, off: number, back = false): void => {
+  const quad = (cx: number, y0: number, ww: number, hh: number, offAsked: number, back = false): void => {
     if (at === null) return;
     const sg = back ? -1 : 1;
+    // A face laid where another already is (a new board over an old, two records of one place) stands a step in front of it: never within 3 cm of another.
+    const reg = FACES.get(i) ?? [];
+    FACES.set(i, reg);
+    const wx = pl.x + pl.rx * cx;
+    const wz = pl.z + pl.rz * cx;
+    let off = offAsked;
+    for (let tries = 0; tries < 4; tries++) {
+      const clash = reg.find((f) => f.sg === sg && f.nx === pl.nx && f.nz === pl.nz && Math.abs(f.off - off) < 0.03 && Math.abs((f.x - wx) * pl.rx + (f.z - wz) * pl.rz) < (f.w + ww) / 2 && f.y0 < y0 + hh && y0 < f.y0 + f.h);
+      if (clash === undefined) break;
+      off = clash.off + 0.03;
+    }
+    reg.push({ sg, nx: pl.nx, nz: pl.nz, off, x: wx, z: wz, w: ww, y0, h: hh });
     const c = (dr: number, yy: number): Vec3 => [pl.x + pl.rx * (cx + sg * dr) + pl.nx * off, yy, pl.z + pl.rz * (cx + sg * dr) + pl.nz * off];
     i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx * sg, 0, pl.nz * sg], [1, 1, 1], { glow });
   };
@@ -123,8 +149,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       // The board spans the sign's width; its colour is dark and its edge a trim.
       const top = Math.min(y + h / 2, i.wallTop - 0.15);
       const y0 = top - h;
-      obox(0, y0 - 0.03, w + 0.1, h + 0.06, 0, 0.1, ink, scaled(ink, 1.6));
-      quad(0, y0, w, h, 0.105);
+      obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, 0.18, ink, scaled(ink, 1.6));
+      quad(0, y0, w, h, 0.21);
       break;
     }
     case "banner": {
@@ -142,7 +168,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         const pt = (dr: number, yy: number, off: number): Vec3 => [pl.x + pl.rx * dr + pl.nx * off, yy, pl.z + pl.rz * dr + pl.nz * off];
         const u = (m: number): number => at.u0 + ((at.u1 - at.u0) * m) / n;
         const vb = (yy: number): number => at.v0 + ((at.v1 - at.v0) * (yt - yy)) / h;
-        i.face.polyUv([pt(a, yt, 0.13 + 0.01 * c), pt(e, yt, 0.13 + 0.01 * (c + 1)), pt(e, ye, 0.14 + 0.01 * (c + 1)), pt(a, ya, 0.14 + 0.01 * c)], [[u(c), at.v0], [u(c + 1), at.v0], [u(c + 1), vb(ye)], [u(c), vb(ya)]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow: 0 });
+        i.face.polyUv([pt(a, yt, 0.3 + 0.01 * c), pt(e, yt, 0.3 + 0.01 * (c + 1)), pt(e, ye, 0.31 + 0.01 * (c + 1)), pt(a, ya, 0.31 + 0.01 * c)], [[u(c), at.v0], [u(c + 1), at.v0], [u(c + 1), vb(ye)], [u(c), vb(ya)]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow: 0 });
       }
       break;
     }
@@ -159,7 +185,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       if (at !== null) {
         for (const back of [false, true]) {
           const sg = back ? -1 : 1;
-          const c = (dr: number, yy: number): Vec3 => [pb.x + pb.rx * sg * dr + pb.nx * sg * 0.03, yy, pb.z + pb.rz * sg * dr + pb.nz * sg * 0.03];
+          const c = (dr: number, yy: number): Vec3 => [pb.x + pb.rx * sg * dr + pb.nx * sg * 0.05, yy, pb.z + pb.rz * sg * dr + pb.nz * sg * 0.05];
           i.face.polyUv([c(-ww / 2, yt - 0.05), c(ww / 2, yt - 0.05), c(ww / 2, yt - 0.05 - h), c(-ww / 2, yt - 0.05 - h)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pb.nx * sg, 0, pb.nz * sg], [1, 1, 1], { glow });
         }
       }
@@ -168,12 +194,12 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "glass": {
       // On the pane: just behind the window's face, the lettering alone.
-      quad(0, y - h / 2, w, h, -0.04);
+      quad(0, y - h / 2, w, h, glassOff);
       break;
     }
     case "wall":
     case "ghost": {
-      quad(0, y - h / 2, w, h, 0.015);
+      quad(0, y - h / 2, w, h, 0.03);
       break;
     }
     case "pole": {
@@ -182,11 +208,11 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       const top = ground + sign.place.h;
       const px = pl.x;
       const pz = pl.z;
-      solid.box(px, pz, ground - 0.1, pl.rx, pl.rz, 0.12, 0.12, top - ground, [0.28, 0.28, 0.3], [0.28, 0.28, 0.3]);
+      solid.box(px, pz, ground - 0.1, pl.rx, pl.rz, 0.08, 0.08, top - ground, [0.28, 0.28, 0.3], [0.28, 0.28, 0.3]);
       const y0 = top - (gas ? 0.2 : 0.1);
       solid.box(px, pz, y0 - h + 0.2, pl.rx, pl.rz, w / 2, 0.12, h, ink, scaled(ink, 1.5));
-      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, 0.125);
-      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, -0.125, true);
+      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, 0.15);
+      quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, -0.15, true);
       break;
     }
     case "sandwich": {
@@ -207,26 +233,27 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "open": {
       // Hung in the glass on two cords: a small box with its tubes.
-      obox(0, y - h / 2, w, h, -0.14, -0.1, [0.05, 0.05, 0.06]);
-      quad(0, y - h / 2, w, h, -0.095);
+      obox(0, y - h / 2, w, h, -0.18, -0.14, [0.05, 0.05, 0.06]);
+      quad(0, y - h / 2, w, h, -0.11);
       break;
     }
     case "lease": {
-      quad(0, y - h / 2, w, h, -0.05);
+      // In the glass, or, on a boarded unit, taped to the plywood.
+      quad(0, y - h / 2, w, h, unit?.state === "vacant boarded" ? Math.max(glassOff, 0.06) : glassOff);
       break;
     }
     default: {
       // A board: on two posts at the lot's edge, or a plaque on the wall.
       if (pl.free) {
         const top = ground + sign.place.h + h / 2;
-        for (const sg of [-1, 1]) solid.box(pl.x + pl.rx * sg * (w / 2 - 0.05), pl.z + pl.rz * sg * (w / 2 - 0.05), ground - 0.1, pl.rx, pl.rz, 0.06, 0.06, top - ground + 0.1, [0.3, 0.2, 0.12], [0.3, 0.2, 0.12]);
+        for (const sg of [-1, 1]) solid.box(pl.x + pl.rx * sg * (w / 2 - 0.05), pl.z + pl.rz * sg * (w / 2 - 0.05), ground - 0.1, pl.rx, pl.rz, 0.12, 0.12, top - ground + 0.04, [0.3, 0.2, 0.12], [0.3, 0.2, 0.12]);
         obox(0, top - h, w, h, -0.05, 0.05, ink, scaled(ink, 1.5));
-        quad(0, top - h + 0.04, w - 0.08, h - 0.08, 0.055);
-        quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.055, true);
+        quad(0, top - h + 0.04, w - 0.08, h - 0.08, 0.08);
+        quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.08, true);
       } else {
         const y0 = y - h / 2;
         obox(0, y0 - 0.04, w + 0.12, h + 0.08, 0, 0.06, ink, scaled(ink, 1.4));
-        quad(0, y0, w, h, 0.065);
+        quad(0, y0, w, h, 0.09);
       }
       break;
     }

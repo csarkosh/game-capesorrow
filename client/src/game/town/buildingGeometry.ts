@@ -376,7 +376,7 @@ function landmarkTouch(
   if (role === "fbi") {
     // A plain, formal front: a stone cornice along the top of the front wall, a portico over the door, a flagpole with its flag.
     const top = Math.max(w.topA, w.topB);
-    out.box(mid[0] + w.nx * 0.15, mid[1] + w.nz * 0.15, top - 0.5, tx, tz, w.length / 2 + 0.1, 0.25, 0.5, STONE_TRIM, STONE_TRIM);
+    out.box(mid[0] + w.nx * 0.15, mid[1] + w.nz * 0.15, top - 0.46, tx, tz, w.length / 2 + 0.1, 0.25, 0.5, STONE_TRIM, STONE_TRIM);
     const px = mid[0] + w.nx * 1.2;
     const pz = mid[1] + w.nz * 1.2;
     const slab = floorY + 3.3;

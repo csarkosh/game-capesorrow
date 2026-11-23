@@ -107,6 +107,7 @@ export function townDefinitions(low: boolean): string {
     `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(1.05,1.3,0.9,0.4),vec4<f32>(0.8,0.74,0.66,0.7));`,
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
+    "var<private> townGlassC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townSignA:f32=1.0;",
     `var<private> townInfo:array<vec4<f32>,${TOWN_LAYERS.length}>=array<vec4<f32>,${TOWN_LAYERS.length}>(${table});`,
     "fn townHash(c:vec3<i32>)->f32{",
@@ -191,21 +192,67 @@ export function townSurfaceCode(low: boolean): string {
  */
 const SIGN_CODE = "let tsSg=textureSample(townSign,townSignSmp,input.uv,0);baseColor=tsSg.rgb*input.vTownTint.rgb;townSignA=tsSg.a;";
 
-/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_LIGHTS`: a see-through surface's alpha, with the reflection of the sky added to it. */
-export function townAlphaCode(): string {
+/**
+ * Glass, as the blended layer draws it. A pane reflects by direction: the eye's ray is turned off the pane's normal (the wall's, tilted a
+ * little by the pane's own fixed turn, `Fx.tilt`, since old glass is never flat and no two panes reflect alike), and where it then points
+ * above the horizon the pane shows the overcast sky (paler toward the horizon), where it points level or down it shows the dark, uneven
+ * band of the street's far side. How much it reflects is a floor (the sky's a good deal more than the street's) plus Schlick's fresnel
+ * from the eye, so a pane seen square-on from the sidewalk shows the lit room behind it, an upper window seen from the street is the sky's
+ * pale grey-blue with the room faint behind it, and glass seen along its length is a mirror. Over that lies the grime: a band along the
+ * bottom, the lower corners and streaks (`Fx.dirt`, `Fx.size`, the pane's own uv), different for each pane by its `Fx.seed`.
+ *
+ * The result is the glass's colour and its alpha, which the blend lays over the room: `townGlassC` is the colour as it is (not premultiplied),
+ * `townGlassA` how much of the picture it covers. The low tier skips the street's variation and the grime's streaks.
+ */
+export function townAlphaCode(low = false): string {
+  const street = low
+    ? "let tsSt=vec3<f32>(0.075,0.078,0.082);"
+    : [
+        "let tsNs=townValue(vec3<f32>(tsR.x*9.0+tsSeed*37.0,tsR.y*21.0,tsR.z*9.0));",
+        "let tsNb=townValue(vec3<f32>(tsR.x*31.0,tsR.y*7.0+tsSeed*11.0,tsR.z*31.0));",
+        // Brick and dark siding of the far side, wet asphalt under it, now and then a lit window or a pale wall.
+        "var tsSt=mix(vec3<f32>(0.1,0.075,0.062),vec3<f32>(0.05,0.056,0.062),tsNs)*(0.55+0.9*tsNb);",
+        "if(tsNb>0.82){tsSt=tsSt+vec3<f32>(0.14,0.12,0.08)*(tsNb-0.82)*4.0;}",
+      ].join("");
+  const grime = low
+    ? "let tsGk=0.0;"
+    : [
+        "let tsPh=max(input.vTownWear.x,0.05);let tsPw=max(input.vTownWear.y,0.05);let tsPu=input.uv;",
+        "let tsFromBottom=tsPu.y*tsPh;let tsFromSide=min(tsPu.x*tsPw,(1.0-tsPu.x)*tsPw);",
+        "let tsBand=exp(-tsFromBottom/0.2);let tsCorner=exp(-tsFromSide/0.14)*exp(-tsFromBottom/0.55);",
+        "let tsStreak=townValue(vec3<f32>(tsPu.x*tsPw*11.0,tsPu.y*tsPh*0.7,tsSeed*53.0));",
+        "let tsGk=clamp((tsBand*0.85+tsCorner*0.8+tsStreak*0.3*exp(-tsFromBottom/0.9))*tsDirt*1.5,0.0,0.85);",
+      ].join("");
   return [
     `let tsClear=input.${TOWN_TINT_VARYING}.w;`,
     "if(tsClear>0.001){",
+    `let tsSeed=input.${TOWN_VARYING}.z;let tsDirt=input.${TOWN_VARYING}.y;`,
     "let tsVe=normalize(scene.vEyePosition.xyz-input.worldPos);",
-    "let tsFr=0.04+0.96*pow(1.0-clamp(abs(dot(N,tsVe)),0.0,1.0),5.0);",
-    "townGlassA=tsFr;",
-    "alpha=clamp(alpha*(1.0-tsClear)+tsFr*0.9,0.0,1.0);",
+    "var tsGn=N;",
+    "let tsTg=normalize(vec3<f32>(-tsGn.z,0.0,tsGn.x));",
+    `tsGn=normalize(tsGn+tsTg*input.${TOWN_WEAR_VARYING}.z+vec3<f32>(0.0,1.0,0.0)*input.${TOWN_WEAR_VARYING}.w);`,
+    "if(dot(tsGn,tsVe)<0.0){tsGn=-tsGn;}",
+    "let tsNv=clamp(dot(tsGn,tsVe),0.0,1.0);",
+    "let tsFr=0.04+0.96*pow(1.0-tsNv,5.0);",
+    "let tsR=reflect(-tsVe,tsGn);",
+    "let tsUp=smoothstep(0.0,0.12,tsR.y);",
+    "let tsSky=mix(vec3<f32>(0.46,0.5,0.52),vec3<f32>(0.3,0.35,0.41),clamp(tsR.y*1.6,0.0,1.0));",
+    street,
+    "let tsRc=mix(tsSt,tsSky,tsUp);",
+    "let tsRk=clamp(mix(0.04,0.12,tsUp)+(tsFr-0.04),0.0,0.97);",
+    grime,
+    "let tsDirtC=vec3<f32>(0.2,0.18,0.15);",
+    "let tsAb=(1.0-tsClear)*(1.0-tsRk);",
+    "let tsAt=clamp(tsAb+tsRk+tsGk*(1.0-tsRk),0.0,0.985);",
+    "townGlassC=(tsRc*tsRk+tsDirtC*tsGk*(1.0-tsRk))/max(tsAt,0.001);",
+    "townGlassA=1.0;",
+    "alpha=tsAt;",
     "}",
   ].join("");
 }
 
-/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: the glow, and a glass's sky. */
-export const TOWN_COMPOSE_CODE = "color=color+townGlowC+vec3<f32>(0.5,0.56,0.62)*(townGlassA*1.3);";
+/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: a glass's colour as `townAlphaCode` made it, and every surface's glow. */
+export const TOWN_COMPOSE_CODE = "if(townGlassA>0.5){color=townGlassC;}color=color+townGlowC;";
 
 /** What the plugin draws with: the two arrays (the colour's read as sRGB, the data as data), filled in place when the images land. */
 export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Texture2DArray };
@@ -230,7 +277,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"
-        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode() + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
+        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
         : { CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};` },
     getVertexAttributes: () => [
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float32x4", stride: TOWN_VERTEX_FLOATS * 4, offset: 0 },
