@@ -32,6 +32,8 @@ export type SvgOptions = {
   readonly land?: boolean;
   /** Draw each unit's frontage and name (default: yes, but not on a bare thumbnail). The names show only when the drawing is zoomed in (the page marks the root `zoomed`) or marked `names`. */
   readonly units?: boolean;
+  /** Draw the props: vehicles, trailers, poles with their wires, fences, bins, mailboxes and gear (default: yes, but not on a bare thumbnail). */
+  readonly props?: boolean;
 };
 
 /** How a unit's frontage is drawn, by its state. */
@@ -41,6 +43,33 @@ export const UNIT_STROKE: Record<UnitState, string> = {
   "vacant for lease": "#ff5a5a",
   "vacant boarded": "#8a2a2a",
 };
+
+/** The props on the map: the vehicles' boxes (a derelict in rust, a project car in amber, the rest in light blue), the trailers, the wires between poles, the poles, the fences by kind, and dots for bins, mailboxes and gear. */
+function propsSvg(plan: TownPlan, out: string[], X: (x: number) => number, Y: (z: number) => number): void {
+  const p = plan.props;
+  const rect = (x: number, z: number, hx: number, hz: number, l: number, w: number, fill: string): void => {
+    const c = (a: number, b: number): string => `${X(x + hx * a - hz * b)},${Y(z + hz * a + hx * b)}`;
+    out.push(`<polygon points="${c(-l / 2, -w / 2)} ${c(l / 2, -w / 2)} ${c(l / 2, w / 2)} ${c(-l / 2, w / 2)}" fill="${fill}" stroke="#0c1014" stroke-width="0.3"/>`);
+  };
+  out.push('<g class="props">');
+  const FENCE: Record<string, string> = { picket: "#f2f2f2", board: "#b8a58a", wire: "#8fb0a0", chain: "#9fc2e8" };
+  for (const f of p.fences) out.push(`<line x1="${X(f.ax)}" y1="${Y(f.az)}" x2="${X(f.bx)}" y2="${Y(f.bz)}" stroke="${FENCE[f.kind]}" stroke-width="1" ${f.kind === "wire" ? 'stroke-dasharray="3 2"' : ""}/>`);
+  for (const q of p.poles) {
+    const n = q.next >= 0 ? p.poles[q.next] : undefined;
+    if (n !== undefined) out.push(`<line x1="${X(q.x)}" y1="${Y(q.z)}" x2="${X(n.x)}" y2="${Y(n.z)}" stroke="#d6c25a" stroke-width="0.6" stroke-opacity="0.8"/>`);
+  }
+  for (const d of p.drops) {
+    const q = p.poles[d.pole];
+    if (q !== undefined) out.push(`<line x1="${X(q.x)}" y1="${Y(q.z)}" x2="${X(d.x)}" y2="${Y(d.z)}" stroke="#d6c25a" stroke-width="0.4" stroke-opacity="0.5"/>`);
+  }
+  for (const q of p.poles) out.push(`<circle cx="${X(q.x)}" cy="${Y(q.z)}" r="1.6" fill="${q.light !== null ? "#ffe88a" : "#d6c25a"}" stroke="#0c1014" stroke-width="0.4"/>`);
+  for (const t of p.trailers) rect(t.x, t.z, t.hx, t.hz, t.length, t.width, t.boat === "none" ? "#9aa0a8" : "#52b8ff");
+  for (const v of p.vehicles) rect(v.x, v.z, v.hx, v.hz, v.length, v.width, v.state === "derelict" ? "#b5532a" : v.state === "project" ? "#f0a030" : v.state === "work" ? "#8ad0ff" : "#d8e8f8");
+  for (const b of p.bins) out.push(`<circle cx="${X(b.x)}" cy="${Y(b.z)}" r="1" fill="${b.kind === "dumpster" ? "#4a8a5a" : "#6aa87a"}"/>`);
+  for (const m of p.mailboxes) out.push(`<circle cx="${X(m.x)}" cy="${Y(m.z)}" r="0.9" fill="#ff8aa0"/>`);
+  for (const g of p.gear) out.push(`<circle cx="${X(g.x)}" cy="${Y(g.z)}" r="1.1" fill="#ffb347"/>`);
+  out.push("</g>");
+}
 
 /** A name broken into at most two lines at a space, for a label that must fit its bay. */
 export function labelLines(name: string): string[] {
@@ -493,6 +522,9 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
 
   // What is in the buildings: each unit's frontage, its door and its name (the names show when zoomed in).
   if (options.units ?? !options.bare) unitsSvg(plan, out, X, Y);
+
+  // What stands in the streets, yards and docks (`plan.props`): vehicles as oriented rectangles by state, trailers, the poles and their wires, fences by kind, and the small things as dots.
+  if (options.props ?? !options.bare) propsSvg(plan, out, X, Y);
 
   // The thinning edge: a ring about each outlying building.
   for (const o of plan.outskirts) {

@@ -51,18 +51,18 @@ describe("the plan is deterministic", () => {
 
   // Pinned digests of three named world seeds. A change here means the same site now gives a different plan:
   // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 6: junctions, where streets meet,
-  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept.)
+  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 10: what stands in the streets, yards and docks, `plan.props`; the other version between is the buildings' interiors, made in another worktree.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(8);
+    expect(TOWN_GEN).toBe(10);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "63e2c553",
-      1: "05c33753",
-      7: "4452300b",
+      20261121: "d54bd9e0",
+      1: "3547270c",
+      7: "5ca38d24",
     });
   });
 
   // What the business stage and the ground's (edges, yards, the junctions' curb and sidewalk flags) added is added alone: the plan of a
-  // seed, with `version`, `uses`, `edges`, `yards` and the junctions' new flags taken out, is byte for byte what origin/main
+  // seed, with `version`, `uses`, `edges`, `yards`, `props` and the junctions' new flags taken out, is byte for byte what origin/main
   // (f09b897, generator 6) made, which these digests were taken from before either existed.
   it("changes nothing earlier in the plan: with its new fields removed it is what version 6 made", () => {
     const BEFORE: Record<number, string> = { 20261121: "4674c34c", 1: "b46785b3", 7: "7e9ee956" };
@@ -72,6 +72,7 @@ describe("the plan is deterministic", () => {
       delete rest.uses;
       delete rest.edges;
       delete rest.yards;
+      delete rest.props;
       // The junctions' legs and corners carry which sides have a curb and a sidewalk (version 8).
       rest.junctions = (townFor(seed).plan.junctions as readonly Record<string, unknown>[]).map((j) => ({
         ...j,

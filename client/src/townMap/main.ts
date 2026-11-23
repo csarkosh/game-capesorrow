@@ -255,6 +255,11 @@ function legend(): HTMLElement {
   swatch("#8a7a58", "a made end: turnaround");
   swatch("#d04040", "a made end: barricade");
   swatch("#5fa8c8", "a landing at the water");
+  swatch("#d8e8f8", "a parked vehicle (blue-white a daily driver, pale blue a work vehicle, rust a derelict, amber a project car on blocks)");
+  swatch("#52b8ff", "a boat trailer (grey: empty)");
+  swatch("#d6c25a", "a utility pole, its wires and service drops (pale: a streetlight)");
+  swatch("#f2f2f2", "a fence: picket white, board tan, wire green dashed, chain-link blue");
+  swatch("#ffb347", "gear (crab pots, buoys, firewood); green dots bins, pink dots mailboxes");
   return box;
 }
 
@@ -318,6 +323,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
     ["lots", String(plan.counts.lots)],
     ["buildings", `${plan.counts.buildings}: ${plan.counts.open} open, ${plan.counts.vacant} vacant, ${plan.counts.ruin} ruin`],
     ["streets", `${plan.counts.streets}, ${plan.ends.length} made ends`],
+    ["props", `${plan.props.vehicles.length} vehicles, ${plan.props.trailers.length} trailers, ${plan.props.poles.length} poles, ${plan.props.fences.length} fence runs, ${plan.props.bins.length} bins, ${plan.props.mailboxes.length} mailboxes, ${plan.props.gear.length} pieces of gear`],
     ["junctions", junctionSummary(plan)],
     ["roads out", plan.roads.length === 0 ? "none" : plan.roads.map((r) => `${r.name} to ${r.destination.kind}`).join("; ")],
     ["harbour", harbourSummary(plan.harbour)],

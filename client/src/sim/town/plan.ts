@@ -20,6 +20,7 @@ import { landOf } from "./land.js";
 import { findJunctions } from "./junctions.js";
 import { planEdges } from "./port/edges.js";
 import { planYards } from "./port/yards.js";
+import { planProps } from "./port/props/index.js";
 import { describeRoads, planRoads } from "./port/roads.js";
 import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
@@ -169,7 +170,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges") });
   const junctions = findJunctions({ streets, roads, ends, rail: crossings, blocks, buildings, landmarks, edges, rng: stageRng(seed, "junctions") });
   const yards = planYards({ blocks, lots, buildings, rng: stageRng(seed, "yards") });
-  return {
+  const base: Omit<TownPlan, "props"> = {
     version: TOWN_GEN,
     kind,
     seed,
@@ -199,4 +200,6 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     bounds: bb,
     counts: { plats: layout.plats.length, streets: streets.length, blocks: blocks.length - edge.blocks.length, outskirts: edge.outskirts.length, lots: lots.length, buildings: buildings.length, open, vacant, ruin },
   };
+  // What stands in the streets, yards and docks: the last stage, on a stream of its own, from the finished plan.
+  return { ...base, props: planProps(base) };
 }

@@ -853,6 +853,121 @@ export type BuildingUse = {
   readonly door: { readonly s: number; readonly width: number } | null;
 };
 
+/** An oriented rectangle of the plan's frame: its centre, the unit vector `u` along it, and half extents along `u` and across it. */
+export type Box = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly hu: number; readonly hv: number };
+
+export type VehicleKind = "pickup" | "sedan" | "suv" | "van" | "work truck" | "camper";
+/** Why a vehicle is where it is: a daily driver, a work vehicle with its gear, a project car on blocks, a derelict left to rot. */
+export type VehicleState = "daily" | "work" | "project" | "derelict";
+export type VehicleSpot = "curb" | "drive" | "yard" | "lot" | "pull-off" | "harbour";
+export type VehicleLoad = "none" | "gear" | "rack" | "flatbed" | "tarp" | "firewood" | "ladder";
+
+/** A parked vehicle: a generic shape of its type. `hx, hz` is the way it faces (a unit vector); `colour` indexes the drawing's paint table. */
+export type Vehicle = {
+  readonly id: number;
+  readonly kind: VehicleKind;
+  readonly x: number;
+  readonly z: number;
+  readonly hx: number;
+  readonly hz: number;
+  readonly colour: number;
+  /** 0 (new) to 1 (ancient): rust, faded clear coat, dented. */
+  readonly age: number;
+  readonly state: VehicleState;
+  readonly load: VehicleLoad;
+  readonly spot: VehicleSpot;
+  readonly lot: number;
+  /** How long it has sat, 0 to 1: grime and the algae along the window seals. */
+  readonly idle: number;
+  /** A number of its own the drawing varies it from. */
+  readonly seed: number;
+  readonly length: number;
+  readonly width: number;
+};
+
+/** A boat trailer, empty or carrying a skiff or a small fibreglass boat, with a tarp over the boat or not and weeds grown through. */
+export type BoatTrailer = {
+  readonly id: number;
+  readonly x: number;
+  readonly z: number;
+  /** The way the tongue points (a unit vector). */
+  readonly hx: number;
+  readonly hz: number;
+  readonly boat: "skiff" | "runabout" | "none";
+  readonly colour: number;
+  readonly tarp: boolean;
+  readonly weeds: number;
+  readonly lot: number;
+  readonly seed: number;
+  readonly length: number;
+  readonly width: number;
+};
+
+/** A wooden utility pole. `lx, lz` is how far its top stands off its foot (metres), for the ones that lean. */
+export type Pole = {
+  readonly id: number;
+  readonly street: number;
+  readonly x: number;
+  readonly z: number;
+  readonly height: number;
+  readonly lx: number;
+  readonly lz: number;
+  /** 0 none, 1 a crossarm with insulators (the older streets), 2 a bracket of pins (newer). */
+  readonly arm: 0 | 1 | 2;
+  readonly transformer: boolean;
+  /** A streetlight arm, reaching out over the roadway toward (`ox`, `oz`), or null. */
+  readonly light: { readonly ox: number; readonly oz: number } | null;
+  /** A cut-off stub of the old pole beside it. */
+  readonly stub: boolean;
+  /** The next pole along the same line (the wires run to it), or -1. */
+  readonly next: number;
+  readonly seed: number;
+};
+
+/** A service drop: the wire from a pole to the building it feeds, to a point on the building's wall. */
+export type Drop = { readonly pole: number; readonly building: number; readonly x: number; readonly z: number; readonly y: number };
+
+export type FenceKind = "picket" | "board" | "wire" | "chain";
+/** A run of fence along a lot line, from (ax, az) to (bx, bz), with a gap at a gate. */
+export type Fence = {
+  readonly id: number;
+  readonly lot: number;
+  readonly kind: FenceKind;
+  readonly ax: number;
+  readonly az: number;
+  readonly bx: number;
+  readonly bz: number;
+  /** 0 sound, 1 falling down. */
+  readonly wear: number;
+  readonly paint: number;
+  readonly seed: number;
+  /** A gate: its centre's distance from `a` along the run, its width, and how open it hangs (0 shut, 1 swung wide). */
+  readonly gate: { readonly at: number; readonly width: number; readonly open: number } | null;
+};
+
+export type BinKind = "cart" | "cart tipped" | "dumpster" | "pallets" | "drum";
+export type Bin = { readonly id: number; readonly kind: BinKind; readonly x: number; readonly z: number; readonly hx: number; readonly hz: number; readonly colour: number; readonly lot: number; readonly seed: number };
+
+export type MailboxKind = "post" | "cluster";
+export type Mailbox = { readonly id: number; readonly kind: MailboxKind; readonly x: number; readonly z: number; readonly hx: number; readonly hz: number; readonly lean: number; readonly colour: number; readonly lot: number; readonly seed: number };
+
+export type GearKind = "pots" | "buoys" | "totes" | "coil" | "net" | "firewood" | "propane" | "pallet stack";
+export type Gear = { readonly id: number; readonly kind: GearKind; readonly x: number; readonly z: number; readonly hx: number; readonly hz: number; readonly n: number; readonly colour: number; readonly lot: number; readonly seed: number };
+
+/** What stands in the streets, yards and docks: decided from the history in `port/props/`, drawn by `game/town/props/`. */
+export type PlanProps = {
+  readonly vehicles: readonly Vehicle[];
+  readonly trailers: readonly BoatTrailer[];
+  readonly poles: readonly Pole[];
+  readonly drops: readonly Drop[];
+  readonly fences: readonly Fence[];
+  readonly bins: readonly Bin[];
+  readonly mailboxes: readonly Mailbox[];
+  readonly gear: readonly Gear[];
+  /** What a walker may not pass through, as boxes of the plan's frame: vehicles, trailers, fence runs, poles, bins, mailboxes, the gear that is heavy. */
+  readonly solids: readonly Box[];
+};
+
 export type TownPlan = {
   /** TOWN_GEN: the generator's version. */
   readonly version: number;
@@ -886,6 +1001,8 @@ export type TownPlan = {
   readonly edges: readonly StreetEdge[];
   /** How each lot's ground is kept, by lot id (`port/yards.ts`). */
   readonly yards: readonly Yard[];
+  /** The vehicles, poles and wires, fences, bins, mailboxes and gear (`port/props/`). */
+  readonly props: PlanProps;
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
   readonly fill: readonly { readonly polygon: Poly }[];
   /** The quay: the straight edge of the made ground along the old plat, seaward of it the harbour. */
