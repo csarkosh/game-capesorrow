@@ -50,10 +50,11 @@ describe("the town's spur, as the world has it", () => {
         const mid = track.points[Math.floor((run.from + run.to) / 2)]!;
         expect(mid.h).toBe(DECK_TOP);
         const top = spurTrestleTopAt(seed, mid.x, mid.z) as number;
-        // (The top comes up from the bed over `TRESTLE_TAPER` metres at each end: a run under twice that has no flat middle, and the town made to fit its houses has some of 5 m.)
-        const length = (track.points[run.to] as { s: number }).s - (track.points[run.from] as { s: number }).s;
-        if (length >= 2 * TRESTLE_TAPER + 1) expect(top, `seed ${seed}`).toBeCloseTo(DECK_TOP + TRESTLE_TOP, 9);
-        else expect(top, `seed ${seed}`).toBeGreaterThan(DECK_TOP);
+        // (The top comes up from the bed over `TRESTLE_TAPER` metres at each end: a point of the middle that stands nearer an end than that, as the one point of a run of one segment does, has less than the whole deck.)
+        const a0 = (track.points[run.from] as { s: number }).s;
+        const a1 = (track.points[run.to] as { s: number }).s;
+        if (Math.min(mid.s - a0, a1 - mid.s) >= TRESTLE_TAPER) expect(top, `seed ${seed}`).toBeCloseTo(DECK_TOP + TRESTLE_TOP, 9);
+        else expect(top, `seed ${seed}`).toBeGreaterThanOrEqual(DECK_TOP);
         expect(trestleTopAt(seed, mid.x, mid.z)).toBe(top);
         // Beside the deck there is none; and a hull on the deck is held inboard of its guard rails, one below it outboard of the deck.
         const a = track.points[Math.floor((run.from + run.to) / 2) - 1]!;
