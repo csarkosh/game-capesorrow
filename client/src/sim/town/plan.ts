@@ -27,6 +27,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     lots: stageRng(seed, "lots"),
     buildings: stageRng(seed, "buildings"),
     landmarks: stageRng(seed, "landmarks"),
+    harbour: stageRng(seed, "harbour"),
   };
   const names = makeNames(stageRng(seed, "names"));
   const { history, townName } = recipe.history(streams.history, names, analyseShore(site));
@@ -71,6 +72,14 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   if (!fbi) throw new Error("the plan has no FBI office");
   const spawn = recipe.spawn(buildings[fbi.building]!);
 
+  const oldDecks = recipe.decks(layout, buildings, streets);
+  const harbourOut = recipe.harbour({ site, layout, history, buildings, streets, decks: oldDecks }, streams.harbour);
+  const decks = [...oldDecks, ...harbourOut.decks];
+  // What is there joins the history's list, in order of year and then of the order they were told.
+  const told = [...history.events, ...harbourOut.harbour.events].map((e, i) => ({ e, i }));
+  told.sort((p, q) => p.e.year - q.e.year || p.i - q.i);
+  const fullHistory = { ...history, events: told.map((t) => t.e) };
+
   const all: Poly[] = [...blocks.map((b) => b.polygon), ...streets.map((s) => [s.a, s.b])];
   const bb = bbox(all.flat());
   let open = 0;
@@ -86,7 +95,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     kind,
     seed,
     name: townName,
-    history,
+    history: fullHistory,
     plats: layout.plats,
     seams: layout.seams,
     streets,
@@ -95,7 +104,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     buildings,
     landmarks,
     spawn,
-    decks: recipe.decks(layout, buildings, streets),
+    decks,
+    harbour: harbourOut.harbour,
     fill: layout.fill,
     quay: layout.quay,
     bounds: bb,

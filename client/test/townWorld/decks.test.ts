@@ -5,7 +5,7 @@ import { createForest } from "@csarkosh/engine/sim/forest";
 import { addPlayer, tickPlayers } from "@csarkosh/engine/sim/tick";
 import { createWalkWorld, WALK_RULES, type WalkWorld, type Walker } from "../../src/sim.js";
 import { buildDecks, baseGround, constrainRails, deckTopAt, townDecks, withDecks } from "../../src/sim/town/decks.js";
-import { DECK_TOP } from "../../src/sim/town/levels.js";
+import { DECK_TOP, FLOAT_TOP } from "../../src/sim/town/levels.js";
 import { HULL_RADIUS, penetration, townConstrain } from "../../src/sim/town/solid.js";
 import { deckGeometry } from "../../src/game/town/pileGeometry.js";
 import { MeshBuilder } from "../../src/game/town/meshBuilder.js";
@@ -48,8 +48,10 @@ describe("the harbour's decks in the plan", () => {
         expect(d.halfAlong).toBeGreaterThan(0);
         expect(d.halfAcross).toBeGreaterThan(0);
         expect(Math.hypot(d.axis.x, d.axis.z)).toBeCloseTo(1, 12);
-        if (d.kind !== "gangway") expect(d.top).toBe(DECK_TOP);
-        expect(d.topEnd).toBe(d.kind === "gangway" ? d.topEnd : d.top);
+        if (d.kind === "float") expect(d.top).toBe(FLOAT_TOP);
+        else if (d.kind !== "gangway") expect(d.top).toBe(DECK_TOP);
+        if (d.kind === "gangway") expect(d.top).toBeGreaterThan(d.topEnd);
+        else expect(d.topEnd).toBe(d.top);
       });
       // Every pier and shed of the plan has its deck, and the wharf street has one.
       const piers = plan.buildings.filter((b) => b.lot === -1);
@@ -167,7 +169,9 @@ describe("decks as ground", () => {
           const inZ = z + (d.centre.z + anchor(seed).z - z) * 0.0002;
           const top = deckTopAt(seed, inX, inZ);
           expect(top, `${seed} deck ${d.id}`).not.toBeNull();
-          expect(Math.abs((top as number) - y)).toBeLessThan(1e-3);
+          // The walking stands at the highest deck there: a flat deck's drawn top is exactly it, a float's or gangway's may lie under the deck it overlaps.
+          expect(top as number).toBeGreaterThanOrEqual(y - 1e-3);
+          if (d.kind === "pier" || d.kind === "shed") expect(Math.abs((top as number) - y)).toBeLessThan(1e-3);
           expect(field.heightAt(inX, inZ)).toBeGreaterThanOrEqual(y - 1e-3);
           checked++;
         }
@@ -293,6 +297,42 @@ describe("walking the harbour", () => {
     }
     expect(ticks).toBeGreaterThan(3000);
     expect(contacts).toBeGreaterThan(300);
+  });
+
+  it("walks from the quay down a gangway to the floats and out along them, the feet at the deck's height the whole way", () => {
+    let walked = 0;
+    for (const seed of WORLD_SEEDS) {
+      const world = worldFor(seed);
+      const plan = planFor(seed);
+      const { anchor } = siteFor(seed);
+      for (const id of plan.harbour.gangways) {
+        const g = plan.decks[id]!;
+        // From the apron's middle, 3 m in from the gangway's top, along its run to its foot, and on 6 m along the float.
+        const dir = g.axis;
+        const start = { x: anchor.x + g.centre.x - dir.x * (g.halfAlong + 3), z: anchor.z + g.centre.z - dir.z * (g.halfAlong + 3) };
+        const player = place(world, start.x, start.z);
+        const yaw = Math.atan2(dir.x, dir.z);
+        let onRamp = 0;
+        for (let t = 0; t < 420; t++) {
+          tickPlayers(world, new Map([[player.id, cmd(t + 1, 0, 1, yaw)]]), WALK_RULES);
+          const top = deckTopAt(seed, player.pos.x, player.pos.z);
+          const along = (player.pos.x - anchor.x - g.centre.x) * dir.x + (player.pos.z - anchor.z - g.centre.z) * dir.z;
+          if (top !== null && Math.abs(along) < g.halfAlong - 0.5) {
+            onRamp++;
+            expect(player.pos.y - PLAYER_HALF.y, `${seed} gangway ${id} tick ${t}`).toBeCloseTo(top, 6);
+          }
+        }
+        // It ended on a float, at the float's height, held by the float's far rail.
+        const end = deckTopAt(seed, player.pos.x, player.pos.z);
+        expect(end, `${seed} gangway ${id}: ended on a deck`).not.toBeNull();
+        expect(Math.abs((end as number) - 0.4)).toBeLessThan(1e-9);
+        expect(player.pos.y - PLAYER_HALF.y).toBeCloseTo(0.4, 6);
+        expect(onRamp).toBeGreaterThan(40);
+        world.state.players.delete(player.id);
+        walked++;
+      }
+    }
+    expect(walked).toBeGreaterThanOrEqual(3);
   });
 
   it("lets a walker cross freely from the quay on to a deck and back (the apron is no wall)", () => {

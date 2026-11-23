@@ -16,6 +16,7 @@ import { makeHistory } from "./port/history.js";
 import { layoutPort } from "./port/layout.js";
 import { buildPort } from "./port/buildings.js";
 import { portDecks } from "./port/decks.js";
+import { planHarbour, type HarbourOut } from "./port/harbour.js";
 import { bindLandmarks, planLandmarks, spawnAt } from "./port/landmarks.js";
 import { LOT_RULES } from "./port/rules.js";
 
@@ -26,6 +27,7 @@ export type Streams = {
   readonly lots: Rng;
   readonly buildings: Rng;
   readonly landmarks: Rng;
+  readonly harbour: Rng;
 };
 
 export type LandmarkPlanOut = {
@@ -43,6 +45,8 @@ export type Recipe = {
   spawn(fbi: Building): Spawn;
   /** The decks of the old harbour: the quay's apron, the piers, the sheds' platforms and the wharf. */
   decks(layout: Layout, buildings: readonly Building[], streets: readonly Street[]): Deck[];
+  /** The boat basin, boats, pilings, the mill's water, the terminal and the lights, and the floats' and gangways' decks. */
+  harbour(input: { site: TownSite; layout: Layout; history: History; buildings: readonly Building[]; streets: readonly Street[]; decks: readonly Deck[] }, rng: Rng): HarbourOut;
 };
 
 const PORT: Recipe = {
@@ -57,6 +61,7 @@ const PORT: Recipe = {
   bindLandmarks,
   spawn: spawnAt,
   decks: (layout, buildings, streets) => portDecks(layout.quay, buildings, streets),
+  harbour: (input, rng) => planHarbour(input, rng),
 };
 
 export const RECIPES: Record<TownKind, Recipe> = { port: PORT };
