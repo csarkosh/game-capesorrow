@@ -46,6 +46,23 @@ describe("the vehicle models", () => {
   });
 });
 
+describe("the paint", () => {
+  it("never gives two neighbours of one model the same colour, and is a spread, not black and charcoal", () => {
+    for (const seed of SEEDS) {
+      const vs = townGround(seed).plan.props.vehicles.filter((v) => v.model !== "" && v.state !== "derelict" && v.state !== "project");
+      let dark = 0;
+      for (const [i, a] of vs.entries()) {
+        if (a.colour === 2 || a.colour === 3) dark++;
+        for (const b of vs.slice(i + 1)) {
+          if (a.model !== b.model || (a.x - b.x) ** 2 + (a.z - b.z) ** 2 > 45 * 45) continue;
+          expect(a.colour, `seed ${seed} #${a.id} and #${b.id}`).not.toBe(b.colour);
+        }
+      }
+      expect(dark / Math.max(1, vs.length), `seed ${seed}`).toBeLessThan(0.2);
+    }
+  });
+});
+
 describe("the fleet", () => {
   it("stands every vehicle on the ground: each wheel within 5 cm of it and none in it", () => {
     for (const seed of SEEDS) {

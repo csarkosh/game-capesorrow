@@ -35,11 +35,12 @@ import { createPaintSurface, paintRequest } from "./signPaint.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
+import { standInGeometry } from "./props/vehicleStandIn.js";
 import { emptyTownReady, townSurfacePlugin } from "./townMaterial.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
-type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean };
+type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean; /** The model this car stands in for, until the model's meshes are made. */ model?: string };
 
 /** The depth step ahead of the terrain the flat layer is drawn with (the engine's face patches use the same). */
 const FLAT_AHEAD_UNITS = -120;
@@ -171,12 +172,15 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       rail = createRailStream(host, { engine, scene, materials, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
 
       const ground = townGround(worldSeed);
+      const fleet = low ? [] : fleetOf(ground, "full");
       if (!low) {
-        vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleetOf(ground, "full"));
+        vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
       }
 
       function* build(): Slices {
         const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas);
+        // A code-built car for each model vehicle until its model lands (and for good where its file fails): made first, so they stand with the town's first cells.
+        if (fleet.length > 0) batches.unshift(...(yield* standInGeometry(ground, fleet)));
         // Paint the lettering, a few signs a slice, and upload the atlas once.
         const surface = atlasTexture === null ? null : createPaintSurface(atlas.width, atlas.height);
         if (surface !== null && atlasTexture !== null) {
@@ -211,7 +215,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
           host.uploads.made();
           if (batch.layer === "solid") hardCover?.add(mesh);
-          made.push({ mesh, layer: batch.layer, ...boundsOf(a.positions), shown: true });
+          made.push({ mesh, layer: batch.layer, ...boundsOf(a.positions), shown: true, ...(batch.model === undefined ? {} : { model: batch.model }) });
           left--;
           yield;
         }
@@ -230,6 +234,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       vehicles?.seen(planes);
       for (const m of made) {
         let want = inView(planes, m);
+        // A stand-in car goes the moment its model's meshes are made.
+        if (m.model !== undefined && vehicles?.ready(m.model) === true) want = false;
         // The standing layer is cover for the rain: shown to the map's pass while it reaches into the map's square.
         if (!want && m.layer === "solid" && cover !== null && Math.abs(m.x - cover.x) <= cover.half + m.radius && Math.abs(m.z - cover.z) <= cover.half + m.radius) want = true;
         if (want !== m.shown) {

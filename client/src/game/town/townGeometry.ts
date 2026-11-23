@@ -44,6 +44,8 @@ export type TownBatch = {
   /** What the arrays are: drawn flat on the ground, or standing. */
   readonly layer: "flat" | "solid" | "glass" | "sign";
   readonly arrays: MeshArrays;
+  /** For a code-built car that stands for a vehicle's model until it lands (`props/vehicleStandIn.ts`): the model it stands for. */
+  readonly model?: string;
 };
 
 /** The ground the town stands on for a world seed: the plan, its anchor, the engine's elevation field plus the streets' trough filled (the ground the player stands on, where no rock layer lies: the town has none) and the highway's line. */
