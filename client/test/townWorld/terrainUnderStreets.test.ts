@@ -9,8 +9,9 @@
  * - where the terrain's mesh stands above a surface by more than the cut leaves (the surface's own lift is 1 to 2 cm), and
  * - how much of the terrain under them paints as beach sand (the engine paints by height, and the town's flats stand at 2 to 3 m).
  *
- * Only the rings of 2 m or finer are measured (the camera's 64 m on the medium tier, 128 m on the low): past them the mesh is
- * too coarse to hold a cut of any depth, and the surfaces are held by the depth step, which grows with the square of the distance.
+ * The cut is measured in the rings of 2 m or finer (the camera's 64 m on the medium tier, 128 m on the low). Past them the mesh is
+ * too coarse to hold a cut of any depth, and the surfaces are held by the depth step, which grows with the square of the distance:
+ * over every ring (and the lip of a drop to the sea) it is the depth step that is asserted.
  */
 import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
@@ -25,7 +26,14 @@ import { WORLD_SEEDS } from "./world.js";
 const SORROW = -2060655827;
 const SEEDS: readonly number[] = [SORROW, WORLD_SEEDS[0] as number, WORLD_SEEDS[1] as number];
 
-type Measure = { samples: number; sand: number; under2: number; under5: number; lips: number };
+type Measure = { samples: number; sand: number; under2: number; under5: number; lips: number; all: number; wins: number; worstWin: number };
+
+/**
+ * What the engine's depth offset holds: the flat layer is drawn `FLAT_AHEAD_UNITS` (120) of a 24-bit depth buffer's steps ahead, which at
+ * distance d from a 0.05 m near plane is 120 / 2^24 * d^2 / 0.05 = 1.43e-4 * d^2 metres (1.4 cm at 10 m, 36 cm at 50 m). The terrain
+ * shows over a surface where its mesh stands over it by more than that.
+ */
+const depthStep = (d: number): number => 1.43e-4 * d * d;
 
 /**
  * Whether the ground falls away steeply (a gradient over 0.4) within 4 m of a point: a street's end at the water's edge, where the
@@ -45,7 +53,7 @@ function measure(seed: number, cam: { x: number; z: number }, tier: QualityTier)
   const g = townGround(seed);
   const batches = finish(townGeometry(g, "full", cam));
   const T = drawnTerrain(seed, cam.x, cam.z, tier);
-  const m: Measure = { samples: 0, sand: 0, under2: 0, under5: 0, lips: 0 };
+  const m: Measure = { samples: 0, sand: 0, under2: 0, under5: 0, lips: 0, all: 0, wins: 0, worstWin: 0 };
   for (const b of batches) {
     if (b.layer !== "flat") continue;
     const p = b.arrays.positions;
@@ -60,8 +68,16 @@ function measure(seed: number, cam: { x: number; z: number }, tier: QualityTier)
         const y = a * (p[i0 + 1] as number) + c * (p[i1 + 1] as number) + k * (p[i2 + 1] as number);
         const z = a * (p[i0 + 2] as number) + c * (p[i1 + 2] as number) + k * (p[i2 + 2] as number);
         const sp = T.spacingAt(x, z);
-        if (!(sp <= 2)) continue;
+        if (Number.isNaN(sp)) continue;
         const gap = y - T.heightAt(x, z);
+        // Every ring in view, a drop to the sea included (nothing excused): where does the terrain win the depth test?
+        m.all++;
+        const d = Math.max(1, Math.hypot(x - cam.x, z - cam.z));
+        if (-gap > depthStep(d)) {
+          m.wins++;
+          m.worstWin = Math.max(m.worstWin, -gap - depthStep(d));
+        }
+        if (!(sp <= 2)) continue;
         if (gap < -0.02 && nearDrop(seed, x, z)) {
           m.lips++;
           continue;
@@ -103,11 +119,13 @@ describe("the terrain the engine draws under the town's flat surfaces", () => {
         for (const cam of cameras(seed)) {
           const m = measure(seed, cam, tier);
           const share = (n: number): number => n / Math.max(1, m.samples);
-          console.log(`seed ${seed} ${tier} cam ${cam.x.toFixed(0)},${cam.z.toFixed(0)}: ${m.samples} samples, sand ${(share(m.sand) * 100).toFixed(2)}%, mesh over a surface by 2 cm ${(share(m.under2) * 100).toFixed(2)}%, by 5 cm ${(share(m.under5) * 100).toFixed(2)}% (${m.lips} more at a drop to the sea)`);
+          console.log(`seed ${seed} ${tier} cam ${cam.x.toFixed(0)},${cam.z.toFixed(0)}: ${m.samples} samples, sand ${(share(m.sand) * 100).toFixed(2)}%, mesh over a surface by 2 cm ${(share(m.under2) * 100).toFixed(2)}%, by 5 cm ${(share(m.under5) * 100).toFixed(2)}% (${m.lips} more at a drop to the sea); over every ring, the terrain beats the depth step at ${m.wins} of ${m.all} samples (by ${m.worstWin.toFixed(3)} m at most)`);
           expect(m.samples).toBeGreaterThan(20_000);
           // The terrain under and beside every street, sidewalk, junction and paved block paints as soil.
           expect(share(m.sand), `sand under the town's flats (seed ${seed}, ${tier}, camera ${cam.x.toFixed(0)},${cam.z.toFixed(0)})`).toBeLessThan(0.05);
           // The mesh is under them but for a sliver: at most 1.5 percent of the samples stand 2 cm over and 0.6 percent 5 cm over (3.5 and 2 percent on the low tier, whose rings are twice as coarse).
+          // Where the terrain beats the engine's depth offset it shows over a street: at the lip of a drop to the sea too, and in the coarse rings.
+          expect(m.wins / Math.max(1, m.all), `terrain over a surface, past the depth step (seed ${seed}, ${tier}, camera ${cam.x.toFixed(0)},${cam.z.toFixed(0)})`).toBeLessThan(1e-4);
           expect(share(m.under2), `mesh 2 cm over a surface (seed ${seed}, ${tier}, camera ${cam.x.toFixed(0)},${cam.z.toFixed(0)})`).toBeLessThan(tier === "low" ? 0.035 : 0.015);
           expect(share(m.under5), `mesh 5 cm over a surface (seed ${seed}, ${tier}, camera ${cam.x.toFixed(0)},${cam.z.toFixed(0)})`).toBeLessThan(tier === "low" ? 0.02 : 0.006);
         }
