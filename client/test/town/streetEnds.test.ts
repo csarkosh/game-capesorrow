@@ -29,6 +29,7 @@ describe("streets end the way streets end", () => {
     let made = 0;
     let landings = 0;
     let junctions = 0;
+    let roadStarts = 0;
     for (const seed of SEEDS) {
       const { plan } = townFor(seed);
       for (const st of plan.streets) {
@@ -37,6 +38,11 @@ describe("streets end the way streets end", () => {
           const p = at === "a" ? st.a : st.b;
           if (toOtherStreet(plan, st.id, p) <= 0.6) {
             junctions++;
+            continue;
+          }
+          // A road out of town continues the street from here: no end to make.
+          if (plan.roads.some((r) => r.from.street === st.id && r.from.at === at)) {
+            roadStarts++;
             continue;
           }
           const end = plan.ends.find((e) => e.street === st.id && e.at === at);
@@ -55,7 +61,7 @@ describe("streets end the way streets end", () => {
       }
     }
     expect(made).toBeGreaterThan(200);
-    process.stderr.write(`street ends over 40 seeds: ${junctions} junctions, ${made} made ends, ${landings} landings\n`);
+    process.stderr.write(`street ends over 40 seeds: ${junctions} junctions, ${roadStarts} road starts, ${made} made ends, ${landings} landings\n`);
   });
 
   it("cuts every stub: a street that is no junction at an end has a block alongside it within a few metres of that end", () => {

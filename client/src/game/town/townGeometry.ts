@@ -17,6 +17,7 @@ import { endsGeometry } from "./endsGeometry.js";
 import { groundGeometry } from "./groundGeometry.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
 import { pierGeometry, quayDeck, quayGeometry, wharfGeometry } from "./pileGeometry.js";
+import { roadGeometry } from "./roadGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import type { Detail, TownGround } from "./townTypes.js";
 
@@ -59,6 +60,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   streetGeometry(g, sinks.flat);
   endsGeometry(g, sinks.flat, sinks.solid);
   groundGeometry(g, sinks.flat);
+  roadGeometry(g, sinks.flat, sinks.solid);
   yield;
   quayGeometry(g, sinks.solid, sinks.flat);
   for (const street of g.plan.streets) if (street.kind === "wharf") wharfGeometry(g, street, sinks.solid);

@@ -78,7 +78,7 @@ export const QUAY_JOIN = 8;
  * level), rising over the next `QUAY_RAMP`; none within `RELIEF_HIGHWAY_FROM` metres of the highway, rising to all of it by
  * `RELIEF_HIGHWAY_TO`; none within `RELIEF_SHORE_FROM` metres of the water's edge, all of it by `RELIEF_SHORE_TO`.
  */
-export const RELIEF_FLATS = 0.2;
+export const RELIEF_FLATS = 0.12;
 export const RELIEF_HILL = 0.2;
 export const RELIEF_LIMIT = 1.2;
 export const RELIEF_HILL_FROM = 0;
@@ -107,6 +107,23 @@ function joinD(u: number): { k: number; s: number } {
   return { k: span * t2 * t2 * (t2 - 3 * t + 2.5), s: t2 * t * (t * (t * 6 - 15) + 10) };
 }
 
+/**
+ * The coast's own hill steepens inland, so the plane's grade eases up from `HILL_GRADE` by `HILL_EXTRA` between `FAR_FROM` and `FAR_FROM + FAR_SPAN`
+ * metres of offset from the highway, which keeps the made ground within a few metres of the coast's own where the town ends.
+ * `farD` is the integral of that ease, `K`'s own form: on [0, 1], W (t^6 - 3 t^5 + 2.5 t^4), and its slope.
+ */
+export const HILL_EXTRA = 0.04;
+export const FAR_FROM = 200;
+export const FAR_SPAN = 220;
+
+function farD(u: number): { k: number; s: number } {
+  const t = (u - FAR_FROM) / FAR_SPAN;
+  if (t <= 0) return { k: 0, s: 0 };
+  if (t >= 1) return { k: u - FAR_FROM - FAR_SPAN / 2, s: 1 };
+  const t2 = t * t;
+  return { k: FAR_SPAN * t2 * t2 * (t2 - 3 * t + 2.5), s: t2 * t * (t * (t * 6 - 15) + 10) };
+}
+
 /** The rise of the join at the highway itself: what the flats' grade must make up so the plane meets the grade line there. */
 const JOIN_AT_HIGHWAY = joinD(0).k;
 
@@ -129,6 +146,9 @@ export const GROUND_TUNABLES: Readonly<Record<string, number>> = {
   HILL_FROM,
   HILL_TO,
   HILL_GRADE,
+  HILL_EXTRA,
+  FAR_FROM,
+  FAR_SPAN,
   QUAY_JOIN,
   QUAY_BANK,
   COVER_HOLD,
@@ -243,10 +263,11 @@ function planeOf(seed: number, z: number, u: number, uDz: number, s: number, sz:
   const yDz = sz / r - (s * rDz) / (r * r);
   const foot = footD(y);
   const join = joinD(u);
+  const far = farD(u);
   return {
-    h: QUAY + gf * r * foot.v + (HILL_GRADE - gf) * join.k,
-    dx: gf * foot.d + (HILL_GRADE - gf) * join.s,
-    dz: gfDz * r * foot.v + gf * rDz * foot.v + gf * r * foot.d * yDz - gfDz * join.k + (HILL_GRADE - gf) * join.s * uDz,
+    h: QUAY + gf * r * foot.v + (HILL_GRADE - gf) * join.k + HILL_EXTRA * far.k,
+    dx: gf * foot.d + (HILL_GRADE - gf) * join.s + HILL_EXTRA * far.s,
+    dz: gfDz * r * foot.v + gf * rDz * foot.v + gf * r * foot.d * yDz - gfDz * join.k + (HILL_GRADE - gf) * join.s * uDz + HILL_EXTRA * far.s * uDz,
     r,
     rDz,
   };

@@ -38,6 +38,13 @@ function toStreet(plan: TownPlan, x: number, z: number): number {
   return d;
 }
 
+/** The distance from a point of the plan's frame to the nearest block. */
+function distanceToBlocks(plan: TownPlan, p: { x: number; z: number }): number {
+  let d = Infinity;
+  for (const b of plan.blocks) for (let k = 0; k < b.polygon.length; k++) d = Math.min(d, segDist(p, b.polygon[k] as { x: number; z: number }, b.polygon[(k + 1) % b.polygon.length] as { x: number; z: number }));
+  return d;
+}
+
 /** Every tree trunk of every chunk of the town and a margin round it, in the plan's frame. */
 function trunksOf(seed: number): { x: number; z: number }[] {
   const site = siteFor(seed);
@@ -92,7 +99,7 @@ describe("the forest by the lot", () => {
           if (lot !== undefined && !lotHasBuilding.has(lot.id)) inVacant++;
         }
         // The old rectangle's far corners: inland of the last block, within the footprint's reach.
-        if (Math.abs(t.z) < TOWN_Z_HALF && t.x + siteFor(seed).anchor.x - roadCenterX(seed, t.z + COVE_Z) < TOWN_INLAND && townCover(seed, t.x + siteFor(seed).anchor.x, t.z + COVE_Z) === 0 && t.x > 0) corners++;
+        if (Math.abs(t.z) < TOWN_Z_HALF && t.x + siteFor(seed).anchor.x - roadCenterX(seed, t.z + COVE_Z) < TOWN_INLAND && t.x > 0 && distanceToBlocks(plan, t) > 30) corners++;
       }
       rows.push(`seed ${seed}: ${trunks.length} trunks, ${inTown} inside blocks (${inYards} in yards, ${inVacant} on vacant lots, ${inPaved} on paved blocks), ${corners} where the old rectangle's corners were; nearest a building ${closest.toFixed(1)} m`);
       process.stderr.write(`${rows[rows.length - 1]}\n`);

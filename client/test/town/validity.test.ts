@@ -206,7 +206,7 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
   const away = { x: plan.spawn.x - office.centre.x, z: plan.spawn.z - office.centre.z };
   const face = { x: Math.sin(plan.spawn.yaw), z: Math.cos(plan.spawn.yaw) };
   if (away.x * face.x + away.z * face.z <= 0) fail("the spawn faces the building");
-  for (const l of plan.landmarks) if (!plan.buildings[l.building]) fail(`landmark ${l.name} points at no building`);
+  for (const l of plan.landmarks) if (l.at === undefined && !plan.buildings[l.building]) fail(`landmark ${l.name} points at no building`);
   return bad;
 }
 

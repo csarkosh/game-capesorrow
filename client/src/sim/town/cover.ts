@@ -19,7 +19,7 @@ import type { TownPlan } from "./types.js";
 /** The made ground is whole this far beyond a block's edges, metres. */
 export const COVER_HOLD = 16;
 /** And falls to the coast's own over this many metres beyond that. */
-export const COVER_FADE = 32;
+export const COVER_FADE = 160;
 /** The side of a grid cell, metres. */
 const CELL = 24;
 

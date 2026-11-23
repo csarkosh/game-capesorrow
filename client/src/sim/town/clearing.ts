@@ -116,6 +116,8 @@ export function isPaved(district: District): boolean {
 
 type Edge = { readonly nx: number; readonly nz: number; readonly c: number };
 type Footprint = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly vx: number; readonly vz: number; readonly hu: number; readonly hv: number };
+/** A cleared place: a destination's, and whether its ground cover is cleared too. */
+type Disc = { readonly x: number; readonly z: number; readonly r: number; readonly bare: boolean };
 type Streetway = { readonly ax: number; readonly az: number; readonly bx: number; readonly bz: number; readonly half: number };
 
 const CELL = 16;
@@ -130,10 +132,12 @@ type Index = {
   readonly blocks: readonly { edges: readonly Edge[]; paved: boolean }[];
   readonly buildings: readonly Footprint[];
   readonly streets: readonly Streetway[];
+  readonly discs: readonly Disc[];
   /** Per cell: the blocks, buildings and streets within reach. */
   readonly cellBlocks: readonly (readonly number[])[];
   readonly cellBuildings: readonly (readonly number[])[];
   readonly cellStreets: readonly (readonly number[])[];
+  readonly cellDiscs: readonly (readonly number[])[];
 };
 
 const INDEX = new WeakMap<TownPlan, Index>();
@@ -195,11 +199,24 @@ function indexOf(plan: TownPlan): Index {
     streets.push({ ax: st.a.x, az: st.a.z, bx: st.b.x, bz: st.b.z, half });
     stBox.push({ x0: Math.min(st.a.x, st.b.x) - half, z0: Math.min(st.a.z, st.b.z) - half, x1: Math.max(st.a.x, st.b.x) + half, z1: Math.max(st.a.z, st.b.z) + half });
   }
+  // The roads out of town clear the forest as streets do: to their own width, the trees closing over them beyond.
+  for (const road of plan.roads) {
+    for (let i = 1; i < road.points.length; i++) {
+      const a = road.points[i - 1] as { x: number; z: number; width: number };
+      const b = road.points[i] as { x: number; z: number; width: number };
+      const half = (a.width + b.width) / 4;
+      streets.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, half });
+      stBox.push({ x0: Math.min(a.x, b.x) - half, z0: Math.min(a.z, b.z) - half, x1: Math.max(a.x, b.x) + half, z1: Math.max(a.z, b.z) + half });
+    }
+  }
+  // And the destinations: a cleared place about each, of ground cover too where it was worked (a landing, a pit, the tank's pad, the gate).
+  const discs: Disc[] = plan.roads.map((r) => ({ x: r.destination.x, z: r.destination.z, r: r.destination.radius, bare: r.destination.kind !== "cemetery" }));
+  const discBox = discs.map((d) => ({ x0: d.x - d.r, z0: d.z - d.r, x1: d.x + d.r, z1: d.z + d.r }));
   let bx0 = Infinity;
   let bz0 = Infinity;
   let bx1 = -Infinity;
   let bz1 = -Infinity;
-  for (const bb of [...blockBox, ...bldBox, ...stBox]) {
+  for (const bb of [...blockBox, ...bldBox, ...stBox, ...discBox]) {
     bx0 = Math.min(bx0, bb.x0 - REACH);
     bz0 = Math.min(bz0, bb.z0 - REACH);
     bx1 = Math.max(bx1, bb.x1 + REACH);
@@ -210,10 +227,12 @@ function indexOf(plan: TownPlan): Index {
   const cellBlocks: number[][] = [];
   const cellBuildings: number[][] = [];
   const cellStreets: number[][] = [];
+  const cellDiscs: number[][] = [];
   for (let i = 0; i < nx * nz; i++) {
     cellBlocks.push([]);
     cellBuildings.push([]);
     cellStreets.push([]);
+    cellDiscs.push([]);
   }
   const put = (cells: number[][], box: { x0: number; z0: number; x1: number; z1: number }, k: number, reach: number): void => {
     const i0 = Math.floor((box.x0 - reach - bx0) / CELL);
@@ -225,7 +244,8 @@ function indexOf(plan: TownPlan): Index {
   for (let k = 0; k < blocks.length; k++) put(cellBlocks, blockBox[k] as (typeof blockBox)[number], k, BLOCK_MARGIN);
   for (let k = 0; k < buildings.length; k++) put(cellBuildings, bldBox[k] as (typeof bldBox)[number], k, TREE_BUILDING_CLEAR + TREE_JITTER + TREE_RAMP);
   for (let k = 0; k < streets.length; k++) put(cellStreets, stBox[k] as (typeof stBox)[number], k, TREE_STREET_CLEAR + TREE_JITTER + TREE_RAMP);
-  const index: Index = { x0: bx0, z0: bz0, nx, nz, blocks, buildings, streets, cellBlocks, cellBuildings, cellStreets };
+  for (let k = 0; k < discs.length; k++) put(cellDiscs, discBox[k] as (typeof discBox)[number], k, TREE_STREET_CLEAR + TREE_JITTER + TREE_RAMP);
+  const index: Index = { x0: bx0, z0: bz0, nx, nz, blocks, buildings, streets, discs, cellBlocks, cellBuildings, cellStreets, cellDiscs };
   INDEX.set(plan, index);
   return index;
 }
@@ -300,6 +320,17 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
     if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
     const cshut = CLUTTER_STREET_CLEAR + CLUTTER_JITTER;
     if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+  }
+  const discs = index.cellDiscs[cell] as readonly number[];
+  for (let k = 0; k < discs.length; k++) {
+    const dc = index.discs[discs[k] as number] as Disc;
+    const ddx = xf - dc.x;
+    const ddz = zr - dc.z;
+    const d = Math.max(0, Math.sqrt(ddx * ddx + ddz * ddz) - dc.r);
+    const shut = TREE_STREET_CLEAR + TREE_JITTER;
+    if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
+    const cshut = CLUTTER_STREET_CLEAR + CLUTTER_JITTER;
+    if (dc.bare && d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
   }
   const buildings = index.cellBuildings[cell] as readonly number[];
   for (let k = 0; k < buildings.length; k++) {

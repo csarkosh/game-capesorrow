@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { COVE_Z, HEAD_HALF_WIDTH, SEA_LEVEL, coastGround, coveFor, roadCenterX, roadCorridorOverD, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import { elevationSampleAt, type TerrainSample } from "@csarkosh/engine/sim/terrain";
-import { BANK, EDGE, HILL_FROM, HILL_GRADE, HILL_TO, OWN_FLATS, OWN_HILL, QUAY, QUAY_JOIN, RELIEF_LIMIT, TOWN_INLAND, TOWN_Z_HALF, bankD, madePlaneD, townGroundD } from "../../src/sim/town/ground.js";
+import { BANK, EDGE, FAR_FROM, HILL_EXTRA, HILL_FROM, HILL_GRADE, HILL_TO, OWN_FLATS, OWN_HILL, QUAY, QUAY_JOIN, RELIEF_LIMIT, TOWN_INLAND, TOWN_Z_HALF, bankD, madePlaneD, townGroundD } from "../../src/sim/town/ground.js";
 import { COVER_FADE, COVER_HOLD, coverD } from "../../src/sim/town/cover.js";
 import { planFor } from "../../src/sim/town/planFor.js";
 import { fillWindowD, townFillFor } from "../../src/sim/town/fill.js";
@@ -138,7 +138,7 @@ describe("the town's made ground", () => {
     process.stderr.write(`largest step beyond the slope between points 0.25 m apart, across the edges: ${(worst * 100).toFixed(3)} cm\n`);
   });
 
-  it("is built over a plane of constant grade on the flats and a hill of constant grade east of the highway's corridor, both set by the quay and the highway's height", () => {
+  it("is built over a plane of constant grade on the flats and a hill of constant grade (steepening past FAR_FROM) east of the highway's corridor, both set by the quay and the highway's height", () => {
     // What the flats' grade makes up for the ease into the hill, across the highway: the rise of the join at u = 0.
     const span = HILL_TO - HILL_FROM;
     const t0 = -HILL_FROM / span;
@@ -158,14 +158,18 @@ describe("the town's made ground", () => {
         for (const s of [clear, clear + 15, road - shore - 40]) {
           expect(planeAt(seed, shore + s, z).dx, `seed ${seed} z ${z} s ${s}`).toBeCloseTo(flats, 9);
         }
-        for (const u of [HILL_TO, 60, 150, TOWN_INLAND - 10]) {
+        for (const u of [HILL_TO, 60, 150, FAR_FROM]) {
           expect(planeAt(seed, road + u, z).dx, `seed ${seed} z ${z} u ${u}`).toBeCloseTo(HILL_GRADE, 9);
         }
+        // Past FAR_FROM the coast's own hill steepens and the grade eases up, by no more than HILL_EXTRA.
+        const far = planeAt(seed, road + TOWN_INLAND - 10, z).dx;
+        expect(far).toBeGreaterThan(HILL_GRADE);
+        expect(far).toBeLessThanOrEqual(HILL_GRADE + HILL_EXTRA);
         // QUAY above the sea at the water's edge, and the grade line's height where the highway runs.
         expect(planeAt(seed, shore, z).h).toBeCloseTo(QUAY, 9);
         expect(planeAt(seed, road, z).h).toBeCloseTo(roadGradeAt(seed, z).h, 9);
         // The hill rises at its grade: the same rise over the same run, anywhere on it.
-        expect(planeAt(seed, road + 300, z).h - planeAt(seed, road + 100, z).h).toBeCloseTo(200 * HILL_GRADE, 9);
+        expect(planeAt(seed, road + FAR_FROM, z).h - planeAt(seed, road + 100, z).h).toBeCloseTo((FAR_FROM - 100) * HILL_GRADE, 9);
       }
     }
   });
