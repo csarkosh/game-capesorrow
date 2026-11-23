@@ -488,6 +488,135 @@ export type Outskirt = {
 
 export type Spawn = { readonly x: number; readonly z: number; readonly yaw: number };
 
+/**
+ * The kinds of junction. A **four-way** (or a compound of more legs, where streets cross within a corner of each other), a
+ * **tee** (one street ends on another's side), a **skew** (a four-way whose streets cross more than 15 degrees off square), a
+ * **highway** (a street ends on the state highway, whose pavement is the engine's), and the four that share no pavement: an
+ * **alley**'s mouth (a driveway apron, no intersection), a **road end** (a street's end where a road out of town goes on),
+ * a **stair** (a street or a flight of steps meeting a flight) and a **rail** crossing.
+ */
+export type JunctionKind = "four-way" | "bend" | "tee" | "skew" | "highway" | "alley" | "road end" | "stair" | "rail";
+
+/** Who stops: nobody, the minor street's legs, every leg, or (at the railroad) crossbucks only; no signals in this pass. */
+export type JunctionControl = "none" | "stop" | "all-way" | "crossbuck";
+
+/**
+ * One leg of a junction: a street (or the highway's edge, or a road out) leaving it. The leg's centre line passes through
+ * (`x`, `z`) with the unit direction (`dx`, `dz`) pointing away from the junction; its curbs lie `half` either side of it
+ * and its lot lines `outer`. The street's own segment covers `from` to `to` along the leg from that point. `mouth` is where
+ * the leg's roadway strip begins (the junction's pavement fills the rest), `bandLeft` and `bandRight` where its verge,
+ * sidewalk and curb begin on each side (left of the direction, then right), all measured from (`x`, `z`) along the leg.
+ */
+export type JunctionLeg = {
+  readonly street: number;
+  /** The road out's id when the leg is one, else -1. */
+  readonly road: number;
+  readonly kind: StreetKind | "road";
+  readonly name: string;
+  readonly x: number;
+  readonly z: number;
+  readonly dx: number;
+  readonly dz: number;
+  readonly from: number;
+  readonly to: number;
+  readonly roadway: number;
+  readonly walk: number;
+  readonly width: number;
+  readonly half: number;
+  readonly outer: number;
+  /** The highway: its pavement is the engine's, and the leg stands on the edge of its bed (`half` 0). */
+  readonly engine: boolean;
+  readonly mouth: number;
+  readonly bandLeft: number;
+  readonly bandRight: number;
+  /** The leg has a marked crosswalk (ladder bars) just outside the junction's pavement. */
+  readonly marked: boolean;
+  /** The leg stops (a STOP sign and a stop line). */
+  readonly stops: boolean;
+  /** Where the stop line's near edge lies from the reference point, or null. */
+  readonly stopLine: number | null;
+  /** The distance from the mouth within which no parking stall stands. */
+  readonly holdBack: number;
+  /** Where the centre line's dashes (and an avenue's median) end, from the reference point. */
+  readonly centreEnd: number;
+  /** The street ends in a made dead end beyond this junction, with no other junction between: the leg carries a DEAD END sign. */
+  readonly deadEnd: boolean;
+  /** A leg closed with a planter (a legacy of the seam's sharp crossings): its strip ends on the other street's curb line. */
+  readonly closed: boolean;
+};
+
+/**
+ * The corner between a leg and the next one counter-clockwise: the curb return of `radius` (tangent to the first leg's left
+ * curb at `ta` and the second's right curb at `tb`, its centre `c`), or the straight curb of a through street's far side, or a
+ * sharp corner. `v` is where the two curb lines meet and `lot` where the two lot lines meet (the sidewalk's outer corner).
+ */
+export type JunctionCorner = {
+  readonly from: number;
+  readonly to: number;
+  readonly shape: "arc" | "straight" | "sharp";
+  readonly radius: number;
+  /** The radius the streets that meet would give a square corner. */
+  readonly nominal: number;
+  /** The tangent length from `v` along each curb. */
+  readonly reach: number;
+  readonly v: Vec | null;
+  readonly ta: Vec;
+  readonly tb: Vec;
+  readonly c: Vec | null;
+  readonly lot: Vec | null;
+};
+
+/** An alley's mouth: where an alley meets a street, drawn as a driveway apron with the sidewalk carried across. */
+export type AlleyMouth = {
+  /** The alley's centre line at the street's lot line, and its direction out of the street. */
+  readonly x: number;
+  readonly z: number;
+  readonly dx: number;
+  readonly dz: number;
+  readonly width: number;
+  /** The street it opens on, and its roadway half width. */
+  readonly street: number;
+};
+
+export type Junction = {
+  readonly id: number;
+  readonly kind: JunctionKind;
+  readonly x: number;
+  readonly z: number;
+  /** The legs, counter-clockwise by direction; `corners[i]` lies between `legs[i]` and `legs[i + 1]`. A junction with no shared pavement has none of the corners. */
+  readonly legs: readonly JunctionLeg[];
+  readonly corners: readonly JunctionCorner[];
+  /** The legs closed with a planter (a sharp crossing's legacy): each ends where its curbs leave the pavement (`mouth`, with `bandLeft` and `bandRight` the two curbs' own). */
+  readonly closed: readonly JunctionLeg[];
+  /** A tee's stem (an index into `legs`), or -1. */
+  readonly stem: number;
+  /** The streets that meet here (indices into `plan.streets`), ascending. */
+  readonly streets: readonly number[];
+  /** The sine of the angle the two main streets cross off square (0 for square), for a junction of streets. */
+  readonly skew: number;
+  /** A crossing sharper than WSDOT's 60 degrees: its second street's nearer leg is closed with a planter and a sign. */
+  readonly legacy: "planter" | null;
+  /** Two junctions lay so close that their curb returns would meet: every corner here has the 10 ft radius of two neighbourhood streets. */
+  readonly tight: boolean;
+  readonly control: JunctionControl;
+  /** The corners were rebuilt with curb ramps and dome panels; an older residential corner has none and a full-height curb all round. */
+  readonly ramps: boolean;
+  /** A school's or the hospital's corner. */
+  readonly civic: boolean;
+  /** In the core of the town. */
+  readonly core: boolean;
+  /** The centre line of a main street or avenue is carried through as a dotted line. */
+  readonly dotted: boolean;
+  /** The corner that carries the street-name blades (an index into `corners`) and the two legs they name, or null for a junction with no pavement of its own. */
+  readonly blades: { readonly corner: number; readonly legs: readonly [number, number] } | null;
+  /** An alley's mouth. */
+  readonly alley: AlleyMouth | null;
+  /** Where a road out of town stops being paved and a PAVEMENT ENDS sign stands, with the road's direction there. */
+  readonly pavementEnds: { readonly x: number; readonly z: number; readonly dx: number; readonly dz: number } | null;
+  /** A rail crossing's crossbucks and stop line: the distances from the line's centre, metres. */
+  readonly rail: { readonly crossbuck: number; readonly stopLine: number } | null;
+};
+
 export type TownPlan = {
   /** TOWN_GEN: the generator's version. */
   readonly version: number;
@@ -513,6 +642,8 @@ export type TownPlan = {
   /** The blocks the grid would have had that the land or the budget left as woods, near the town. */
   readonly woods: readonly Woods[];
   readonly spawn: Spawn;
+  /** Every place where streets meet (and the alley mouths, road ends, stairs and rail crossings), with its legs, corners and control. */
+  readonly junctions: readonly Junction[];
   /** The made ground the old plat stands on: convex counter-clockwise polygons between the quay and the natural shore. */
   readonly fill: readonly { readonly polygon: Poly }[];
   /** The quay: the straight edge of the made ground along the old plat, seaward of it the harbour. */

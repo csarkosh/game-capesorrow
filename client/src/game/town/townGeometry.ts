@@ -62,7 +62,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   };
   const sinks = { flat: (x: number, z: number) => cell(x, z).flat, solid: (x: number, z: number) => cell(x, z).solid };
 
-  streetGeometry(g, sinks.flat);
+  streetGeometry(g, sinks.flat, sinks.solid, detail);
   stairGeometry(g, sinks.solid);
   endsGeometry(g, sinks.flat, sinks.solid);
   groundGeometry(g, sinks.flat);

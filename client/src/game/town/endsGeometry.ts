@@ -10,7 +10,8 @@
  */
 import { BARRICADE_RED, BARRICADE_WHITE, GRAVEL, TIMBER, PILE } from "./palette.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
-import { STREET_LIFT } from "./streetGeometry.js";
+import { endMarker } from "./signGeometry.js";
+import { ROADWAY_LIFT, STREET_LIFT } from "./streetGeometry.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
 /** How far the gravel runs beyond the pavement's end, metres. */
@@ -59,6 +60,11 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
       }
       // The pavement's end is square across the roadway: the bulb is wider, so a strip joins the two.
       lay([at(0, -cw), at(0.5, -cw), at(0.5, cw), at(0, cw)], GRAVEL);
+      // The end of the road: three red diamond markers across it (MUTCD 2C, Type 4), 4 ft over the road, facing the street.
+      for (const t of [-cw + 0.5, 0, cw - 0.5]) {
+        const [mx, mz] = at(0.6, t);
+        endMarker(solid, g, mx, mz, -ox, -oz, ROADWAY_LIFT);
+      }
       continue;
     }
     const length = e.kind === "landing" ? 3 : GRAVEL_LENGTH;

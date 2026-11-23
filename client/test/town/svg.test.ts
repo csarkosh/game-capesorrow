@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { planSvg, sheetSvg } from "../../src/townMap/svg.js";
+import { JUNCTION_FILL, planSvg, sheetSvg } from "../../src/townMap/svg.js";
+import { hasPavement } from "../../src/sim/town/junctions.js";
 import { townFor } from "./sites.js";
 
 /** Every tag opened is closed, in order (the SVG is made of nested elements and self-closed ones). */
@@ -71,6 +72,15 @@ describe("the plan's SVG", () => {
     expect(plan.counts.vacant).toBeGreaterThan(0);
     expect(svg).toContain('fill="url(#vacant)"');
     if (plan.counts.ruin > 0) expect(svg).toContain('fill="url(#ruin)"');
+  });
+
+  it("draws the junctions by kind and control, the marked crosswalks and the STOP signs", () => {
+    const paved = plan.junctions.filter(hasPavement);
+    for (const k of ["four-way", "tee", "highway"] as const) if (paved.some((j) => j.kind === k)) expect(svg).toContain(`fill="${JUNCTION_FILL[k]}" fill-opacity="0.7"`);
+    // A red dot with a white rim for each STOP sign, a ring for each all-way stop, a dashed white bar for each marked crosswalk.
+    expect((svg.match(/fill="#d02020" stroke="#ffffff"/g) ?? []).length).toBe(paved.reduce((n, j) => n + j.legs.filter((l) => l.stops).length, 0));
+    expect((svg.match(/r="12" fill="none" stroke="#d02020"/g) ?? []).length).toBe(paved.filter((j) => j.control === "all-way").length);
+    expect((svg.match(/stroke="#ffffff" stroke-width="2.2" stroke-dasharray="1.2 0.9"/g) ?? []).length).toBe(paved.reduce((n, j) => n + j.legs.filter((l) => l.marked && !l.engine).length, 0));
   });
 
   it("escapes names", () => {

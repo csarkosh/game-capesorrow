@@ -21,6 +21,7 @@ import { sliceDue, type Slices } from "@csarkosh/engine/game/syncJobs";
 import { RAIL_BED_HALF, RAIL_GAUGE } from "../../sim/town/rail.js";
 import { RAIL_BENCH_HALF } from "../../sim/town/railGround.js";
 import type { RailCrossing } from "../../sim/town/railCrossings.js";
+import { RAIL_CROSSBUCK, RAIL_STOP_LINE } from "../../sim/town/junctions.js";
 import { TRESTLE_END, TRESTLE_HALF } from "../../sim/town/railDeck.js";
 import type { RailSpan } from "../../sim/town/railSpans.js";
 import { POLE_HEIGHT, poleAt, type Pole } from "../../sim/town/powerLine.js";
@@ -56,8 +57,8 @@ export const PANEL_FOOT = 0.125;
 /** A crossbuck: its post's height and the height of its boards' centre, and how far from the track it stands, metres. */
 export const CROSSBUCK_POST = 2.7;
 export const CROSSBUCK_AT = 2.35;
-export const CROSSBUCK_DISTANCE = 4;
-export const STOP_LINE_DISTANCE = 5.6;
+export const CROSSBUCK_DISTANCE = RAIL_CROSSBUCK;
+export const STOP_LINE_DISTANCE = RAIL_STOP_LINE;
 
 /** Poles: the crossarm's length, the wires' sag for a span of `POLE_SPACING` m, and the wires' radius, metres. */
 export const CROSSARM = 2.4;
@@ -444,15 +445,20 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
       solid.quad(corner2(-0.55, -0.07), corner2(0.55, -0.07), corner2(0.55, 0.07), corner2(-0.55, 0.07), [-face[0], 0, -face[2]], scaled(WHITE_SIGN, 0.8));
     }
   }
-  // The stop line, on the highway's side: across the lane that comes to the line.
-  const rightL = D[1] * L[0] + -D[0] * L[1];
-  const lane = rightL >= 0 ? 1 : -1;
-  const a = at(lane * 0.15, STOP_LINE_DISTANCE);
-  const bb = at(lane * (c.roadway / 2 - 0.1), STOP_LINE_DISTANCE);
-  const cc = at(lane * (c.roadway / 2 - 0.1), STOP_LINE_DISTANCE + 0.6);
-  const d = at(lane * 0.15, STOP_LINE_DISTANCE + 0.6);
-  const up = (p: [number, number]): Vec3 => [p[0], w.heightAt(p[0], p[1]) + 0.135, p[1]];
-  flat.quad(up(a), up(bb), up(cc), up(d), [0, 1, 0], PAINT_WHITE);
+  // The stop lines, one on each approach, across the lane that comes to the line: at least 15 ft (4.6 m) from the nearest rail (the
+  // distances are the junction's own, `sim/town/junctions.ts`, so they agree with the street's markings).
+  for (const side of [1, -1]) {
+    const rightL = D[1] * L[0] + -D[0] * L[1];
+    const lane = (rightL >= 0 ? 1 : -1) * side;
+    const n0 = side * STOP_LINE_DISTANCE;
+    const n1 = n0 + side * 0.6;
+    const a = at(lane * 0.15, n0);
+    const bb = at(lane * (c.roadway / 2 - 0.1), n0);
+    const cc = at(lane * (c.roadway / 2 - 0.1), n1);
+    const d = at(lane * 0.15, n1);
+    const up = (p: [number, number]): Vec3 => [p[0], w.heightAt(p[0], p[1]) + 0.135, p[1]];
+    flat.quad(up(a), up(bb), up(cc), up(d), [0, 1, 0], PAINT_WHITE);
+  }
 }
 
 /** A pole with its crossarm and insulators and the three wires to the next pole. */

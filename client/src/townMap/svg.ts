@@ -4,11 +4,13 @@
  *
  * North is up and the sea is to the left, as in the plan's own frame: x to the right, z up.
  */
-import type { Building, BuildingKind, District, Street, StreetKind, TownPlan } from "../sim/town/types.js";
+import type { Building, BuildingKind, District, JunctionKind, Street, StreetKind, TownPlan } from "../sim/town/types.js";
 import type { TownSite } from "../sim/town/site.js";
 import { LAND_SLOPE, landOf } from "../sim/town/land.js";
 import { bayOf } from "../sim/town/blend.js";
 import { RAIL_CORRIDOR_HALF, RAIL_OFFSET } from "../sim/town/rail.js";
+import { hasPavement, stopSignSpot } from "../sim/town/junctions.js";
+import { onLeg, pavementPolygon } from "../sim/town/junctionShape.js";
 import { polesIn } from "../sim/town/powerLine.js";
 
 export type SvgOptions = {
@@ -90,6 +92,19 @@ const KIND_FILL: Partial<Record<BuildingKind, string>> & { default: string } = {
   "customs house": "#b0d0a0",
   pier: "#7c5e3c",
   default: "#cccccc",
+};
+
+/** The pavement of each kind of junction on the map. */
+export const JUNCTION_FILL: Readonly<Record<JunctionKind, string>> = {
+  "four-way": "#f0f0f0",
+  bend: "#b8b8b8",
+  tee: "#7fc8ff",
+  skew: "#ff6adf",
+  highway: "#ffb060",
+  alley: "#c8b888",
+  "road end": "#b09a68",
+  stair: "#c0c0c0",
+  rail: "#ff9a30",
 };
 
 export function buildingFill(kind: BuildingKind): string {
@@ -353,6 +368,40 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
     // The power line: a pole every 45 m or so beside the highway.
     if (options.seed !== undefined) for (const pl of polesIn(options.seed, v.z0 - 20, v.z1 + 20)) out.push(`<circle cx="${X(pl.x - site.anchor.x)}" cy="${Y(pl.z - site.anchor.z)}" r="1.6" fill="#c8b090" stroke="#201408" stroke-width="0.4"/>`);
     for (const c of plan.rail.crossings) out.push(`<rect x="${X(c.x) - 4}" y="${Y(c.z) - 4}" width="8" height="8" fill="#ff9a30" stroke="#201000" stroke-width="0.8"/>`);
+  }
+
+  // The junctions: each pavement in the colour of its kind, a marked crosswalk as a white bar across its leg, a STOP sign as a red dot where it stands, an all-way stop as a red ring, a leg closed with a planter as a green bar, a ramp-less corner outlined dashed.
+  for (const j of plan.junctions) {
+    if (j.kind === "alley") {
+      const m = j.alley;
+      if (m !== null) out.push(`<line x1="${X(m.x - m.dz * m.width * 0.5)}" y1="${Y(m.z + m.dx * m.width * 0.5)}" x2="${X(m.x + m.dz * m.width * 0.5)}" y2="${Y(m.z - m.dx * m.width * 0.5)}" stroke="${JUNCTION_FILL.alley}" stroke-width="2.4"/>`);
+      continue;
+    }
+    if (!hasPavement(j)) continue;
+    const shape = pavementPolygon(j.legs, j.corners);
+    if (shape.length >= 3) out.push(`<polygon points="${poly(shape)}" fill="${JUNCTION_FILL[j.kind]}" fill-opacity="0.7" stroke="${j.ramps ? "none" : "#101010"}" stroke-width="0.8" stroke-dasharray="${j.ramps ? "none" : "2 2"}"/>`);
+    for (const l of j.legs) {
+      if (l.marked && !l.engine) {
+        const a = onLeg(l, l.mouth + 1.5, -l.half);
+        const b = onLeg(l, l.mouth + 1.5, l.half);
+        out.push(`<line x1="${X(a.x)}" y1="${Y(a.z)}" x2="${X(b.x)}" y2="${Y(b.z)}" stroke="#ffffff" stroke-width="2.2" stroke-dasharray="1.2 0.9"/>`);
+      }
+      const spot = stopSignSpot(l);
+      if (l.stops && spot !== null) {
+        const q = onLeg(l, spot.s, spot.lat);
+        out.push(`<circle cx="${X(q.x)}" cy="${Y(q.z)}" r="2.6" fill="#d02020" stroke="#ffffff" stroke-width="0.7"/>`);
+      }
+    }
+    for (const l of j.closed) {
+      const a = onLeg(l, l.mouth + 0.4, -l.half);
+      const b = onLeg(l, l.mouth + 0.4, l.half);
+      out.push(`<line x1="${X(a.x)}" y1="${Y(a.z)}" x2="${X(b.x)}" y2="${Y(b.z)}" stroke="#3ad06a" stroke-width="2.6"/>`);
+    }
+    if (j.control === "all-way") out.push(`<circle cx="${X(j.x)}" cy="${Y(j.z)}" r="12" fill="none" stroke="#d02020" stroke-width="1.6"/>`);
+  }
+  for (const j of plan.junctions) {
+    if (j.pavementEnds === null) continue;
+    out.push(`<path d="M${X(j.pavementEnds.x)},${Y(j.pavementEnds.z) - 4} l4,4 l-4,4 l-4,-4 z" fill="#e8c020" stroke="#201800" stroke-width="0.7"/>`);
   }
 
   // Buildings.

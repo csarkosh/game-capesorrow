@@ -17,6 +17,7 @@ import { stageRng } from "./rng.js";
 import { findEnds } from "./port/ends.js";
 import { planOutskirts } from "./port/outskirts.js";
 import { landOf } from "./land.js";
+import { findJunctions } from "./junctions.js";
 import { describeRoads, planRoads } from "./port/roads.js";
 import { wayOf } from "./ways.js";
 import { RECIPES, type Streams } from "./recipes.js";
@@ -159,6 +160,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     else if (b.state === "vacant") vacant++;
     else ruin++;
   }
+  const crossings = railCrossings(site, streets, roads);
+  const junctions = findJunctions({ streets, roads, ends, rail: crossings, blocks, buildings, landmarks, rng: stageRng(seed, "junctions") });
   return {
     version: TOWN_GEN,
     kind,
@@ -174,10 +177,11 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     lots,
     buildings,
     landmarks,
-    rail: { crossings: railCrossings(site, streets, roads), spurs },
+    rail: { crossings, spurs },
     outskirts: edge.outskirts,
     woods: layout.woods,
     spawn,
+    junctions,
     decks,
     harbour: harbourOut.harbour,
     fill: layout.fill,
