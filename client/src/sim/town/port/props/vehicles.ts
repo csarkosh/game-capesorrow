@@ -21,6 +21,7 @@ import { boxAt, boxInside, turned } from "./boxes.js";
 import { at, contextOf, drawOf, pickIndex, sub, type Context, type LotInfo, type StreetFrame } from "./context.js";
 import { put, type Out } from "./out.js";
 import * as T from "./tuning.js";
+import { VEHICLE_MODELS, vehicleModelFor, type VehicleModel } from "./vehicleModels.js";
 
 void contextOf;
 
@@ -59,9 +60,14 @@ export type VehicleSpec = { kind: VehicleKind; x: number; z: number; hx: number;
 export function makeVehicle(out: Out, rng: Rng, v: VehicleSpec, eraAge = 0.5): Vehicle {
   const age = v.age ?? Math.min(1, Math.max(0, eraAge + range(rng, -0.5, 0.5) * (v.state === "derelict" ? 0.4 : 1) + (v.state === "derelict" ? 0.35 : 0)));
   const idle = v.idle ?? (v.state === "derelict" ? range(rng, 0.75, 1) : v.state === "project" ? range(rng, 0.5, 0.85) : v.state === "work" ? range(rng, 0.05, 0.35) : range(rng, 0, 0.22));
-  const [length, width] = dims(v.kind, age);
+  const colour = paint(rng);
+  const load = loadFor(rng, v.kind, v.state);
+  const seed = Math.floor(next(rng) * 0x7fffffff);
+  // The model is the vehicle's own (drawn from what it already is), and its box is the model's: the walker's box is the file's footprint.
+  const model = vehicleModelFor(v.kind, v.state, load, age, seed, v.spot);
+  const [length, width] = model === "" ? dims(v.kind, age) : [(VEHICLE_MODELS[model] as VehicleModel).length, (VEHICLE_MODELS[model] as VehicleModel).width];
   return {
-    id: out.id(), kind: v.kind, x: v.x, z: v.z, hx: v.hx, hz: v.hz, colour: paint(rng), age, state: v.state, load: loadFor(rng, v.kind, v.state), spot: v.spot, lot: v.lot, idle, seed: Math.floor(next(rng) * 0x7fffffff), length, width,
+    id: out.id(), kind: v.kind, x: v.x, z: v.z, hx: v.hx, hz: v.hz, colour, age, state: v.state, load, spot: v.spot, lot: v.lot, idle, seed, length, width, model,
   };
 }
 

@@ -1,3 +1,4 @@
+import { VEHICLE_MODELS } from "../../src/sim/town/port/props/vehicleModels.js";
 import { describe, expect, it } from "vitest";
 import { overlap, corners, boxAt, type Box } from "../../src/sim/town/port/props/boxes.js";
 import { signatures } from "../../src/sim/town/port/props/dedupe.js";
@@ -53,10 +54,11 @@ describe("the props stage (what stands in the streets, yards and docks)", () => 
   it("puts every vehicle at its type's size", () => {
     for (const seed of PROP_SEEDS.slice(0, 6)) {
       for (const v of townFor(seed).plan.props.vehicles) {
-        const lo = v.kind === "pickup" ? 5.2 : DIMS[v.kind][0];
-        const hi = v.kind === "pickup" ? 5.8 : DIMS[v.kind][0];
-        expect(v.length).toBeGreaterThanOrEqual(lo);
-        expect(v.length).toBeLessThanOrEqual(hi);
+        // A vehicle's box is its model's footprint; a camper, with no model, is its kind's size; and the room planned for its kind holds it.
+        const own = v.model === "" ? DIMS[v.kind] : [VEHICLE_MODELS[v.model]!.length, VEHICLE_MODELS[v.model]!.width];
+        expect(v.length).toBe(own[0]);
+        expect(v.width).toBe(own[1]);
+        expect(v.length).toBeLessThanOrEqual(Math.max(DIMS[v.kind][0], DIMS.pickup[0], DIMS["work truck"][0]));
         expect(Math.abs(v.hx * v.hx + v.hz * v.hz - 1)).toBeLessThan(1e-9);
       }
     }

@@ -1,0 +1,1791 @@
+{
+  "about": "Written by tools/models/build.py: do not edit. Metres; +x is the front, y up, the files stand on y = 0 and are centred on their footprint. Where a work came from is in CREDITS.md, under the credit id.",
+  "total_bytes": 11440092,
+  "vehicles": [
+    {
+      "id": "vehicle.pickup_a",
+      "file": "vehicle.pickup_a.glb",
+      "kind": "pickup",
+      "note": "compact pickup, 1989 in the author's lore",
+      "credit": "vehicle.pickup_a",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 5.218,
+        "width": 2.113,
+        "height": 1.85,
+        "x": [
+          -2.609,
+          2.609
+        ],
+        "z": [
+          -1.042,
+          1.056
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.743,
+          "z": 0.706,
+          "y": 0.0,
+          "r": 0.351,
+          "inferred": false
+        },
+        {
+          "x": 1.743,
+          "z": -0.706,
+          "y": 0.01,
+          "r": 0.351,
+          "inferred": false
+        },
+        {
+          "x": -1.271,
+          "z": 0.706,
+          "y": 0.0,
+          "r": 0.351,
+          "inferred": false
+        },
+        {
+          "x": -1.271,
+          "z": -0.706,
+          "y": 0.01,
+          "r": 0.351,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 3.014,
+      "track": 1.412,
+      "triangles": 21094,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 6266,
+          "vertices": 5084
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 534,
+          "vertices": 445
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18138
+            }
+          ],
+          "triangles": 396,
+          "vertices": 328
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10532
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34586
+            }
+          ],
+          "triangles": 3464,
+          "vertices": 2940
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 20978
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34510
+            }
+          ],
+          "triangles": 7618,
+          "vertices": 7730
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10820
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 13286
+            }
+          ],
+          "triangles": 2656,
+          "vertices": 2213
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 837644,
+      "sha256": "dbe6039f3833efe197402f0aa3143971c22e473476371d2833d46555eba2c513"
+    },
+    {
+      "id": "vehicle.pickup_b",
+      "file": "vehicle.pickup_b.glb",
+      "kind": "pickup",
+      "note": "old pickup, 1978",
+      "credit": "vehicle.pickup_b",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 5.126,
+        "width": 1.909,
+        "height": 1.382,
+        "x": [
+          -2.563,
+          2.563
+        ],
+        "z": [
+          -0.955,
+          0.955
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.611,
+          "z": 0.77,
+          "y": 0.0,
+          "r": 0.319,
+          "inferred": false
+        },
+        {
+          "x": 1.611,
+          "z": -0.77,
+          "y": 0.0,
+          "r": 0.319,
+          "inferred": false
+        },
+        {
+          "x": -1.314,
+          "z": 0.77,
+          "y": 0.0,
+          "r": 0.319,
+          "inferred": false
+        },
+        {
+          "x": -1.314,
+          "z": -0.77,
+          "y": 0.0,
+          "r": 0.319,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.925,
+      "track": 1.54,
+      "triangles": 16154,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 3192,
+          "vertices": 2863
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 316,
+          "vertices": 241
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18138
+            }
+          ],
+          "triangles": 100,
+          "vertices": 112
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10532
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34586
+            }
+          ],
+          "triangles": 3244,
+          "vertices": 3084
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 20978
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34510
+            }
+          ],
+          "triangles": 6593,
+          "vertices": 6888
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10820
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 13286
+            }
+          ],
+          "triangles": 2549,
+          "vertices": 2229
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 721056,
+      "sha256": "c1098e375700966665b43b2bf72afa0c6ae0e2902c6a6ac19a413c627dd42580"
+    },
+    {
+      "id": "vehicle.sedan_a",
+      "file": "vehicle.sedan_a.glb",
+      "kind": "sedan",
+      "note": "full-size sedan, 1980",
+      "credit": "vehicle.sedan_a",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 5.001,
+        "width": 1.834,
+        "height": 1.349,
+        "x": [
+          -2.501,
+          2.501
+        ],
+        "z": [
+          -0.917,
+          0.915
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.434,
+          "z": 0.732,
+          "y": 0.0,
+          "r": 0.303,
+          "inferred": false
+        },
+        {
+          "x": 1.434,
+          "z": -0.732,
+          "y": 0.001,
+          "r": 0.303,
+          "inferred": false
+        },
+        {
+          "x": -1.218,
+          "z": 0.732,
+          "y": 0.0,
+          "r": 0.303,
+          "inferred": false
+        },
+        {
+          "x": -1.218,
+          "z": -0.732,
+          "y": 0.001,
+          "r": 0.303,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.652,
+      "track": 1.464,
+      "triangles": 19641,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 5602,
+          "vertices": 4584
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 362,
+          "vertices": 354
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18110
+            }
+          ],
+          "triangles": 168,
+          "vertices": 176
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10464
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34544
+            }
+          ],
+          "triangles": 3448,
+          "vertices": 3132
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 17592
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 31772
+            }
+          ],
+          "triangles": 6370,
+          "vertices": 5783
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 17592
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 66670
+            }
+          ],
+          "triangles": 3531,
+          "vertices": 3389
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 845200,
+      "sha256": "edcd51381ff7c941a75fbe622f1bcfc50cfa5a1e931b99384d1ed8e8c2108398"
+    },
+    {
+      "id": "vehicle.sedan_b",
+      "file": "vehicle.sedan_b.glb",
+      "kind": "sedan",
+      "note": "compact sedan, 1986",
+      "credit": "vehicle.sedan_b",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 4.314,
+        "width": 1.762,
+        "height": 1.32,
+        "x": [
+          -2.157,
+          2.157
+        ],
+        "z": [
+          -0.88,
+          0.881
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.323,
+          "z": -0.711,
+          "y": 0.001,
+          "r": 0.286,
+          "inferred": false
+        },
+        {
+          "x": 1.323,
+          "z": 0.711,
+          "y": 0.0,
+          "r": 0.286,
+          "inferred": false
+        },
+        {
+          "x": -1.136,
+          "z": -0.711,
+          "y": 0.001,
+          "r": 0.286,
+          "inferred": false
+        },
+        {
+          "x": -1.136,
+          "z": 0.711,
+          "y": 0.0,
+          "r": 0.286,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.459,
+      "track": 1.422,
+      "triangles": 20262,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 5002,
+          "vertices": 4038
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 616,
+          "vertices": 615
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18108
+            }
+          ],
+          "triangles": 224,
+          "vertices": 220
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10486
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34694
+            }
+          ],
+          "triangles": 4672,
+          "vertices": 4492
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 17592
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 31772
+            }
+          ],
+          "triangles": 6200,
+          "vertices": 5828
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 17592
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 66228
+            }
+          ],
+          "triangles": 3388,
+          "vertices": 3233
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 883208,
+      "sha256": "017d2c697e76d10dcfda2db3948710e1580f6726dbe913ef7f3de1c831fe3bad"
+    },
+    {
+      "id": "vehicle.wagon",
+      "file": "vehicle.wagon.glb",
+      "kind": "suv",
+      "note": "station wagon, 1984",
+      "credit": "vehicle.wagon",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 5.028,
+        "width": 1.857,
+        "height": 1.398,
+        "x": [
+          -2.514,
+          2.514
+        ],
+        "z": [
+          -0.929,
+          0.927
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.442,
+          "z": -0.732,
+          "y": 0.001,
+          "r": 0.303,
+          "inferred": false
+        },
+        {
+          "x": 1.442,
+          "z": 0.732,
+          "y": 0.0,
+          "r": 0.303,
+          "inferred": false
+        },
+        {
+          "x": -1.21,
+          "z": -0.732,
+          "y": 0.001,
+          "r": 0.303,
+          "inferred": false
+        },
+        {
+          "x": -1.21,
+          "z": 0.732,
+          "y": 0.0,
+          "r": 0.303,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.652,
+      "track": 1.464,
+      "triangles": 19421,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 6352,
+          "vertices": 5170
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 322,
+          "vertices": 325
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18158
+            }
+          ],
+          "triangles": 158,
+          "vertices": 166
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10406
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34624
+            }
+          ],
+          "triangles": 2880,
+          "vertices": 2620
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 17592
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 31772
+            }
+          ],
+          "triangles": 5892,
+          "vertices": 5372
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 17592
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 66670
+            }
+          ],
+          "triangles": 3657,
+          "vertices": 3469
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 829980,
+      "sha256": "9d3ec5d01dd6fd1a4ec3430fb6e886d557c8d0fa5ce446b0678621a7fff7f1ac"
+    },
+    {
+      "id": "vehicle.hatch",
+      "file": "vehicle.hatch.glb",
+      "kind": "suv",
+      "note": "hatchback, 2011",
+      "credit": "vehicle.hatch",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 3.843,
+        "width": 1.826,
+        "height": 1.445,
+        "x": [
+          -1.922,
+          1.922
+        ],
+        "z": [
+          -0.913,
+          0.913
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.102,
+          "z": -0.705,
+          "y": 0.001,
+          "r": 0.298,
+          "inferred": false
+        },
+        {
+          "x": 1.102,
+          "z": 0.705,
+          "y": 0.0,
+          "r": 0.298,
+          "inferred": false
+        },
+        {
+          "x": -1.303,
+          "z": -0.705,
+          "y": 0.001,
+          "r": 0.298,
+          "inferred": false
+        },
+        {
+          "x": -1.303,
+          "z": 0.705,
+          "y": 0.0,
+          "r": 0.298,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.405,
+      "track": 1.41,
+      "triangles": 18414,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 4700,
+          "vertices": 3946
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 312,
+          "vertices": 250
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18138
+            }
+          ],
+          "triangles": 338,
+          "vertices": 324
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10532
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34586
+            }
+          ],
+          "triangles": 3620,
+          "vertices": 3008
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 23554
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 35606
+            }
+          ],
+          "triangles": 6062,
+          "vertices": 6671
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10820
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 13286
+            }
+          ],
+          "triangles": 3222,
+          "vertices": 3001
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 786552,
+      "sha256": "5b0ab16550631ed1b4adc7292b7a6b123ded08b441132030affc6b80f5c2255e"
+    },
+    {
+      "id": "vehicle.van",
+      "file": "vehicle.van.glb",
+      "kind": "van",
+      "note": "panel van, 1992",
+      "credit": "vehicle.van",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 4.899,
+        "width": 2.363,
+        "height": 1.929,
+        "x": [
+          -2.45,
+          2.45
+        ],
+        "z": [
+          -1.167,
+          1.181
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.776,
+          "z": 0.829,
+          "y": 0.0,
+          "r": 0.351,
+          "inferred": false
+        },
+        {
+          "x": 1.776,
+          "z": -0.829,
+          "y": 0.012,
+          "r": 0.351,
+          "inferred": false
+        },
+        {
+          "x": -1.359,
+          "z": 0.829,
+          "y": 0.0,
+          "r": 0.351,
+          "inferred": false
+        },
+        {
+          "x": -1.359,
+          "z": -0.829,
+          "y": 0.012,
+          "r": 0.351,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 3.135,
+      "track": 1.658,
+      "triangles": 23001,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 7780,
+          "vertices": 5845
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 428,
+          "vertices": 298
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18138
+            }
+          ],
+          "triangles": 400,
+          "vertices": 360
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10532
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34586
+            }
+          ],
+          "triangles": 3060,
+          "vertices": 2636
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 20978
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34510
+            }
+          ],
+          "triangles": 6543,
+          "vertices": 6179
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 14496
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 22026
+            }
+          ],
+          "triangles": 4630,
+          "vertices": 3893
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 871560,
+      "sha256": "b82d6f890fc9da2f0915144f7b6312390d5975aa097b2bda425496310cc54f13"
+    },
+    {
+      "id": "vehicle.flatbed",
+      "file": "vehicle.flatbed.glb",
+      "kind": "work truck",
+      "note": "flatbed work truck, 1990",
+      "credit": "vehicle.flatbed",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 5.271,
+        "width": 2.003,
+        "height": 1.677,
+        "x": [
+          -2.636,
+          2.636
+        ],
+        "z": [
+          -1.0,
+          1.002
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.836,
+          "z": 0.793,
+          "y": 0.0,
+          "r": 0.356,
+          "inferred": false
+        },
+        {
+          "x": 1.836,
+          "z": -0.794,
+          "y": 0.0,
+          "r": 0.356,
+          "inferred": false
+        },
+        {
+          "x": -1.326,
+          "z": 0.773,
+          "y": 0.0,
+          "r": 0.356,
+          "inferred": false
+        },
+        {
+          "x": -1.326,
+          "z": -0.773,
+          "y": 0.0,
+          "r": 0.356,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 3.161,
+      "track": 1.567,
+      "triangles": 24074,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 2960,
+          "vertices": 2156
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 710,
+          "vertices": 609
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18138
+            }
+          ],
+          "triangles": 112,
+          "vertices": 118
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10532
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34586
+            }
+          ],
+          "triangles": 3712,
+          "vertices": 3182
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 20978
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34510
+            }
+          ],
+          "triangles": 11552,
+          "vertices": 12315
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 14496
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 22026
+            }
+          ],
+          "triangles": 4868,
+          "vertices": 4252
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 1014568,
+      "sha256": "86b9355396ba64fbff3311f4c3d7f987615ae3fcdb9d86fc71dd35e633196701"
+    },
+    {
+      "id": "vehicle.boxtruck",
+      "file": "vehicle.boxtruck.glb",
+      "kind": "work truck",
+      "note": "box truck, 1995",
+      "credit": "vehicle.boxtruck",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 6.023,
+        "width": 2.632,
+        "height": 2.854,
+        "x": [
+          -3.011,
+          3.011
+        ],
+        "z": [
+          -1.298,
+          1.316
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.79,
+          "z": 0.944,
+          "y": 0.0,
+          "r": 0.357,
+          "inferred": false
+        },
+        {
+          "x": 1.79,
+          "z": -0.944,
+          "y": 0.014,
+          "r": 0.357,
+          "inferred": false
+        },
+        {
+          "x": -1.555,
+          "z": 0.881,
+          "y": 0.0,
+          "r": 0.358,
+          "inferred": false
+        },
+        {
+          "x": -1.555,
+          "z": -0.881,
+          "y": 0.013,
+          "r": 0.358,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 3.345,
+      "track": 1.825,
+      "triangles": 18913,
+      "roles": {
+        "paint": {
+          "role": "paint",
+          "textures": [],
+          "triangles": 2962,
+          "vertices": 2601
+        },
+        "glass": {
+          "role": "glass",
+          "textures": [],
+          "triangles": 542,
+          "vertices": 496
+        },
+        "lamp": {
+          "role": "lamp",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 18138
+            }
+          ],
+          "triangles": 112,
+          "vertices": 118
+        },
+        "plate": {
+          "role": "plate",
+          "textures": [],
+          "triangles": 160,
+          "vertices": 192
+        },
+        "tyre": {
+          "role": "tyre",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10532
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34586
+            }
+          ],
+          "triangles": 3712,
+          "vertices": 3182
+        },
+        "under": {
+          "role": "under",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 20978
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 34510
+            }
+          ],
+          "triangles": 7952,
+          "vertices": 8554
+        },
+        "interior": {
+          "role": "interior",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 10820
+            },
+            {
+              "map": "orm",
+              "size": [
+                512,
+                512
+              ],
+              "bytes": 13286
+            }
+          ],
+          "triangles": 3473,
+          "vertices": 2986
+        }
+      },
+      "removed": [
+        "badges"
+      ],
+      "bytes": 818304,
+      "sha256": "bc07eba5e9422fc06cee956013f345100cf1e534f95dc252990cda70f029a721"
+    },
+    {
+      "id": "vehicle.derelict_sedan",
+      "file": "vehicle.derelict_sedan.glb",
+      "kind": "derelict",
+      "note": "abandoned sedan, doors open",
+      "credit": "vehicle.derelict_sedan",
+      "credit_scale": {
+        "applied": 0.21925,
+        "estimated": true,
+        "basis": "tyre diameter 0.64 m"
+      },
+      "footprint": {
+        "length": 4.679,
+        "width": 2.792,
+        "height": 1.701,
+        "x": [
+          -2.339,
+          2.339
+        ],
+        "z": [
+          -1.396,
+          1.396
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.41,
+          "z": -1.071,
+          "y": 0.006,
+          "r": 0.322,
+          "inferred": false
+        },
+        {
+          "x": 1.41,
+          "z": 0.435,
+          "y": 0.006,
+          "r": 0.322,
+          "inferred": true
+        },
+        {
+          "x": -1.333,
+          "z": 0.44,
+          "y": 0.008,
+          "r": 0.315,
+          "inferred": false
+        },
+        {
+          "x": -1.336,
+          "z": -1.075,
+          "y": 0.0,
+          "r": 0.323,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.744,
+      "track": 1.511,
+      "triangles": 9591,
+      "roles": {
+        "body": {
+          "role": "body",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 79412
+            },
+            {
+              "map": "orm",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 186908
+            },
+            {
+              "map": "normal",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 403226
+            }
+          ],
+          "triangles": 9591,
+          "vertices": 9500
+        }
+      },
+      "removed": [],
+      "bytes": 1185184,
+      "sha256": "b68889f49e7d272851f5fb8352949fa222214f26c53c22db8b2c1973d70517a0"
+    },
+    {
+      "id": "vehicle.derelict_truck",
+      "file": "vehicle.derelict_truck.glb",
+      "kind": "derelict",
+      "note": "rusty abandoned pickup, doors open",
+      "credit": "vehicle.derelict_truck",
+      "credit_scale": {
+        "applied": 0.1608,
+        "estimated": true,
+        "basis": "tyre diameter 0.78 m"
+      },
+      "footprint": {
+        "length": 4.999,
+        "width": 2.345,
+        "height": 1.929,
+        "x": [
+          -2.5,
+          2.5
+        ],
+        "z": [
+          -1.173,
+          1.173
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.691,
+          "z": 0.889,
+          "y": 0.0,
+          "r": 0.39,
+          "inferred": false
+        },
+        {
+          "x": 1.683,
+          "z": -0.889,
+          "y": 0.0,
+          "r": 0.39,
+          "inferred": false
+        },
+        {
+          "x": -1.219,
+          "z": -0.889,
+          "y": 0.0,
+          "r": 0.39,
+          "inferred": false
+        },
+        {
+          "x": -1.219,
+          "z": 0.889,
+          "y": 0.0,
+          "r": 0.39,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.906,
+      "track": 1.778,
+      "triangles": 9728,
+      "roles": {
+        "body": {
+          "role": "body",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 60198
+            },
+            {
+              "map": "orm",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 129122
+            },
+            {
+              "map": "normal",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 400758
+            }
+          ],
+          "triangles": 9728,
+          "vertices": 12071
+        }
+      },
+      "removed": [],
+      "bytes": 1229936,
+      "sha256": "108e17c5d4148ae39680f8529ab860156a8ccb0a3e786264b2a3e342049ca1cc"
+    },
+    {
+      "id": "vehicle.covered",
+      "file": "vehicle.covered.glb",
+      "kind": "project",
+      "note": "a car under a dust sheet",
+      "credit": "vehicle.covered",
+      "credit_scale": {
+        "applied": 1.0,
+        "estimated": false,
+        "basis": "metres in the file"
+      },
+      "footprint": {
+        "length": 4.38,
+        "width": 1.789,
+        "height": 1.411,
+        "x": [
+          -2.19,
+          2.19
+        ],
+        "z": [
+          -0.894,
+          0.894
+        ]
+      },
+      "wheels": [
+        {
+          "x": 1.323,
+          "z": -0.72,
+          "y": 0.0,
+          "r": 0.3,
+          "inferred": false
+        },
+        {
+          "x": 1.323,
+          "z": 0.7,
+          "y": 0.0,
+          "r": 0.3,
+          "inferred": false
+        },
+        {
+          "x": -1.257,
+          "z": -0.73,
+          "y": 0.0,
+          "r": 0.3,
+          "inferred": false
+        },
+        {
+          "x": -1.257,
+          "z": 0.71,
+          "y": 0.001,
+          "r": 0.299,
+          "inferred": false
+        }
+      ],
+      "wheelbase": 2.58,
+      "track": 1.43,
+      "triangles": 12592,
+      "roles": {
+        "body": {
+          "role": "body",
+          "textures": [
+            {
+              "map": "colour",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 57598
+            },
+            {
+              "map": "orm",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 124388
+            },
+            {
+              "map": "normal",
+              "size": [
+                1024,
+                1024
+              ],
+              "bytes": 642664
+            }
+          ],
+          "triangles": 12592,
+          "vertices": 10722
+        }
+      },
+      "removed": [],
+      "bytes": 1416900,
+      "sha256": "92162731265a41fbdd00e8a279e98c1832252754d61c4b35a48db2fffb7ae493"
+    }
+  ]
+}

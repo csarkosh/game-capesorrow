@@ -884,8 +884,11 @@ export type Vehicle = {
   readonly idle: number;
   /** A number of its own the drawing varies it from. */
   readonly seed: number;
+  /** The footprint: a real model's where it has one (`port/props/vehicleModels.ts`), else the kind's own size. */
   readonly length: number;
   readonly width: number;
+  /** The id of the model it is drawn as ("vehicle.sedan_a"), or "" where it is built in code (a camper). */
+  readonly model: string;
 };
 
 /** A boat trailer, empty or carrying a skiff or a small fibreglass boat, with a tarp over the boat or not and weeds grown through. */

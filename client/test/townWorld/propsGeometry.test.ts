@@ -52,8 +52,10 @@ describe("the props, drawn", () => {
     let checked = 0;
     for (const v of g.plan.props.vehicles) {
       if (v.state === "project" || v.kind === "camper") continue;
+      // The code-built cars are the low tier's now (the full tier draws a model's, `vehicleFleet.test.ts`), and it leaves two in five out.
       const m = new MeshBuilder();
-      vehicleGeometry(g, { solid: () => m, glass: () => new MeshBuilder() }, v, "full");
+      vehicleGeometry(g, { solid: () => m, glass: () => new MeshBuilder() }, v, "low");
+      if (m.vertices === 0) continue;
       let low = Infinity;
       m.forEachPosition(0, (_x, y) => {
         low = Math.min(low, y);
@@ -64,6 +66,6 @@ describe("the props, drawn", () => {
       expect(low - ground, `vehicle ${v.id} ${v.kind}`).toBeLessThan(0.45);
       checked++;
     }
-    expect(checked).toBeGreaterThan(50);
+    expect(checked).toBeGreaterThan(25);
   });
 });

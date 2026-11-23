@@ -33,6 +33,8 @@ import { createRailStream, type RailStream } from "./railParts.js";
 import { SignAtlas } from "./signAtlas.js";
 import { createPaintSurface, paintRequest } from "./signPaint.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
+import { fleetOf } from "./props/vehicleFleet.js";
+import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { emptyTownReady, townSurfacePlugin } from "./townMaterial.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
@@ -87,6 +89,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   const textured: PbrMaterialProps[] = [];
   // The railroad and the power line, streamed along the coast by the camera's place (`railParts.ts`).
   let rail: RailStream | null = null;
+  // The parked vehicles that stand as real models (`props/vehicleParts.ts`), on the tiers above low: loaded once the town's geometry is made.
+  let vehicles: VehicleParts | null = null;
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
@@ -166,8 +170,12 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const start = townStart(worldSeed);
       rail = createRailStream(host, { engine, scene, materials, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
 
+      const ground = townGround(worldSeed);
+      if (!low) {
+        vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleetOf(ground, "full"));
+      }
+
       function* build(): Slices {
-        const ground = townGround(worldSeed);
         const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas);
         // Paint the lettering, a few signs a slice, and upload the atlas once.
         const surface = atlasTexture === null ? null : createPaintSurface(atlas.width, atlas.height);
@@ -208,6 +216,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           yield;
         }
         building = false;
+        // The town stands; now the vehicles' files are asked for, and each lands when it has.
+        vehicles?.begin();
       }
 
       building = true;
@@ -217,6 +227,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     seen(planes, cover) {
       base.side.seen(planes, cover);
       rail?.seen(planes);
+      vehicles?.seen(planes);
       for (const m of made) {
         let want = inView(planes, m);
         // The standing layer is cover for the rain: shown to the map's pass while it reaches into the map's square.
@@ -247,6 +258,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       textured.length = 0;
       rail?.dispose();
       rail = null;
+      vehicles?.dispose();
+      vehicles = null;
       host.jobs.cancel(owner);
       for (const m of made) {
         if (m.layer === "solid") hardCover?.remove(m.mesh);

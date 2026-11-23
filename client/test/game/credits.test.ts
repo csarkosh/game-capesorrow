@@ -22,19 +22,30 @@ const keyOf = (e: CreditEntry): string => JSON.stringify([e.source, e.author, e.
 describe("the game's own CREDITS.md", () => {
   const own = creditsModel(OWN_FILE);
 
-  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets, all CC0", () => {
+  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets (CC0) and the vehicle models", () => {
     expect(OWN_FILE.startsWith("# Credits\n")).toBe(true);
     expect(OWN_FILE).toMatch(/engine/);
     expect(OWN_FILE).toMatch(/Credits screen/);
-    // 21 works: the 22 layers of the town's textures, less the shingles the build script makes.
-    expect(own.length).toBe(21);
-    for (const e of own) {
-      expect(e.id, e.id).toMatch(/^town\./);
+    // 33 works: the 22 layers of the town's textures, less the shingles the build script makes (21), and the 12 vehicle models.
+    expect(own.length).toBe(33);
+    const textures = own.filter((e) => e.id.startsWith("town."));
+    expect(textures.length).toBe(21);
+    for (const e of textures) {
       expect(e.license, e.id).toBe("CC0-1.0");
       expect(e.author.length, e.id).toBeGreaterThan(0);
       expect(e.url, e.id).toMatch(/^https:\/\/[a-z.]+\/a\/[A-Za-z0-9_]+$/);
       expect(e.source, e.id).toMatch(/^[^:]+: .+/);
     }
+    // The models: eleven under Creative Commons Attribution, each saying what was changed, and the dust-sheet car CC0.
+    const models = own.filter((e) => e.id.startsWith("vehicle."));
+    expect(models.length).toBe(12);
+    for (const e of models) {
+      expect(e.license, e.id).toBe(e.id === "vehicle.covered" ? "CC0-1.0" : "CC-BY-4.0");
+      expect(e.author.length, e.id).toBeGreaterThan(0);
+      expect(e.url, e.id).toMatch(/^https:\/\//);
+      expect(e.modified, e.id).toBe(true);
+    }
+    expect(own.length).toBe(textures.length + models.length);
     expect(new Set(own.map((e) => e.id)).size).toBe(own.length);
   });
 
