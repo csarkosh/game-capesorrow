@@ -23,10 +23,14 @@ export const COVER_FADE = 160;
 /** The side of a grid cell, metres. */
 const CELL = 24;
 
-export const COVER_TUNABLES: Readonly<Record<string, number>> = { COVER_HOLD, COVER_FADE };
+/** A lone outlying lot's window holds only this far beyond its edges and falls over this much more (its ground is levelled for the building, not the town's), metres. */
+export const COVER_OUT_HOLD = 6;
+export const COVER_OUT_FADE = 30;
+
+export const COVER_TUNABLES: Readonly<Record<string, number>> = { COVER_HOLD, COVER_FADE, COVER_OUT_HOLD, COVER_OUT_FADE };
 
 type Edge = { readonly nx: number; readonly nz: number; readonly c: number };
-type Window = { readonly edges: readonly Edge[] };
+type Window = { readonly edges: readonly Edge[]; readonly hold: number; readonly fade: number; /** A lone outlying lot's: it levels nothing (the ground is the land's own there) but holds the cliff bands and the forest off. */ readonly lot: boolean };
 
 export type CoverIndex = {
   readonly windows: readonly Window[];
@@ -44,7 +48,6 @@ const INDEX = new WeakMap<TownPlan, CoverIndex>();
 export function coverIndexOf(plan: TownPlan): CoverIndex {
   const hit = INDEX.get(plan);
   if (hit !== undefined) return hit;
-  const reach = COVER_HOLD + COVER_FADE;
   const windows: Window[] = [];
   const boxes: { x0: number; z0: number; x1: number; z1: number }[] = [];
   for (const block of plan.blocks) {
@@ -72,7 +75,11 @@ export function coverIndexOf(plan: TownPlan): CoverIndex {
       z1 = Math.max(z1, a.z);
     }
     if (edges.length < 3) continue;
-    windows.push({ edges });
+    const out = block.district === "outskirts";
+    const hold = out ? COVER_OUT_HOLD : COVER_HOLD;
+    const fade = out ? COVER_OUT_FADE : COVER_FADE;
+    const reach = hold + fade;
+    windows.push({ edges, hold, fade, lot: out });
     boxes.push({ x0: x0 - reach, z0: z0 - reach, x1: x1 + reach, z1: z1 + reach });
   }
   let bx0 = Infinity;
@@ -111,8 +118,8 @@ export function coverIndexOf(plan: TownPlan): CoverIndex {
 function windowD(w: Window, x: number, z: number): { v: number; dx: number; dz: number } {
   const edges = w.edges;
   const n = edges.length;
-  const near = -COVER_HOLD;
-  const far = -(COVER_HOLD + COVER_FADE);
+  const near = -w.hold;
+  const far = -(w.hold + w.fade);
   let v = 1;
   for (let i = 0; i < n; i++) {
     const e = edges[i] as Edge;
@@ -151,11 +158,11 @@ function quayWindowD(plan: TownPlan, xf: number, zr: number): { v: number; dx: n
   return { v: 1 - s.v, dx: (-s.d * ex) / d, dz: (-s.d * ez) / d };
 }
 
-/** The town's cover at a point of the plan's frame, with its gradient: the smooth union of the block windows near it, and the quay's. */
-export function coverD(plan: TownPlan, xf: number, zr: number): { v: number; dx: number; dz: number } {
+/** The town's cover at a point of the plan's frame, with its gradient: the smooth union of the block windows near it, and the quay's. `withLots` false leaves out the outlying lots' windows: the ground they stand on is the land's own, and only the forest and the cliff bands keep off them. */
+export function coverD(plan: TownPlan, xf: number, zr: number, withLots = true): { v: number; dx: number; dz: number } {
   const quay = quayWindowD(plan, xf, zr);
   if (quay.v === 1) return quay;
-  const blocks = blocksCoverD(plan, xf, zr);
+  const blocks = blocksCoverD(plan, xf, zr, withLots);
   if (quay.v === 0) return blocks;
   if (blocks.v === 1) return blocks;
   // The union: 1 - w = (1 - quay)(1 - blocks).
@@ -167,7 +174,7 @@ export function coverD(plan: TownPlan, xf: number, zr: number): { v: number; dx:
 }
 
 /** The union of the block windows near a point. */
-function blocksCoverD(plan: TownPlan, xf: number, zr: number): { v: number; dx: number; dz: number } {
+function blocksCoverD(plan: TownPlan, xf: number, zr: number, withLots: boolean): { v: number; dx: number; dz: number } {
   const index = coverIndexOf(plan);
   const i = Math.floor((xf - index.x0) / CELL);
   const j = Math.floor((zr - index.z0) / CELL);
@@ -178,7 +185,9 @@ function blocksCoverD(plan: TownPlan, xf: number, zr: number): { v: number; dx: 
   let restDx = 0;
   let restDz = 0;
   for (let k = 0; k < list.length; k++) {
-    const a = windowD(index.windows[list[k] as number] as Window, xf, zr);
+    const w = index.windows[list[k] as number] as Window;
+    if (w.lot && !withLots) continue;
+    const a = windowD(w, xf, zr);
     if (a.v === 0) continue;
     if (a.v === 1) return { v: 1, dx: 0, dz: 0 };
     restDx = (1 - a.v) * restDx - rest * a.dx;
