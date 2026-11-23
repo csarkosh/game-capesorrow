@@ -45,9 +45,11 @@ const ONE: Rgb = [1, 1, 1];
 export class MeshBuilder {
   /** Debugging: when set, each polygon records where in the builders it was made (`tags`: its first triangle's index, and the callers), for a script that hunts overlaps. Off in the game. */
   static trace = false;
+  /** With `trace` on, the tags of each finished mesh, by its arrays (the finder reads them to say where a pair came from). */
+  static readonly traced = new WeakMap<object, [number, string][]>();
   readonly tags: [number, string][] = [];
   private tag(from: number): void {
-    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder")).slice(0, 3);
+    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder")).slice(0, 4);
     this.tags.push([from, lines.map((l) => l.replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
   }
   private pos: number[] = [];
@@ -395,6 +397,7 @@ export class MeshBuilder {
       }
     }
     const base = this.vertices;
+    if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     const layer = v.layer === undefined ? NO_LAYER : layerIndex(v.layer);
     const tile = v.layer === undefined ? [1, 1] : (TOWN_LAYERS[layerIndex(v.layer)]?.tile ?? [1, 1]);
     for (let i = 0; i < nr; i++) {
@@ -437,11 +440,101 @@ export class MeshBuilder {
     }
   }
 
+  /**
+   * The finished arrays. A triangle that repeats one already laid (the same three corners, to a tenth of a millimetre, wound the same way, with
+   * the same colour and surface) is left out, and the corners no triangle uses are dropped: two polygons the code made over one place (a post
+   * where two runs of fence meet, a pile two spans share) are one in the mesh. A repeat that looks different is kept: that is two things in one
+   * place, which the finder in `depthSeparation.test.ts` reports.
+   */
   finish(): MeshArrays {
-    return {
-      positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col),
-      uvs: new Float32Array(this.uv), surface: new Float32Array(this.srf), indices: Uint32Array.from(this.idx),
+    const nTri = this.idx.length / 3;
+    const corner = (v: number, salt: number): number => {
+      const x = Math.round((this.pos[v * 3] as number) * 1e4);
+      const y = Math.round((this.pos[v * 3 + 1] as number) * 1e4);
+      const z = Math.round((this.pos[v * 3 + 2] as number) * 1e4);
+      let h = Math.imul(x ^ salt, 0x9e3779b1) ^ Math.imul(y + salt, 0x85ebca6b) ^ Math.imul(z ^ (salt << 1), 0xc2b2ae35);
+      h ^= h >>> 15;
+      h = Math.imul(h, 0x2c1b3c6d);
+      return (h ^ (h >>> 12)) >>> 0;
     };
+    // A number of 53 bits from the three corners in their cycle, whichever corner it starts at.
+    const key = (i: number): number => {
+      const v = [this.idx[i * 3] as number, this.idx[i * 3 + 1] as number, this.idx[i * 3 + 2] as number];
+      const h = [corner(v[0] as number, 0), corner(v[1] as number, 0), corner(v[2] as number, 0)];
+      let lo = 0;
+      if ((h[1] as number) < (h[lo] as number)) lo = 1;
+      if ((h[2] as number) < (h[lo] as number)) lo = 2;
+      const c = [v[lo] as number, v[(lo + 1) % 3] as number, v[(lo + 2) % 3] as number];
+      const a = Math.imul(corner(c[0] as number, 1) ^ Math.imul(corner(c[1] as number, 2), 31), 0x01000193) ^ corner(c[2] as number, 3);
+      const b = corner(c[0] as number, 4) ^ Math.imul(corner(c[1] as number, 5), 17) ^ Math.imul(corner(c[2] as number, 6), 0x85ebca6b);
+      return (a >>> 0) * 2097152 + ((b >>> 0) & 0x1fffff);
+    };
+    const look = (i: number): string => {
+      let t = "";
+      for (let c = 0; c < 3; c++) {
+        const v = this.idx[i * 3 + c] as number;
+        t += `${this.col[v * 4]?.toFixed(3)},${this.col[v * 4 + 1]?.toFixed(3)},${this.col[v * 4 + 2]?.toFixed(3)};`;
+        for (let q = 0; q < 8; q++) t += `${(this.srf[v * 12 + q] as number).toFixed(3)},`;
+      }
+      return t;
+    };
+    const seen = new Map<number, number>();
+    const keep: number[] = [];
+    // `before[t]` is how many triangles before t are kept, to move the tags.
+    const before = new Int32Array(nTri + 1);
+    for (let t = 0; t < nTri; t++) {
+      before[t] = keep.length;
+      const k = key(t);
+      const had = seen.get(k);
+      if (had !== undefined && look(had) === look(t)) continue;
+      if (had === undefined) seen.set(k, t);
+      keep.push(t);
+    }
+    before[nTri] = keep.length;
+    let idx: number[] = this.idx;
+    let remap: Int32Array | null = null;
+    let nv = this.vertices;
+    if (keep.length < nTri) {
+      const used = new Int32Array(nv).fill(-1);
+      let n = 0;
+      idx = [];
+      for (const t of keep) {
+        for (let c = 0; c < 3; c++) {
+          const v = this.idx[t * 3 + c] as number;
+          if (used[v] === -1) used[v] = n++;
+          idx.push(used[v] as number);
+        }
+      }
+      remap = used;
+      nv = n;
+    }
+    let arrays: MeshArrays;
+    if (remap === null) {
+      arrays = {
+        positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col),
+        uvs: new Float32Array(this.uv), surface: new Float32Array(this.srf), indices: Uint32Array.from(idx),
+      };
+    } else {
+      const positions = new Float32Array(nv * 3);
+      const normals = new Float32Array(nv * 3);
+      const colors = new Float32Array(nv * 4);
+      const uvs = new Float32Array(nv * 2);
+      const surface = new Float32Array(nv * SURFACE_FLOATS);
+      for (let v = 0; v < remap.length; v++) {
+        const to = remap[v] as number;
+        if (to < 0) continue;
+        for (let c = 0; c < 3; c++) {
+          positions[to * 3 + c] = this.pos[v * 3 + c] as number;
+          normals[to * 3 + c] = this.nor[v * 3 + c] as number;
+        }
+        for (let c = 0; c < 4; c++) colors[to * 4 + c] = this.col[v * 4 + c] as number;
+        for (let c = 0; c < 2; c++) uvs[to * 2 + c] = this.uv[v * 2 + c] as number;
+        for (let c = 0; c < SURFACE_FLOATS; c++) surface[to * SURFACE_FLOATS + c] = this.srf[v * SURFACE_FLOATS + c] as number;
+      }
+      arrays = { positions, normals, colors, uvs, surface, indices: Uint32Array.from(idx) };
+    }
+    if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [before[Math.min(t, nTri)] as number, s]));
+    return arrays;
   }
 }
 

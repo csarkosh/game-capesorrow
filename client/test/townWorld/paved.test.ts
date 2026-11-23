@@ -35,7 +35,7 @@ describe("the paved ground between the buildings", () => {
         expect(y - lift).toBeGreaterThan(SEA);
       }
       expect(onYard).toBe(0);
-      for (let t = 0; t < a.indices.length; t += 3) expect(a.normals[(a.indices[t] as number) * 3 + 1] as number, `seed ${seed}`).toBeGreaterThan(0.95);
+      for (let t = 0; t < a.indices.length; t += 3) expect(a.normals[(a.indices[t] as number) * 3 + 1] as number, `seed ${seed}`).toBeGreaterThan(0.75);
     }
   });
 

@@ -35,16 +35,19 @@ const BLADE_ABOVE = [2.55, 2.3] as const;
 
 type Plane = { x: number; y: number; z: number; nx: number; nz: number };
 
+/** How far in front of a sign's face its lettering stands: the face is at 1.2 cm, and a face's layers are 2 cm or more apart. */
+const LETTER_OFF = 0.035;
+
 /** A corner of a sign: `u` to the reader's right and `v` up from its centre. */
 function corner(c: Plane, u: number, v: number, off: number): Vec3 {
   return [c.x - c.nz * u + c.nx * off, c.y + v, c.z + c.nx * u + c.nz * off];
 }
 
 /** A flat shape on a sign, on its front (`off` over the face) and its back. */
-function plate(solid: Sink, c: Plane, shape: readonly (readonly [number, number])[], front: Rgb, back: Rgb, off = 0): void {
+function plate(solid: Sink, c: Plane, shape: readonly (readonly [number, number])[], front: Rgb | null, back: Rgb | null): void {
   const b = solid(c.x, c.z);
-  b.poly(shape.map(([u, v]) => corner(c, u, v, 0.012 + off)), [c.nx, 0, c.nz], front);
-  b.poly(shape.map(([u, v]) => corner(c, u, v, -0.012 - off)), [-c.nx, 0, -c.nz], back);
+  if (front !== null) b.poly(shape.map(([u, v]) => corner(c, u, v, 0.012)), [c.nx, 0, c.nz], front);
+  if (back !== null) b.poly(shape.map(([u, v]) => corner(c, u, v, -0.012)), [-c.nx, 0, -c.nz], back);
 }
 
 /** Words on a sign's face, or on both faces: `pixel` metres a pixel, the first row's top at `top` over the centre, centred across. */
@@ -56,9 +59,9 @@ function words(solid: Sink, c: Plane, text: string, pixel: number, top: number, 
     const u1 = run.c1 * pixel - width / 2;
     const v0 = top - run.r0 * pixel;
     const v1 = top - run.r1 * pixel;
-    b.poly([corner(c, u0, v0, 0.02), corner(c, u1, v0, 0.02), corner(c, u1, v1, 0.02), corner(c, u0, v1, 0.02)], [c.nx, 0, c.nz], colour);
+    b.poly([corner(c, u0, v0, LETTER_OFF), corner(c, u1, v0, LETTER_OFF), corner(c, u1, v1, LETTER_OFF), corner(c, u0, v1, LETTER_OFF)], [c.nx, 0, c.nz], colour);
     // On the back the reader's right is the other way.
-    if (both) b.poly([corner(c, -u0, v0, -0.02), corner(c, -u1, v0, -0.02), corner(c, -u1, v1, -0.02), corner(c, -u0, v1, -0.02)], [-c.nx, 0, -c.nz], colour);
+    if (both) b.poly([corner(c, -u0, v0, -LETTER_OFF), corner(c, -u1, v0, -LETTER_OFF), corner(c, -u1, v1, -LETTER_OFF), corner(c, -u0, v1, -LETTER_OFF)], [-c.nx, 0, -c.nz], colour);
   }
 }
 
@@ -90,8 +93,15 @@ export function stopSign(solid: Sink, g: TownGround, x: number, z: number, nx: n
   const half = STOP_SIZE / 2;
   const c: Plane = { x, y: bottom + half, z, nx, nz };
   post(solid, g, x - nx * 0.05, z - nz * 0.05, bottom + STOP_SIZE);
-  plate(solid, c, octagon(STOP_SIZE), SIGN_WHITE, FLAG_POLE);
-  plate(solid, c, octagon(STOP_SIZE * 0.92), SIGN_RED, FLAG_POLE, 0.002);
+  // The white rim and the red face lie side by side in one plane (a ring and an octagon), not one over the other.
+  const rim = octagon(STOP_SIZE);
+  const face = octagon(STOP_SIZE * 0.92);
+  plate(solid, c, rim, null, FLAG_POLE);
+  plate(solid, c, face, SIGN_RED, null);
+  for (let k = 0; k < 8; k++) {
+    const l = (k + 1) % 8;
+    plate(solid, c, [rim[k] as [number, number], rim[l] as [number, number], face[l] as [number, number], face[k] as [number, number]], SIGN_WHITE, null);
+  }
   if (full) words(solid, c, "STOP", 0.026, (7 * 0.026) / 2, SIGN_WHITE, false);
 }
 

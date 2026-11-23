@@ -326,14 +326,22 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
 
   // ---- ruins: rubble inside the walls
   if (ruin) {
+    // Each lump lies clear of the ones before it (a lump dropped on another is tried again with another draw, and given up after a few): two boxes that meet have faces a hair apart.
+    const lumps: { x: number; z: number; r: number }[] = [];
     for (let k = 0; k < 4; k++) {
-      const su = (hash01(b.id, 40 + k) - 0.5) * 1.5 * (f.hu - 1);
-      const sv = (hash01(b.id, 50 + k) - 0.5) * 1.5 * (f.hv - 1);
-      const x = f.cx + f.ux * su + f.vx * sv;
-      const z = f.cz + f.uz * su + f.vz * sv;
-      const h = 0.3 + hash01(b.id, 60 + k) * 0.5;
-      const half = 0.4 + hash01(b.id, 70 + k) * 0.5;
-      out.box(x, z, g.heightAt(x, z) - 0.1, f.ux, f.uz, half, half * 0.8, h + 0.1, inner, scaled(inner, 0.8));
+      for (let t = 0; t < 5; t++) {
+        const su = (hash01(b.id, 40 + k + 100 * t) - 0.5) * 1.5 * (f.hu - 1);
+        const sv = (hash01(b.id, 50 + k + 100 * t) - 0.5) * 1.5 * (f.hv - 1);
+        const x = f.cx + f.ux * su + f.vx * sv;
+        const z = f.cz + f.uz * su + f.vz * sv;
+        const h = 0.3 + hash01(b.id, 60 + k) * 0.5;
+        const half = 0.4 + hash01(b.id, 70 + k) * 0.5;
+        const r = half * 1.3;
+        if (lumps.some((q) => (q.x - x) * (q.x - x) + (q.z - z) * (q.z - z) < (q.r + r + 0.1) * (q.r + r + 0.1))) continue;
+        lumps.push({ x, z, r });
+        out.box(x, z, g.heightAt(x, z) - 0.1, f.ux, f.uz, half, half * 0.8, h + 0.1, inner, scaled(inner, 0.8));
+        break;
+      }
     }
   }
 
@@ -457,7 +465,7 @@ function refugeGeometry(g: TownGround, f: Frame, b: Building, out: MeshBuilder, 
     const len = Math.sqrt((c[0] - a[0]) * (c[0] - a[0]) + (c[2] - a[2]) * (c[2] - a[2]));
     const dx = (c[0] - a[0]) / len;
     const dz = (c[2] - a[2]) / len;
-    for (const y of [platform + 0.5, railTop - 0.05]) out.box((a[0] + c[0]) / 2, (a[2] + c[2]) / 2, y, dx, dz, len / 2, 0.04, 0.08, FLAG_POLE, FLAG_POLE);
+    for (const y of [platform + 0.5, railTop - 0.05]) out.box((a[0] + c[0]) / 2, (a[2] + c[2]) / 2, y, dx, dz, len / 2 - 0.05, 0.025, 0.08, FLAG_POLE, FLAG_POLE);
     out.box(a[0], a[2], platform, 1, 0, 0.05, 0.05, 1.1, FLAG_POLE, FLAG_POLE);
   }
   // A small roof on four posts over the middle, for shelter.

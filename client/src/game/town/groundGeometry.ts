@@ -108,6 +108,12 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
           pieces = pieces.flatMap((p) => subtractConvex(p, r.poly));
           if (pieces.length === 0) break;
         }
+        // Nor under the buildings: a floor seen through a window is the room's, and a patch pulled forward by the flat layer's depth step would be drawn over it.
+        for (const fp of footprints.get(block.id) ?? []) {
+          if (pieces.length === 0) break;
+          const clip = fp.map((q): P2 => [anchor.x + q.x, anchor.z + q.z]);
+          pieces = pieces.flatMap((p) => subtractConvex(p, clip));
+        }
         for (const raw of pieces) {
           // Corners that repeat (a clip's seam) are one.
           const piece = raw.filter((q, i) => {

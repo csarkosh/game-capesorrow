@@ -140,7 +140,7 @@ export function trailerGeometry(g: TownGround, sinks: VehicleSinks, t: BoatTrail
   const railTop = 0.62;
   // The rails and cross members, the tongue and the hitch.
   for (const z of [-0.55, 0.55]) lbox(m, pl, rear, front - 1.35, railTop - 0.12, railTop, z - 0.04, z + 0.04, GALV);
-  for (const x of [rear + 0.2, rear + 1.5, front - 1.5]) lbox(m, pl, x - 0.03, x + 0.03, railTop - 0.1, railTop - 0.04, -0.58, 0.58, GALV);
+  for (const x of [rear + 0.2, rear + 1.5, front - 1.5]) lbox(m, pl, x - 0.03, x + 0.03, railTop - 0.1, railTop - 0.04, -0.55, 0.55, GALV);
   m.prism(P(pl, front - 1.35, railTop - 0.06, -0.55), P(pl, front, railTop - 0.15, 0), 0.035, 4, GALV);
   m.prism(P(pl, front - 1.35, railTop - 0.06, 0.55), P(pl, front, railTop - 0.15, 0), 0.035, 4, GALV);
   lbox(m, pl, front - 0.12, front + 0.05, railTop - 0.28, railTop - 0.12, -0.05, 0.05, FRAME);
@@ -154,13 +154,14 @@ export function trailerGeometry(g: TownGround, sinks: VehicleSinks, t: BoatTrail
     const n = detail === "low" ? 8 : 10;
     const ring = (rad: number, z: number): Vec3[] => Array.from({ length: n + 1 }, (_, i) => P(pl, ax + Math.cos((i / n) * Math.PI * 2) * rad, r + Math.sin((i / n) * Math.PI * 2) * rad, z));
     m.grid([ring(r, sg * 0.84), ring(r, sg * 1.0)], P(pl, ax, r, sg * 0.92), { colour: TYRE });
+    // The face, and the hub 3 cm proud of it.
     m.poly(ring(r, sg * 1.0).slice(0, n), D(pl, 0, 0, sg), TYRE);
-    m.poly(ring(r * 0.6, sg * 1.006).slice(0, n), D(pl, 0, 0, sg), [0.3, 0.3, 0.32]);
+    m.poly(ring(r * 0.6, sg * 1.03).slice(0, n), D(pl, 0, 0, sg), [0.3, 0.3, 0.32]);
     lbox(m, pl, ax - 0.4, ax + 0.4, r + 0.32, r + 0.35, sg * 0.8, sg * 1.05, GALV);
   }
   lbox(m, pl, ax - 0.05, ax + 0.05, r - 0.04, r + 0.04, -0.9, 0.9, FRAME);
   lbox(m, pl, rear - 0.03, rear + 0.04, railTop - 0.2, railTop - 0.1, -0.5, 0.5, [0.06, 0.06, 0.06]);
-  for (const sg of [1, -1]) lbox(m, pl, rear - 0.04, rear + 0.02, railTop - 0.2, railTop - 0.12, sg * 0.4, sg * 0.5, TAIL);
+  for (const sg of [1, -1]) lbox(m, pl, rear - 0.05, rear + 0.02, railTop - 0.2, railTop - 0.13, sg * 0.37, sg * 0.47, TAIL);
   // Bunks, carpeted, and the boat.
   if (t.boat !== "none") {
     for (const z of [-0.45, 0.45]) lbox(m, pl, rear + 0.5, front - 1.7, railTop, railTop + 0.08, z - 0.06, z + 0.06, [0.08, 0.1, 0.09]);

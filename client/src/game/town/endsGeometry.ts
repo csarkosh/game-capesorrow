@@ -78,7 +78,8 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
         const [px, pz] = at(1, t);
         solid(px, pz).box(px, pz, base(px, pz) - 0.05, ox, oz, 0.06, 0.06, 1.2, TIMBER, TIMBER);
       }
-      const half = cw - 0.1;
+      // To the outer posts' middles, so a board's end is inside its post.
+      const half = cw - 0.15;
       for (const [y, colour] of [[0.65, BARRICADE_RED], [0.95, BARRICADE_WHITE]] as const) {
         solid(bx, bz).box(bx, bz, base(bx, bz) + y, nx, nz, half, 0.03, 0.22, colour, colour);
       }
