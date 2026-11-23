@@ -54,7 +54,8 @@ describe("the town's first surfaces", () => {
     const flat = new Map<string, number>();
     const solid = new Map<string, number>();
     for (const batch of town) for (const [name, n] of layersOf(batch.arrays)) (batch.layer === "flat" ? flat : solid).set(name, ((batch.layer === "flat" ? flat : solid).get(name) ?? 0) + n);
-    expect([...flat.keys()].sort()).toEqual(["asphalt", "gravel", "none", "sidewalk"]);
+    // The streets and ground now wear the new asphalt (utility cuts, cracks), the mud (dirt in the joints, worn ground, the gutter's band), the moss (weeds and grass over the edges) and the rust (covers, drains and lids).
+    expect([...flat.keys()].sort()).toEqual(["asphalt", "asphalt_dark", "gravel", "moss", "mud", "none", "rust", "sidewalk"]);
     // Paint and verges are still the larger share of nothing: some of the flat layer is not textured.
     expect(flat.get("none") ?? 0).toBeGreaterThan(0);
     for (const layer of ["asphalt", "sidewalk"]) expect(flat.get(layer) ?? 0, layer).toBeGreaterThan(1000);
@@ -72,10 +73,12 @@ describe("the town's first surfaces", () => {
       for (let i = 0; i < a.positions.length / 3; i++) {
         if ((a.surface[i * SURFACE_FLOATS] as number) !== LAYER_NAMES.indexOf("asphalt")) continue;
         const r = a.colors[i * 4] as number;
+        // The paint lies on the asphalt's grain in its own colour (and is not what this checks): a roadway's flat colour stays what it was.
+        if (r >= 0.15) continue;
         expect(r > 0.09 && r < 0.14).toBe(true);
-        // White, or a block's patch's own shade of it (0.9 to 1.1).
+        // A tone of its own for each stretch (0.86 to 1.14) or a block's patch's shade of it (0.72 to 0.88).
         const tint = a.surface[i * SURFACE_FLOATS + 4] as number;
-        expect(tint > 0.89 && tint < 1.11).toBe(true);
+        expect(tint > 0.7 && tint < 1.3).toBe(true);
         seen++;
       }
     }

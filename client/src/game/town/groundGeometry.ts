@@ -9,20 +9,22 @@
  *
  * Yards of houses, the churchyard, the school's and the hospital's grounds have no patch: they are grass (`sim/town/clearing.ts`).
  */
-import { flatSurfaceFor } from "./groundSurfaces.js";
+import { flatSurfaceFor, type Over } from "./groundSurfaces.js";
+import { clamp01, hashN } from "./groundNoise.js";
+import { subtractConvex, type P2 } from "./surface.js";
 import { isPaved } from "../../sim/town/clearing.js";
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import { bbox, clipHalfPlane, contains, dist, orient, type Vec } from "../../sim/town/geom.js";
 import type { Block, District } from "../../sim/town/types.js";
-import { hash01, scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINT_WHITE, WALK_CONCRETE, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
 import { STREET_LIFT } from "./streetGeometry.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
 /** The side of a tile, metres. */
 export const PATCH_TILE = 8;
-/** A patch lies this much over the ground, under every street layer (a verge is `STREET_LIFT`). */
-export const PATCH_LIFT = STREET_LIFT - 0.012;
+/** A patch lies this much over the ground, outside every street's right of way (which it is cut away from: the roadways lie a curb's height lower). */
+export const PATCH_LIFT = STREET_LIFT - 0.01;
 /** Paint on a lot lies this much over the patch. */
 export const STALL_OVER = 0.01;
 /** A stall's length and pitch along its row, a line's width, and how far in from the block's edge the row begins, metres. */
@@ -63,6 +65,21 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
     list.push(orient([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]));
     footprints.set(lot.block, list);
   }
+  // The streets' rights of way, as rectangles in the world: the patch stops at them.
+  const ways: { poly: P2[]; x0: number; x1: number; z0: number; z1: number }[] = [];
+  for (const st of plan.streets) {
+    if (st.kind === "highway" || st.kind === "rail" || st.kind === "wharf") continue;
+    const dx = st.b.x - st.a.x;
+    const dz = st.b.z - st.a.z;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (!(len > 0.1)) continue;
+    const tx = dx / len;
+    const tz = dz / len;
+    const hw = st.width / 2;
+    const q = (s: number, t: number): P2 => [anchor.x + st.a.x + tx * s - tz * t, anchor.z + st.a.z + tz * s + tx * t];
+    const poly = [q(-hw, -hw), q(len + hw, -hw), q(len + hw, hw), q(-hw, hw)];
+    ways.push({ poly, x0: Math.min(...poly.map((p) => p[0])), x1: Math.max(...poly.map((p) => p[0])), z0: Math.min(...poly.map((p) => p[1])), z1: Math.max(...poly.map((p) => p[1])) });
+  }
   const blocks: readonly Block[] = plan.blocks.filter((b) => isPaved(b.district));
   for (const block of blocks) {
     const poly = orient(block.polygon).map(world);
@@ -80,15 +97,56 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
         cell = clipHalfPlane(cell, { x: 0, z: 1 }, iz * PATCH_TILE);
         cell = clipHalfPlane(cell, { x: 0, z: -1 }, -(iz + 1) * PATCH_TILE);
         if (cell.length < 3) continue;
-        const pts = cell.map((q): Vec3 => [q.x, g.heightAt(q.x, q.z) + PATCH_LIFT, q.z]);
-        if (pts.every((q) => q[1] - PATCH_LIFT < SEA + 0.1)) continue;
-        // A little variation from tile to tile, so a yard is not one flat colour, with no random call.
-        const colour = scaled(base, 0.9 + 0.2 * hash01(ix * 7919 + iz * 104729, 41));
-        const c = cell[0] as Vec;
-        // The tile's flat colour varies a little; its texture takes the same shade as its tint.
-        const surface = flatSurfaceFor(base, g.anchor);
-        const shade = colour[0] / base[0];
-        flat(c.x, c.z).poly(pts, UP, colour, surface === undefined ? undefined : { ...surface, tint: [shade, shade, shade] });
+        // Without the streets' rights of way: their ground is the street's (cut down for the roadway, with its own sidewalk).
+        let pieces: P2[][] = [cell.map((q): P2 => [q.x, q.z])];
+        const bx0 = Math.min(...cell.map((q) => q.x));
+        const bx1 = Math.max(...cell.map((q) => q.x));
+        const bz0 = Math.min(...cell.map((q) => q.z));
+        const bz1 = Math.max(...cell.map((q) => q.z));
+        for (const r of ways) {
+          if (r.x1 < bx0 || r.x0 > bx1 || r.z1 < bz0 || r.z0 > bz1) continue;
+          pieces = pieces.flatMap((p) => subtractConvex(p, r.poly));
+          if (pieces.length === 0) break;
+        }
+        for (const raw of pieces) {
+          // Corners that repeat (a clip's seam) are one.
+          const piece = raw.filter((q, i) => {
+            const prev = raw[(i + raw.length - 1) % raw.length] as P2;
+            return Math.abs(q[0] - prev[0]) > 1e-4 || Math.abs(q[1] - prev[1]) > 1e-4;
+          });
+          // Corners that lie on the line between their neighbours add nothing and would turn the fan's first triangle flat.
+          for (let q = piece.length - 1; q >= 0 && piece.length > 3; q--) {
+            const a = piece[(q + piece.length - 1) % piece.length] as P2;
+            const b = piece[q] as P2;
+            const c = piece[(q + 1) % piece.length] as P2;
+            if (Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) < 1e-4) piece.splice(q, 1);
+          }
+          if (piece.length < 3) continue;
+          // A sliver (a tile's edge cut along a street's) is left out.
+          let twice = 0;
+          for (let q = 0; q < piece.length; q++) {
+            const a = piece[q] as P2;
+            const b = piece[(q + 1) % piece.length] as P2;
+            twice += a[0] * b[1] - b[0] * a[1];
+          }
+          if (Math.abs(twice) < 2e-3) continue;
+          const pts = piece.map((q): Vec3 => [q[0], g.heightAt(q[0], q[1]) + PATCH_LIFT, q[1]]);
+          if (pts.every((q) => q[1] - PATCH_LIFT < SEA + 0.1)) continue;
+          // A little variation from tile to tile, so a yard is not one flat colour, with no random call.
+          const roll = hashN(ix, iz, 0, 41);
+          const colour = scaled(base, 0.9 + 0.2 * roll);
+          const surface = flatSurfaceFor(base, g.anchor);
+          const shade = colour[0] / base[0];
+          // Worn: a tint of its own, dirt and moss in patches (the core's concrete heaves and is mossy where it is shaded by the shops), a frame turned and shifted by a roll.
+          const concrete = block.district === "core";
+          const worn: Over = {
+            tint: [shade * (concrete ? 0.72 : 0.8), shade * (concrete ? 0.74 : 0.8), shade * (concrete ? 0.76 : 0.8)],
+            frame: { origin: [ix * PATCH_TILE + hashN(ix, iz, 0, 42) * 3, 0, iz * PATCH_TILE + hashN(ix, iz, 0, 43) * 3], u: roll < 0.5 ? [1, 0, 0] : [0, 0, 1], v: roll < 0.5 ? [0, 0, 1] : [1, 0, 0] },
+            wear: clamp01(0.05 + 0.2 * hashN(ix, iz, 0, 44)),
+            dirt: clamp01(0.03 + 0.14 * hashN(ix, iz, 0, 45)),
+          };
+          flat(piece[0]![0], piece[0]![1]).poly(pts, UP, colour, surface === undefined ? undefined : { ...surface, ...worn, tint: worn.tint as Rgb });
+        }
       }
     }
     if (block.district === "highway strip") stalls(g, flat, poly, (footprints.get(block.id) ?? []).map((f) => f.map(world)));

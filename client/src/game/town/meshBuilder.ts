@@ -18,8 +18,7 @@ export type Rgb = readonly [number, number, number];
 /**
  * A finished mesh's arrays, as `createMeshFromData` takes them (colours four floats a vertex), with the two a textured
  * material reads: `uvs` (two floats a vertex, in texture tiles: metres over the layer's tile size) and `surface` (eight floats
- * a vertex: the layer's index or `NO_LAYER`, the wear's amount 0 to 1, the wear's kind 0 for moss and 1 for rust, a float left
- * for a later use; then the tint, red, green, blue, and a float left). `colors` is the flat colour, as before.
+ * a vertex: the layer's index or `NO_LAYER`, the wear's amount 0 to 1, the wear's kind 0 for moss and 1 for rust, the dirt's amount 0 to 1; then the tint, red, green, blue, and a float left). `colors` is the flat colour, as before.
  */
 export type MeshArrays = { positions: Float32Array; normals: Float32Array; colors: Float32Array; uvs: Float32Array; surface: Float32Array; indices: Uint32Array };
 
@@ -89,7 +88,8 @@ export class MeshBuilder {
         const [u, v] = uvAt(basis, p);
         this.uv.push(u, v);
         const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
-        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, 0, tint[0], tint[1], tint[2], 0);
+        const dirt = surface.dirt === undefined ? 0 : typeof surface.dirt === "number" ? surface.dirt : surface.dirt(p);
+        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, Math.min(1, Math.max(0, dirt)), tint[0], tint[1], tint[2], 0);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:

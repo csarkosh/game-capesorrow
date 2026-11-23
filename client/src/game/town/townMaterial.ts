@@ -9,7 +9,8 @@
  * - `townSurface` (floats 0 to 3): x, the texture layer's index (`townLayers.ts`), or -1 (`NO_LAYER`) for a vertex that is
  *   flat colour, drawn as every town vertex was before this material (read rounded, since the interpolation across a polygon
  *   may leave it a hair off); y, the wear's amount, 0 to 1, a share of the surface; z, the wear's kind: 0 moss and grime (the
- *   `moss` layer lies over it), 1 rust (the `rust` layer); w, unused, zero.
+ *   `moss` layer lies over it), 1 rust (the `rust` layer); w, the DIRT's amount, 0 to 1 (the `mud` layer laid over the moss where a
+ *   second, shifted noise, at 2.3 times the frequency (stains and tracked earth are smaller than a moss patch), is under it: earth and needles in joints and along edges, gravel tracked on to pavement), zero for none.
  * - `townTint` (floats 4 to 7): the colour the texture is multiplied by once the textures have landed (rgb; a paintable
  *   layer's paint, white for the others, a shade near it for variation). Until they land, and for a vertex with no layer,
  *   the vertex colour is the flat colour, as it always was.
@@ -69,6 +70,8 @@ const NORMAL_STRENGTH = 1.0;
  */
 const MOSS_COLOUR: readonly [number, number, number] = [1.4, 1.9, 1.0];
 const RUST_COLOUR: readonly [number, number, number] = [1.35, 0.8, 0.5];
+/** The dirt overlay's colour multiplier: the mud layer's brown, half way to its grey and a little darker (wet earth, needles, tracked gravel). */
+const DIRT_COLOUR: readonly [number, number, number] = [1.0, 0.98, 0.94];
 /** The low tier's light is brighter and bluer than the other tiers' (it has no post chain to grade the frame), and the lifted moss is lime in it: a third less. */
 const LOW_MOSS = 0.65;
 /** The soft edge of a worn patch, as a share of the noise's range. */
@@ -84,6 +87,7 @@ export function townDefinitions(low: boolean): string {
   return [
     `const TOWN_MOSS:i32=${layerIndex(WEAR_OVERLAY.moss)};`,
     `const TOWN_RUST:i32=${layerIndex(WEAR_OVERLAY.rust)};`,
+    `const TOWN_MUD:i32=${layerIndex(WEAR_OVERLAY.dirt)};`,
     `var<private> townInfo:array<vec4<f32>,${TOWN_LAYERS.length}>=array<vec4<f32>,${TOWN_LAYERS.length}>(${table});`,
     "fn townHash(c:vec3<i32>)->f32{",
     "var h=bitcast<u32>(c.x)*374761393u+bitcast<u32>(c.y)*668265263u+bitcast<u32>(c.z)*2147483647u;",
@@ -129,6 +133,12 @@ export function townSurfaceCode(low: boolean): string {
     `tsRgb=mix(tsRgb,tsOc*select(vec3<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")}),vec3<f32>(${RUST_COLOUR.map(f).join(",")}),tsSurf.z>0.5),tsWear);`,
     overData,
     "}",
+    // The dirt: the mud layer over the surface where its own noise (the same field, shifted) is under the amount; colour and roughness only.
+    "if(tsSurf.w>0.001){let tsDirt=townWear(input.worldPos*2.3+vec3<f32>(41.0,7.0,13.0),tsSurf.w);",
+    "if(tsDirt>0.004){let tsScaleD=tsInfo.xy/townInfo[TOWN_MUD].xy;let tsUvD=input.uv*tsScaleD;let tsDxD=tsDx*tsScaleD;let tsDyD=tsDy*tsScaleD;",
+    "let tsDc=textureSampleGrad(townColor,townSmp,tsUvD,TOWN_MUD,tsDxD,tsDyD).rgb;let tsDd=textureSampleGrad(townData,townSmp,tsUvD,TOWN_MUD,tsDxD,tsDyD);",
+    `tsRgb=mix(tsRgb,mix(vec3<f32>(dot(tsDc,vec3<f32>(0.3,0.59,0.11))),tsDc,0.45)*vec3<f32>(${DIRT_COLOUR.map(f).join(",")}),tsDirt);`,
+    "tsRough=mix(tsRough,tsDd.z,tsDirt);}}",
     `tsN*=${f(NORMAL_STRENGTH)};`,
     "let tsNz=sqrt(max(1.0-dot(tsN,tsN),0.0));",
     "let tsDp2=cross(tsPy,N);let tsDp1=cross(N,tsPx);",

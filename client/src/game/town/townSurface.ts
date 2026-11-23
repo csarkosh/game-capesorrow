@@ -34,6 +34,12 @@ export type Surface = {
   readonly wear?: number | ((p: Vec3) => number);
   /** Moss and grime (the default), or rust. */
   readonly wearKind?: WearKind;
+  /**
+   * A second wear, of dirt (the `mud` layer laid over the surface where its own noise is under the amount): earth, leaves and needles
+   * in the joints and along the edges, gravel and mud tracked on to pavement. A share 0 to 1 of the surface, a number or a function
+   * of a vertex's position, in patches as `wear` is; it lies over the moss. None when absent.
+   */
+  readonly dirt?: number | ((p: Vec3) => number);
 };
 
 /** A direction made unit length (a direction of no length is left as it is). */

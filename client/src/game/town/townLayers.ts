@@ -48,8 +48,8 @@ export const LAYER_SIZE: number = manifest.size;
 /** What a paintable layer's colour is multiplied by in the shader: its stored mean is 1 / this. */
 export const PAINT_GAIN: number = manifest.paintGain;
 
-/** The wear overlays: moss and grime, and rust (`Surface.wearKind`). */
-export const WEAR_OVERLAY = { moss: "moss", rust: "rust" } as const satisfies Record<string, LayerName>;
+/** The wear overlays: moss and grime, and rust (`Surface.wearKind`), and the dirt (`Surface.dirt`) of the `mud` layer. */
+export const WEAR_OVERLAY = { moss: "moss", rust: "rust", dirt: "mud" } as const satisfies Record<string, LayerName>;
 
 /** The vertex's layer for "none": no texture, the vertex colour as it is. */
 export const NO_LAYER = -1;

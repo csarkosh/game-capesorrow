@@ -6,6 +6,8 @@ import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import type { Material } from "../../sim/town/types.js";
 
 export const ASPHALT: Rgb = [0.1, 0.1, 0.11];
+/** What is laid over a roadway's asphalt (a utility cut, a seam, a crack, a pothole, a gutter's band, a manhole, a drain): not itself a roadway, so no roadway surface overlaps another. */
+export const PATCH_ASPHALT: Rgb = [0.07, 0.07, 0.075];
 export const ALLEY: Rgb = [0.14, 0.13, 0.12];
 export const SIDEWALK: Rgb = [0.3, 0.3, 0.29];
 export const VERGE: Rgb = [0.1, 0.17, 0.07];
