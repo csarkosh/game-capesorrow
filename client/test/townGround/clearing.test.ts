@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { generateChunk } from "@csarkosh/engine/sim/chunk";
 import { CHUNK_SIZE } from "@csarkosh/engine/sim/forestConstants";
-import { CLUTTER_BUSH, CLUTTER_DRIFTWOOD, CLUTTER_GRASS, CLUTTER_ROCK, CLUTTER_SHRUB, clutterInRect } from "@csarkosh/engine/sim/clutter";
+import { CLUTTER_BUSH, CLUTTER_DRIFTWOOD, CLUTTER_GRASS, CLUTTER_ROCK, CLUTTER_SHRUB, clutterInRect, groundCover } from "@csarkosh/engine/sim/clutter";
+import { CLUTTER_CLASS_COUNT } from "@csarkosh/engine/sim/clutter";
+import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { CLIFF_MATERIAL } from "@csarkosh/engine/sim/passes/cliffs";
 import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { shoreStrip } from "@csarkosh/engine/sim/terrain";
@@ -11,6 +13,7 @@ import { CLUTTER_BUILDING_CLEAR, CLUTTER_STREET_CLEAR, TREE_BUILDING_CLEAR, TREE
 import { TOWN_INLAND, TOWN_Z_HALF } from "../../src/sim/town/ground.js";
 import { contains, segDist } from "../../src/sim/town/geom.js";
 import { planFor } from "../../src/sim/town/planFor.js";
+import { APRON_BEHIND, APRON_FRONT, APRON_SIDE, pavedGround } from "../../src/sim/town/pavedGround.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import type { TownPlan } from "../../src/sim/town/types.js";
 
@@ -286,4 +289,55 @@ describe("the forest by the lot", () => {
       expect(tested, `seed ${seed}: a point on the cover's fall`).toBeGreaterThan(3);
     }
   });
+
+  it("keeps every kind of ground cover and every tree off every paved polygon the town lays that is not a street: a paved district's block and a lone business's apron (ten seeds)", () => {
+    // The margin: a polygon's own edge. An instance stands off its cell's middle by its jitter, so the mask is shut that much beyond the polygon (`clearing.ts`) and the
+    // count here is of instances whose centre is inside it. Weeds at the edge of a lot are the apron's `APRON_SIDE` of unpaved lot inside the lot's own edge, outside it.
+    const rows: string[] = [];
+    let aprons = 0;
+    for (let k = 0; k < 10; k++) {
+      const seed = [20261121, 1, 7, 2, 3, 4, 5, 6, 8, 9][k] as number;
+      const plan = planFor(seed);
+      const site = siteFor(seed);
+      let instances = 0;
+      let gated = 0;
+      let trees = 0;
+      let lattice = 0;
+      for (const g of pavedGround(plan)) {
+        if (g.kind === "apron") aprons++;
+        const xs = g.polygon.map((q) => q.x);
+        const zs = g.polygon.map((q) => q.z);
+        const x0 = Math.min(...xs);
+        const x1 = Math.max(...xs);
+        const z0 = Math.min(...zs);
+        const z1 = Math.max(...zs);
+        // Every class of the engine's ground cover (grass, rock, driftwood, fungus, bush, meadow, flowers, litter, ferns, shrubs, wet and high plants), counted where it stands.
+        for (let cls = 0; cls < CLUTTER_CLASS_COUNT; cls++) {
+          for (const c of clutterInRect(seed, cls, site.anchor.x + x0, site.anchor.z + z0, site.anchor.x + x1, site.anchor.z + z1)) {
+            if (contains(g.polygon, { x: c.x - site.anchor.x, z: c.z - site.anchor.z }, 0)) instances++;
+          }
+        }
+        // The near-field blades and the meadow carpet stand on a lattice of 0.5 m by the ground-cover gate (`groundCover`); the gate is under the blades' floor (0.05) everywhere on the polygon, and no tree stands.
+        for (let x = x0; x < x1; x += 0.75) {
+          for (let z = z0; z < z1; z += 0.75) {
+            if (!contains(g.polygon, { x, z }, 0)) continue;
+            lattice++;
+            const wx = site.anchor.x + x;
+            const wz = site.anchor.z + z;
+            if (groundCover(seed, wx, wz, elevationSampleAt(seed, wx, wz)).grass > 0.05) gated++;
+            if (townFeatureMask(seed, wx, wz).tree > 0) trees++;
+          }
+        }
+      }
+      rows.push(`seed ${seed}: ${pavedGround(plan).length} paved polygons, ${lattice} lattice points, ${instances} ground-cover instances, ${gated} over the blade gate, ${trees} with trees`);
+      process.stderr.write(`${rows[rows.length - 1]}\n`);
+      expect(instances, `seed ${seed} ground cover on paved ground`).toBe(0);
+      expect(gated, `seed ${seed} blade gate on paved ground`).toBe(0);
+      expect(trees, `seed ${seed} trees on paved ground`).toBe(0);
+    }
+    // The aprons exist (gas stations, motels and fire halls standing alone) and the margin constants are what the header says.
+    expect(aprons).toBeGreaterThan(8);
+        expect(APRON_FRONT).toBeLessThan(APRON_SIDE);
+    expect(APRON_BEHIND).toBeGreaterThan(0);
+  }, 600_000);
 });

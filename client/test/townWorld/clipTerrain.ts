@@ -26,6 +26,8 @@ export type DrawnTerrain = {
   heightAt(x: number, z: number): number;
   /** The sand weight (0 to 1) painted there. */
   sandAt(x: number, z: number): number;
+  /** The grass weight (0 to 1) painted there. */
+  grassAt(x: number, z: number): number;
   /** The spacing of the cell a point is drawn by. */
   spacingAt(x: number, z: number): number;
 };
@@ -78,6 +80,10 @@ export function drawnTerrain(seed: number, camX: number, camZ: number, tier: Qua
     heightAt(x, z) {
       const l = ringAt(x, z);
       return l < 0 ? NaN : interp(l, x, z, (i) => (geos[l] as RingGeometry).positions[i * 3 + 1] as number);
+    },
+    grassAt(x, z) {
+      const l = ringAt(x, z);
+      return l < 0 ? NaN : interp(l, x, z, (i) => (geos[l] as RingGeometry).weights[i * 4] as number);
     },
     sandAt(x, z) {
       const l = ringAt(x, z);

@@ -12,10 +12,10 @@
 import { RANK, flatSurfaceFor, type Over } from "./groundSurfaces.js";
 import { clamp01, hashN } from "./groundNoise.js";
 import { Surface, subtractConvex, type P2 } from "./surface.js";
-import { isPaved } from "../../sim/town/clearing.js";
+import { pavedGround } from "../../sim/town/pavedGround.js";
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import { bbox, clipHalfPlane, contains, dist, orient, type Vec } from "../../sim/town/geom.js";
-import type { Block, District } from "../../sim/town/types.js";
+import type { District } from "../../sim/town/types.js";
 import { scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINT_WHITE, WALK_CONCRETE, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
 import { STREET_LIFT } from "./streetGeometry.js";
@@ -81,11 +81,12 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
     const poly = [q(-hw, -hw), q(len + hw, -hw), q(len + hw, hw), q(-hw, hw)];
     ways.push({ poly, x0: Math.min(...poly.map((p) => p[0])), x1: Math.max(...poly.map((p) => p[0])), z0: Math.min(...poly.map((p) => p[1])), z1: Math.max(...poly.map((p) => p[1])) });
   }
-  const blocks: readonly Block[] = plan.blocks.filter((b) => isPaved(b.district));
-  for (const block of blocks) {
-    const poly = orient(block.polygon).map(world);
+  // The paved ground of the plan (`sim/town/pavedGround.ts`: the paved districts' blocks and the lone businesses' aprons): the clearing keeps the grass off the same polygons.
+  for (const ground of pavedGround(plan)) {
+    const block = { id: ground.block, district: ground.district };
+    const poly = ground.polygon.map(world);
     const bb = bbox(poly);
-    const base = patchColour(block.district);
+    const base = ground.kind === "apron" ? YARD_ASPHALT : patchColour(block.district);
     const x0 = Math.floor(bb.x0 / PATCH_TILE);
     const x1 = Math.floor(bb.x1 / PATCH_TILE);
     const z0 = Math.floor(bb.z0 / PATCH_TILE);
@@ -156,7 +157,7 @@ export function groundGeometry(g: TownGround, flat: Sink): void {
         }
       }
     }
-    if (block.district === "highway strip") stalls(g, surf, flat, poly, (footprints.get(block.id) ?? []).map((f) => f.map(world)));
+    if (ground.kind === "block" && block.district === "highway strip") stalls(g, surf, flat, poly, (footprints.get(block.id) ?? []).map((f) => f.map(world)));
   }
 }
 

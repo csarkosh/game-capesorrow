@@ -8,7 +8,7 @@
  *   waterfront, the mill's site, industrial flats, the highway strip's lots) or a few metres of it. A tree is placed
  *   by its cell's centre and stands up to `TREE_JITTER` from it, so the mask is shut over that much more than the trunk's own clearance, and
  *   rises over `TREE_RAMP` beyond. No grass or ground cover stands on a street or within `CLUTTER_BUILDING_CLEAR` of a
- *   building, nor on a paved block.
+ *   building, nor on a paved block or the apron of a lone business (`pavedGround.ts`: a gas station's forecourt, a motel's lot).
  * - **Yards.** On house lots (residential and mill housing blocks), the churchyard, the school's and hospital's grounds
  *   and vacant lots, ground cover grows whole and trees stand at `YARD_TREE` of the forest's density. The engine paints
  *   the ground by its height, so the made flats (2 to 3 m) would be painted as the beach's pebble, and trees and grass
@@ -28,6 +28,7 @@ import { bearingU, bearingV } from "./bearings.js";
 import { coverD } from "./cover.js";
 import { smootherstepD } from "./ground.js";
 import { QUAY_BANK, fillWindowD, type FillArea } from "./fill.js";
+import { isPaved as isPavedDistrict, pavedGround } from "./pavedGround.js";
 import { orient } from "./geom.js";
 import { lotIdAt } from "./lotIndex.js";
 import { walkAt } from "./port/edges.js";
@@ -35,7 +36,7 @@ import { inYardRect, yardShape } from "./yardShapes.js";
 import { planFor } from "./planFor.js";
 import { readingSite } from "./reading.js";
 import { siteFor } from "./siteFor.js";
-import type { District, TownPlan, YardKind } from "./types.js";
+import type { TownPlan, YardKind } from "./types.js";
 
 /** The farthest a tree stands from its cell's centre, in x or z summed as a diagonal (the engine's jitter of 0.7 of a 10 m cell), metres. */
 export const TREE_JITTER = 5;
@@ -87,6 +88,8 @@ export const TRACK_TO = 1.3;
 export const YARD_LIFT = 12;
 /** A block's own window falls over this many metres outside its edges. */
 export const BLOCK_MARGIN = 4;
+/** An apron's window (a lone business's paved lot, `pavedGround.ts`) falls over this many metres outside its edges: the lot's own grass comes in beyond it. */
+export const APRON_MARGIN = 1.5;
 /** The strip that reads as soil (not beach) runs this many metres past a street's right of way before it falls to nothing. */
 export const STRIP_RAMP = 2;
 
@@ -138,6 +141,7 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   TRACK_FROM,
   TRACK_TO,
   BLOCK_MARGIN,
+  APRON_MARGIN,
   STRIP_RAMP,
   READ_KEEP_Z,
   READ_KEEP_INLAND,
@@ -272,24 +276,7 @@ export function townCover(seed: number, x: number, z: number, fill: readonly Fil
   return 1 - (1 - cover) * (1 - fillWindowD(fill, x - site.anchor.x, z - COVE_Z).v);
 }
 
-/** Which districts are paved: the ground between their buildings is the town's own surface. The rest are yards. */
-const PAVED: Readonly<Record<District, boolean>> = {
-  core: true,
-  dock: true,
-  waterfront: true,
-  mill: true,
-  "mill housing": false,
-  residential: false,
-  "highway strip": true,
-  civic: false,
-  industrial: true,
-  outskirts: false,
-};
-
-/** Whether a district's blocks are paved (its lots' ground is the town's surface) and not yards. */
-export function isPaved(district: District): boolean {
-  return PAVED[district];
-}
+export { isPaved } from "./pavedGround.js";
 
 type Edge = { readonly nx: number; readonly nz: number; readonly c: number };
 type Footprint = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly vx: number; readonly vz: number; readonly hu: number; readonly hv: number };
@@ -306,7 +293,7 @@ type Index = {
   readonly z0: number;
   readonly nx: number;
   readonly nz: number;
-  readonly blocks: readonly { edges: readonly Edge[]; paved: boolean }[];
+  readonly blocks: readonly { edges: readonly Edge[]; paved: boolean; margin: number }[];
   readonly buildings: readonly Footprint[];
   readonly streets: readonly Streetway[];
   readonly discs: readonly Disc[];
@@ -327,10 +314,13 @@ function wayHalf(st: { width: number }): number {
 function indexOf(plan: TownPlan): Index {
   const hit = INDEX.get(plan);
   if (hit !== undefined) return hit;
-  const blocks: { edges: Edge[]; paved: boolean }[] = [];
+  const blocks: { edges: Edge[]; paved: boolean; margin: number }[] = [];
   const blockBox: { x0: number; z0: number; x1: number; z1: number }[] = [];
-  for (const b of plan.blocks) {
-    const poly = orient(b.polygon);
+  // Every block, and each apron of a lone business's lot (paved ground inside a yard's block, with a shorter margin: `pavedGround.ts`).
+  const shapes: { poly: { x: number; z: number }[]; paved: boolean; margin: number }[] = plan.blocks.map((b) => ({ poly: orient(b.polygon), paved: isPavedDistrict(b.district), margin: BLOCK_MARGIN }));
+  for (const g of pavedGround(plan)) if (g.kind === "apron") shapes.push({ poly: g.polygon, paved: true, margin: APRON_MARGIN });
+  for (const s of shapes) {
+    const poly = s.poly;
     const edges: Edge[] = [];
     let x0 = Infinity;
     let z0 = Infinity;
@@ -352,7 +342,7 @@ function indexOf(plan: TownPlan): Index {
       z1 = Math.max(z1, p.z);
     }
     if (edges.length < 3) continue;
-    blocks.push({ edges, paved: PAVED[b.district] });
+    blocks.push({ edges, paved: s.paved, margin: s.margin });
     blockBox.push({ x0, z0, x1, z1 });
   }
   const buildings: Footprint[] = [];
@@ -428,14 +418,14 @@ function indexOf(plan: TownPlan): Index {
   return index;
 }
 
-/** A block's window at a point: 1 inside it, falling to 0 `BLOCK_MARGIN` metres outside its edges. */
-function blockWindow(edges: readonly Edge[], x: number, z: number): number {
+/** A block's window at a point: 1 inside it, falling to 0 `margin` metres outside its edges. */
+function blockWindow(edges: readonly Edge[], x: number, z: number, margin: number): number {
   let v = 1;
   for (let i = 0; i < edges.length; i++) {
     const e = edges[i] as Edge;
     const d = e.nx * x + e.nz * z - e.c;
-    if (d <= -BLOCK_MARGIN) return 0;
-    if (d < 0) v *= smootherstepD(-BLOCK_MARGIN, 0, d).v;
+    if (d <= -margin) return 0;
+    if (d < 0) v *= smootherstepD(-margin, 0, d).v;
   }
   return v;
 }
@@ -546,11 +536,12 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
   const blocks = index.cellBlocks[cell] as readonly number[];
   for (let k = 0; k < blocks.length; k++) {
     const b = index.blocks[blocks[k] as number] as (typeof index.blocks)[number];
-    const w = blockWindow(b.edges, xf, zr);
+    const w = blockWindow(b.edges, xf, zr, b.margin);
     if (b.paved) {
-      const wt = blockWindowOff(b.edges, xf, zr, TREE_JITTER * 1.5, BLOCK_MARGIN);
+      const apron = b.margin < BLOCK_MARGIN;
+      const wt = blockWindowOff(b.edges, xf, zr, apron ? TREE_JITTER : TREE_JITTER * 1.5, b.margin);
       if (wt > pavedTree) pavedTree = wt;
-      const wc = blockWindowOff(b.edges, xf, zr, CLUTTER_JITTER * 1.5, BLOCK_MARGIN);
+      const wc = blockWindowOff(b.edges, xf, zr, apron ? CLUTTER_JITTER : CLUTTER_JITTER * 1.5, b.margin);
       if (wc > pavedClutter) pavedClutter = wc;
     }
     if (w === 0) continue;
@@ -673,7 +664,7 @@ export function townStripWeight(seed: number, x: number, z: number): number {
   const blocks = index.cellBlocks[cell] as readonly number[];
   for (let k = 0; k < blocks.length; k++) {
     const b = index.blocks[blocks[k] as number] as (typeof index.blocks)[number];
-    const bw = blockWindow(b.edges, xf, zr);
+    const bw = blockWindow(b.edges, xf, zr, b.margin);
     if (bw > w) w = bw;
   }
   const streets = index.cellStreets[cell] as readonly number[];
