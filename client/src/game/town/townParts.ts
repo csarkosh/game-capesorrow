@@ -23,6 +23,7 @@ import {
 import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
+import { createLeaner } from "./leanMesh.js";
 import type { RenderGame, RenderHost, RenderPlayer, RenderSide, RenderState } from "@csarkosh/engine/game/lite/renderGame";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import { PROP_ROUGHNESS } from "@csarkosh/engine/game/propBoxes";
@@ -76,6 +77,8 @@ function inView(planes: readonly ViewFrustumPlane[], m: Made): boolean {
 export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPartsApi> = (host: RenderHost) => {
   const base = noParts(host);
   const made: Made[] = [];
+  // The meshes whose arrays the GPU has not yet all taken (`leanMesh.ts`).
+  const leaner = createLeaner();
   const owner = {};
   let disposed = false;
   let building = false;
@@ -217,6 +220,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           host.uploads.made();
           if (batch.layer === "solid") hardCover?.add(mesh);
           made.push({ mesh, layer: batch.layer, ...boundsOf(a.positions), shown: true, ...(batch.model === undefined ? {} : { model: batch.model }) });
+          leaner.add(mesh);
           left--;
           yield;
         }
@@ -233,6 +237,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       base.side.seen(planes, cover);
       rail?.seen(planes);
       vehicles?.seen(planes);
+      leaner.step();
       for (const m of made) {
         let want = inView(planes, m);
         // A stand-in car goes the moment its model's meshes are made.
@@ -275,6 +280,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         host.uploads.dropped();
       }
       made.length = 0;
+      leaner.clear();
       building = false;
       base.side.releaseBodies();
     },
