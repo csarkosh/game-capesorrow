@@ -9,12 +9,10 @@
  * - **Things at the seam**: one to three a house, mostly at the sides and the back: a hose and its bib, a downspout's splash block with a pipe leading
  *   across the lawn, a stack of firewood, a ladder or a wheelbarrow leaning on the wall, a bucket, a pile of boards, and a crawl-space hatch. Never the
  *   same set on neighbours (a roll of the house's id).
- * - **Molehills** on the lawns of the let-go.
  *
  * Full tier only: the low tier has its drip band (`seamGround.ts`) and its coarse growth.
  */
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
-import { lotIdAt } from "../../sim/town/lotIndex.js";
 import { isClear } from "./faceLedger.js";
 import { wat, type WallRef } from "./buildingKit.js";
 import { neglectOf, seamHouses, type HouseSeam } from "./houseSeam.js";
@@ -53,7 +51,6 @@ export function seamWall(g: TownGround, solid: Sink): void {
     if (bedOf(g, h) === "planted") shrubs(g, h, out);
     things(g, h, out, neg);
     doorstep(h, out, neg);
-    if (yard.kind !== "paved") moles(g, h, out, neg, yard.kind);
   }
 }
 
@@ -130,6 +127,7 @@ function shrubs(g: TownGround, h: HouseSeam, out: MeshBuilder): void {
       const off = (h.foundOff[k] as number) + 0.12 + r + 0.1;
       const p = wat(w, s, 0, off);
       if (fenceWithin(g, p[0] - g.anchor.x, p[2] - g.anchor.z, r + 0.4)) continue;
+      if (h.occupied.some((o) => o.k === k && s + r + 0.3 > o.s0 && s - r - 0.3 < o.s1)) continue;
       h.occupied.push({ k, s0: s - r - 0.2, s1: s + r + 0.2 });
       const y = g.heightAt(p[0], p[2]) - 0.02;
       const ht = 0.55 + 0.6 * hash01(b.id * 3 + k, 3630 + i);
@@ -462,25 +460,5 @@ function place(g: TownGround, h: HouseSeam, out: MeshBuilder, kind: string, at: 
       const uz = w.tz * Math.cos(turn) + w.nz * Math.sin(turn);
       out.box(c[0] + (hs(30 + i) - 0.5) * 0.2, c[2] + (hs(40 + i) - 0.5) * 0.1, c[1] + 0.2 + i * 0.07, ux, uz, 0.8 - 0.2 * hs(50 + i), 0.09, 0.04, scaled([0.38, 0.32, 0.24], 0.7 + 0.5 * hs(60 + i)), scaled([0.4, 0.34, 0.26], 0.7 + 0.5 * hs(60 + i)));
     }
-  }
-}
-
-/** Molehills on a lawn that is let go: three to five low cones of fresh earth in a cluster, a few metres from the house. */
-function moles(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number, kind: string): void {
-  const b = h.b;
-  if (kind === "bare" || kind === "brush" || hash01(b.id, 3500) > 0.1 + 0.3 * neg) return;
-  const ax = g.anchor.x;
-  const az = g.anchor.z;
-  const ang = hash01(b.id, 3501) * Math.PI * 2;
-  const reachA = Math.max(b.halfAlong, b.halfAcross);
-  const d = reachA + 2 + 4 * hash01(b.id, 3502);
-  const cx = ax + b.centre.x + Math.cos(ang) * d;
-  const cz = az + b.centre.z + Math.sin(ang) * d;
-  const n = 3 + Math.floor(hash01(b.id, 3503) * 3);
-  for (let i = 0; i < n; i++) {
-    const x = cx + (hash01(b.id * 5 + i, 3510) - 0.5) * 2.2;
-    const z = cz + (hash01(b.id * 5 + i, 3511) - 0.5) * 2.2;
-    if (lotIdAt(g.plan, x - ax, z - az) !== b.lot) continue;
-    out.cylinder(x, z, g.heightAt(x, z) - 0.01, 0.13 + 0.06 * hash01(b.id * 5 + i, 3512), 0.07 + 0.05 * hash01(b.id * 5 + i, 3513), 6, [0.1, 0.075, 0.05], [0.12, 0.09, 0.06], 0.04);
   }
 }
