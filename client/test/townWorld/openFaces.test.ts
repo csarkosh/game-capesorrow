@@ -24,22 +24,17 @@ const FULL_SEEDS = [20261121, 1, 6, 4, 11];
 export const OPEN_MIN_AREA = 0.25;
 
 /**
- * Builders left out, by the name `openFaces.ts` gives them, because the file that makes them belongs to another pass that is editing it
- * now (the lead lists them for it). Nothing else is excluded.
- */
-const LEFT_TO_ITS_PASS: readonly string[] = ["drawWindow windowGeometry.ts"];
-
-/**
- * Left out for a reason of its own, and listed in the report: the lofted body of a code-built vehicle stand-in. It is a sheet round the
- * car whose insides are seen only through the windows (a dark sheet is laid there) and a few triangles at the wheel arches, and a back on
- * the whole body would double the vertices of every car in town for a stand-in that is replaced by the model a few seconds after.
+ * Left out for a reason of its own, and listed in the report: the lofted body of a code-built vehicle (the low tier's cars; the full tier
+ * draws the models). Six triangles of the pickups' lower side panels (about 0.25 m2 each, on the seed of the picture town) read as open
+ * from inside the body, where the wheels are, and their cause was not found in this pass; a back on the whole body would double the
+ * vertices of every car in town for it.
  */
 const LEFT_OUT_BY_COST: readonly string[] = ["loft props/vehicleGeometry.ts"];
 
 function lines(seed: number, detail: "full" | "low", g: TownGround): string[] {
   const f = townFaces(seed, detail, true);
   return openFaces(f, g, () => townGround(seed))
-    .filter((o) => o.reachable && o.area >= OPEN_MIN_AREA && ![...LEFT_TO_ITS_PASS, ...LEFT_OUT_BY_COST].some((n) => o.builder.startsWith(n)))
+    .filter((o) => o.reachable && o.area >= OPEN_MIN_AREA && !LEFT_OUT_BY_COST.some((n) => o.builder.startsWith(n)))
     .slice(0, 12)
     .map((o) => `seed ${seed} ${detail} at ${o.at.map((v) => v.toFixed(1)).join(",")} area ${o.area.toFixed(2)} ${builderOf(o.tri)}`);
 }

@@ -166,10 +166,11 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         return m;
       };
       const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture) } : null;
-      const materials = { flat: material(true, false), solid: material(false, false) };
+      // The railroad's own materials (its draw order is its own, after the town's), reading the same texture layers and wear.
+      const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       const worldSeed = forest.seed;
       const start = townStart(worldSeed);
-      rail = createRailStream(host, { engine, scene, materials, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
+      rail = createRailStream(host, { engine, scene, materials, textured: wearsTextures, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
 
       const ground = townGround(worldSeed);
       const fleet = low ? [] : fleetOf(ground, "full");

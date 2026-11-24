@@ -12,10 +12,11 @@
  *   piece of it is in the batch of the place it stands.
  */
 import { CELL } from "./townGeometry.js";
-import { BALLAST_TOP_HALF, BALLAST_TOP, RAIL_PLAIN, RAIL_PROFILE, TIE_BOTTOM, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_PITCH, TIE_TOP, frameAlong, runLength, sweep, trestleOver, type Frame, type Profile } from "./railGeometry.js";
+import { BALLAST_TOP, BALLAST_TOP_HALF, TIE_PITCH, frameAlong, resample, runLength, type Frame } from "./railConstants.js";
+import { railPair, trestleOver } from "./railGeometry.js";
+import { dipAt, JOINT, bedGrid, jointBars, spill, tieAt, weedsAt, type Look } from "./trackLook.js";
 import { MeshBuilder, scaled, type Rgb } from "./meshBuilder.js";
-import { BALLAST, RAIL, TIE, TIMBER_WEATHERED } from "./palette.js";
-import { RAIL_BED_HALF, RAIL_GAUGE } from "../../sim/town/rail.js";
+import { RAIL, TIMBER_WEATHERED } from "./palette.js";
 import { spurOf, type SpurTrack } from "../../sim/town/railSpur.js";
 import type { Detail, Sink, TownGround } from "./townTypes.js";
 
@@ -28,21 +29,24 @@ export const SWITCH_BESIDE = 2.4;
 /** How deep the spur's ballast skirt goes under its bed, metres. */
 export const SPUR_SKIRT = 1.6;
 
-/** The spur's ballast: the main line's section with a deeper skirt. */
-const SPUR_BALLAST: Profile = [
-  [-RAIL_BED_HALF, -SPUR_SKIRT],
-  [-RAIL_BED_HALF, 0],
-  [-BALLAST_TOP_HALF, BALLAST_TOP],
-  [BALLAST_TOP_HALF, BALLAST_TOP],
-  [RAIL_BED_HALF, 0],
-  [RAIL_BED_HALF, -SPUR_SKIRT],
-];
+/** The cut of the spur's bed grid at the full tier, metres. */
+const BED_STEP_SPUR = 1.6;
+
+/** How far along a run's frames the frame `i` is, metres. */
+function runAt(frames: readonly Frame[], i: number): number {
+  return runLength(frames.slice(0, i + 1));
+}
+
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
 /** The highest the flat ground lies over the ground at a place (a sidewalk's heave: `walkGeometry.ts`), and how far over it a ballast's top stands, metres. */
 const FLAT_TOP = 0.03;
 /** The middle of the heights flat ground lies at over the ground. */
 const FLAT_MID = 0.02;
 const BALLAST_OVER = 0.05;
+/** How far over the ballast's top the ties and plates stand (flat ground within this is a face against them), and how far the bed's lumps and crown reach over its nominal top, metres. */
+const TIE_REACH = 0.26;
+const BED_RELIEF = 0.022;
 
 function onTrestleAt(track: SpurTrack, d: number): boolean {
   for (const r of track.trestles) {
@@ -106,8 +110,9 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
     let need = f.g;
     for (const side of [-BALLAST_TOP_HALF, 0, BALLAST_TOP_HALF]) {
       const ground = g.heightAt(f.x + f.nx * side, f.z + f.nz * side);
-      // Flat ground that lies within a few centimetres of the ballast's top is a face against it; ground that is far under it or far over it is not.
-      if (Math.abs(ground + FLAT_MID - (f.g + BALLAST_TOP)) < BALLAST_OVER) need = Math.max(need, ground + FLAT_TOP + BALLAST_OVER - BALLAST_TOP);
+      // Flat ground that lies within a few centimetres of the ballast's top is a face against it, and so is flat ground that lies where the ties and their plates stand (up to `TIE_REACH` over the ballast's top): the track is lifted clear of it. Ground that is far under it is not a pair.
+      const rel = ground + FLAT_MID - (f.g + BALLAST_TOP);
+      if (rel > -BALLAST_OVER && rel < TIE_REACH) need = Math.max(need, ground + FLAT_TOP + BALLAST_OVER + BED_RELIEF - BALLAST_TOP);
     }
     return need > f.g ? { ...f, g: need } : f;
   });
@@ -137,21 +142,42 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
   }
   if (run.length > 1) (isWet ? wet : land).push(run);
 
+  const look: Look = { seed: g.seed, spur: true };
+  const low = detail === "low";
   for (const r of land) {
     for (const part of byCell(r)) {
       if (part.length < 2) continue;
       const mid = frameAlong(part, runLength(part) / 2);
       const b = solid(mid.x, mid.z);
-      sweep(b, part, SPUR_BALLAST, 0, BALLAST, false, scaled(BALLAST, 1.12));
-      const rails = detail === "low" ? RAIL_PLAIN : RAIL_PROFILE;
-      sweep(b, part, rails, -RAIL_GAUGE / 2, RAIL, true);
-      sweep(b, part, rails, RAIL_GAUGE / 2, RAIL, true);
-      if (detail === "low") continue;
+      // The bed, one crowned grid: displaced at the full tier, coarse (the same outline and tone) at the low.
+      const dense = resample(part, low ? STEP : BED_STEP_SPUR);
+      bedGrid(b, dense, look, low ? 1 : 0, SPUR_SKIRT);
+      // The rails: jointed every `JOINT` m, a few millimetres low at some joints, with fish plates at the full tier.
+      const railFrames = part;
+      const start = Math.round((mid.x + mid.z) * 3);
+      const marks = railFrames.map((_, i) => runAt(railFrames, i));
+      const dips = marks.map((s) => dipAt(look, s, start));
+      railPair(b, railFrames, look, low ? 1 : 0, (i) => dips[i] as number);
+      if (low) continue;
       const len = runLength(part);
+      // Fish plates at each joint, at the height the rail has there (its dips are laid at the frames, the rail between them straight).
+      for (let k = 1; k * JOINT < len - 0.4; k++) {
+        const d = k * JOINT;
+        let i = 1;
+        while (i < marks.length - 1 && (marks[i] as number) < d) i++;
+        const t = clamp01((d - (marks[i - 1] as number)) / Math.max(1e-9, (marks[i] as number) - (marks[i - 1] as number)));
+        const dip = (dips[i - 1] as number) + ((dips[i] as number) - (dips[i - 1] as number)) * t;
+        const f = frameAlong(part, d);
+        const g = frameAlong(part, Math.min(len, d + 0.5));
+        const h = frameAlong(part, Math.max(0, d - 0.5));
+        jointBars(b, f, [g.x - h.x, 0, g.z - h.z], dip);
+      }
       const n = Math.floor(len / TIE_PITCH);
       for (let j = 0; j < n; j++) {
         const f = frameAlong(part, (j + 0.5) * TIE_PITCH);
-        b.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25));
+        tieAt(b, look, f, true);
+        weedsAt(b, look, f, j, true);
+        if (j % 8 === 0) spill(b, look, f, j, g.heightAt);
       }
     }
   }
@@ -160,11 +186,9 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
       if (part.length < 2) return;
       const mid = frameAlong(part, runLength(part) / 2);
       const b = solid(mid.x, mid.z);
-      const rails = detail === "low" ? RAIL_PLAIN : RAIL_PROFILE;
-      sweep(b, part, rails, -RAIL_GAUGE / 2, RAIL, true);
-      sweep(b, part, rails, RAIL_GAUGE / 2, RAIL, true);
+      railPair(b, part, look, low ? 1 : 0);
       // A part's first frame is the last of the one before: its bent is drawn once.
-      trestleOver(g.heightAt, b, part, detail === "low" ? 1 : 0, at === 0 ? 0 : 1);
+      trestleOver(g.heightAt, b, part, low ? 1 : 0, at === 0 ? 0 : 1, look);
     });
   }
   turnout(frames, solid);
