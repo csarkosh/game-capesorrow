@@ -27,6 +27,8 @@ export type GridLook = {
   readonly clear?: number;
   /** A wire's radius, metres: the vertex shader keeps it at least a pixel and a bit wide at any distance, and the fragment fades it by the same factor (`townMaterial.ts`, `WIRE_CODE`). */
   readonly wire?: number;
+  /** Also lay the grid's back (the same quads wound the other way, normals reversed), in this colour (a function of the corner) or, for `true`, the front's darkened. */
+  readonly back?: true | Rgb | ((i: number, j: number) => Rgb);
 };
 export type Rgb = readonly [number, number, number];
 
@@ -52,7 +54,7 @@ export class MeshBuilder {
   readonly tags: [number, string][] = [];
   private tag(from: number): void {
     const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder") && !l.includes("/surface.ts")).slice(0, 4);
-    this.tags.push([from, lines.map((l) => l.replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
+    this.tags.push([from, lines.map((l) => l.replace(/^\s*at\s+(?:async\s+)?(?:new\s+)?(\S+)\s+\(.*\/(game|test)\/town\//, "$1 ").replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
   }
   private pos: number[] = [];
   private nor: number[] = [];
@@ -156,6 +158,16 @@ export class MeshBuilder {
       if (flip) this.idx.push(base, base + i, base + i + 1);
       else this.idx.push(base, base + i + 1, base + i);
     }
+    if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx);
+  }
+
+  /** The back of a polygon just laid (`Fx.back`): the same corners, facing `hint` (the front's normal reversed), in the back's own look. */
+  private twin(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], fx: Fx): void {
+    const back = fx.back as Exclude<Fx["back"], undefined>;
+    const own = back === true ? undefined : back;
+    const dark = (c: Rgb): Rgb => greyed(scaled(c, 0.7), 0.25);
+    const col: Rgb | readonly Rgb[] = own?.colour ?? (typeof (colour as readonly unknown[])[0] === "number" ? dark(colour as Rgb) : (colour as readonly Rgb[]).map(dark));
+    this.poly(points, hint, col, own?.surface, fx.normal === undefined ? {} : { normal: [-fx.normal[0], -fx.normal[1], -fx.normal[2]] });
   }
 
   /**
@@ -263,8 +275,8 @@ export class MeshBuilder {
     this.poly([[ax, bottom, az], [bx, bottom, bz], [bx, top, bz], [ax, top, az]], hint, colour, surface);
   }
 
-  /** An axis-aligned-in-a-turned-frame box: centre (x, z), base y, along axis (ux, uz), half extents, height; every face but the bottom. */
-  box(cx: number, cz: number, y0: number, ux: number, uz: number, halfU: number, halfV: number, height: number, side: Rgb, top: Rgb, topFace = true): void {
+  /** An axis-aligned-in-a-turned-frame box: centre (x, z), base y, along axis (ux, uz), half extents, height; every face but the bottom, which `bottomFace` (its colour) adds: asked for by anything raised off the ground. */
+  box(cx: number, cz: number, y0: number, ux: number, uz: number, halfU: number, halfV: number, height: number, side: Rgb, top: Rgb, topFace = true, bottomFace: Rgb | null | undefined = undefined): void {
     const vx = uz;
     const vz = -ux;
     const c = (su: number, sv: number): [number, number] => [cx + ux * halfU * su + vx * halfV * sv, cz + uz * halfU * su + vz * halfV * sv];
@@ -275,6 +287,8 @@ export class MeshBuilder {
     this.wall(p11[0], p11[1], p01[0], p01[1], y0, y1, [vx, 0, vz], side);
     this.wall(p01[0], p01[1], p00[0], p00[1], y0, y1, [-ux, 0, -uz], side);
     if (topFace) this.poly([[p00[0], y1, p00[1]], [p10[0], y1, p10[1]], [p11[0], y1, p11[1]], [p01[0], y1, p01[1]]], [0, 1, 0], top);
+    const under = bottomFace === undefined ? scaled(side, 0.55) : bottomFace;
+    if (under !== null) this.poly([[p00[0], y0, p00[1]], [p10[0], y0, p10[1]], [p11[0], y0, p11[1]], [p01[0], y0, p01[1]]], [0, -1, 0], under);
   }
 
   /**
@@ -356,7 +370,7 @@ export class MeshBuilder {
    * and (with `layer`) a tint, a UV in tiles' metres (divided by the layer's tile here) and up to two wears of a kind each. `skip(i, j)` leaves
    * out the quad whose corner is (i, j). Returns nothing for a grid with no area.
    */
-  grid(rows: readonly (readonly Vec3[])[], insideIn: Vec3 | readonly Vec3[], v: GridLook, skip?: (i: number, j: number) => boolean): void {
+  grid(rows: readonly (readonly Vec3[])[], insideIn: Vec3 | readonly Vec3[], v: GridLook, skip?: (i: number, j: number) => boolean, reversed = false): void {
     const nr = rows.length;
     const nc = nr === 0 ? 0 : (rows[0] as readonly Vec3[]).length;
     if (nr < 2 || nc < 2) return;
@@ -387,6 +401,7 @@ export class MeshBuilder {
       }
     }
     if (votes < 0) sign = -1;
+    if (reversed) sign = -sign;
     for (let i = 0; i < nr - 1; i++) {
       for (let j = 0; j < nc - 1; j++) {
         if (skip?.(i, j) === true) continue;
@@ -440,6 +455,14 @@ export class MeshBuilder {
         if (sign > 0) this.idx.push(a, c, b, a, d, c);
         else this.idx.push(a, b, c, a, c, d);
       }
+    }
+    if (v.back !== undefined && !reversed) {
+      const front = v.colour;
+      const dark = (c: Rgb): Rgb => greyed(scaled(c, 0.7), 0.25);
+      const colour = v.back === true ? (typeof front === "function" ? (i: number, j: number): Rgb => dark(front(i, j)) : dark(front)) : v.back;
+      const { back: _back, layer: _layer, tint: _tint, uv: _uv, wear: _wear, wear2: _wear2, streaks: _s1, streaks2: _s2, ...rest } = v;
+      void [_back, _layer, _tint, _uv, _wear, _wear2, _s1, _s2];
+      this.grid(rows, insideIn, { ...rest, colour }, skip, true);
     }
   }
 
