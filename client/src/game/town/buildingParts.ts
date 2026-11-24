@@ -23,6 +23,7 @@ import { attachmentsGeometry } from "./buildingAttach.js";
 import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
 import type { Detail, TownGround } from "./townTypes.js";
+import { noteHouse } from "./houseSeam.js";
 
 export type PartsIn = {
   readonly g: TownGround;
@@ -95,6 +96,7 @@ function housePart(i: PartsIn, full: boolean): void {
   }
   // Steps and a porch at the front door.
   const door = i.use?.door ?? null;
+  let seamDoor: { s: number; half: number; out: number; porch: { s0: number; s1: number } | null } | null = null;
   if (i.xf !== null && door !== null) {
     const sw = stationOf(front, i.xf, door.s);
     const porch = b.era >= 1900 && b.era < 1950 && hash01(b.id, 501) < 0.6;
@@ -105,6 +107,7 @@ function housePart(i: PartsIn, full: boolean): void {
       const pd = 1.7;
       const s0 = Math.max(0.2, sw - pw / 2);
       const s1 = Math.min(front.length - 0.2, s0 + pw);
+      seamDoor = { s: (s0 + s1) / 2, half: (s1 - s0) / 2, out: pd, porch: { s0, s1 } };
       const closed = hash01(b.id, 502) < 0.17;
       const floor = i.frontFloorY;
       wbox(out, front, s0, s1, Math.max(baseY, floor - 0.9), floor + 0.05, 0, pd, CONCRETE, [0.34, 0.26, 0.18]);
@@ -124,9 +127,11 @@ function housePart(i: PartsIn, full: boolean): void {
       // Steps: as many as the ground needs, in concrete or timber, with a stoop at the top.
       const n = Math.max(1, Math.min(6, Math.round((rise + 0.1) / 0.18)));
       const timber = hash01(b.id, 504) < 0.4;
+      seamDoor = { s: sw, half: 0.6, out: 0.3 * n + 0.1, porch: null };
       for (let k = 0; k < n; k++) wbox(out, front, sw - 0.6, sw + 0.6, k === 0 ? i.frontFloorY - n * (rise / n) - 0.02 : i.frontFloorY - (n - k) * (rise / n), i.frontFloorY - (n - k - 1) * (rise / n), 0, 0.3 * (n - k) + 0.1, timber ? [0.34, 0.25, 0.16] : CONCRETE, timber ? [0.4, 0.3, 0.2] : [0.45, 0.45, 0.43]);
     }
   }
+  noteHouse({ b, refs, blocked: i.blocked, frontAt, baseY, foundTop: i.frontFloorY + 0.15, door: seamDoor });
   // What the years added or mended, before the machines that stand against the walls: an addition's walls are faces they are then put clear of.
   addition(i);
   repairs(i, age, neglect);

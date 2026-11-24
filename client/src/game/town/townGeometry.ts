@@ -30,6 +30,7 @@ import { streetGeometry } from "./streetGeometry.js";
 import { SignAtlas } from "./signAtlas.js";
 import { groundStains } from "./groundStains.js";
 import { growthGeometry, resetGrowth } from "./growth.js";
+import { resetSeam } from "./houseSeam.js";
 import { forgetMarks } from "./surface.js";
 import { resetLedger } from "./faceLedger.js";
 import type { Detail, TownGround } from "./townTypes.js";
@@ -89,6 +90,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   forgetMarks(g);
   resetLedger();
   resetGrowth();
+  resetSeam();
   streetGeometry(g, sinks.flat, sinks.solid, detail);
   stairGeometry(g, sinks.solid);
   endsGeometry(g, sinks.flat, sinks.solid);
@@ -115,10 +117,6 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   // The marks on the street: oil, scuffs, puddles, drifts (`groundStains.ts`).
   if (detail !== "low") groundStains(g, sinks.flat);
   yield;
-  // The tufts that grow in the street's seams and at the feet of walls and posts (`growth.ts`).
-  growthGeometry(g, sinks.solid, detail);
-  yield;
-
   const roles = new Map<number, LandmarkRole>();
   for (const l of g.plan.landmarks) if (!roles.has(l.building)) roles.set(l.building, l.role);
   for (const b of g.plan.buildings) {
@@ -127,6 +125,10 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
     buildingGeometry(g, b, roles.get(b.id) ?? null, sinks.solid, detail, extras);
     if (sliceDue()) yield;
   }
+  yield;
+  // The tufts that grow in the street's seams and at the feet of walls and posts (`growth.ts`); after the houses, whose doors and walls it reads (`houseSeam.ts`).
+  growthGeometry(g, sinks.solid, detail);
+  yield;
 
   const batches: TownBatch[] = [];
   for (const c of cells.values()) {
