@@ -6,6 +6,7 @@
  * heights (the ground's own, as the street's strips are), so it rises with the hill whatever the town's grading did.
  */
 import type { Rgb } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import { CURB, SIDEWALK, FLAG_POLE } from "./palette.js";
 import type { Sink, TownGround } from "./townTypes.js";
 
@@ -61,7 +62,7 @@ export function stairGeometry(g: TownGround, sink: Sink): void {
       }
       if (top > lo + FLAT_MID - FLAT_CLEAR && top < hi + FLAT_TOP + FLAT_CLEAR) top = hi + FLAT_TOP + FLAT_CLEAR;
       const sinkAt = sink(cx, cz);
-      sinkAt.box(cx, cz, top - FOOTING, ux, uz, run / 2, half, FOOTING, RISER, TREAD);
+      withMat("concrete", () => sinkAt.box(cx, cz, top - FOOTING, ux, uz, run / 2, half, FOOTING, RISER, TREAD));
     }
     // The handrails, one down each side: a post every few treads and a rail along their tops.
     const side = { x: -uz, z: ux };
@@ -74,12 +75,13 @@ export function stairGeometry(g: TownGround, sink: Sink): void {
         const z = az + uz * s + side.z * k * (half + RAIL_OUT);
         const i = Math.min(n - 1, Math.floor(s / run));
         const base = ha + (rise * (i + 1)) / n;
-        sink(x, z).box(x, z, base, ux, uz, RAIL_THICK, RAIL_THICK, RAIL_HEIGHT, FLAG_POLE, FLAG_POLE);
+        withMat("steel", () => sink(x, z).box(x, z, base, ux, uz, RAIL_THICK, RAIL_THICK, RAIL_HEIGHT, FLAG_POLE, FLAG_POLE));
         const y = base + RAIL_HEIGHT;
         if (prev !== null) {
           // The rail: a thin board from post to post, tilted with the flight (a poly through the two tops).
           const t = RAIL_THICK;
-          sink(x, z).quad([prev.x + side.x * t, prev.y, prev.z + side.z * t], [x + side.x * t, y, z + side.z * t], [x - side.x * t, y, z - side.z * t], [prev.x - side.x * t, prev.y, prev.z - side.z * t], [0, 1, 0], FLAG_POLE, undefined, { back: true });
+          const pv = prev;
+          withMat("steel", () => sink(x, z).quad([pv.x + side.x * t, pv.y, pv.z + side.z * t], [x + side.x * t, y, z + side.z * t], [x - side.x * t, y, z - side.z * t], [pv.x - side.x * t, pv.y, pv.z - side.z * t], [0, 1, 0], FLAG_POLE, "steel", { back: true }));
         }
         prev = { x, z, y };
       }

@@ -7,6 +7,7 @@
  */
 import { boatGeometry } from "./boatGeometry.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import { GLASS, PILE, ROOF_METAL, STEEL, STEEL_RUST, TIMBER, TIMBER_WEATHERED } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 import type { Barge, Piling, YardItem } from "../../sim/town/types.js";
@@ -31,7 +32,7 @@ function pile(g: TownGround, sink: Sink, p: Piling, i: number): void {
   const h = p.top - bottom;
   const k = 0.8 + hash01(i, 41) * 0.35;
   const colour = scaled(p.kind === "dolphin" ? TIMBER : PILE, k);
-  sink(x, z).prism([x, bottom, z], [x + p.lean.x * h, p.top, z + p.lean.z * h], p.radius, 6, colour, scaled(PILE_TOP, k));
+  withMat("wood", () => sink(x, z).prism([x, bottom, z], [x + p.lean.x * h, p.top, z + p.lean.z * h], p.radius, 6, colour, scaled(PILE_TOP, k)));
 }
 
 export function pilingGeometry(g: TownGround, sink: Sink): void {
@@ -47,14 +48,14 @@ export function pilingGeometry(g: TownGround, sink: Sink): void {
       const b = h.dolphins[d - 1] as Piling;
       const cx = g.anchor.x + (a.x + b.x + p.x) / 3;
       const cz = g.anchor.z + (a.z + b.z + p.z) / 3;
-      sinkAt(sink, cx, cz).prism([cx, 2.6, cz], [cx, 2.9, cz], 0.4, 6, [0.1, 0.1, 0.1], null);
+      withMat("steel", () => sinkAt(sink, cx, cz).prism([cx, 2.6, cz], [cx, 2.9, cz], 0.4, 6, [0.1, 0.1, 0.1], null));
     }
   }
 }
 
 /** A log lying along (ax, az) from its middle, at height y. */
 function logAt(m: MeshBuilder, cx: number, y: number, cz: number, ax: number, az: number, length: number, r: number, colour: Rgb): void {
-  m.prism([cx - (ax * length) / 2, y, cz - (az * length) / 2], [cx + (ax * length) / 2, y, cz + (az * length) / 2], r, 6, colour, LOG_END);
+  withMat("bark", () => m.prism([cx - (ax * length) / 2, y, cz - (az * length) / 2], [cx + (ax * length) / 2, y, cz + (az * length) / 2], r, 6, colour, LOG_END));
 }
 
 /** The mill's water: the pond's boom and logs, the jack ladder; and the burner of a closed mill. */
@@ -72,7 +73,7 @@ export function millGeometry(g: TownGround, sink: Sink): void {
       const z0 = az + p.z;
       const x1 = ax + q.x;
       const z1 = az + q.z;
-      sinkAt(sink, x0, z0).prism([x0, 0.12, z0], [x1, 0.12, z1], 0.34, 6, scaled(BARK, 1.15), LOG_END);
+      withMat("bark", () => sinkAt(sink, x0, z0).prism([x0, 0.12, z0], [x1, 0.12, z1], 0.34, 6, scaled(BARK, 1.15), LOG_END));
     };
     for (let i = 0; i + 1 < sea.length; i++) chain(sea[i] as Piling, sea[i + 1] as Piling);
     const sides = piles.filter((p) => !sea.includes(p));
@@ -112,10 +113,10 @@ export function millGeometry(g: TownGround, sink: Sink): void {
         const s1 = (len * (i + 1)) / n;
         const m = sink((x0 + x1) / 2, (z0 + z1) / 2);
         const q = (s: number, t: number, y: number): Vec3 => [x0 + tx * s + nx * t, y, z0 + tz * s + nz * t];
-        m.poly([q(s0, -hw, hAt(s0)), q(s1, -hw, hAt(s1)), q(s1, hw, hAt(s1)), q(s0, hw, hAt(s0))], [0, 1, 0], TIMBER, undefined, { back: { colour: [0.2, 0.17, 0.13] } });
+        withMat("wood", () => m.poly([q(s0, -hw, hAt(s0)), q(s1, -hw, hAt(s1)), q(s1, hw, hAt(s1)), q(s0, hw, hAt(s0))], [0, 1, 0], TIMBER, "wood", { back: { colour: [0.2, 0.17, 0.13] } }));
         for (const sgn of [-1, 1]) {
-          m.poly([q(s0, sgn * hw, hAt(s0)), q(s1, sgn * hw, hAt(s1)), q(s1, sgn * hw, hAt(s1) + 0.7), q(s0, sgn * hw, hAt(s0) + 0.7)], [nx * sgn, 0, nz * sgn], TIMBER_WEATHERED, undefined, { back: true });
-          m.poly([q(s0, sgn * hw, hAt(s0) - 0.35), q(s1, sgn * hw, hAt(s1) - 0.35), q(s1, sgn * hw, hAt(s1)), q(s0, sgn * hw, hAt(s0))], [nx * sgn, 0, nz * sgn], TIMBER, undefined, { back: true });
+          withMat("wood", () => m.poly([q(s0, sgn * hw, hAt(s0)), q(s1, sgn * hw, hAt(s1)), q(s1, sgn * hw, hAt(s1) + 0.7), q(s0, sgn * hw, hAt(s0) + 0.7)], [nx * sgn, 0, nz * sgn], TIMBER_WEATHERED, "wood", { back: true }));
+          withMat("wood", () => m.poly([q(s0, sgn * hw, hAt(s0) - 0.35), q(s1, sgn * hw, hAt(s1) - 0.35), q(s1, sgn * hw, hAt(s1)), q(s0, sgn * hw, hAt(s0))], [nx * sgn, 0, nz * sgn], TIMBER, "wood", { back: true }));
         }
         // Legs at the middle of each 3 m, down to the ground or the floor.
         const sm = (s0 + s1) / 2;
@@ -123,16 +124,18 @@ export function millGeometry(g: TownGround, sink: Sink): void {
         const pz = z0 + tz * sm;
         const floor = Math.min(g.heightAt(px, pz), SEA - 0.3) - 0.3;
         const top = hAt(sm) - 0.35;
-        if (top - floor > 0.6) for (const sgn of [-1, 1]) m.prism([px + nx * sgn * (hw - 0.15), floor, pz + nz * sgn * (hw - 0.15)], [px + nx * sgn * (hw - 0.15), top, pz + nz * sgn * (hw - 0.15)], 0.14, 4, PILE, PILE);
+        if (top - floor > 0.6) for (const sgn of [-1, 1]) withMat("wood", () => m.prism([px + nx * sgn * (hw - 0.15), floor, pz + nz * sgn * (hw - 0.15)], [px + nx * sgn * (hw - 0.15), top, pz + nz * sgn * (hw - 0.15)], 0.14, 4, PILE, PILE));
       }
       // The jack house at the top: a box with a roof.
       const hx = x1 + tx * 2.5;
       const hz = z1 + tz * 2.5;
       const base = jl.top - 0.4;
-      sinkAt(sink, hx, hz).box(hx, hz, base, 1, 0, 3.5, 3.5, 4.5, TIMBER_WEATHERED, ROOF_METAL);
+      withMat("wood", () => sinkAt(sink, hx, hz).box(hx, hz, base, 1, 0, 3.5, 3.5, 4.5, TIMBER_WEATHERED, ROOF_METAL));
       const floorH = Math.min(g.heightAt(hx, hz), base);
-      sinkAt(sink, hx, hz).prism([hx - 3, floorH, hz - 3], [hx - 3, base, hz - 3], 0.2, 4, PILE, PILE);
-      sinkAt(sink, hx, hz).prism([hx + 3, floorH, hz + 3], [hx + 3, base, hz + 3], 0.2, 4, PILE, PILE);
+      withMat("wood", () => {
+        sinkAt(sink, hx, hz).prism([hx - 3, floorH, hz - 3], [hx - 3, base, hz - 3], 0.2, 4, PILE, PILE);
+        sinkAt(sink, hx, hz).prism([hx + 3, floorH, hz + 3], [hx + 3, base, hz + 3], 0.2, 4, PILE, PILE);
+      });
     }
   }
   const b = g.plan.harbour.burner;
@@ -142,10 +145,12 @@ export function millGeometry(g: TownGround, sink: Sink): void {
     const y = g.heightAt(x, z) - 0.3;
     const m = sinkAt(sink, x, z);
     // A low steel ring, the cone above it, a cap, and rust streaks as bands of a darker colour.
-    m.cylinder(x, z, y, b.radius + 0.4, 2.2, 14, scaled(RUST, 0.8), RUST, b.radius + 0.3);
-    m.cylinder(x, z, y + 2.2, b.radius + 0.3, b.height * 0.5, 14, RUST, RUST, b.radius * 0.55);
-    m.cylinder(x, z, y + 2.2 + b.height * 0.5, b.radius * 0.55, b.height * 0.4, 14, scaled(RUST, 1.2), RUST, b.radius * 0.22);
-    m.cylinder(x, z, y + 2.2 + b.height * 0.9, b.radius * 0.22, 1.6, 10, scaled(RUST, 0.7), scaled(RUST, 0.6));
+    withMat("rusty", () => {
+      m.cylinder(x, z, y, b.radius + 0.4, 2.2, 14, scaled(RUST, 0.8), RUST, b.radius + 0.3);
+      m.cylinder(x, z, y + 2.2, b.radius + 0.3, b.height * 0.5, 14, RUST, RUST, b.radius * 0.55);
+      m.cylinder(x, z, y + 2.2 + b.height * 0.5, b.radius * 0.55, b.height * 0.4, 14, scaled(RUST, 1.2), RUST, b.radius * 0.22);
+      m.cylinder(x, z, y + 2.2 + b.height * 0.9, b.radius * 0.22, 1.6, 10, scaled(RUST, 0.7), scaled(RUST, 0.6));
+    });
   }
 }
 
@@ -182,15 +187,17 @@ function yardItem(g: TownGround, sink: Sink, it: YardItem, id: number): void {
       logStack(g, m, it, id);
       break;
     case "chip pile":
-      m.cylinder(x, z, y0, it.halfX, it.height, 12, CHIPS, CHIPS, 0.7);
+      withMat("gravel", () => m.cylinder(x, z, y0, it.halfX, it.height, 12, CHIPS, CHIPS, 0.7));
       break;
     case "silo": {
-      m.cylinder(x, z, y0, it.halfX, it.height, 14, CONCRETE, CONCRETE);
-      m.cylinder(x, z, y0 + it.height, it.halfX + 0.1, 3.2, 14, scaled(CONCRETE, 0.8), ROOF_METAL, 0.5);
+      withMat("concrete", () => {
+        m.cylinder(x, z, y0, it.halfX, it.height, 14, CONCRETE, CONCRETE);
+        m.cylinder(x, z, y0 + it.height, it.halfX + 0.1, 3.2, 14, scaled(CONCRETE, 0.8), ROOF_METAL, 0.5);
+      });
       break;
     }
     case "bulk shed":
-      box3(m, x, z, y0, it.halfX, it.halfZ, it.height, STEEL, ROOF_METAL);
+      withMat("ribbed", () => box3(m, x, z, y0, it.halfX, it.halfZ, it.height, STEEL, ROOF_METAL));
       break;
     case "containers": {
       // Rows of boxes two across, two long and stacked up to two high, each its own colour.
@@ -198,7 +205,7 @@ function yardItem(g: TownGround, sink: Sink, it: YardItem, id: number): void {
         for (let b = 0; b < 2; b++) {
           for (let h = 0; h < 1 + ((id + a + b) % 2); h++) {
             const c = CONTAINERS[Math.floor(hash01(id * 19 + a * 5 + b * 3 + h, 12) * CONTAINERS.length)] as Rgb;
-            box3(m, x + (a - 0.5) * 2.8, z + (b - 0.5) * (it.halfZ - 0.2), y0 + h * 2.6, 1.2, it.halfZ / 2 - 0.2, 2.5, c, scaled(c, 1.1));
+            withMat("ribbed", () => box3(m, x + (a - 0.5) * 2.8, z + (b - 0.5) * (it.halfZ - 0.2), y0 + h * 2.6, 1.2, it.halfZ / 2 - 0.2, 2.5, c, scaled(c, 1.1)));
           }
         }
       }
@@ -209,10 +216,12 @@ function yardItem(g: TownGround, sink: Sink, it: YardItem, id: number): void {
         const cx = x + ((i % 2) - 0.5) * 3.4;
         const cz = z + (Math.floor(i / 2) - (it.n / 2 - 1) / 2) * 2.9;
         const c = CARS[Math.floor(hash01(id * 23 + i, 13) * CARS.length)] as Rgb;
-        box3(m, cx, cz, y0 + 0.2, 0.9, 2.1, 0.75, c, c);
-        box3(m, cx, cz - 0.1, y0 + 0.95, 0.8, 1.1, 0.6, c, scaled(c, 1.1));
-        // Wheels as dark bands, and a dark band of glass.
-        box3(m, cx, cz - 0.1, y0 + 1.05, 0.82, 1.05, 0.35, GLASS, GLASS);
+        withMat("painted", () => {
+          box3(m, cx, cz, y0 + 0.2, 0.9, 2.1, 0.75, c, c);
+          box3(m, cx, cz - 0.1, y0 + 0.95, 0.8, 1.1, 0.6, c, scaled(c, 1.1));
+          // Wheels as dark bands, and a dark band of glass.
+          box3(m, cx, cz - 0.1, y0 + 1.05, 0.82, 1.05, 0.35, GLASS, GLASS);
+        });
       }
       break;
     }
@@ -238,16 +247,18 @@ function bargeGeometry(g: TownGround, sink: Sink, barge: Barge): void {
   const rake = 3;
   const sideL: Vec3[] = [P(-L / 2, free, -h), P(L / 2 - rake, free, -h), P(L / 2 - rake, -draft, -h), P(-L / 2, -draft, -h)];
   const sideR: Vec3[] = [P(-L / 2, free, h), P(L / 2 - rake, free, h), P(L / 2 - rake, -draft, h), P(-L / 2, -draft, h)];
-  m.poly(sideL, [-ax, 0, -az], hullC);
-  m.poly(sideR, [ax, 0, az], hullC);
-  m.poly([P(-L / 2, -draft, -h), P(-L / 2, free, -h), P(-L / 2, free, h), P(-L / 2, -draft, h)], [-hx, 0, -hz], hullC);
-  // The bow's rake: the deck narrows to the bow's top and the sides slope under to the bottom.
-  m.poly([P(L / 2 - rake, free, -h), P(L / 2, free * 0.35, -h * 0.8), P(L / 2, free * 0.35, h * 0.8), P(L / 2 - rake, free, h)], [hx * 0.3, 1, hz * 0.3], scaled(hullC, 1.1));
-  m.poly([P(L / 2, free * 0.35, -h * 0.8), P(L / 2 - rake, free, -h), P(L / 2 - rake, -draft, -h), P(L / 2, -draft, -h * 0.8)], [-ax + hx * 0.4, 0, -az + hz * 0.4], hullC);
-  m.poly([P(L / 2 - rake, free, h), P(L / 2, free * 0.35, h * 0.8), P(L / 2, -draft, h * 0.8), P(L / 2 - rake, -draft, h)], [ax + hx * 0.4, 0, az + hz * 0.4], hullC);
-  m.poly([P(L / 2, free * 0.35, -h * 0.8), P(L / 2, free * 0.35, h * 0.8), P(L / 2, -draft, h * 0.8), P(L / 2, -draft, -h * 0.8)], [hx, 0, hz], hullC);
-  m.poly([P(-L / 2, free, -h), P(L / 2 - rake, free, -h), P(L / 2 - rake, free, h), P(-L / 2, free, h)], [0, 1, 0], scaled(hullC, 1.3));
-  m.poly([P(-L / 2, -draft, -h), P(L / 2, -draft, -h * 0.8), P(L / 2, -draft, h * 0.8), P(-L / 2, -draft, h)], [0, -1, 0], bottom);
+  withMat("steel", () => {
+    m.poly(sideL, [-ax, 0, -az], hullC);
+    m.poly(sideR, [ax, 0, az], hullC);
+    m.poly([P(-L / 2, -draft, -h), P(-L / 2, free, -h), P(-L / 2, free, h), P(-L / 2, -draft, h)], [-hx, 0, -hz], hullC);
+    // The bow's rake: the deck narrows to the bow's top and the sides slope under to the bottom.
+    m.poly([P(L / 2 - rake, free, -h), P(L / 2, free * 0.35, -h * 0.8), P(L / 2, free * 0.35, h * 0.8), P(L / 2 - rake, free, h)], [hx * 0.3, 1, hz * 0.3], scaled(hullC, 1.1));
+    m.poly([P(L / 2, free * 0.35, -h * 0.8), P(L / 2 - rake, free, -h), P(L / 2 - rake, -draft, -h), P(L / 2, -draft, -h * 0.8)], [-ax + hx * 0.4, 0, -az + hz * 0.4], hullC);
+    m.poly([P(L / 2 - rake, free, h), P(L / 2, free * 0.35, h * 0.8), P(L / 2, -draft, h * 0.8), P(L / 2 - rake, -draft, h)], [ax + hx * 0.4, 0, az + hz * 0.4], hullC);
+    m.poly([P(L / 2, free * 0.35, -h * 0.8), P(L / 2, free * 0.35, h * 0.8), P(L / 2, -draft, h * 0.8), P(L / 2, -draft, -h * 0.8)], [hx, 0, hz], hullC);
+    m.poly([P(-L / 2, free, -h), P(L / 2 - rake, free, -h), P(L / 2 - rake, free, h), P(-L / 2, free, h)], [0, 1, 0], scaled(hullC, 1.3));
+    m.poly([P(-L / 2, -draft, -h), P(L / 2, -draft, -h * 0.8), P(L / 2, -draft, h * 0.8), P(-L / 2, -draft, h)], [0, -1, 0], bottom);
+  });
   // The cargo, in barge-local boxes and prisms.
   const bx = (x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, c: Rgb): void => {
     const p = (lx: number, lz: number, y: number): Vec3 => P(lx, y, lz);
@@ -263,23 +274,23 @@ function bargeGeometry(g: TownGround, sink: Sink, barge: Barge): void {
     case "logs":
       for (let row = 0; row < 4; row++) {
         const n = 6 - row;
-        for (let k = 0; k < n; k++) m.prism(P(-L / 2 + 1, free + 0.5 + row * 0.85, (k - (n - 1) / 2) * 1.2), P(L / 2 - rake - 1, free + 0.5 + row * 0.85, (k - (n - 1) / 2) * 1.2), 0.55, 6, scaled(BARK, 0.8 + 0.4 * hash01(row * 9 + k, 14)), LOG_END);
+        for (let k = 0; k < n; k++) withMat("wood", () => m.prism(P(-L / 2 + 1, free + 0.5 + row * 0.85, (k - (n - 1) / 2) * 1.2), P(L / 2 - rake - 1, free + 0.5 + row * 0.85, (k - (n - 1) / 2) * 1.2), 0.55, 6, scaled(BARK, 0.8 + 0.4 * hash01(row * 9 + k, 14)), LOG_END));
       }
       break;
     case "chips":
-      m.cylinder(barge.x + hx * -2, barge.z + hz * -2, free, 3.4, 4.5, 12, CHIPS, CHIPS, 0.8);
+      withMat("gravel", () => m.cylinder(barge.x + hx * -2, barge.z + hz * -2, free, 3.4, 4.5, 12, CHIPS, CHIPS, 0.8));
       break;
     case "grain":
-      for (const c of [-6, 3]) bx(c - 4, c + 4, -h + 0.8, h - 0.8, free, free + 3, STEEL_RUST);
+      for (const c of [-6, 3]) withMat("steel", () => bx(c - 4, c + 4, -h + 0.8, h - 0.8, free, free + 3, STEEL_RUST));
       break;
     case "vehicles":
       for (let i = 0; i < 8; i++) {
         const c = CARS[i % CARS.length] as Rgb;
-        bx(-L / 2 + 2 + (i % 4) * 4.6, -L / 2 + 6 + (i % 4) * 4.6, -h + 0.9 + Math.floor(i / 4) * 3, -h + 2.7 + Math.floor(i / 4) * 3, free, free + 1.5, c);
+        withMat("painted", () => bx(-L / 2 + 2 + (i % 4) * 4.6, -L / 2 + 6 + (i % 4) * 4.6, -h + 0.9 + Math.floor(i / 4) * 3, -h + 2.7 + Math.floor(i / 4) * 3, free, free + 1.5, c));
       }
       break;
     case "containers":
-      for (let a = 0; a < 3; a++) for (let b = 0; b < 2; b++) bx(-L / 2 + 1 + a * 6.6, -L / 2 + 7.2 + a * 6.6, -h + 0.8 + b * 3.3, -h + 3 + b * 3.3, free, free + 2.6 + ((a + b) % 2) * 2.6, CONTAINERS[(a * 2 + b) % CONTAINERS.length] as Rgb);
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 2; b++) withMat("ribbed", () => bx(-L / 2 + 1 + a * 6.6, -L / 2 + 7.2 + a * 6.6, -h + 0.8 + b * 3.3, -h + 3 + b * 3.3, free, free + 2.6 + ((a + b) % 2) * 2.6, CONTAINERS[(a * 2 + b) % CONTAINERS.length] as Rgb));
       break;
   }
 }
@@ -295,8 +306,10 @@ export function terminalGeometry(g: TownGround, sink: Sink): void {
     const x = g.anchor.x + t.spout.x;
     const z = g.anchor.z + t.spout.z;
     const m = sinkAt(sink, x, z);
-    m.prism([x, 2.6, z], [x, 8, z], 0.35, 6, STEEL, STEEL);
-    m.prism([x, 7.6, z], [x - 3, 5.4, z], 0.28, 6, STEEL_RUST, STEEL_RUST);
+    withMat("steel", () => {
+      m.prism([x, 2.6, z], [x, 8, z], 0.35, 6, STEEL, STEEL);
+      m.prism([x, 7.6, z], [x - 3, 5.4, z], 0.28, 6, STEEL_RUST, STEEL_RUST);
+    });
   }
 }
 
@@ -313,23 +326,27 @@ export function lightGeometry(g: TownGround, sink: Sink): void {
     const m = sinkAt(sink, x, z);
     const y = l.kind === "pier light" ? 2.6 : Math.max(g.heightAt(x, z), 0.5) - 0.4;
     if (l.kind === "harbour light") {
-      box3(m, x, z, y, 1.6, 1.6, 0.8, CONCRETE, CONCRETE);
+      withMat("concrete", () => box3(m, x, z, y, 1.6, 1.6, 0.8, CONCRETE, CONCRETE));
+      withMat("painted", () => {
       m.cylinder(x, z, y + 0.8, 1, l.height, 10, WHITE, WHITE, 0.7);
       m.prism([x, y + l.height + 0.8, z], [x, y + l.height + 0.85, z], 0.95, 10, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
       m.cylinder(x, z, y + l.height + 0.85, 0.5, 1.2, 10, GLASS, GLASS);
       m.cylinder(x, z, y + l.height + 2.05, 0.75, 0.6, 10, [0.5, 0.1, 0.08], [0.5, 0.1, 0.08], 0.05);
+      });
     } else if (l.kind === "day beacon") {
       // Three legs from the ground to a point, a slatted daymark at the top.
       for (let k = 0; k < 3; k++) {
         const a = (k / 3) * Math.PI * 2;
-        m.prism([x + Math.cos(a) * 1.6, y, z + Math.sin(a) * 1.6], [x, y + l.height, z], 0.12, 4, TIMBER, TIMBER);
+        withMat("wood", () => m.prism([x + Math.cos(a) * 1.6, y, z + Math.sin(a) * 1.6], [x, y + l.height, z], 0.12, 4, TIMBER, TIMBER));
       }
-      box3(m, x, z, y + l.height - 0.4, 0.9, 0.08, 1.5, [0.55, 0.1, 0.08], [0.55, 0.1, 0.08]);
+      withMat("boards", () => {
+        box3(m, x, z, y + l.height - 0.4, 0.9, 0.08, 1.5, [0.55, 0.1, 0.08], [0.55, 0.1, 0.08]);
       // The white slat is a little taller than the red, so that their tops and bottoms are not faces in one plane where they cross.
-      box3(m, x, z, y + l.height - 0.44, 0.08, 0.9, 1.58, WHITE, WHITE);
+        box3(m, x, z, y + l.height - 0.44, 0.08, 0.9, 1.58, WHITE, WHITE);
+      });
     } else {
-      m.prism([x, y + 0.03, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL);
-      box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, GLASS, [0.2, 0.2, 0.22]);
+      withMat("steel", () => m.prism([x, y + 0.03, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL));
+      withMat("painted", () => box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, GLASS, [0.2, 0.2, 0.22]));
     }
   }
 }

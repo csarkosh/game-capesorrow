@@ -5,6 +5,7 @@
  * parabola with a sag of about one and a half per cent of the span (the sag is drawing, where trigonometry is allowed): three conductors on
  * the arm or the pins, a neutral below, a telephone cable below that.
  */
+import { withMat } from "../materials.js";
 import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Surface } from "../townSurface.js";
 import type { Detail, TownGround } from "../townTypes.js";
@@ -60,7 +61,7 @@ export function poleGeometry(g: TownGround, solid: Sink, p: Pole, next: Pole | n
   const wood = mixC(WOOD, [0.28, 0.25, 0.22], rnd(p.seed, 1) * 0.6);
   const sides = detail === "low" ? 4 : 5;
   const surf = (a: Vec3, tan: Vec3): Surface => ({ layer: "planks_weathered", frame: { origin: a, u: [0, 1, 0], v: tan }, tint: [0.75 + rnd(p.seed, 2) * 0.2, 0.72, 0.68], wear: 0.12 + rnd(p.seed, 3) * 0.3, wearKind: "algae", wear2: 0.2, wearKind2: "grime" });
-  post(m, [wx, gh, wz], p.height + 0.1, 0.19, 0.12, p.lx, p.lz, sides, wood, detail === "low" ? undefined : surf);
+  withMat("wood", () => post(m, [wx, gh, wz], p.height + 0.1, 0.19, 0.12, p.lx, p.lz, sides, wood, detail === "low" ? undefined : surf));
   const top = p.height;
   const at = (h: number, lat: number): [number, number] => {
     const t = h / p.height;
@@ -68,44 +69,45 @@ export function poleGeometry(g: TownGround, solid: Sink, p: Pole, next: Pole | n
   };
   if (p.arm === 1) {
     const [cx, cz] = at(top - 0.35, 0);
-    m.box(cx, cz, gh + top - 0.35, nx, nz, 1.2, 0.07, 0.11, [0.17, 0.13, 0.1], [0.19, 0.15, 0.12]);
+    withMat("wood", () => m.box(cx, cz, gh + top - 0.35, nx, nz, 1.2, 0.07, 0.11, [0.17, 0.13, 0.1], [0.19, 0.15, 0.12]));
     if (detail !== "low") {
       for (const sg of [1, -1]) {
         const [bx, bz] = at(top - 0.1, sg * 0.95);
         const [ax, az] = at(top - 0.95, 0);
-        m.prism([ax, gh + top - 0.95, az], [bx, gh + top - 0.35, bz], 0.025, 3, [0.15, 0.12, 0.09], null);
+        withMat("wood", () => m.prism([ax, gh + top - 0.95, az], [bx, gh + top - 0.35, bz], 0.025, 3, [0.15, 0.12, 0.09], null));
       }
       for (const lat of [-0.9, 0, 0.9]) {
         const [ix, iz] = at(top - 0.24, lat);
-        m.prism([ix, gh + top - 0.24, iz], [ix, gh + top - 0.02, iz], 0.035, 3, INSULATOR, null);
+        withMat("painted", () => m.prism([ix, gh + top - 0.24, iz], [ix, gh + top - 0.02, iz], 0.035, 3, INSULATOR, null));
       }
     }
   } else if (detail !== "low") {
     const [cx, cz] = at(top - 0.52, 0);
-    m.box(cx, cz, gh + top - 0.52, nx, nz, 0.55, 0.05, 0.08, [0.15, 0.12, 0.1], [0.17, 0.14, 0.11]);
+    withMat("wood", () => m.box(cx, cz, gh + top - 0.52, nx, nz, 0.55, 0.05, 0.08, [0.15, 0.12, 0.1], [0.17, 0.14, 0.11]));
     for (const lat of [-0.5, 0.5, 0]) {
       const [ix, iz] = at(lat === 0 ? top : top - 0.45, lat);
-      m.prism([ix, gh + (lat === 0 ? top : top - 0.45), iz], [ix, gh + (lat === 0 ? top + 0.12 : top - 0.28), iz], 0.032, 3, INSULATOR, null);
+      withMat("painted", () => m.prism([ix, gh + (lat === 0 ? top : top - 0.45), iz], [ix, gh + (lat === 0 ? top + 0.12 : top - 0.28), iz], 0.032, 3, INSULATOR, null));
     }
   }
   if (p.transformer) {
     const [cx, cz] = at(top - 1.2, 0.3 * (rnd(p.seed, 5) < 0.5 ? 1 : -1));
-    m.cylinder(cx, cz, gh + top - 1.55, 0.21, 0.62, detail === "low" ? 5 : 8, [0.22, 0.25, 0.23], [0.2, 0.22, 0.21]);
-    if (detail !== "low") m.cylinder(cx, cz, gh + top - 0.93, 0.03, 0.14, 4, INSULATOR, INSULATOR);
+    withMat("steel", () => m.cylinder(cx, cz, gh + top - 1.55, 0.21, 0.62, detail === "low" ? 5 : 8, [0.22, 0.25, 0.23], [0.2, 0.22, 0.21]));
+    if (detail !== "low") withMat("painted", () => m.cylinder(cx, cz, gh + top - 0.93, 0.03, 0.14, 4, INSULATOR, INSULATOR));
   }
   if (p.light !== null) {
+    const lt = p.light;
     const [bx, bz] = at(top - 0.7, 0);
     const ex = bx + p.light.ox * 2.6;
     const ez = bz + p.light.oz * 2.6;
-    m.prism([bx, gh + top - 0.7, bz], [ex, gh + top - 0.35, ez], 0.045, 4, STEEL, STEEL);
+    withMat("steel", () => m.prism([bx, gh + top - 0.7, bz], [ex, gh + top - 0.35, ez], 0.045, 4, STEEL, STEEL));
     const hx = ex + p.light.ox * 0.15;
     const hz = ez + p.light.oz * 0.15;
-    m.box(hx, hz, gh + top - 0.52, p.light.ox, p.light.oz, 0.3, 0.14, 0.16, [0.2, 0.21, 0.22], [0.22, 0.23, 0.24]);
+    withMat("steel", () => m.box(hx, hz, gh + top - 0.52, lt.ox, lt.oz, 0.3, 0.14, 0.16, [0.2, 0.21, 0.22], [0.22, 0.23, 0.24]));
   }
   if (p.stub && detail !== "low") {
     const sx = wx + tx * 0.9;
     const sz = wz + tz * 0.9;
-    post(m, [sx, gh, sz], 1.5 + rnd(p.seed, 7) * 0.8, 0.17, 0.14, 0.05, 0.02, sides, mixC(wood, [0.1, 0.09, 0.08], 0.3), surf);
+    withMat("wood", () => post(m, [sx, gh, sz], 1.5 + rnd(p.seed, 7) * 0.8, 0.17, 0.14, 0.05, 0.02, sides, mixC(wood, [0.1, 0.09, 0.08], 0.3), surf));
   }
   void P;
   void lbox;

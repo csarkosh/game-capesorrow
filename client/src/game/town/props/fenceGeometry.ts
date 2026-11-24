@@ -5,6 +5,7 @@
  * has timber posts and three thin strands; **chain-link** is galvanized posts and a top rail with the mesh as a faint see-through sheet in the town's
  * glass layer (a mesh of real wires would shimmer: the sheet cannot, and the rail and posts say what it is). A gate hangs in the gap the plan left, shut or swung.
  */
+import { withMat } from "../materials.js";
 import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Surface } from "../townSurface.js";
 import type { Detail, TownGround } from "../townTypes.js";
@@ -89,6 +90,8 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
   const old = f.wear;
   const surfBoard = (o: Vec3): Surface => ({ layer: "planks_weathered", frame: { origin: o, u: [0, 1, 0], v: [dx, 0, dz] }, tint: [0.85 + rnd(f.seed, 3) * 0.2, 0.84, 0.8], wear: 0.1 + old * 0.5, wearKind: "moss", wear2: 0.15 + old * 0.2, wearKind2: "grime", streaks2: true });
   const surfPicket = (o: Vec3): Surface => ({ layer: "siding_painted", frame: { origin: o, u: [dx, 0, dz], v: [0, 1, 0] }, tint: paint, wear: old * 0.75, wearKind: "peel", wear2: 0.1, wearKind2: "grime" });
+  // The posts' material: steel for chain link, painted boards for pickets, bare timber for the rest.
+  const postMat = f.kind === "chain" ? "steel" : f.kind === "picket" ? "boards" : "wood";
   // A post is two crossed quads, upright (a leaning one tilts); the low tier leaves the posts of a wire and chain fence out.
   const postBox = (s: number, h: number, w: number, c: Rgb, lean = 0): void => {
     const p = at(s);
@@ -99,8 +102,10 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
     const lz = f.kind === "wire" ? dz : nz;
     const tx = p.x + lx * lean;
     const tz = p.z + lz * lean;
-    m.poly([[p.x - dx * w, p.y, p.z - dz * w], [p.x + dx * w, p.y, p.z + dz * w], [tx + dx * w, p.y + h, tz + dz * w], [tx - dx * w, p.y + h, tz - dz * w]], [nx, 0, nz], c);
-    m.poly([[p.x + dx * w, p.y, p.z + dz * w], [p.x - dx * w, p.y, p.z - dz * w], [tx - dx * w, p.y + h, tz - dz * w], [tx + dx * w, p.y + h, tz + dz * w]], [-nx, 0, -nz], c);
+    withMat(postMat, () => {
+      m.poly([[p.x - dx * w, p.y, p.z - dz * w], [p.x + dx * w, p.y, p.z + dz * w], [tx + dx * w, p.y + h, tz + dz * w], [tx - dx * w, p.y + h, tz - dz * w]], [nx, 0, nz], c);
+      m.poly([[p.x + dx * w, p.y, p.z + dz * w], [p.x - dx * w, p.y, p.z - dz * w], [tx - dx * w, p.y + h, tz - dz * w], [tx + dx * w, p.y + h, tz + dz * w]], [-nx, 0, -nz], c);
+    });
     if (!low) {
       // The post's end face is left out where a board of another fence already lies across its place (a fence that turns at the post).
       const t = (x: number, z: number): number => -dz * x + dx * z;
@@ -109,7 +114,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       const dd = dx * p.x + dz * p.z;
       if (clashing(book, dx, dz, dd, t0, t1, p.y, p.y + h).length === 0) {
         lay(book, { nx: dx, nz: dz, d: dd, t0, t1, y0: p.y, y1: p.y + h });
-        m.poly([[p.x - nx * w, p.y, p.z - nz * w], [p.x + nx * w, p.y, p.z + nz * w], [tx + nx * w, p.y + h, tz + nz * w], [tx - nx * w, p.y + h, tz - nz * w]], [dx, 0, dz], c);
+        withMat(postMat, () => m.poly([[p.x - nx * w, p.y, p.z - nz * w], [p.x + nx * w, p.y, p.z + nz * w], [tx + nx * w, p.y + h, tz + nz * w], [tx - nx * w, p.y + h, tz - nz * w]], [dx, 0, dz], c));
       }
     }
   };
@@ -168,11 +173,11 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       face([nx, 0.2 * lean * sg, nz], 0.045);
       face([-nx, 0.2 * lean * sg, -nz], -0.045);
       // The cap along the top.
-      if (!low && !down) m.poly([[a.x + nx * 0.07, a.y + H, a.z + nz * 0.07], [b.x + nx * 0.07, b.y + H, b.z + nz * 0.07], [b.x - nx * 0.07, b.y + H, b.z - nz * 0.07], [a.x - nx * 0.07, a.y + H, a.z - nz * 0.07]], [0, 1, 0], mixC(TIMBER, [0.3, 0.28, 0.25], 0.4), undefined, { back: true });
+      if (!low && !down) withMat("wood", () => m.poly([[a.x + nx * 0.07, a.y + H, a.z + nz * 0.07], [b.x + nx * 0.07, b.y + H, b.z + nz * 0.07], [b.x - nx * 0.07, b.y + H, b.z - nz * 0.07], [a.x - nx * 0.07, a.y + H, a.z - nz * 0.07]], [0, 1, 0], mixC(TIMBER, [0.3, 0.28, 0.25], 0.4), undefined, { back: true }));
     } else if (f.kind === "picket") {
-      if (!low) for (const y of [0.25, 0.75]) m.poly([[a.x + nx * 0.03, a.y + y, a.z + nz * 0.03], [b.x + nx * 0.03, b.y + y, b.z + nz * 0.03], [b.x + nx * 0.03, b.y + y + 0.07, b.z + nz * 0.03], [a.x + nx * 0.03, a.y + y + 0.07, a.z + nz * 0.03]], [nx, 0, nz], postC, undefined, { back: true });
+      if (!low) for (const y of [0.25, 0.75]) withMat("boards", () => m.poly([[a.x + nx * 0.03, a.y + y, a.z + nz * 0.03], [b.x + nx * 0.03, b.y + y, b.z + nz * 0.03], [b.x + nx * 0.03, b.y + y + 0.07, b.z + nz * 0.03], [a.x + nx * 0.03, a.y + y + 0.07, a.z + nz * 0.03]], [nx, 0, nz], postC, undefined, { back: true }));
       if (low) {
-        m.poly([[a.x - nx * BEHIND, a.y + 0.05, a.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + 0.05, b.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + H - 0.05, b.z - nz * BEHIND], [a.x - nx * BEHIND, a.y + H - 0.05, a.z - nz * BEHIND]], [nx, 0, nz], paint, undefined, { back: true });
+        withMat("boards", () => m.poly([[a.x - nx * BEHIND, a.y + 0.05, a.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + 0.05, b.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + H - 0.05, b.z - nz * BEHIND], [a.x - nx * BEHIND, a.y + H - 0.05, a.z - nz * BEHIND]], [nx, 0, nz], paint, undefined, { back: true }));
         continue;
       }
       const count = Math.max(2, Math.round((s1 - s0) / 0.14));
@@ -189,7 +194,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
         const h = H - 0.05 - (r < old * 0.3 ? 0.18 : 0);
         const o: Vec3 = [px, py, pz];
         const q: Vec3[] = [[px - dx * w, py + 0.04, pz - dz * w], [px + dx * w, py + 0.04, pz + dz * w], [px + dx * w + nx * lean, py + h, pz + dz * w + nz * lean], [px + nx * lean * 1.1, py + h + 0.07, pz + nz * lean * 1.1], [px - dx * w + nx * lean, py + h, pz - dz * w + nz * lean]];
-        m.poly(q, [nx, 0, nz], paint, surfPicket(o), { back: true });
+        withMat("boards", () => m.poly(q, [nx, 0, nz], paint, surfPicket(o), { back: true }));
       }
     } else if (f.kind === "wire") {
       if (low) continue;
@@ -211,7 +216,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       const pb: Vec3 = back([b.x, b.y + 0.06, b.z]);
       gl.poly([pa, pb, back(top(b, 1)), back(top(a, 0))], [nx, 0, nz], [0.45, 0.46, 0.48], undefined, { clear: 0.8 });
       // The top rail stands in front of the posts' plane, so its faces are not within 2 cm of theirs.
-      if (!low) tube(m, [[a.x + nx * RAIL_OUT, a.y + H, a.z + nz * RAIL_OUT], [b.x + nx * RAIL_OUT, b.y + H, b.z + nz * RAIL_OUT]], 0.022, GALV, 3);
+      if (!low) withMat("steel", () => tube(m, [[a.x + nx * RAIL_OUT, a.y + H, a.z + nz * RAIL_OUT], [b.x + nx * RAIL_OUT, b.y + H, b.z + nz * RAIL_OUT]], 0.022, GALV, 3));
     }
   }
   // The gate.
@@ -237,7 +242,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
     if (f.kind === "chain") {
       gl.poly(q, [gx / gl2, 0, gz / gl2], [0.45, 0.46, 0.48], undefined, { clear: 0.8 });
       gl.poly([q[1] as Vec3, q[0] as Vec3, q[3] as Vec3, q[2] as Vec3], [-gx / gl2, 0, -gz / gl2], [0.45, 0.46, 0.48], undefined, { clear: 0.8 });
-      tube(m, [sh(q[3] as Vec3, 0.01), sh(q[2] as Vec3, 0.01)], 0.022, GALV, 3);
+      withMat("steel", () => tube(m, [sh(q[3] as Vec3, 0.01), sh(q[2] as Vec3, 0.01)], 0.022, GALV, 3));
     } else if (f.kind === "wire") {
       for (const y of [0.4, 0.78, 1.1]) tube(m, [sh([hinge.x, hinge.y + y, hinge.z], 0.04), sh([tipX, tipY + y, tipZ], 0.04)], 0.02, [0.3, 0.26, 0.2], 3, true);
     } else {
@@ -245,7 +250,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
       const c: Rgb = f.kind === "board" ? [0.3, 0.28, 0.25] : paint;
       m.poly(q, [gx / gl2, 0, gz / gl2], c, sf);
       m.poly([q[1] as Vec3, q[0] as Vec3, q[3] as Vec3, q[2] as Vec3], [-gx / gl2, 0, -gz / gl2], c, sf);
-      m.prism(sh([hinge.x, hinge.y + 0.2, hinge.z], 0.07), sh([tipX, tipY + hh - 0.05, tipZ], 0.07), 0.025, 3, postC, null);
+      withMat(postMat, () => m.prism(sh([hinge.x, hinge.y + 0.2, hinge.z], 0.07), sh([tipX, tipY + hh - 0.05, tipZ], 0.07), 0.025, 3, postC, null));
     }
   }
 }

@@ -9,6 +9,7 @@
  *
  * The low tier lofts through fewer stations and columns, with simpler wheels, and leaves off the interior, mirrors, seams and handles.
  */
+import { withMat } from "../materials.js";
 import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
@@ -295,10 +296,10 @@ function wheel(m: MeshBuilder, pl: Place, x: number, y: number, z: number, r: nu
   const n = detail === "low" ? 6 : 9;
   const sq = flat ? 0.93 : 1;
   const ring = (rad: number, zz: number): Vec3[] => Array.from({ length: n + 1 }, (_, i) => P(pl, x + Math.cos((i / n) * Math.PI * 2) * rad, y + Math.sin((i / n) * Math.PI * 2) * rad * sq - (flat ? 0.015 : 0), zz));
-  m.grid([ring(r, z - sg * tw), ring(r, z)], P(pl, x, y, z - sg * tw / 2), { colour: TYRE });
+  m.grid([ring(r, z - sg * tw), ring(r, z)], P(pl, x, y, z - sg * tw / 2), { colour: TYRE, mat: "rubber" });
   // The tyre's face and the rim's disc 3 cm proud of it (a hub that stands out, not a second face laid on the first).
-  m.poly(ring(r, z).slice(0, n), D(pl, 0, 0, sg), TYRE);
-  m.poly(ring(r * 0.62, z + sg * 0.03).slice(0, n), D(pl, 0, 0, sg), paintRim);
+  m.poly(ring(r, z).slice(0, n), D(pl, 0, 0, sg), TYRE, "rubber");
+  m.poly(ring(r * 0.62, z + sg * 0.03).slice(0, n), D(pl, 0, 0, sg), paintRim, "steel");
 }
 
 function wheelsOf(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, v: Vehicle, wAt: (x: number) => number): void {
@@ -316,7 +317,7 @@ function interior(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, wAt: (x: number
     const x = sx * o.sx + o.xOff - o.len / 2;
     const y0 = Math.max(0.5 * o.sy, sh.sill + 0.2);
     const w = wAt(sx * o.sx) - 0.15;
-    lbox(m, pl, x - 0.3, x - 0.2, y0, beltAt(sx * o.sx) + 0.3, -w, w, SEAT);
+    withMat("cloth", () => lbox(m, pl, x - 0.3, x - 0.2, y0, beltAt(sx * o.sx) + 0.3, -w, w, SEAT));
   }
   const dx = (sh.mirror - 0.5) * o.sx + o.xOff - o.len / 2;
   lbox(m, pl, dx, dx + 0.3, beltAt(sh.mirror * o.sx) - 0.25, beltAt(sh.mirror * o.sx) + 0.02, -(wAt(sh.mirror * o.sx) - 0.1), wAt(sh.mirror * o.sx) - 0.1, [0.02, 0.02, 0.022]);
@@ -332,8 +333,10 @@ function details(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, v: Vehicle, wAt:
   const wF = wAt(sh.L * o.sx - 0.1);
   const wR = wAt(0.1);
   if (!lowTier) {
-    lbox(m, pl, front - 0.1, front + 0.04, 0.34, 0.62, -(wF - 0.04), wF - 0.04, bumperC);
-    lbox(m, pl, rear - 0.04, rear + 0.1, 0.34, 0.6, -(wR - 0.04), wR - 0.04, bumperC);
+    withMat("steel", () => {
+      lbox(m, pl, front - 0.1, front + 0.04, 0.34, 0.62, -(wF - 0.04), wF - 0.04, bumperC);
+      lbox(m, pl, rear - 0.04, rear + 0.1, 0.34, 0.6, -(wR - 0.04), wR - 0.04, bumperC);
+    });
   }
   // Lamps and a grille at the nose, tail lamps and a plate at the tail.
   const yN = Math.max(beltAt(sh.L * o.sx) - 0.04, 0.7);
@@ -377,7 +380,8 @@ function profileAt(sh: Shape, o: Opts): { wAt: (x: number) => number; beltAt: (x
 
 function loads(m: MeshBuilder, pl: Place, v: Vehicle, sh: Shape, o: Opts): void {
   const rear = o.xOff - o.len / 2;
-  const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, c: Rgb): void => lbox(m, pl, rear + x0, rear + x1, y0, y1, z0, z1, c);
+  const mat = v.kind === "pickup" && v.load === "firewood" ? "wood" : v.load === "gear" ? "plastic" : "steel";
+  const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, c: Rgb): void => withMat(mat, () => lbox(m, pl, rear + x0, rear + x1, y0, y1, z0, z1, c));
   if (v.kind === "pickup" && sh.bed !== undefined) {
     const f = sh.bed.floor * o.sy;
     if (v.load === "gear") {
@@ -419,16 +423,16 @@ function tarpOver(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, seed: number): 
     for (let k = pts.length - 2; k >= 0; k--) row.push(P(pl, L(x), (pts[k] as [number, number])[1], (pts[k] as [number, number])[0]));
     rows.push(row);
   });
-  m.grid(rows, P(pl, L(o.len / 2), 0.7, 0), { colour });
+  m.grid(rows, P(pl, L(o.len / 2), 0.7, 0), { colour, mat: "cloth" });
   // The ends tucked in.
-  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour);
-  m.poly(rows[rows.length - 1] as Vec3[], D(pl, 1, 0, 0), colour);
+  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour, "cloth");
+  m.poly(rows[rows.length - 1] as Vec3[], D(pl, 1, 0, 0), colour, "cloth");
 }
 
 function blocks(m: MeshBuilder, pl: Place, sh: Shape, o: Opts): void {
   for (const a of sh.axles) {
     const x = a * o.sx + o.xOff - o.len / 2;
-    for (const sg of [1, -1]) lbox(m, pl, x - 0.2, x + 0.2, 0, o.sy * 0.36, sg * 0.62 - 0.2, sg * 0.62 + 0.2, [0.22, 0.22, 0.21]);
+    for (const sg of [1, -1]) withMat("concrete", () => lbox(m, pl, x - 0.2, x + 0.2, 0, o.sy * 0.36, sg * 0.62 - 0.2, sg * 0.62 + 0.2, [0.22, 0.22, 0.21]));
   }
 }
 
@@ -472,7 +476,7 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
   // On the full tier a vehicle with a model is that model's (`vehicleFleet.ts`): what is left of it here is the dark of the ground under it.
   if (drawnAsModel(v, detail)) return;
   if (camper) {
-    camperGeometry(m, gl, pl, v, detail);
+    withMat("painted", () => camperGeometry(m, gl, pl, v, detail));
     return;
   }
   const base = wk ? CAB : SHAPES[v.kind as "sedan" | "suv" | "van" | "pickup"];
@@ -483,13 +487,13 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
   const o: Opts = { sx, sw, xOff, len: v.length, paint, age: derelict ? Math.max(v.age, 0.85) : v.age, idle: v.idle, detail, flat: derelict, wheels: !project, seed: v.seed, sy: 1 };
   const { wAt, beltAt } = profileAt(sh, o);
   const T0 = m.vertices;
-  loft(m, gl, pl, sh, o);
+  withMat("painted", () => loft(m, gl, pl, sh, o));
   const T1 = m.vertices;
   if (!project) wheelsOf(m, pl, sh, o, v, wAt);
   else blocks(m, pl, sh, o);
-  if (wk) workTruck(m, pl, v, o, wAt);
-  details(m, pl, sh, o, v, wAt, beltAt);
-  if (detail !== "low") interior(m, pl, sh, o, wAt, beltAt);
+  if (wk) withMat("steel", () => workTruck(m, pl, v, o, wAt));
+  withMat("painted", () => details(m, pl, sh, o, v, wAt, beltAt));
+  if (detail !== "low") withMat("painted", () => interior(m, pl, sh, o, wAt, beltAt));
   loads(m, pl, v, sh, o);
   void T0;
   void T1;
@@ -508,21 +512,23 @@ function workTruck(m: MeshBuilder, pl: Place, v: Vehicle, o: Opts, wAt: (x: numb
   for (const ax of [1.1, 2.55]) for (const sg of [1, -1]) wheel(m, pl, rear + ax, r, sg * 0.98, r, 0.3, sg, o.detail, o.flat, [0.18, 0.18, 0.18]);
   void wAt;
   if (v.load === "flatbed" || v.load === "none") {
-    lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 0.9, 1.0, -1.02, 1.02, [0.1, 0.09, 0.08], [0.18, 0.12, 0.07]);
-    lbox(m, pl, rear + cabX - 0.12, rear + cabX - 0.05, 1.0, 1.9, -1.02, 1.02, paint);
+    withMat("wood", () => lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 0.9, 1.0, -1.02, 1.02, [0.1, 0.09, 0.08], [0.18, 0.12, 0.07]));
+    withMat("painted", () => lbox(m, pl, rear + cabX - 0.12, rear + cabX - 0.05, 1.0, 1.9, -1.02, 1.02, paint));
     for (const sg of [1, -1]) lbox(m, pl, rear + 0.02, rear + cabX - 0.14, 1.0, 1.14, sg * 1.0, sg * 1.04, frame);
-    lbox(m, pl, rear + 0.5, rear + 1.4, 1.0, 1.5, -0.5, 0.45, [0.12, 0.1, 0.07]);
+    withMat("wood", () => lbox(m, pl, rear + 0.5, rear + 1.4, 1.0, 1.5, -0.5, 0.45, [0.12, 0.1, 0.07]));
     lbox(m, pl, rear + 2.0, rear + 3.0, 1.0, 1.25, 0.1, 0.9, [0.3, 0.3, 0.32]);
   } else {
     // A service body: lockers down the sides and a rack over.
-    lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 0.8, 1.55, -1.05, 1.05, paint);
+    withMat("painted", () => lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 0.8, 1.55, -1.05, 1.05, paint));
     for (const z of [-0.95, 0.95]) lbox(m, pl, rear + 0.0, rear + cabX - 0.1, 1.55, 1.62, z - 0.03, z + 0.03, frame);
     lbox(m, pl, rear + 0.1, rear + cabX - 0.1, 1.62, 1.68, -0.2, 0.2, [0.45, 0.46, 0.48]);
     for (const x of [0.5, 1.6, 2.7]) lbox(m, pl, rear + x, rear + x + 0.04, 1.55, 1.71, -0.95, 0.95, frame);
   }
   lbox(m, pl, rear - 0.02, rear + 0.06, 0.55, 0.72, -1.0, 1.0, [0.06, 0.06, 0.06]);
-  lquadX(m, pl, rear - 0.05, 0.62, 0.78, -0.2, 0.2, -1, PLATE);
-  for (const sg of [1, -1]) lquadX(m, pl, rear - 0.026, 0.8, 0.94, sg * 0.5, sg * 0.9, -1, TAIL);
+  withMat("painted", () => {
+    lquadX(m, pl, rear - 0.05, 0.62, 0.78, -0.2, 0.2, -1, PLATE);
+    for (const sg of [1, -1]) lquadX(m, pl, rear - 0.026, 0.8, 0.94, sg * 0.5, sg * 0.9, -1, TAIL);
+  });
 }
 
 function camperGeometry(m: MeshBuilder, gl: MeshBuilder, pl: Place, v: Vehicle, detail: Detail): void {
@@ -538,8 +544,10 @@ function camperGeometry(m: MeshBuilder, gl: MeshBuilder, pl: Place, v: Vehicle, 
   const rear = -(v.length - 0.4) / 2;
   const frame: Rgb = [0.05, 0.05, 0.05];
   // The A-frame tongue and a jack, windows and a door, a stripe.
-  m.prism(P(pl, v.length / 2 - 0.3, 0.6, -0.3), P(pl, v.length / 2 + 1.3, 0.55, 0), 0.04, 4, frame);
-  m.prism(P(pl, v.length / 2 - 0.3, 0.6, 0.3), P(pl, v.length / 2 + 1.3, 0.55, 0), 0.04, 4, frame);
+  withMat("steel", () => {
+    m.prism(P(pl, v.length / 2 - 0.3, 0.6, -0.3), P(pl, v.length / 2 + 1.3, 0.55, 0), 0.04, 4, frame);
+    m.prism(P(pl, v.length / 2 - 0.3, 0.6, 0.3), P(pl, v.length / 2 + 1.3, 0.55, 0), 0.04, 4, frame);
+  });
   for (const sg of [1, -1]) {
     const w = 1.16 * o.sw + 0.004;
     lquadZ(m, pl, sg * w, rear + 1.1, rear + 2.1, 1.3, 1.85, sg as 1 | -1, GLASS_CAR);

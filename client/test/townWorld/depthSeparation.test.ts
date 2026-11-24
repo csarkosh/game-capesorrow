@@ -16,8 +16,10 @@
  * sidewalks, the harbour; all the cells together, so a front against the next building's, a canopy over a neighbour's wall and a
  * prop against a wall are pairs too), in every layer (flat on the ground, standing, the glass, the lettering's sign layer), on three
  * seeds on the full tier and one on the low. Faces that look opposite ways are not a pair: the town's materials cull back faces (none
- * is `doubleSided`), so the back of a thin board is never drawn. Two flat faces of one colour (the same layer and colour to 3 percent,
- * no texture) are not counted either: they cannot be told apart by eye, whichever is drawn.
+ * is `doubleSided`), so the back of a thin board is never drawn. Two faces that show the same thing where they lie over
+ * each other are not counted either, since they cannot be told apart by eye, whichever is drawn: the same layer, colour, tint and wear, and
+ * the same texel at the same place (every material's frame is the world's own, `materials.ts`: two faces of one material in one plane are
+ * laid alike), or an overlap of one material under 10 cm by 10 cm, where the lie of the grain is not seen (`alike`, `nearPlanes.ts`).
  *
  * **What is held apart in the ground's own layer.** The flat layer is drawn a fixed number of depth steps ahead of the terrain (`ahead`, in
  * `townParts.ts`), which is nothing between two flat faces, so marks laid millimetres over a slab would fight with it beyond about 40 m. Each
@@ -81,7 +83,7 @@ describe("the finder of faces the depth buffer cannot tell apart", () => {
     expect(t.length).toBe(2);
     expect(Math.abs((t[0] as Tri).n[1])).toBeLessThan(0.95);
   });
-  it("calls two faces of one flat colour alike, and a different colour or a different layer not", () => {
+  it("calls two faces of one colour and one material alike, and a different colour or a different layer not", () => {
     const same = nearPairs(trianglesOf(mesh([quad(0), quad(0.005, 0)]), "solid"), RULE.gap, 1e-4);
     expect(same.length).toBeGreaterThan(0);
     expect(same.every((q) => alike(q.a, q.b))).toBe(true);

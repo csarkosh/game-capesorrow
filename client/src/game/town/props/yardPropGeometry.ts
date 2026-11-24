@@ -8,6 +8,7 @@ import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Surface } from "../townSurface.js";
 import type { Detail, TownGround } from "../townTypes.js";
 import type { Bin, Gear, Mailbox } from "../../../sim/town/types.js";
+import { withMat } from "../materials.js";
 import { D, P, lbox, lcylY, mixC, placeOn, rnd, tube, type Place } from "./kit.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
@@ -34,18 +35,22 @@ function cart(m: MeshBuilder, pl: Place, b: Bin, tipped: boolean): void {
     const pts = (y: number, h: number, hw: number): Vec3[] => [P(pl, -h, y, -hw), P(pl, h, y, -hw), P(pl, h, y, hw), P(pl, -h, y, hw)];
     const lo = pts(0.06, 0.24, w0);
     const hi = pts(1.02, 0.31, w1);
-    for (let i = 0; i < 4; i++) {
-      const j = (i + 1) % 4;
-      const mx = (lo[i]![0] + lo[j]![0]) / 2 - pl.ox;
-      const mz = (lo[i]![2] + lo[j]![2]) / 2 - pl.oz;
-      m.poly([lo[i] as Vec3, lo[j] as Vec3, hi[j] as Vec3, hi[i] as Vec3], [mx, 0, mz], c);
-    }
-    lbox(m, pl, -0.33, 0.33, 1.02, 1.07, -0.39, 0.39, lid);
-    lbox(m, pl, -0.3, -0.18, 0.0, 0.2, -0.3, 0.3, wheel);
+    withMat("plastic", () => {
+      for (let i = 0; i < 4; i++) {
+        const j = (i + 1) % 4;
+        const mx = (lo[i]![0] + lo[j]![0]) / 2 - pl.ox;
+        const mz = (lo[i]![2] + lo[j]![2]) / 2 - pl.oz;
+        m.poly([lo[i] as Vec3, lo[j] as Vec3, hi[j] as Vec3, hi[i] as Vec3], [mx, 0, mz], c);
+      }
+      lbox(m, pl, -0.33, 0.33, 1.02, 1.07, -0.39, 0.39, lid);
+    });
+    withMat("rubber", () => lbox(m, pl, -0.3, -0.18, 0.0, 0.2, -0.3, 0.3, wheel));
   } else {
-    lbox(m, pl, -0.5, 0.5, 0.0, 0.56, -0.3, 0.3, c);
-    lbox(m, pl, 0.5, 0.56, 0.0, 0.6, -0.34, 0.34, lid);
-    lbox(m, pl, -0.46, -0.3, 0.0, 0.16, -0.28, 0.28, wheel);
+    withMat("plastic", () => {
+      lbox(m, pl, -0.5, 0.5, 0.0, 0.56, -0.3, 0.3, c);
+      lbox(m, pl, 0.5, 0.56, 0.0, 0.6, -0.34, 0.34, lid);
+    });
+    withMat("rubber", () => lbox(m, pl, -0.46, -0.3, 0.0, 0.16, -0.28, 0.28, wheel));
   }
 }
 
@@ -82,10 +87,12 @@ function dumpster(m: MeshBuilder, pl: Place, b: Bin): void {
   const foot = 0.12;
   const top = 1.2;
   // The body: floor, rear wall, front wall that slopes in toward the top; its top is open under the lids.
-  extrude(m, pl, [[-0.95, foot], [0.95, foot], [0.95, 0.45], [0.55, top], [-0.95, top]], -w, w, c, sf, true, [3]);
+  withMat("steel", () => extrude(m, pl, [[-0.95, foot], [0.95, foot], [0.95, 0.45], [0.55, top], [-0.95, top]], -w, w, c, sf, true, [3]));
   // Two skids under the floor. (No fork pockets: boxes standing out of its sides came within millimetres of the wall fittings a bin is put beside.)
   // A skid's top stops 3 cm under the floor: the floor is seen from inside too, and its upper face would lie in the skid's top.
-  for (const z of [-0.42, 0.42]) lbox(m, pl, -0.9, 0.9, 0.0, foot - 0.03, z - 0.06, z + 0.06, [0.04, 0.04, 0.045]);
+  withMat("steel", () => {
+    for (const z of [-0.42, 0.42]) lbox(m, pl, -0.9, 0.9, 0.0, foot - 0.03, z - 0.06, z + 0.06, [0.04, 0.04, 0.045]);
+  });
   // The lids: grey plastic over half the width each, a hand over the rim at the rear hinge.
   const plastic: Rgb = rnd(b.seed, 3) < 0.5 ? [0.05, 0.05, 0.055] : [0.1, 0.1, 0.11];
   const flipped = rnd(b.seed, 2) < 0.35 ? (rnd(b.seed, 4) < 0.5 ? -1 : 1) : 0;
@@ -97,9 +104,9 @@ function dumpster(m: MeshBuilder, pl: Place, b: Bin): void {
     const inner: readonly [boolean, boolean] = sg < 0 ? [true, false] : [false, true];
     if (flipped === sg) {
       // Thrown back on its hinge: it hangs against the rear, its foot a little out from it.
-      extrude(m, pl, [[-1.0, top + 0.07], [-1.22, 0.5], [-1.18, 0.49], [-0.96, top + 0.06]], z0, z1, plastic, undefined, false, [], inner);
+      withMat("plastic", () => extrude(m, pl, [[-1.0, top + 0.07], [-1.22, 0.5], [-1.18, 0.49], [-0.96, top + 0.06]], z0, z1, plastic, undefined, false, [], inner));
     } else {
-      extrude(m, pl, [[-0.99, top + 0.03], [0.6, top + 0.03], [0.6, top + 0.08], [-0.99, top + 0.1]], z0, z1, plastic, undefined, false, [], inner);
+      withMat("plastic", () => extrude(m, pl, [[-0.99, top + 0.03], [0.6, top + 0.03], [0.6, top + 0.08], [-0.99, top + 0.1]], z0, z1, plastic, undefined, false, [], inner));
     }
   }
 }
@@ -111,14 +118,16 @@ function pallets(m: MeshBuilder, pl: Place, b: Bin): void {
   for (let k = 0; k < n; k++) {
     const y = k * 0.15;
     const o = (rnd(b.seed, 10 + k) - 0.5) * 0.12;
-    lbox(m, pl, -0.6 + o, 0.6 + o, y, y + 0.14, -0.5 + o, 0.5 + o, [0.26, 0.2, 0.13], [0.33, 0.26, 0.17]);
+    withMat("wood", () => lbox(m, pl, -0.6 + o, 0.6 + o, y, y + 0.14, -0.5 + o, 0.5 + o, [0.26, 0.2, 0.13], [0.33, 0.26, 0.17]));
   }
 }
 
 function drum(m: MeshBuilder, pl: Place, b: Bin): void {
   const c: Rgb = rnd(b.seed, 1) < 0.5 ? [0.16, 0.06, 0.03] : [0.05, 0.08, 0.15];
-  lcylY(m, pl, 0, 0, 0.0, 0.88, 0.29, 0.29, 8, c, mixC(c, [0.2, 0.2, 0.2], 0.4));
-  for (const y of [0.25, 0.62]) lcylY(m, pl, 0, 0, y, y + 0.04, 0.315, 0.315, 8, mixC(c, [0, 0, 0], 0.4), null);
+  withMat("rusty", () => {
+    lcylY(m, pl, 0, 0, 0.0, 0.88, 0.29, 0.29, 8, c, mixC(c, [0.2, 0.2, 0.2], 0.4));
+    for (const y of [0.25, 0.62]) lcylY(m, pl, 0, 0, y, y + 0.04, 0.315, 0.315, 8, mixC(c, [0, 0, 0], 0.4), null);
+  });
 }
 
 export function binGeometry(g: TownGround, solid: Sink, b: Bin, detail: Detail): void {
@@ -127,7 +136,7 @@ export function binGeometry(g: TownGround, solid: Sink, b: Bin, detail: Detail):
   const pl = placeOn(g, b.x, b.z, b.hx, b.hz, big ? 1.9 : b.kind === "pallets" ? 1.2 : 0.7, big ? 1.3 : b.kind === "pallets" ? 1.0 : 0.7);
   if (detail === "low") {
     if (b.kind === "pallets") return;
-    lbox(m, pl, big ? -0.95 : -0.3, big ? 0.95 : 0.3, 0, big ? 1.25 : b.kind === "drum" ? 0.88 : b.kind === "cart tipped" ? 0.6 : 1.05, big ? -0.62 : -0.3, big ? 0.62 : 0.3, big ? [0.03, 0.09, 0.05] : (CART[b.colour % CART.length] as Rgb));
+    withMat(big ? "steel" : b.kind === "drum" ? "rusty" : "plastic", () => lbox(m, pl, big ? -0.95 : -0.3, big ? 0.95 : 0.3, 0, big ? 1.25 : b.kind === "drum" ? 0.88 : b.kind === "cart tipped" ? 0.6 : 1.05, big ? -0.62 : -0.3, big ? 0.62 : 0.3, big ? [0.03, 0.09, 0.05] : (CART[b.colour % CART.length] as Rgb)));
     return;
   }
   if (b.kind === "cart") cart(m, pl, b, false);
@@ -142,12 +151,14 @@ export function mailboxGeometry(g: TownGround, solid: Sink, mb: Mailbox, detail:
   const pl = placeOn(g, mb.x, mb.z, mb.hx, mb.hz, 0.5, 0.3);
   if (mb.kind === "cluster") {
     const c: Rgb = mb.colour === 0 ? [0.18, 0.19, 0.2] : [0.08, 0.13, 0.1];
-    lbox(m, pl, -0.2, 0.2, 0.0, 1.25, -0.46, 0.46, c);
-    for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
-      const y = 0.4 + r * 0.19;
-      const z = -0.36 + k * 0.24;
-      m.poly([P(pl, 0.225, y, z - 0.09), P(pl, 0.225, y, z + 0.09), P(pl, 0.225, y + 0.15, z + 0.09), P(pl, 0.225, y + 0.15, z - 0.09)], D(pl, 1, 0, 0), mixC(c, [0, 0, 0], 0.4));
-    }
+    withMat("steel", () => {
+      lbox(m, pl, -0.2, 0.2, 0.0, 1.25, -0.46, 0.46, c);
+      for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
+        const y = 0.4 + r * 0.19;
+        const z = -0.36 + k * 0.24;
+        m.poly([P(pl, 0.225, y, z - 0.09), P(pl, 0.225, y, z + 0.09), P(pl, 0.225, y + 0.15, z + 0.09), P(pl, 0.225, y + 0.15, z - 0.09)], D(pl, 1, 0, 0), mixC(c, [0, 0, 0], 0.4));
+      }
+    });
     return;
   }
   const c = MAILBOX[mb.colour % MAILBOX.length] as Rgb;
@@ -156,7 +167,7 @@ export function mailboxGeometry(g: TownGround, solid: Sink, mb: Mailbox, detail:
   // The post leans: the top stands off sideways by `lean` metres.
   const side = D(pl, 0, 0, 1);
   const top: Vec3 = [base[0] + side[0] * lean, base[1] + 1.05, base[2] + side[2] * lean];
-  m.prism([base[0], base[1] - 0.05, base[2]], top, 0.045, 4, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1]);
+  withMat("wood", () => m.prism([base[0], base[1] - 0.05, base[2]], top, 0.045, 4, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1]));
   const bx = top[0];
   const bz = top[2];
   const by = top[1];
@@ -175,13 +186,19 @@ export function mailboxGeometry(g: TownGround, solid: Sink, mb: Mailbox, detail:
     [[corner(-L, 0.18, -W), corner(L, 0.18, -W), corner(L, 0.18, W), corner(-L, 0.18, W)], [0, 1, 0]],
     [[corner(-L, 0.02, -W), corner(L, 0.02, -W), corner(L, 0.02, W), corner(-L, 0.02, W)], [0, -1, 0]],
   ];
-  for (const [pts, h] of sides) m.poly(pts, h, c);
+  withMat("steel", () => {
+    for (const [pts, h] of sides) m.poly(pts, h, c);
+  });
   // The flag, up or down, and the door's seam.
   const up = rnd(mb.seed, 1) < 0.3;
-  m.poly([corner(-0.05, 0.1, W + 0.02), corner(0.05, 0.1, W + 0.02), corner(0.05, up ? 0.3 : 0.14, W + 0.02), corner(-0.05, up ? 0.3 : 0.14, W + 0.02)], hl, [0.5, 0.06, 0.04]);
+  withMat("painted", () => m.poly([corner(-0.05, 0.1, W + 0.02), corner(0.05, 0.1, W + 0.02), corner(0.05, up ? 0.3 : 0.14, W + 0.02), corner(-0.05, up ? 0.3 : 0.14, W + 0.02)], hl, [0.5, 0.06, 0.04]));
 }
 
 function pot(m: MeshBuilder, pl: Place, x: number, z: number, y: number, tilt: number, tiltZ: number, colour: Rgb): void {
+  withMat("steel", () => potBody(m, pl, x, z, y, tilt, tiltZ, colour));
+}
+
+function potBody(m: MeshBuilder, pl: Place, x: number, z: number, y: number, tilt: number, tiltZ: number, colour: Rgb): void {
   const sides = 5;
   const ring = (yy: number, r: number, ox: number, oz: number): Vec3[] => Array.from({ length: sides }, (_, i) => P(pl, x + ox + Math.cos((i / sides) * Math.PI * 2) * r, yy, z + oz + Math.sin((i / sides) * Math.PI * 2) * r));
   const a = ring(y, 0.46, 0, 0);
@@ -206,13 +223,13 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
       const lz = (rnd(o.seed, 3) - 0.5) * 0.14;
       if (low) {
         const p0 = P(pl, 0, 0, 0);
-        m.cylinder(p0[0], p0[2], p0[1], 0.44, o.n * 0.3, 5, wire, mixC(wire, [0.3, 0.28, 0.2], 0.3), 0.4);
+        withMat("steel", () => m.cylinder(p0[0], p0[2], p0[1], 0.44, o.n * 0.3, 5, wire, mixC(wire, [0.3, 0.28, 0.2], 0.3), 0.4));
         break;
       }
       for (let k = 0; k < o.n; k++) pot(m, pl, 0, 0, k * 0.32, lx * (k / 6), lz * (k / 6), k % 2 === 0 ? wire : mixC(wire, [0.04, 0.04, 0.04], 0.55));
       const buoy = BUOY[o.colour % BUOY.length] as Rgb;
-      m.cylinder(P(pl, 0.2, 0, 0.1)[0], P(pl, 0.2, 0, 0.1)[2], P(pl, 0, o.n * 0.3 + 0.32, 0)[1], 0.11, 0.2, 5, buoy, buoy, 0.07);
-      if (!low) tube(m, [P(pl, 0, o.n * 0.3 + 0.3, 0), P(pl, 0.35, o.n * 0.3 + 0.1, 0.2), P(pl, 0.5, 0.05, 0.3)], 0.02, [0.3, 0.25, 0.14], 3);
+      withMat("plastic", () => m.cylinder(P(pl, 0.2, 0, 0.1)[0], P(pl, 0.2, 0, 0.1)[2], P(pl, 0, o.n * 0.3 + 0.32, 0)[1], 0.11, 0.2, 5, buoy, buoy, 0.07));
+      if (!low) withMat("rope", () => tube(m, [P(pl, 0, o.n * 0.3 + 0.3, 0), P(pl, 0.35, o.n * 0.3 + 0.1, 0.2), P(pl, 0.5, 0.05, 0.3)], 0.02, [0.3, 0.25, 0.14], 3));
       break;
     }
     case "buoys":
@@ -221,13 +238,13 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
         const x = (k - o.n / 2) * 0.27;
         const z = (rnd(o.seed, k) - 0.5) * 0.3;
         const p = P(pl, x, 0, z);
-        m.cylinder(p[0], p[2], p[1], 0.13, 0.24, 5, c, c, 0.03);
+        withMat("plastic", () => m.cylinder(p[0], p[2], p[1], 0.13, 0.24, 5, c, c, 0.03));
       }
-      if (!low) tube(m, [P(pl, -o.n * 0.13, 0.12, 0), P(pl, 0, 0.1, 0.1), P(pl, o.n * 0.13, 0.12, 0)], 0.015, [0.35, 0.3, 0.2], 3);
+      if (!low) withMat("rope", () => tube(m, [P(pl, -o.n * 0.13, 0.12, 0), P(pl, 0, 0.1, 0.1), P(pl, o.n * 0.13, 0.12, 0)], 0.015, [0.35, 0.3, 0.2], 3));
       break;
     case "totes": {
       const c = mixC([0.03, 0.12, 0.25], [0.3, 0.1, 0.03], rnd(o.seed, 1)) as Rgb;
-      for (let k = 0; k < o.n; k++) lbox(m, pl, -0.5, 0.5, k * 0.36, k * 0.36 + 0.34, -0.3 + (k % 2) * 0.1, 0.3 + (k % 2) * 0.1, k === 0 ? c : mixC(c, [0.2, 0.2, 0.2], 0.3), mixC(c, [0.15, 0.15, 0.15], 0.3));
+      for (let k = 0; k < o.n; k++) withMat("plastic", () => lbox(m, pl, -0.5, 0.5, k * 0.36, k * 0.36 + 0.34, -0.3 + (k % 2) * 0.1, 0.3 + (k % 2) * 0.1, k === 0 ? c : mixC(c, [0.2, 0.2, 0.2], 0.3), mixC(c, [0.15, 0.15, 0.15], 0.3)));
       break;
     }
     case "coil": {
@@ -236,7 +253,7 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
       for (let k = 0; k < (low ? 1 : 3); k++) {
         const pts: Vec3[] = [];
         for (let i = 0; i <= n; i++) pts.push(P(pl, Math.cos((i / n) * Math.PI * 2) * (0.34 - k * 0.1), 0.05 + k * 0.05, Math.sin((i / n) * Math.PI * 2) * (0.34 - k * 0.1)));
-        tube(m, pts, 0.05, rope, 4);
+        withMat("rope", () => tube(m, pts, 0.05, rope, 4));
       }
       break;
     }
@@ -253,34 +270,36 @@ export function gearGeometry(g: TownGround, solid: Sink, o: Gear, detail: Detail
         rows.push(row);
       }
       const c: Rgb = rnd(o.seed, 99) < 0.5 ? [0.14, 0.2, 0.12] : [0.3, 0.2, 0.08];
-      m.grid(rows, P(pl, 0, -0.3, 0), { colour: c });
+      m.grid(rows, P(pl, 0, -0.3, 0), { colour: c, mat: "rope" });
       break;
     }
     case "firewood": {
       const L = 1.8;
-      lbox(m, pl, -L / 2, L / 2, 0.0, 0.92, -0.2, 0.2, [0.17, 0.1, 0.05]);
-      if (!low) for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) {
-        const z = -0.17 + (r % 2) * 0.05 + 0;
-        void z;
-        const y = 0.12 + r * 0.3;
-        const x = -0.7 + k * 0.45;
-        m.poly(Array.from({ length: 5 }, (_, i) => P(pl, x + Math.cos((i / 5) * Math.PI * 2) * 0.16, y + Math.sin((i / 5) * Math.PI * 2) * 0.13, 0.225)), D(pl, 0, 0, 1), mixC([0.38, 0.28, 0.17], [0.25, 0.17, 0.1], rnd(o.seed, r * 8 + k)));
-      }
-      lbox(m, pl, -L / 2 - 0.05, L / 2 + 0.05, 0.92, 0.97, -0.26, 0.26, [0.05, 0.1, 0.2]);
+      withMat("wood", () => {
+        lbox(m, pl, -L / 2, L / 2, 0.0, 0.92, -0.2, 0.2, [0.17, 0.1, 0.05]);
+        if (!low) for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) {
+          const z = -0.17 + (r % 2) * 0.05 + 0;
+          void z;
+          const y = 0.12 + r * 0.3;
+          const x = -0.7 + k * 0.45;
+          m.poly(Array.from({ length: 5 }, (_, i) => P(pl, x + Math.cos((i / 5) * Math.PI * 2) * 0.16, y + Math.sin((i / 5) * Math.PI * 2) * 0.13, 0.225)), D(pl, 0, 0, 1), mixC([0.38, 0.28, 0.17], [0.25, 0.17, 0.1], rnd(o.seed, r * 8 + k)));
+        }
+      });
+      withMat("cloth", () => lbox(m, pl, -L / 2 - 0.05, L / 2 + 0.05, 0.92, 0.97, -0.26, 0.26, [0.05, 0.1, 0.2]));
       break;
     }
     case "propane": {
       const white: Rgb = [0.5, 0.5, 0.46];
       for (const k of [-0.3, 0.3]) {
         const p = P(pl, 0, 0.0, k);
-        m.cylinder(p[0], p[2], p[1], 0.17, 0.75, 8, white, white, 0.14);
+        withMat("steel", () => m.cylinder(p[0], p[2], p[1], 0.17, 0.75, 8, white, white, 0.14));
       }
       break;
     }
     case "pallet stack":
       for (let k = 0; k < o.n; k++) {
         const off = (rnd(o.seed, 10 + k) - 0.5) * 0.1;
-        lbox(m, pl, -0.6 + off, 0.6 + off, k * 0.15, k * 0.15 + 0.14, -0.5 + off, 0.5 + off, [0.26, 0.2, 0.13], [0.33, 0.26, 0.17]);
+        withMat("wood", () => lbox(m, pl, -0.6 + off, 0.6 + off, k * 0.15, k * 0.15 + 0.14, -0.5 + off, 0.5 + off, [0.26, 0.2, 0.13], [0.33, 0.26, 0.17]));
       }
       break;
   }

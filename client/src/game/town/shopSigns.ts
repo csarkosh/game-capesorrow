@@ -14,6 +14,7 @@
  *
  * Authored, not researched: every size, the glow strengths, the sag and the loose corner of a banner, the colours (`signStyle.ts`).
  */
+import { withMat } from "./materials.js";
 import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
@@ -167,7 +168,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   const obox = (cx: number, y0: number, ww: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side, topFace = true, under = true): void => {
     const mx = pl.x + pl.rx * cx + pl.nx * ((off0 + off1) / 2);
     const mz = pl.z + pl.rz * cx + pl.nz * ((off0 + off1) / 2);
-    solid.box(mx, mz, y0, pl.rx, pl.rz, ww / 2, (off1 - off0) / 2, hh, side, top, topFace, under ? undefined : null);
+    withMat("painted", () => solid.box(mx, mz, y0, pl.rx, pl.rz, ww / 2, (off1 - off0) / 2, hh, side, top, topFace, under ? undefined : null));
   };
   const halfBay = (cx: number): number => Math.max(-bay / 2 + w / 2, Math.min(bay / 2 - w / 2, cx));
   void halfBay;
@@ -211,7 +212,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       // A bracket from the wall and a board hanging from it by two short chains, facing along the wall both ways.
       const out = Math.max(0.6, sign.place.out);
       const yt = y + h / 2;
-      solid.prism([pl.x + pl.nx * 0.02, yt + 0.05, pl.z + pl.nz * 0.02], [pl.x + pl.nx * (out + 0.05), yt + 0.05, pl.z + pl.nz * (out + 0.05)], 0.02, 4, [0.08, 0.08, 0.08]);
+      withMat("steel", () => solid.prism([pl.x + pl.nx * 0.02, yt + 0.05, pl.z + pl.nz * 0.02], [pl.x + pl.nx * (out + 0.05), yt + 0.05, pl.z + pl.nz * (out + 0.05)], 0.02, 4, [0.08, 0.08, 0.08]));
       const bx = pl.x + pl.nx * (out - 0.2);
       const bz = pl.z + pl.nz * (out - 0.2);
       const ww = w;
@@ -224,7 +225,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
           i.face.polyUv([c(-ww / 2, yt - 0.05), c(ww / 2, yt - 0.05), c(ww / 2, yt - 0.05 - h), c(-ww / 2, yt - 0.05 - h)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pb.nx * sg, 0, pb.nz * sg], [1, 1, 1], { glow });
         }
       }
-      solid.box(bx, bz, yt - 0.05 - h, pl.rx, pl.rz, 0.02, ww / 2 + 0.02, h, ink, ink);
+      withMat("painted", () => solid.box(bx, bz, yt - 0.05 - h, pl.rx, pl.rz, 0.02, ww / 2 + 0.02, h, ink, ink));
       break;
     }
     case "glass": {
@@ -244,9 +245,9 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       const top = ground + sign.place.h;
       const px = pl.x;
       const pz = pl.z;
-      solid.box(px, pz, ground - 0.1, pl.rx, pl.rz, 0.08, 0.08, top - ground, [0.28, 0.28, 0.3], [0.28, 0.28, 0.3]);
+      withMat("steel", () => solid.box(px, pz, ground - 0.1, pl.rx, pl.rz, 0.08, 0.08, top - ground, [0.28, 0.28, 0.3], [0.28, 0.28, 0.3]));
       const y0 = top - (gas ? 0.2 : 0.1);
-      solid.box(px, pz, y0 - h + 0.2, pl.rx, pl.rz, w / 2, 0.12, h, ink, scaled(ink, 1.5));
+      withMat("painted", () => solid.box(px, pz, y0 - h + 0.2, pl.rx, pl.rz, w / 2, 0.12, h, ink, scaled(ink, 1.5)));
       quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, 0.15);
       quad(0, y0 - h + 0.2, w - 0.1, h - 0.1, -0.15, true);
       break;
@@ -263,8 +264,10 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         }
       }
       const frame: Rgb = [0.35, 0.25, 0.15];
-      for (const sg of [-1, 1]) solid.prism([pl.x + pl.rx * sg * (w / 2 + 0.02), by + h, pl.z + pl.rz * sg * (w / 2 + 0.02)], [pl.x + pl.rx * sg * (w / 2 + 0.02) + pl.nx * lean, by, pl.z + pl.rz * sg * (w / 2 + 0.02) + pl.nz * lean], 0.015, 4, frame, null);
-      for (const sg of [-1, 1]) solid.prism([pl.x + pl.rx * sg * (w / 2 + 0.02), by + h, pl.z + pl.rz * sg * (w / 2 + 0.02)], [pl.x + pl.rx * sg * (w / 2 + 0.02) - pl.nx * lean, by, pl.z + pl.rz * sg * (w / 2 + 0.02) - pl.nz * lean], 0.015, 4, frame, null);
+      withMat("boards", () => {
+        for (const sg of [-1, 1]) solid.prism([pl.x + pl.rx * sg * (w / 2 + 0.02), by + h, pl.z + pl.rz * sg * (w / 2 + 0.02)], [pl.x + pl.rx * sg * (w / 2 + 0.02) + pl.nx * lean, by, pl.z + pl.rz * sg * (w / 2 + 0.02) + pl.nz * lean], 0.015, 4, frame, null);
+        for (const sg of [-1, 1]) solid.prism([pl.x + pl.rx * sg * (w / 2 + 0.02), by + h, pl.z + pl.rz * sg * (w / 2 + 0.02)], [pl.x + pl.rx * sg * (w / 2 + 0.02) - pl.nx * lean, by, pl.z + pl.rz * sg * (w / 2 + 0.02) - pl.nz * lean], 0.015, 4, frame, null);
+      });
       break;
     }
     case "open": {
@@ -282,7 +285,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       // A board: on two posts at the lot's edge, or a plaque on the wall.
       if (pl.free) {
         const top = ground + sign.place.h + h / 2;
-        for (const sg of [-1, 1]) solid.box(pl.x + pl.rx * sg * (w / 2 - 0.05), pl.z + pl.rz * sg * (w / 2 - 0.05), ground - 0.1, pl.rx, pl.rz, 0.12, 0.12, top - ground + 0.04, [0.3, 0.2, 0.12], [0.3, 0.2, 0.12]);
+        for (const sg of [-1, 1]) withMat("wood", () => solid.box(pl.x + pl.rx * sg * (w / 2 - 0.05), pl.z + pl.rz * sg * (w / 2 - 0.05), ground - 0.1, pl.rx, pl.rz, 0.12, 0.12, top - ground + 0.04, [0.3, 0.2, 0.12], [0.3, 0.2, 0.12]));
         obox(0, top - h, w, h, -0.05, 0.05, ink, scaled(ink, 1.5));
         quad(0, top - h + 0.04, w - 0.08, h - 0.08, 0.08);
         quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.08, true);

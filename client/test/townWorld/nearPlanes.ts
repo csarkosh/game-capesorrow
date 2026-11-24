@@ -9,8 +9,10 @@
  * not a pair: the back face is never drawn.
  */
 import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
+import { MEAN } from "../../src/game/town/materials.js";
+import { TOWN_LAYERS } from "../../src/game/town/townLayers.js";
 
-export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string; /** For flat ground, its depth rank (`townMaterial.ts`): a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly rank: number };
+export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Its three corners' UVs (in tiles), and its first corner's tint and wear: what a textured face shows where. */ readonly uv: readonly [number, number, number, number, number, number]; readonly tint: readonly [number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string; /** For flat ground, its depth rank (`townMaterial.ts`): a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly rank: number };
 
 export type NearPair = { readonly a: Tri; readonly b: Tri; readonly gap: number; readonly area: number; readonly at: readonly [number, number, number] };
 
@@ -60,7 +62,11 @@ export function trianglesOf(arrays: MeshArrays, layer: string, into: Tri[] = [],
     const layerAt = arrays.surface[sv] as number;
     const textured = layerAt >= 0 && layerAt < 1e6;
     const look: Tri["look"] = [textured ? layerAt : -1, arrays.colors[cv] as number, arrays.colors[cv + 1] as number, arrays.colors[cv + 2] as number, arrays.surface[sv + 3] as number, arrays.surface[sv + 7] as number];
-    into.push({ layer, p, n: [nx, ny, nz], d: nx * p[0] + ny * p[1] + nz * p[2], index: t / 3, look, rank: layer === "flat" ? (arrays.surface[sv + 11] as number) : 0, ...(tag === undefined ? {} : { tag }) });
+    const U = arrays.uvs;
+    const [i0, i1, i2] = [(I[t] as number) * 2, (I[t + 1] as number) * 2, (I[t + 2] as number) * 2];
+    const uv: Tri["uv"] = [U[i0] as number, U[i0 + 1] as number, U[i1] as number, U[i1 + 1] as number, U[i2] as number, U[i2 + 1] as number];
+    const tint: Tri["tint"] = [arrays.surface[sv + 4] as number, arrays.surface[sv + 5] as number, arrays.surface[sv + 6] as number, arrays.surface[sv + 1] as number];
+    into.push({ layer, p, n: [nx, ny, nz], d: nx * p[0] + ny * p[1] + nz * p[2], index: t / 3, look, uv, tint, rank: layer === "flat" ? (arrays.surface[sv + 11] as number) : 0, ...(tag === undefined ? {} : { tag }) });
   }
   return into;
 }
@@ -268,11 +274,58 @@ export function patchesOf(pairs: readonly NearPair[], tris: readonly Tri[]): Pat
   return out;
 }
 
+/** The overlap of two triangles of one material, tint and wear under which how the texture lies on each is not looked at: 10 cm by 10 cm. */
+export const SAME_STUFF_AREA = 0.01;
+
+/** The UV a triangle's own mapping gives the point `q` of (or near) its plane: its corners' UVs carried on by the point's place among them. */
+function uvAt(t: Tri, q: readonly [number, number, number]): [number, number] {
+  const [ax, ay, az, bx, by, bz, cx, cy, cz] = t.p;
+  const e1 = [bx - ax, by - ay, bz - az] as const;
+  const e2 = [cx - ax, cy - ay, cz - az] as const;
+  const d = [q[0] - ax, q[1] - ay, q[2] - az] as const;
+  const d11 = e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2];
+  const d12 = e1[0] * e2[0] + e1[1] * e2[1] + e1[2] * e2[2];
+  const d22 = e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2];
+  const b1 = d[0] * e1[0] + d[1] * e1[1] + d[2] * e1[2];
+  const b2 = d[0] * e2[0] + d[1] * e2[1] + d[2] * e2[2];
+  const det = d11 * d22 - d12 * d12;
+  const s = (b1 * d22 - b2 * d12) / det;
+  const r = (b2 * d11 - b1 * d12) / det;
+  return [t.uv[0] + (t.uv[2] - t.uv[0]) * s + (t.uv[4] - t.uv[0]) * r, t.uv[1] + (t.uv[3] - t.uv[1]) * s + (t.uv[5] - t.uv[1]) * r];
+}
+
 /**
- * Whether two faces look alike: both flat colour (no texture layer), the same colour to 3 percent, the same glow and clearness, and drawn in the
- * same layer. Two such faces in one plane can be neither told apart nor flicker to the eye: they are listed, not counted.
+ * Whether two faces look alike where they lie over each other: drawn in the same layer, of the same colour to 3 percent, the same glow and
+ * clearness, and either both with no texture or both of one texture layer, one tint and one wear, laid so that each shows the same texel at the
+ * same place (every material's frame is the world's own, so two faces of one material in one plane do: `materials.ts`). Two such faces in one
+ * plane can be neither told apart nor flicker to the eye: they are listed, not counted.
  */
-export function alike(a: Tri, b: Tri): boolean {
-  if (a.layer !== b.layer || a.look[0] !== -1 || b.look[0] !== -1) return false;
-  return Math.abs(a.look[1] - b.look[1]) < 0.03 && Math.abs(a.look[2] - b.look[2]) < 0.03 && Math.abs(a.look[3] - b.look[3]) < 0.03 && Math.abs(a.look[4] - b.look[4]) < 0.05 && Math.abs(a.look[5] - b.look[5]) < 0.05;
+export function alike(a: Tri, b: Tri, area = Infinity): boolean {
+  if (a.layer !== b.layer || a.look[0] !== b.look[0]) return false;
+  if (!(Math.abs(a.look[1] - b.look[1]) < 0.03 && Math.abs(a.look[2] - b.look[2]) < 0.03 && Math.abs(a.look[3] - b.look[3]) < 0.03 && Math.abs(a.look[4] - b.look[4]) < 0.05 && Math.abs(a.look[5] - b.look[5]) < 0.05)) return false;
+  if (a.look[0] === -1) return true;
+  // The colour each shows: its tint times its layer's own mean (a paintable layer's is the tint itself), to the same 3 percent; and its wear.
+  const layer = TOWN_LAYERS[a.look[0]];
+  const mean = layer === undefined || layer.paintable ? [1, 1, 1] : MEAN[layer.name];
+  for (let k = 0; k < 3; k++) if (Math.abs((a.tint[k] as number) - (b.tint[k] as number)) * (mean[k] as number) > 0.03) return false;
+  if (Math.abs(a.tint[3] - b.tint[3]) > 0.05) return false;
+  // Two faces of one material and one colour that touch over less than a hand's breadth square (a rail's tube against its post, two logs of a
+  // pile, a bar's end in the next bar's) show the same stuff whichever is drawn: the grain may lie another way, which is not seen at that size.
+  if (area < SAME_STUFF_AREA) return true;
+  // The same texel at the same place: a's three corners, under each face's own mapping, to a couple of texels (0.004 of a tile of 512) and
+  // what the faces' own distance apart moves a texture that is not laid square to them (their distance, at the rate a's texture runs).
+  const rate = Math.max(...[0, 1, 2].map((k) => {
+    const j = (k + 1) % 3;
+    const dp = Math.sqrt((a.p[j * 3]! - a.p[k * 3]!) ** 2 + (a.p[j * 3 + 1]! - a.p[k * 3 + 1]!) ** 2 + (a.p[j * 3 + 2]! - a.p[k * 3 + 2]!) ** 2);
+    return Math.sqrt((a.uv[j * 2]! - a.uv[k * 2]!) ** 2 + (a.uv[j * 2 + 1]! - a.uv[k * 2 + 1]!) ** 2) / Math.max(dp, 1e-6);
+  }));
+  for (let k = 0; k < 3; k++) {
+    const q: [number, number, number] = [a.p[k * 3] as number, a.p[k * 3 + 1] as number, a.p[k * 3 + 2] as number];
+    const off = Math.abs((q[0] - b.p[0]) * b.n[0] + (q[1] - b.p[1]) * b.n[1] + (q[2] - b.p[2]) * b.n[2]);
+    const tol = 0.004 + rate * (1.5 * off + 0.002);
+    const ua = uvAt(a, q);
+    const ub = uvAt(b, q);
+    if (Math.abs(ua[0] - ub[0]) > tol || Math.abs(ua[1] - ub[1]) > tol) return false;
+  }
+  return true;
 }

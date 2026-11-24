@@ -16,6 +16,7 @@ import { BALLAST_TOP, BALLAST_TOP_HALF, TIE_PITCH, frameAlong, resample, runLeng
 import { railPair, trestleOver } from "./railGeometry.js";
 import { dipAt, JOINT, bedGrid, jointBars, spill, tieAt, weedsAt, type Look } from "./trackLook.js";
 import { MeshBuilder, scaled, type Rgb } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import { RAIL, TIMBER_WEATHERED } from "./palette.js";
 import { spurOf, type SpurTrack } from "../../sim/town/railSpur.js";
 import type { Detail, Sink, TownGround } from "./townTypes.js";
@@ -205,7 +206,7 @@ function turnout(frames: readonly Frame[], solid: Sink): void {
   const z = f.z + f.nz * side * SWITCH_BESIDE;
   const b: MeshBuilder = solid(x, z);
   const post: Rgb = TIMBER_WEATHERED;
-  b.box(x, z, f.g, 1, 0, 0.1, 0.1, 0.9, post, post);
-  b.box(x, z, f.g + 0.9, f.nx, f.nz, 0.28, 0.02, 0.28, scaled(post, 1.6), scaled(post, 1.6));
-  b.box(x, z, f.g + 0.2, f.nx, f.nz, 0.34, 0.03, 0.05, RAIL, RAIL);
+  withMat("wood", () => b.box(x, z, f.g, 1, 0, 0.1, 0.1, 0.9, post, post));
+  withMat("painted", () => b.box(x, z, f.g + 0.9, f.nx, f.nz, 0.28, 0.02, 0.28, scaled(post, 1.6), scaled(post, 1.6)));
+  withMat("steel", () => b.box(x, z, f.g + 0.2, f.nx, f.nz, 0.34, 0.03, 0.05, RAIL, RAIL));
 }

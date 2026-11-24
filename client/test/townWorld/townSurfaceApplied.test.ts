@@ -54,18 +54,18 @@ describe("the town's first surfaces", () => {
     }
   });
 
-  it("puts the street surfaces on the flat layer and the buildings' on the standing one, and leaves the paint, signs and verges flat colour", () => {
+  it("puts the street surfaces on the flat layer and the buildings' on the standing one, and leaves nothing of either a flat colour", () => {
     const flat = new Map<string, number>();
     const solid = new Map<string, number>();
     for (const batch of town) for (const [name, n] of layersOf(batch.arrays)) (batch.layer === "flat" ? flat : solid).set(name, ((batch.layer === "flat" ? flat : solid).get(name) ?? 0) + n);
     // The streets and ground now wear the new asphalt (utility cuts, cracks), the mud (dirt in the joints, worn ground, the gutter's band), the moss (weeds and grass over the edges) and the rust (covers, drains and lids).
-    expect([...flat.keys()].sort()).toEqual(["asphalt", "asphalt_dark", "gravel", "moss", "mud", "none", "rust", "sidewalk"]);
-    // Paint and verges are still the larger share of nothing: some of the flat layer is not textured.
-    expect(flat.get("none") ?? 0).toBeGreaterThan(0);
+    expect([...flat.keys()].sort()).toEqual(["asphalt", "asphalt_dark", "gravel", "moss", "mud", "rust", "sidewalk"]);
+    // Paint lies in the sidewalk's fine grain, tinted its own colour (`materials.ts`): nothing of the flat layer is without a layer.
+    expect(flat.get("none")).toBeUndefined();
     for (const layer of ["asphalt", "sidewalk"]) expect(flat.get(layer) ?? 0, layer).toBeGreaterThan(1000);
     const walls = ["siding_painted", "brick", "concrete_board", "roof_shingle", "roof_bitumen"];
     for (const layer of walls) expect(solid.get(layer) ?? 0, layer).toBeGreaterThan(100);
-    expect(solid.get("none") ?? 0).toBeGreaterThan(0);
+    // (Glass, wires and the sign atlas's faces carry no layer; `materials.test.ts` finds no other vertex without one.)
   });
 
   it("keeps every textured street polygon's flat colour as it was, its texture's tint apart from it", () => {

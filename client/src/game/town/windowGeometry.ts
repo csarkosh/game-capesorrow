@@ -12,6 +12,7 @@
  * replaced (white vinyl, a different pane) with a chance that grows with the building's age; the cause is the owner's remodel of a
  * decade in the owner's own lifetime, drawn from the building's id and the window's.
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { GLASS_CLEAR, GLASS_TINT, TRIM_WHITE, pane, pickOf, reveal, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { STEP, curtainFolds, patch, paperSheets, slatBlinds, slatColour, verticalBlinds, type Behind } from "./windowDressing.js";
@@ -79,16 +80,16 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     // Trim boards round it, the sill under it (a replaced window has none: it was fitted in the old opening).
     if (!replaced) {
       const bar = 0.08;
-      wquad(out, w, sa - bar, y1, sb + bar, y1 + bar, 0.06, c.trim);
-      wquad(out, w, sa - bar, y0 - 0.07, sa, y1, 0.06, c.trim);
-      wquad(out, w, sb, y0 - 0.07, sb + bar, y1, 0.06, c.trim);
+      wquad(out, w, sa - bar, y1, sb + bar, y1 + bar, 0.06, c.trim, "painted");
+      wquad(out, w, sa - bar, y0 - 0.07, sa, y1, 0.06, c.trim, "painted");
+      wquad(out, w, sb, y0 - 0.07, sb + bar, y1, 0.06, c.trim, "painted");
       if (c.stoneSill !== true) {
         // A closed ledge: its face, top, underside and two ends (seen from below on the street, a sill that is only a face and a top is a gap).
-        wbox(out, w, sa - 0.1, sb + 0.1, y0 - 0.07, y0, 0, 0.1, c.trim, c.trim, true);
+        wbox(out, w, sa - 0.1, sb + 0.1, y0 - 0.07, y0, 0, 0.1, c.trim, c.trim, true, "painted");
       }
     } else {
-      wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.06, fr);
-      wquad(out, w, sa - 0.03, y0 - 0.03, sb + 0.03, y0, 0.06, fr);
+      wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.06, fr, "painted");
+      wquad(out, w, sa - 0.03, y0 - 0.03, sb + 0.03, y0, 0.06, fr, "painted");
     }
   }
   // A plant or a lamp on the sill stands in front of the covering, so the covering is set well behind them, with a liner closing the opening's sides to it.
@@ -114,7 +115,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   };
   if (state === "broken") {
     // No glass: a few shards stand in the corners of the frame, and a torn curtain hangs inside. Nothing behind it is a room: an opaque dark backing closes the hole.
-    backing(DARK_BACK, 0.05);
+    withMat("painted", () => backing(DARK_BACK, 0.05));
     entry.closes = "dark";
     for (const [s, y, sg] of [[sa, y1, 1], [sb, y0, -1], [sa, y0, 1]] as const) {
       const k = 0.18 + hash01(seed + sg + y, 403) * 0.25;
@@ -132,7 +133,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   const glowC = roomLit ? 0.7 : state === "dark" ? 0.12 : 0.18;
   if (!shop) {
     entry.closes = closer;
-    backing(closer === "dark" ? DARK_BACK : closer === "blind" ? scaled(slatColour(seed), 0.5) : scaled(curtainCol, 0.5), closer === "dark" ? 0.05 : glowC);
+    withMat("painted", () => backing(closer === "dark" ? DARK_BACK : closer === "blind" ? scaled(slatColour(seed), 0.5) : scaled(curtainCol, 0.5), closer === "dark" ? 0.05 : glowC));
   }
   const dirt = look.dirt ?? Math.min(0.9, 0.2 + 0.25 * Math.min(1, (2026 - c.era) / 120) + hash01(seed, 643) * 0.25);
   const oldness = Math.min(1, (2026 - c.era) / 130);
@@ -142,10 +143,10 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     // The meeting rail of a double-hung window, and its muntin cut round it, in front of the glass.
     const mid = y0 + height * (replaced ? 0.5 : 0.52);
     const gx = gOff + STEP;
-    wquad(out, w, sa, mid - 0.03, sb, mid + 0.03, gx, fr);
+    wquad(out, w, sa, mid - 0.03, sb, mid + 0.03, gx, fr, "painted");
     if (!replaced && width > 0.7) {
-      wquad(out, w, (sa + sb) / 2 - 0.02, y0, (sa + sb) / 2 + 0.02, mid - 0.03, gx, fr);
-      wquad(out, w, (sa + sb) / 2 - 0.02, mid + 0.03, (sa + sb) / 2 + 0.02, y1, gx, fr);
+      wquad(out, w, (sa + sb) / 2 - 0.02, y0, (sa + sb) / 2 + 0.02, mid - 0.03, gx, fr, "painted");
+      wquad(out, w, (sa + sb) / 2 - 0.02, mid + 0.03, (sa + sb) / 2 + 0.02, y1, gx, fr, "painted");
     }
   }
   if (cover === "papered") paperSheets(behind, sa, sb, y0, y1, Math.min(1, 0.2 + (look.dirt ?? 0.5)));
@@ -155,7 +156,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   } else if (closer === "curtain") {
     const style = Math.floor(hash01(seed, 408) * 3);
     curtainFolds(behind, sa, sb, y1, y0, curtainCol, style, glowC);
-    if (full) out.poly([wat(w, sa, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.03, behind.glass - STEP * 4), wat(w, sa, y1 - 0.03, behind.glass - STEP * 4)], [w.nx, 0, w.nz], [0.25, 0.2, 0.14], undefined, { glow: 0.1 });
+    if (full) withMat("cloth", () => out.poly([wat(w, sa, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.03, behind.glass - STEP * 4), wat(w, sa, y1 - 0.03, behind.glass - STEP * 4)], [w.nx, 0, w.nz], [0.25, 0.2, 0.14], undefined, { glow: 0.1 }));
   } else if (closer === "blind") {
     const col = slatColour(seed);
     if (hash01(seed, 644) < 0.18) verticalBlinds(behind, sa, sb, y1, y0, col);
@@ -176,18 +177,20 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   if (sill === "plant") {
     const s = (sa + sb) / 2 + (hash01(seed, 418) - 0.5) * width * 0.4;
     const p = wat(w, s, y0, gOff - 0.2);
-    out.cylinder(p[0], p[2], y0, 0.07, 0.13, 6, [0.5, 0.25, 0.15], [0.2, 0.12, 0.08]);
+    withMat("painted", () => out.cylinder(p[0], p[2], y0, 0.07, 0.13, 6, [0.5, 0.25, 0.15], [0.2, 0.12, 0.08]));
     // Four leaves at the corners of a square, each narrower than the gap between them, so no two stand through one another.
     const corners: readonly (readonly [number, number])[] = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
     corners.forEach(([cu, cv], k) => {
       const q = wat(w, s + cu * 0.045, y0, gOff - 0.2 - cv * 0.045);
-      out.cylinder(q[0], q[2], y0 + 0.12, 0.03 + hash01(seed + k, 421) * 0.012, 0.14 + k * 0.06, 5, [0.12, 0.3, 0.1], [0.2, 0.42, 0.14], 0.012);
+      withMat("plant", () => out.cylinder(q[0], q[2], y0 + 0.12, 0.03 + hash01(seed + k, 421) * 0.012, 0.14 + k * 0.06, 5, [0.12, 0.3, 0.1], [0.2, 0.42, 0.14], 0.012));
     });
   } else if (sill === "lamp") {
     const s = (sa + sb) / 2 + (hash01(seed, 422) - 0.5) * width * 0.4;
     const p = wat(w, s, y0, gOff - 0.2);
-    out.cylinder(p[0], p[2], y0, 0.04, 0.2, 5, [0.4, 0.3, 0.2], [0.4, 0.3, 0.2]);
-    out.cylinder(p[0], p[2], y0 + 0.18, 0.11, 0.16, 6, [1, 0.85, 0.55], [1, 0.9, 0.6], 0.07);
+    withMat("painted", () => {
+      out.cylinder(p[0], p[2], y0, 0.04, 0.2, 5, [0.4, 0.3, 0.2], [0.4, 0.3, 0.2]);
+      out.cylinder(p[0], p[2], y0 + 0.18, 0.11, 0.16, 6, [1, 0.85, 0.55], [1, 0.9, 0.6], 0.07);
+    });
   }
 }
 
@@ -200,28 +203,32 @@ function acUnit(out: MeshBuilder, w: WallRef, s: number, y0: number, wid: number
   const front = 0.42;
   const yb = y0 + 0.03;
   const yt = yb + h;
-  out.poly([wat(w, a, yb, front), wat(w, b, yb, front), wat(w, b, yt, front), wat(w, a, yt, front)], [w.nx, 0, w.nz], body);
-  out.poly([wat(w, a, yt, 0.05), wat(w, b, yt, 0.05), wat(w, b, yt, front), wat(w, a, yt, front)], [0, 1, 0], scaled(body, 1.1));
-  // Its underside, seen from the street below.
-  out.poly([wat(w, a, yb, 0.05), wat(w, b, yb, 0.05), wat(w, b, yb, front), wat(w, a, yb, front)], [0, -1, 0], scaled(body, 0.6));
-  out.poly([wat(w, a, yb, 0.05), wat(w, a, yb, front), wat(w, a, yt, front), wat(w, a, yt, 0.05)], [-w.tx, 0, -w.tz], scaled(body, 0.82));
-  out.poly([wat(w, b, yb, 0.05), wat(w, b, yb, front), wat(w, b, yt, front), wat(w, b, yt, 0.05)], [w.tx, 0, w.tz], scaled(body, 0.82));
-  // The grille, a dark panel on its face proud of it.
-  out.poly([wat(w, a + 0.05, yb + 0.05, front + 0.025), wat(w, b - 0.05, yb + 0.05, front + 0.025), wat(w, b - 0.05, yb + 0.2, front + 0.025), wat(w, a + 0.05, yb + 0.2, front + 0.025)], [w.nx, 0, w.nz], [0.2, 0.2, 0.2]);
+  withMat("steel", () => {
+    out.poly([wat(w, a, yb, front), wat(w, b, yb, front), wat(w, b, yt, front), wat(w, a, yt, front)], [w.nx, 0, w.nz], body);
+    out.poly([wat(w, a, yt, 0.05), wat(w, b, yt, 0.05), wat(w, b, yt, front), wat(w, a, yt, front)], [0, 1, 0], scaled(body, 1.1));
+    // Its underside, seen from the street below.
+    out.poly([wat(w, a, yb, 0.05), wat(w, b, yb, 0.05), wat(w, b, yb, front), wat(w, a, yb, front)], [0, -1, 0], scaled(body, 0.6));
+    out.poly([wat(w, a, yb, 0.05), wat(w, a, yb, front), wat(w, a, yt, front), wat(w, a, yt, 0.05)], [-w.tx, 0, -w.tz], scaled(body, 0.82));
+    out.poly([wat(w, b, yb, 0.05), wat(w, b, yb, front), wat(w, b, yt, front), wat(w, b, yt, 0.05)], [w.tx, 0, w.tz], scaled(body, 0.82));
+    // The grille, a dark panel on its face proud of it.
+    out.poly([wat(w, a + 0.05, yb + 0.05, front + 0.025), wat(w, b - 0.05, yb + 0.05, front + 0.025), wat(w, b - 0.05, yb + 0.2, front + 0.025), wat(w, a + 0.05, yb + 0.2, front + 0.025)], [w.nx, 0, w.nz], [0.2, 0.2, 0.2]);
+  });
 }
 
 /** A box fan in the window, behind the glass: a square frame and a round face. */
 function boxFan(b: Behind, s: number, y0: number, wid: number, seed: number): void {
-  const { out, w } = b;
-  // Five steps behind the glass: a curtain hangs at two, so the fan's ring (3 cm in front of its plate) is over 4 cm from it.
-  const off = b.glass - STEP * 5;
-  const y = y0 + 0.08;
-  const a = s - wid / 2;
-  const c = s + wid / 2;
-  out.poly([wat(w, a, y, off), wat(w, c, y, off), wat(w, c, y + wid, off), wat(w, a, y + wid, off)], [w.nx, 0, w.nz], [0.82, 0.8, 0.72], undefined, { glow: 0.2 });
-  const cx = s;
-  const cy = y + wid / 2;
-  const ring: Vec3[] = [];
-  for (let k = 0; k < 8; k++) ring.push(wat(w, cx + Math.cos((k / 8) * Math.PI * 2) * wid * 0.4, cy + Math.sin((k / 8) * Math.PI * 2) * wid * 0.4, off + 0.03));
-  out.poly(ring, [w.nx, 0, w.nz], [0.35 + 0.1 * hash01(seed, 651), 0.35, 0.33], undefined, { glow: 0.2 });
+  withMat("steel", () => {
+    const { out, w } = b;
+    // Five steps behind the glass: a curtain hangs at two, so the fan's ring (3 cm in front of its plate) is over 4 cm from it.
+    const off = b.glass - STEP * 5;
+    const y = y0 + 0.08;
+    const a = s - wid / 2;
+    const c = s + wid / 2;
+    out.poly([wat(w, a, y, off), wat(w, c, y, off), wat(w, c, y + wid, off), wat(w, a, y + wid, off)], [w.nx, 0, w.nz], [0.82, 0.8, 0.72], undefined, { glow: 0.2 });
+    const cx = s;
+    const cy = y + wid / 2;
+    const ring: Vec3[] = [];
+    for (let k = 0; k < 8; k++) ring.push(wat(w, cx + Math.cos((k / 8) * Math.PI * 2) * wid * 0.4, cy + Math.sin((k / 8) * Math.PI * 2) * wid * 0.4, off + 0.03));
+    out.poly(ring, [w.nx, 0, w.nz], [0.35 + 0.1 * hash01(seed, 651), 0.35, 0.33], undefined, { glow: 0.2 });
+  });
 }

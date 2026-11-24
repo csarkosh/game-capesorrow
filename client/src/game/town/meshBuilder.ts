@@ -11,6 +11,7 @@
  */
 import { NO_LAYER, TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
 import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Fx, type Surface, type WearKind } from "./townSurface.js";
+import { FALLBACK, currentMat, isMat, matLook, matSurface, unnamed, type MatRef } from "./materials.js";
 
 export type Vec3 = readonly [number, number, number];
 
@@ -18,6 +19,8 @@ export type Vec3 = readonly [number, number, number];
 export type GridLook = {
   readonly colour: Rgb | ((i: number, j: number) => Rgb);
   readonly layer?: LayerName;
+  /** With no `layer`: the material the grid is of (`materials.ts`), in the place of the one its builder is working in. Laid by the grid's own lines, at true scale. */
+  readonly mat?: MatRef;
   readonly tint?: Rgb | ((i: number, j: number) => Rgb);
   readonly uv?: (i: number, j: number) => readonly [number, number];
   readonly wear?: (i: number, j: number) => readonly [number, WearKind];
@@ -91,7 +94,7 @@ export class MeshBuilder {
    * `hint`. Corners are shared by the fan of triangles it is cut into. Returns nothing for a polygon with no area. Given a
    * `surface`, each corner also gets its UV from the surface's frame and its layer and wear.
    */
-  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], surface?: Surface, fx?: Fx): void {
+  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], given?: Surface | MatRef, fx?: Fx): void {
     const n = points.length;
     if (n < 3) return;
     let nx = 0;
@@ -119,6 +122,13 @@ export class MeshBuilder {
     }
     const base = this.vertices;
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
+    // Nothing opaque is a flat colour: a polygon given no surface takes its material's (`materials.ts`), lit by the scene or by itself. Glass stays as it is.
+    let surface: Surface | undefined = isMat(given) ? undefined : given;
+    if (surface === undefined && !((fx?.clear ?? 0) > 0)) {
+      const mat = isMat(given) ? given : currentMat();
+      if (mat === null) unnamed.polygons++;
+      surface = matSurface(mat ?? FALLBACK, points, [nx, ny, nz], typeof (colour as readonly unknown[])[0] === "number" ? (colour as Rgb) : null);
+    }
     const basis = surface === undefined ? null : basisOf(surface);
     const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
     const kind = (WEAR_KIND_NUMBER[surface?.wearKind ?? "moss"] ?? 0) + (surface?.streaks === true ? 0.5 : 0);
@@ -158,16 +168,18 @@ export class MeshBuilder {
       if (flip) this.idx.push(base, base + i, base + i + 1);
       else this.idx.push(base, base + i + 1, base + i);
     }
-    if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx);
+    // A back with no look of its own is of what the front is: its material, or its surface a shade darker.
+    if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx, given);
   }
 
   /** The back of a polygon just laid (`Fx.back`): the same corners, facing `hint` (the front's normal reversed), in the back's own look. */
-  private twin(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], fx: Fx): void {
+  private twin(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], fx: Fx, front?: Surface | MatRef): void {
     const back = fx.back as Exclude<Fx["back"], undefined>;
     const own = back === true ? undefined : back;
     const dark = (c: Rgb): Rgb => greyed(scaled(c, 0.7), 0.25);
     const col: Rgb | readonly Rgb[] = own?.colour ?? (typeof (colour as readonly unknown[])[0] === "number" ? dark(colour as Rgb) : (colour as readonly Rgb[]).map(dark));
-    this.poly(points, hint, col, own?.surface, fx.normal === undefined ? {} : { normal: [-fx.normal[0], -fx.normal[1], -fx.normal[2]] });
+    const like: Surface | MatRef | undefined = front === undefined || isMat(front) || front.tint === undefined ? front : { ...front, tint: scaled(front.tint, 0.7) };
+    this.poly(points, hint, col, own?.surface ?? like, fx.normal === undefined ? {} : { normal: [-fx.normal[0], -fx.normal[1], -fx.normal[2]] });
   }
 
   /**
@@ -212,7 +224,7 @@ export class MeshBuilder {
    * its lines at the fractions `us` and `vs` (each from 0 to 1, ascending), facing `hint`'s side. `colourAt(i, j, p)` is the colour at the
    * corner on line `i` of `us` and `j` of `vs` (the paint times the light there); a textured grid takes it as its tint.
    */
-  litGrid(origin: Vec3, du: Vec3, dv: Vec3, us: readonly number[], vs: readonly number[], hint: Vec3, colourAt: (i: number, j: number, p: Vec3) => Rgb, surface?: Surface, fx?: Fx): void {
+  litGrid(origin: Vec3, du: Vec3, dv: Vec3, us: readonly number[], vs: readonly number[], hint: Vec3, colourAt: (i: number, j: number, p: Vec3) => Rgb, given?: Surface | MatRef, fx?: Fx): void {
     const nu = us.length;
     const nv = vs.length;
     if (nu < 2 || nv < 2) return;
@@ -228,6 +240,13 @@ export class MeshBuilder {
     nz *= k;
     const base = this.vertices;
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
+    // As `poly`: a grid given no surface takes its material's.
+    let surface: Surface | undefined = isMat(given) ? undefined : given;
+    if (surface === undefined && !((fx?.clear ?? 0) > 0)) {
+      const mat = isMat(given) ? given : currentMat();
+      if (mat === null) unnamed.polygons++;
+      surface = matSurface(mat ?? FALLBACK, [origin, [origin[0] + du[0], origin[1] + du[1], origin[2] + du[2]], [origin[0] + dv[0], origin[1] + dv[1], origin[2] + dv[2]]], [nx, ny, nz], null);
+    }
     const basis = surface === undefined ? null : basisOf(surface);
     const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
     const glow = fx?.glow ?? 0;
@@ -263,7 +282,7 @@ export class MeshBuilder {
     }
   }
 
-  quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface, fx?: Fx): void {
+  quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface | MatRef, fx?: Fx): void {
     this.poly([a, b, c, d], hint, colour, surface, fx);
   }
 
@@ -271,7 +290,7 @@ export class MeshBuilder {
    * A vertical wall from `a` to `b` (two points of one height, or any two) up to `top` and down to `bottom`, facing
    * `hint`'s side: the horizontal direction it looks along.
    */
-  wall(ax: number, az: number, bx: number, bz: number, bottom: number, top: number, hint: Vec3, colour: Rgb, surface?: Surface): void {
+  wall(ax: number, az: number, bx: number, bz: number, bottom: number, top: number, hint: Vec3, colour: Rgb, surface?: Surface | MatRef): void {
     this.poly([[ax, bottom, az], [bx, bottom, bz], [bx, top, bz], [ax, top, az]], hint, colour, surface);
   }
 
@@ -418,6 +437,28 @@ export class MeshBuilder {
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     const layer = v.layer === undefined ? NO_LAYER : layerIndex(v.layer);
     const tile = v.layer === undefined ? [1, 1] : (TOWN_LAYERS[layerIndex(v.layer)]?.tile ?? [1, 1]);
+    // Nothing opaque is a flat colour: a grid with no layer takes its material's (a wire and glass stay as they are).
+    let auto: ReturnType<typeof matLook> | null = null;
+    if (v.layer === undefined && v.wire === undefined && !((v.clear ?? 0) > 0)) {
+      const mat = v.mat ?? currentMat();
+      if (mat === null) unnamed.polygons++;
+      auto = matLook(mat ?? FALLBACK);
+    }
+    const autoLayer = auto === null ? NO_LAYER : layerIndex(auto.layer);
+    const autoU: number[] = [];
+    const autoV: number[] = [];
+    if (auto !== null) {
+      const first = (rows[0] as readonly Vec3[])[0] as Vec3;
+      const dist = (a: Vec3, b: Vec3): number => Math.sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
+      for (let i = 0; i < nr; i++) {
+        for (let j = 0; j < nc; j++) {
+          const p = (rows[i] as readonly Vec3[])[j] as Vec3;
+          autoU.push(j === 0 ? first[0] + first[2] : (autoU[i * nc + j - 1] as number) + dist(p, (rows[i] as readonly Vec3[])[j - 1] as Vec3));
+          autoV.push(i === 0 ? first[1] : (autoV[(i - 1) * nc + j] as number) + dist(p, (rows[i - 1] as readonly Vec3[])[j] as Vec3));
+        }
+      }
+    }
+    const autoKind = auto === null ? 0 : (WEAR_KIND_NUMBER[auto.wearKind] ?? 0);
     for (let i = 0; i < nr; i++) {
       for (let j = 0; j < nc; j++) {
         const p = (rows[i] as readonly Vec3[])[j] as Vec3;
@@ -429,7 +470,13 @@ export class MeshBuilder {
         else this.nor.push(0, 1, 0);
         const c = typeof v.colour === "function" ? v.colour(i, j) : v.colour;
         this.col.push(c[0], c[1], c[2], 1);
-        if (layer === NO_LAYER) {
+        if (auto !== null) {
+          // By the grid's own lines: the metres run along its row and down its column to this corner (so the texture is at true scale and
+          // follows the body round), from a place of the body's own.
+          this.uv.push((autoU[i * nc + j] as number) / auto.tile[0], (autoV[i * nc + j] as number) / auto.tile[1]);
+          const t = auto.tint(c);
+          this.srf.push(autoLayer, auto.wear, autoKind, 0, t[0], t[1], t[2], 0, 0, 0, 0, 0);
+        } else if (layer === NO_LAYER) {
           this.uv.push(0, 0);
           this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, v.wire === undefined ? 0 : -Math.max(1, Math.round(v.wire * 1000)), 0);
         } else {

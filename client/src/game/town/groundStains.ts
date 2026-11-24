@@ -65,7 +65,8 @@ export function groundStains(g: TownGround, flat: Sink): void {
       pts.push([ax + px, mark === undefined ? hc + gu * lx + gv * lz + LIFT : g.heightAt(ax + px, az + pz) + LIFT_MARK, az + pz]);
     }
     if (mark === undefined) {
-      flat(ax + x, az + z).poly(pts, [0, 1, 0], colour, undefined, { rank });
+      // A patch with no wear laid over the ground is drifted sand: a patch of gravel.
+      flat(ax + x, az + z).poly(pts, [0, 1, 0], colour, "gravel", { rank });
       return;
     }
     // Laid as wear over the ground's own material: full at the middle, none at the rim, so the material's noise breaks the outline (`townMaterial.ts`). The middle is the fan's first corner; the ring's first closes it.
@@ -202,7 +203,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
               const [qx, qz] = at(sj + o, hw - 0.12);
               const w = 0.08 + 0.05 * roll(seed, 6);
               const l = 0.5 + 0.5 * roll(seed + o, 7);
-              flat(ax + qx, az + qz).poly([[ax + qx - tx * l / 2 - nx * sg * w, g.heightAt(ax + qx, az + qz) + LIFT, az + qz - tz * l / 2 - nz * sg * w], [ax + qx + tx * l / 2 - nx * sg * w * 0.6, g.heightAt(ax + qx, az + qz) + LIFT, az + qz + tz * l / 2 - nz * sg * w * 0.6], [ax + qx + tx * l / 2 + nx * sg * w * 0.6, g.heightAt(ax + qx, az + qz) + LIFT, az + qz + tz * l / 2 + nz * sg * w * 0.6], [ax + qx - tx * l / 2 + nx * sg * w, g.heightAt(ax + qx, az + qz) + LIFT, az + qz - tz * l / 2 + nz * sg * w]], [0, 1, 0], [0.01, 0.01, 0.012], undefined, { rank: 10 });
+              flat(ax + qx, az + qz).poly([[ax + qx - tx * l / 2 - nx * sg * w, g.heightAt(ax + qx, az + qz) + LIFT, az + qz - tz * l / 2 - nz * sg * w], [ax + qx + tx * l / 2 - nx * sg * w * 0.6, g.heightAt(ax + qx, az + qz) + LIFT, az + qz + tz * l / 2 - nz * sg * w * 0.6], [ax + qx + tx * l / 2 + nx * sg * w * 0.6, g.heightAt(ax + qx, az + qz) + LIFT, az + qz + tz * l / 2 + nz * sg * w * 0.6], [ax + qx - tx * l / 2 + nx * sg * w, g.heightAt(ax + qx, az + qz) + LIFT, az + qz - tz * l / 2 + nz * sg * w]], [0, 1, 0], [0.01, 0.01, 0.012], "concrete", { rank: 10 });
             }
           }
           continue;

@@ -13,6 +13,7 @@
  * Every face of a thing that hangs on a wall is put through the face ledger (`faceLedger.ts`) so it stands clear of the wall's other faces. Full tier
  * only; the low tier has none of it (its walls get the material's wear alone).
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { wat, wbox, type WallRef } from "./buildingKit.js";
 import { agingOf } from "./buildingWear.js";
@@ -92,13 +93,13 @@ export function attachmentsGeometry(i: PartsIn): void {
       const c = wat(w, s + lean, y1, 0.095);
       if (!ok(w, Math.min(s, s + lean) - 0.04, Math.max(s, s + lean) + 0.04, y1, top, 0.095)) continue;
       const cb = wat(w, s + lean, y1 + 0.18, 0.095);
-      out.prism(a, lost ? c : cb, 0.032, 4, col, null);
+      withMat("steel", () => out.prism(a, lost ? c : cb, 0.032, 4, col, null));
       // The bottom shoe, kicked out; a bracket band halfway.
-      if (!lost) out.prism(cb, wat(w, s + lean + (end === 0 ? 0.08 : -0.08), y1 - 0.03, 0.16), 0.032, 4, col, null);
+      if (!lost) withMat("steel", () => out.prism(cb, wat(w, s + lean + (end === 0 ? 0.08 : -0.08), y1 - 0.03, 0.16), 0.032, 4, col, null));
       const mid = wat(w, s + lean * 0.5, (top + y1) / 2, 0.095);
       void scaled;
       // The wall under a bracket of an old one is run with rust.
-      if (age > 0.4 && col === GREY && full(i)) out.prism(wat(w, s + lean * 0.5 + (end === 0 ? 0.11 : -0.11), mid[1] - 0.05, 0.05), wat(w, s + lean * 0.8 + (end === 0 ? 0.12 : -0.12), mid[1] - 0.9 * (0.4 + rnd(8)), 0.05), 0.012, 4, RUST, null);
+      if (age > 0.4 && col === GREY && full(i)) withMat("rusty", () => out.prism(wat(w, s + lean * 0.5 + (end === 0 ? 0.11 : -0.11), mid[1] - 0.05, 0.05), wat(w, s + lean * 0.8 + (end === 0 ? 0.12 : -0.12), mid[1] - 0.9 * (0.4 + rnd(8)), 0.05), 0.012, 4, RUST, null));
     }
     if (isFront) return;
     // ---- service: a meter off centre, its conduit and a stapled cable to the corner
@@ -107,15 +108,19 @@ export function attachmentsGeometry(i: PartsIn): void {
       const y0 = floorY + 1.15 + rnd(12) * 0.35;
       const clear = ok(w, s - 0.14, s + 0.14, y0, y0 + 0.5, 0.14);
       if (clear) {
-        wbox(out, w, s - 0.14, s + 0.14, y0, y0 + 0.46, 0, 0.14, [0.62, 0.62, 0.6], [0.62, 0.62, 0.6]);
-        out.prism(wat(w, s, y0 + 0.46, 0.07), wat(w, s + (rnd(13) - 0.5) * 0.06, i.wallTop - 0.25, 0.07), 0.02, 4, CONDUIT, null);
-        out.prism(wat(w, s, y0, 0.07), wat(w, s, i.baseY + 0.08, 0.07), 0.02, 4, CONDUIT, null);
+        wbox(out, w, s - 0.14, s + 0.14, y0, y0 + 0.46, 0, 0.14, [0.62, 0.62, 0.6], [0.62, 0.62, 0.6], undefined, "painted");
+        withMat("steel", () => {
+          out.prism(wat(w, s, y0 + 0.46, 0.07), wat(w, s + (rnd(13) - 0.5) * 0.06, i.wallTop - 0.25, 0.07), 0.02, 4, CONDUIT, null);
+          out.prism(wat(w, s, y0, 0.07), wat(w, s, i.baseY + 0.08, 0.07), 0.02, 4, CONDUIT, null);
+        });
         // A cable stapled along the siding, a little sagged, to the end the service comes from.
         if (rnd(14) < 0.5 + 0.3 * age) {
           const e = rnd(15) < 0.5 ? 0.3 : w.length - 0.3;
           const yc = i.wallTop - 0.55 - rnd(16) * 0.3;
-          out.prism(wat(w, s + 0.05, yc + 0.02, 0.06), wat(w, (s + e) / 2, yc - 0.06, 0.06), 0.01, 3, [0.08, 0.08, 0.09], null);
-          out.prism(wat(w, (s + e) / 2, yc - 0.06, 0.06), wat(w, e, yc + 0.03, 0.06), 0.01, 3, [0.08, 0.08, 0.09], null);
+          withMat("rubber", () => {
+            out.prism(wat(w, s + 0.05, yc + 0.02, 0.06), wat(w, (s + e) / 2, yc - 0.06, 0.06), 0.01, 3, [0.08, 0.08, 0.09], null);
+            out.prism(wat(w, (s + e) / 2, yc - 0.06, 0.06), wat(w, e, yc + 0.03, 0.06), 0.01, 3, [0.08, 0.08, 0.09], null);
+          });
         }
       }
     }
@@ -124,9 +129,11 @@ export function attachmentsGeometry(i: PartsIn): void {
       const s = w.length * (0.1 + 0.8 * rnd(21));
       const y0 = i.baseY + 0.5;
       if (ok(w, s - 0.2, s + 0.2, y0, y0 + 0.4, 0.2)) {
-        wbox(out, w, s - 0.2, s + 0.2, y0, y0 + 0.4, 0, 0.2, [0.55, 0.5, 0.2], [0.58, 0.54, 0.24]);
-        out.prism(wat(w, s, y0 + 0.4, 0.08), wat(w, s, y0 + 1.9, 0.08), 0.025, 4, [0.55, 0.47, 0.15], null);
-        out.prism(wat(w, s, y0, 0.08), wat(w, s, i.baseY + 0.05, 0.08), 0.025, 4, [0.55, 0.47, 0.15], null);
+        wbox(out, w, s - 0.2, s + 0.2, y0, y0 + 0.4, 0, 0.2, [0.55, 0.5, 0.2], [0.58, 0.54, 0.24], undefined, "painted");
+        withMat("steel", () => {
+          out.prism(wat(w, s, y0 + 0.4, 0.08), wat(w, s, y0 + 1.9, 0.08), 0.025, 4, [0.55, 0.47, 0.15], null);
+          out.prism(wat(w, s, y0, 0.08), wat(w, s, i.baseY + 0.05, 0.08), 0.025, 4, [0.55, 0.47, 0.15], null);
+        });
       }
     }
     // ---- a hose bib, a vent louvre, a security light
@@ -134,24 +141,24 @@ export function attachmentsGeometry(i: PartsIn): void {
     if (rnd(30) < 0.55) {
       const s = place(31);
       const p = wat(w, s, i.baseY + 0.45, 0.06);
-      out.prism(p, wat(w, s, i.baseY + 0.45, 0.2), 0.02, 4, [0.55, 0.5, 0.3], null);
+      withMat("steel", () => out.prism(p, wat(w, s, i.baseY + 0.45, 0.2), 0.02, 4, [0.55, 0.5, 0.3], null));
     }
     if (rnd(32) < 0.5 && cooks) {
       const s = place(33);
       const y0 = floorY + 2.1 + rnd(34) * 0.5;
-      if (ok(w, s - 0.25, s + 0.25, y0, y0 + 0.3, 0.12)) wbox(out, w, s - 0.25, s + 0.25, y0, y0 + 0.3, 0, 0.12, [0.32, 0.32, 0.34], [0.36, 0.36, 0.38], true);
+      if (ok(w, s - 0.25, s + 0.25, y0, y0 + 0.3, 0.12)) wbox(out, w, s - 0.25, s + 0.25, y0, y0 + 0.3, 0, 0.12, [0.32, 0.32, 0.34], [0.36, 0.36, 0.38], true, "sheet");
     }
     if (rnd(35) < 0.6 && b.era >= 1970) {
       const s = place(36);
       const y0 = floorY + 2.45;
-      if (ok(w, s - 0.25, s + 0.25, y0, y0 + 0.5, 0.2)) wbox(out, w, s - 0.25, s + 0.25, y0, y0 + 0.2 + 0.3, 0, 0.2, [0.7, 0.7, 0.66], [0.72, 0.72, 0.68]);
+      if (ok(w, s - 0.25, s + 0.25, y0, y0 + 0.5, 0.2)) wbox(out, w, s - 0.25, s + 0.25, y0, y0 + 0.2 + 0.3, 0, 0.2, [0.7, 0.7, 0.66], [0.72, 0.72, 0.68], undefined, "steel");
     }
     if (rnd(37) < 0.5 && !i.vacant) {
       const s = place(38);
       const y0 = floorY + 2.4;
       if (ok(w, s - 0.08, s + 0.08, y0, y0 + 0.14, 0.09)) {
-        wbox(out, w, s - 0.08, s + 0.08, y0, y0 + 0.14, 0, 0.09, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
-        out.prism(wat(w, s, y0 + 0.07, 0.09), wat(w, s, y0 - 0.03, 0.28), 0.03, 4, [0.85, 0.82, 0.6], null);
+        wbox(out, w, s - 0.08, s + 0.08, y0, y0 + 0.14, 0, 0.09, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3], undefined, "painted");
+        withMat("painted", () => out.prism(wat(w, s, y0 + 0.07, 0.09), wat(w, s, y0 - 0.03, 0.28), 0.03, 4, [0.85, 0.82, 0.6], null));
       }
     }
     // ---- an old bracket where a sign hung, with no sign
@@ -159,8 +166,10 @@ export function attachmentsGeometry(i: PartsIn): void {
       const s = place(41);
       const y = floorY + 3.3 + rnd(42) * 0.5;
       if (ok(w, s - 0.05, s + 0.05, y - 0.04, y + 0.04, 0.05)) {
-        out.prism(wat(w, s, y, 0.06), wat(w, s + 0.0, y, 0.8), 0.02, 4, RUST, null);
-        out.prism(wat(w, s, y + 0.35, 0.06), wat(w, s, y, 0.6), 0.012, 4, RUST, null);
+        withMat("rusty", () => {
+          out.prism(wat(w, s, y, 0.06), wat(w, s + 0.0, y, 0.8), 0.02, 4, RUST, null);
+          out.prism(wat(w, s, y + 0.35, 0.06), wat(w, s, y, 0.6), 0.012, 4, RUST, null);
+        });
       }
     }
     // ---- clutter at the foot of the long back or side wall
@@ -182,22 +191,22 @@ export function attachmentsGeometry(i: PartsIn): void {
         if (kind < 0.25) {
           // A stack of pallets, a few high, not squared.
           const hh = 0.14 * (2 + Math.floor(hash01(b.id + c, 613) * 4));
-          out.box(p[0], p[2], y, ux, uz, 0.5, 0.4, hh, PALLET, scaled(PALLET, 1.1));
+          withMat("wood", () => out.box(p[0], p[2], y, ux, uz, 0.5, 0.4, hh, PALLET, scaled(PALLET, 1.1)));
         } else if (kind < 0.45) {
           // Milk crates, three in a stack.
-          out.box(p[0], p[2], y, ux, uz, 0.17, 0.17, 0.45, [0.15, 0.3, 0.55], [0.18, 0.34, 0.6]);
+          withMat("plastic", () => out.box(p[0], p[2], y, ux, uz, 0.17, 0.17, 0.45, [0.15, 0.3, 0.55], [0.18, 0.34, 0.6]));
         } else if (kind < 0.6) {
-          out.cylinder(p[0], p[2], y, 0.2, 0.36, 7, [0.55, 0.52, 0.2], [0.35, 0.35, 0.3]);
+          withMat("steel", () => out.cylinder(p[0], p[2], y, 0.2, 0.36, 7, [0.55, 0.52, 0.2], [0.35, 0.35, 0.3]));
         } else if (kind < 0.75 && cooks) {
           // A grease bin: a lidded steel box.
-          out.box(p[0], p[2], y, ux, uz, 0.45, 0.35, 0.95, [0.22, 0.25, 0.22], [0.18, 0.2, 0.18]);
+          withMat("steel", () => out.box(p[0], p[2], y, ux, uz, 0.45, 0.35, 0.95, [0.22, 0.25, 0.22], [0.18, 0.2, 0.18]));
         } else if (kind < 0.88 && smokes) {
           // A bin of cigarette ends on the wall.
-          out.cylinder(p[0], p[2], y, 0.07, 0.55, 6, [0.25, 0.25, 0.27], [0.1, 0.1, 0.1]);
+          withMat("steel", () => out.cylinder(p[0], p[2], y, 0.07, 0.55, 6, [0.25, 0.25, 0.27], [0.1, 0.1, 0.1]));
         } else if (i.vacant) {
-          out.box(p[0], p[2], y, ux, uz, 0.45, 0.3, 0.05, [0.4, 0.34, 0.24], [0.42, 0.36, 0.26]);
+          withMat("ply", () => out.box(p[0], p[2], y, ux, uz, 0.45, 0.3, 0.05, [0.4, 0.34, 0.24], [0.42, 0.36, 0.26]));
         } else {
-          out.cylinder(p[0], p[2], y, 0.2, 0.55, 6, [0.5, 0.5, 0.52], [0.2, 0.2, 0.2], 0.17);
+          withMat("steel", () => out.cylinder(p[0], p[2], y, 0.2, 0.55, 6, [0.5, 0.5, 0.52], [0.2, 0.2, 0.2], 0.17));
         }
       }
     }

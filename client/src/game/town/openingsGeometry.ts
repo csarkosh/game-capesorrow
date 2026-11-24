@@ -13,7 +13,7 @@
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingUse, TownPlan, WindowState } from "../../sim/town/types.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
-import { cutWall, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { cutWall, doorIn, pairedDoors, pane, pickOf, reveal, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { planFront } from "./frontGeometry.js";
 import type { Xf } from "./roomGeometry.js";
 import { drawWindow, type WinCtx } from "./windowGeometry.js";
@@ -104,6 +104,8 @@ export function blockedWalls(c: PlanCtx): boolean[] {
 
 const DOORS: readonly Rgb[] = [[0.16, 0.09, 0.05], [0.12, 0.2, 0.15], [0.3, 0.1, 0.08], [0.14, 0.14, 0.16], [0.4, 0.36, 0.3], [0.25, 0.3, 0.4]];
 const RAINCOLOURS = { shutter: [0.62, 0.64, 0.66] as Rgb };
+/** A steel door's leaf: smooth paint, with rust coming through in patches. */
+const STEEL_DOOR = { mat: "painted", wear: 0.4, wearKind: "rust" } as const;
 
 export function planWalls(c: PlanCtx): WallPlan[] {
   const { b, walls, out, glass, floorY, wallTop, detail, use } = c;
@@ -172,11 +174,11 @@ function backDoor(c: PlanCtx, w: WallRef, p: WallPlan, seed: number, floorY: num
   if (p.holes.some((h) => h.s0 < hole.s1 + 0.4 && h.s1 > hole.s0 - 0.4)) return;
   p.holes.push(hole);
   p.draws.push(() => {
-    reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.12, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
-    wquad(out, w, hole.s0 + 0.02, hole.y0, hole.s1 - 0.02, hole.y1, -0.1, c.vacant ? [0.42, 0.31, 0.18] : col);
-    wbox(out, w, hole.s0 - 0.1, hole.s1 + 0.1, hole.y0 - 0.12, hole.y0, 0, 0.5, [0.4, 0.4, 0.38], [0.44, 0.44, 0.42], false);
+    // A steel door, painted: the leaf fills its hole and the reveal runs to it.
+    doorIn(out, w, hole, 0.1, c.vacant ? [0.42, 0.31, 0.18] : col, c.vacant ? "ply" : STEEL_DOOR, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
+    wbox(out, w, hole.s0 - 0.1, hole.s1 + 0.1, hole.y0 - 0.12, hole.y0, 0, 0.5, [0.4, 0.4, 0.38], [0.44, 0.44, 0.42], false, "concrete");
     // The light over it: a cage lamp, lit while the building is kept.
-    wbox(out, w, s - 0.1, s + 0.1, hole.y1 + 0.2, hole.y1 + 0.4, 0, 0.18, [0.2, 0.2, 0.2], [0.9, 0.85, 0.7]);
+    wbox(out, w, s - 0.1, s + 0.1, hole.y1 + 0.2, hole.y1 + 0.4, 0, 0.18, [0.2, 0.2, 0.2], [0.9, 0.85, 0.7], undefined, "steel");
   });
   if (b.kind === "warehouse" || b.kind === "storefront" || b.kind === "big-box store") {
     const s2 = hole.s1 + 1.6;
@@ -185,10 +187,9 @@ function backDoor(c: PlanCtx, w: WallRef, p: WallPlan, seed: number, floorY: num
       if (!p.holes.some((h) => h.s0 < dock.s1 + 0.3 && h.s1 > dock.s0 - 0.3)) {
         p.holes.push(dock);
         p.draws.push(() => {
-          reveal(out, w, dock.s0, dock.s1, dock.y0, dock.y1, 0.2, [0.3, 0.3, 0.3]);
-          wquad(out, w, dock.s0, dock.y0, dock.s1, dock.y1, -0.15, RAINCOLOURS.shutter, { layer: "shutter", frame: c.surfaceOf(w).frame, tint: [0.7, 0.7, 0.7], wear: 0.2, wearKind: "rust" });
+          doorIn(out, w, dock, 0.15, RAINCOLOURS.shutter, { layer: "shutter", frame: c.surfaceOf(w).frame, tint: [0.7, 0.7, 0.7], wear: 0.2, wearKind: "rust" }, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3], "steel");
           // The dock: a concrete platform at its sill.
-          wbox(out, w, dock.s0 - 0.3, dock.s1 + 0.3, c.g.heightAt(w.ax + w.tx * s2 + w.nx * 1.2, w.az + w.tz * s2 + w.nz * 1.2) - 0.1, dock.y0, 0, 1.8, [0.4, 0.4, 0.38], [0.45, 0.45, 0.43]);
+          wbox(out, w, dock.s0 - 0.3, dock.s1 + 0.3, c.g.heightAt(w.ax + w.tx * s2 + w.nx * 1.2, w.az + w.tz * s2 + w.nz * 1.2) - 0.1, dock.y0, 0, 1.8, [0.4, 0.4, 0.38], [0.45, 0.45, 0.43], undefined, "concrete");
         });
       }
     }
@@ -206,22 +207,21 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
   const hole: Hole = { s0: doorS - dw / 2, s1: doorS + dw / 2, y0: floorY, y1: floorY + (church ? 3 : 2.2) };
   p.holes.push(hole);
   p.draws.push(() => {
-    reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.2, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
-    if (vacant) wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
-    else {
+    if (vacant) {
+      reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.2, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
+      wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
+    } else {
       const col = pickOf(DOORS, b.id, 481);
-      const L = hole.s0 + 0.03;
-      const R = hole.s1 - 0.03;
-      if (church) {
-        wquad(out, w, L, hole.y0, R, hole.y1, -0.18, col);
-        wquad(out, w, L, hole.y0 + 1.0, R, hole.y1 - 0.2, -0.15, scaled(col, 0.8));
-      } else {
-        // The leaf in four pieces round its light, the glass a step behind it.
-        wquad(out, w, L, hole.y0, R, hole.y0 + 1.0, -0.18, col);
-        wquad(out, w, L, hole.y0 + 1.9, R, hole.y1, -0.18, col);
-        wquad(out, w, L, hole.y0 + 1.0, hole.s0 + 0.15, hole.y0 + 1.9, -0.18, col);
-        wquad(out, w, hole.s1 - 0.15, hole.y0 + 1.0, R, hole.y0 + 1.9, -0.18, col);
-        pane(glass, w, hole.s0 + 0.15, hole.y0 + 1.0, hole.s1 - 0.15, hole.y0 + 1.9, -0.21);
+      if (church) pairedDoors(out, w, hole, 0.16, col, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
+      else {
+        // The leaf fills its hole, and the reveal runs to it: nothing is seen round a door or past it.
+        const o = doorIn(out, w, hole, 0.16, col, "boards", scaled(c.wall, 0.8), [0.4, 0.4, 0.38], undefined, ctxW.trim);
+        // A panel below, and a light above it: glass over a blind or the dark of the hall, so nothing is seen through it.
+        wquad(out, w, hole.s0 + 0.15, hole.y0 + 0.2, hole.s1 - 0.15, hole.y0 + 0.85, o + 0.03, scaled(col, 0.82), "boards");
+        const blind = hash01(b.id, 487) < 0.5;
+        wquad(out, w, hole.s0 + 0.15, hole.y0 + 1.0, hole.s1 - 0.15, hole.y0 + 1.9, o + 0.03, blind ? [0.5, 0.48, 0.42] : [0.05, 0.055, 0.06], blind ? "cloth" : "painted");
+        pane(glass, w, hole.s0 + 0.15, hole.y0 + 1.0, hole.s1 - 0.15, hole.y0 + 1.9, o + 0.06);
+        wquad(out, w, hole.s1 - 0.13, hole.y0 + 0.95, hole.s1 - 0.07, hole.y0 + 1.1, o + 0.03, [0.5, 0.45, 0.3], "steel");
       }
     }
   });
@@ -256,17 +256,23 @@ function industrialFront(c: PlanCtx, plans: WallPlan[]): void {
   p.holes.push(hole);
   const bays = b.kind === "fire hall" && w.length > 9 ? 2 : 1;
   p.draws.push(() => {
-    reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.2, [0.3, 0.3, 0.3]);
+    // The doors fill the hole edge to edge (two leaves meet on a post), and the reveal runs to them: nothing is seen past a big door.
+    let depth = 0.12;
     for (let k = 0; k < bays; k++) {
-      const a = hole.s0 + ((hole.s1 - hole.s0) * k) / bays + 0.02;
-      const e = hole.s0 + ((hole.s1 - hole.s0) * (k + 1)) / bays - 0.02;
-      if (vacant) wquad(out, w, a, hole.y0, e, hole.y1, -0.12, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
+      const a = hole.s0 + ((hole.s1 - hole.s0) * k) / bays;
+      const e = hole.s0 + ((hole.s1 - hole.s0) * (k + 1)) / bays;
+      let o: number;
+      if (vacant) o = wquad(out, w, a, hole.y0, e, hole.y1, -0.12, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
       else {
         const sc: Surface = { layer: "shutter", frame: c.surfaceOf(w).frame, tint: b.kind === "fire hall" ? [1.1, 0.5, 0.4] : [0.75, 0.75, 0.75], wear: 0.25, wearKind: "rust", streaks: true };
-        wquad(out, w, a, hole.y0, e, hole.y1, -0.12, b.kind === "fire hall" ? [0.6, 0.12, 0.1] : [0.18, 0.2, 0.22], sc);
-        if (b.kind === "fire hall") out.poly([wat(w, a + 0.2, hole.y1 - 1.3, -0.1), wat(w, e - 0.2, hole.y1 - 1.3, -0.1), wat(w, e - 0.2, hole.y1 - 0.5, -0.1), wat(w, a + 0.2, hole.y1 - 0.5, -0.1)], [w.nx, 0, w.nz], [0.55, 0.6, 0.62]);
+        o = wquad(out, w, a, hole.y0, e, hole.y1, -0.12, b.kind === "fire hall" ? [0.6, 0.12, 0.1] : [0.18, 0.2, 0.22], sc);
+        if (b.kind === "fire hall") wquad(out, w, a + 0.2, hole.y1 - 1.3, e - 0.2, hole.y1 - 0.5, o + 0.03, [0.55, 0.6, 0.62], "painted");
       }
+      depth = Math.max(depth, -o);
+      // The post between two doors.
+      if (k > 0) wbox(out, w, a - 0.06, a + 0.06, hole.y0, hole.y1, -depth, -depth + 0.06, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3], false, "steel");
     }
+    reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, depth, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3], "steel", "concrete");
   });
   // A man door beside it.
   const ms = doorAt + dw / 2 + 1.2;
@@ -274,8 +280,7 @@ function industrialFront(c: PlanCtx, plans: WallPlan[]): void {
     const md: Hole = { s0: ms - 0.5, s1: ms + 0.5, y0: floorY, y1: floorY + 2.05 };
     p.holes.push(md);
     p.draws.push(() => {
-      reveal(out, w, md.s0, md.s1, md.y0, md.y1, 0.12, [0.3, 0.3, 0.3]);
-      wquad(out, w, md.s0 + 0.02, md.y0, md.s1 - 0.02, md.y1, -0.1, vacant ? [0.42, 0.31, 0.18] : pickOf(DOORS, b.id, 486));
+      doorIn(out, w, md, 0.1, vacant ? [0.42, 0.31, 0.18] : pickOf(DOORS, b.id, 486), vacant ? "ply" : STEEL_DOOR, [0.3, 0.3, 0.3]);
     });
   }
 }
@@ -318,29 +323,25 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
     // A door from another decade: a share of the doors are the modern steel door of a later owner, grey or white.
     const other = hash01(b.id, 491) < 0.3;
     (plans[fi] as WallPlan).draws.push(() => {
-      reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.14, scaled(c.wall, 0.8), [0.4, 0.38, 0.34]);
       if (c.vacant) {
+        reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.14, scaled(c.wall, 0.8), [0.4, 0.38, 0.34]);
         wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
         return;
       }
       const col = other ? pickOf([[0.45, 0.45, 0.43], [0.62, 0.62, 0.6], [0.2, 0.25, 0.3]] as readonly Rgb[], b.id, 492) : pickOf(DOORS, b.id, 493);
-      const L = hole.s0 + 0.02;
-      const R = hole.s1 - 0.02;
-      if (other) {
-        wquad(out, w, L, hole.y0, R, hole.y1, -0.12, col);
-        wquad(out, w, hole.s0 + 0.12, hole.y0 + 0.2, hole.s1 - 0.12, hole.y0 + 0.9, -0.09, scaled(col, 0.85));
-        wquad(out, w, hole.s0 + 0.12, hole.y0 + 1.2, hole.s1 - 0.12, hole.y0 + 1.9, -0.09, scaled(col, 0.85));
-      } else {
-        // A door with a light: the leaf in four pieces round the pane (the pane is not hidden behind a leaf drawn whole), the glass a step behind it.
-        wquad(out, w, L, hole.y0, R, hole.y0 + 1.25, -0.12, col);
-        wquad(out, w, L, hole.y0 + 1.9, R, hole.y1, -0.12, col);
-        wquad(out, w, L, hole.y0 + 1.25, hole.s0 + 0.18, hole.y0 + 1.9, -0.12, col);
-        wquad(out, w, hole.s1 - 0.18, hole.y0 + 1.25, R, hole.y0 + 1.9, -0.12, col);
-        wquad(out, w, hole.s0 + 0.12, hole.y0 + 0.2, hole.s1 - 0.12, hole.y0 + 0.9, -0.09, scaled(col, 0.85));
-        pane(glass, w, hole.s0 + 0.18, hole.y0 + 1.25, hole.s1 - 0.18, hole.y0 + 1.9, -0.15);
+      // The leaf fills its hole, and the reveal runs to it: nothing is seen round the door or past it. A later owner's door is painted steel; the house's own is boards.
+      const leafMat = other ? "painted" : "boards";
+      const o = doorIn(out, w, hole, 0.1, col, leafMat, scaled(c.wall, 0.8), [0.4, 0.38, 0.34], undefined, ctxW.trim);
+      wquad(out, w, hole.s0 + 0.12, hole.y0 + 0.2, hole.s1 - 0.12, hole.y0 + 0.9, o + 0.03, scaled(col, 0.72), leafMat);
+      if (other) wquad(out, w, hole.s0 + 0.12, hole.y0 + 1.2, hole.s1 - 0.12, hole.y0 + 1.9, o + 0.03, scaled(col, 0.72), leafMat);
+      else {
+        // A door with a light: glass over a curtain or the dark of the hall, laid on the leaf, so the light is not seen through.
+        const curtain = hash01(b.id, 494) < 0.6;
+        wquad(out, w, hole.s0 + 0.18, hole.y0 + 1.25, hole.s1 - 0.18, hole.y0 + 1.9, o + 0.03, curtain ? scaled([0.56, 0.53, 0.46], 0.8 + 0.4 * hash01(b.id, 495)) : [0.05, 0.055, 0.06], curtain ? "cloth" : "painted");
+        pane(glass, w, hole.s0 + 0.18, hole.y0 + 1.25, hole.s1 - 0.18, hole.y0 + 1.9, o + 0.06);
       }
       // The handle.
-      out.poly([wat(w, hole.s1 - 0.2, hole.y0 + 1.0, -0.1), wat(w, hole.s1 - 0.14, hole.y0 + 1.0, -0.1), wat(w, hole.s1 - 0.14, hole.y0 + 1.06, -0.1), wat(w, hole.s1 - 0.2, hole.y0 + 1.06, -0.1)], [w.nx, 0, w.nz], [0.6, 0.55, 0.3]);
+      wquad(out, w, hole.s1 - 0.2, hole.y0 + 1.0, hole.s1 - 0.14, hole.y0 + 1.06, o + 0.03, [0.6, 0.55, 0.3], "steel");
     });
   }
 }
