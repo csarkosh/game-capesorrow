@@ -66,7 +66,7 @@ export function roadTone(ctx: RoadWearContext): void {
   const g = (k: number): [number, number, number] => [k, k, k * 0.99];
 
   // ---- Large patches: by what made them.
-  const count = Math.floor((total / 34) * (0.55 + 0.75 * (1 - use * 0.3)) + hashN(k2, 0, 0, 1));
+  const count = Math.floor((total / 20) * (0.55 + 0.75 * (1 - use * 0.3)) + hashN(k2, 0, 0, 1));
   for (let i = 0; i < count; i++) {
     const roll = hashN(k2, i, 0, 2);
     const cs = placeAt(hashN(k2, i, 0, 3));
@@ -79,18 +79,18 @@ export function roadTone(ctx: RoadWearContext): void {
     let over: Over;
     if (roll < 0.28) {
       // A lane resurfaced: new black, the lane wide.
-      hl = 2.2 + 4.5 * hashN(k2, i, 0, 5);
+      hl = 3 + 7 * hashN(k2, i, 0, 5);
       hw = travel * (0.7 + 0.25 * hashN(k2, i, 0, 6));
       ct = side * (travel * 0.95 + (p.cw - travel * 2) * 0.1);
       ang = (hashN(k2, i, 0, 7) - 0.5) * 0.04;
-      over = { layer: "asphalt_dark", tint: g(0.55 + 0.25 * hashN(k2, i, 0, 8)), frame: frameOver, rank: RANK.mark, dirt: 0.04 };
+      over = { layer: "asphalt_dark", tint: g(0.45 + 0.2 * hashN(k2, i, 0, 8)), frame: frameOver, rank: RANK.mark, dirt: 0.04 };
     } else if (roll < 0.58) {
       // An old repair: pale, squared, drier.
       hl = 1.1 + 2.3 * hashN(k2, i, 0, 5);
       hw = 0.7 + Math.min(travel * 0.8, 1.6) * hashN(k2, i, 0, 6);
       ct = side * (0.3 + (p.cw - 1.4 - hw) * hashN(k2, i, 0, 9));
       ang = (hashN(k2, i, 0, 7) - 0.5) * 0.5;
-      over = { layer: "asphalt", tint: g(1.6 + 0.6 * hashN(k2, i, 0, 8)), frame: frameOver, rank: RANK.mark, dirt: 0.03 };
+      over = { layer: "asphalt", tint: g(2.0 + 0.7 * hashN(k2, i, 0, 8)), frame: frameOver, rank: RANK.mark, dirt: 0.03 };
     } else if (roll < 0.8) {
       // A trench along the street, where a main runs under it.
       hl = 2.5 + 3.5 * hashN(k2, i, 0, 5);
@@ -158,8 +158,8 @@ export function roadTone(ctx: RoadWearContext): void {
         const q = (s: number, t: number): P2 => at(s, sg * t);
         if (side.curb) {
           const m = vnoise(ek, s0, 14) * (0.4 + 0.9 * shade);
-          if (m < 0.42) continue;
-          const w = 0.2 + 0.35 * clamp01((m - 0.42) * 2.2);
+          if (m < 0.55) continue;
+          const w = 0.15 + 0.3 * clamp01((m - 0.55) * 2.2);
           surf.flat([q(s0, p.cw - w), q(s1, p.cw - w * (0.7 + 0.6 * hashN(ek, i, 0, 50))), q(s1, p.cw), q(s0, p.cw)], ROADWAY_LIFT + 0.0028, ASPHALT, { layer: "moss", tint: [0.62, 0.78, 0.38], frame: fr(), rank: RANK.detail, dirt: 0.1 });
         } else {
           const m = vnoise(ek ^ 3, s0, 9);

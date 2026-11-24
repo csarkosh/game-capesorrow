@@ -23,6 +23,8 @@ import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.j
 import { wallRef, type WallRef } from "./buildingKit.js";
 import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
 import { blockedWalls, cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
+import { wallTone } from "./wallTone.js";
+import { roofGear, roofSlopeDecals } from "./roofTone.js";
 import { lotDepthOut, partsGeometry } from "./buildingParts.js";
 import type { Xf } from "./roomGeometry.js";
 import { signsGeometry } from "./shopSigns.js";
@@ -242,7 +244,11 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   if (ruin) {
     for (const w of walls) brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
   } else {
-    cutWalls(planCtx, planWalls(planCtx), walls.map((w): [number, number] => [w.topA, w.topB]), baseY);
+    const plans = planWalls(planCtx);
+    const tops = walls.map((w): [number, number] => [w.topA, w.topB]);
+    cutWalls(planCtx, plans, tops, baseY);
+    // The wall's tone at the scale of metres: a dark lower third, patches, a ghost sign (`wallTone.ts`).
+    wallTone({ out, b, walls: refs, holes: plans.map((p) => p.holes), tops, baseY, colour: wall, surfaceOf: (w, band) => wallSurface(refs.indexOf(w), band), frontAt, low: detail === "low", paint: style.paint });
     // The signs are drawn once the building's parts are (below), so each is put where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`).
     if (extra !== undefined && use !== undefined && xf !== null) {
       const sign = extra.sign(f.cx, f.cz);
@@ -290,7 +296,10 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
         const hint: Vec3 = [e2[0] * side * 0.6, 1, e2[1] * side * 0.6];
         out.poly([a, eaveMid, mid, P(-Le, 0, H)], hint, roofColour, fr);
         out.poly([eaveMid, P(Le, side * Se, he), P(Le, 0, H), mid], hint, roofColour, fr);
-      } else out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, fr);
+      } else {
+        out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, fr);
+        roofSlopeDecals(out, b, [a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], fr, e2[0] * side, e2[1] * side, roofColour, side, detail === "low");
+      }
     }
     // The gable ends, on the short walls: the wall's own texture, carried up from the wall below.
     for (const end of [-1, 1]) {
@@ -304,7 +313,9 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const r = Math.max(0.2, L - S);
     for (const side of [-1, 1]) {
       const a = P(-Le, side * Se, he);
-      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H)), e2[0] * side, e2[1] * side));
+      const hipSurface = roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H)), e2[0] * side, e2[1] * side);
+      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, hipSurface);
+      roofSlopeDecals(out, b, [a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], hipSurface, e2[0] * side, e2[1] * side, roofColour, side, detail === "low");
     }
     for (const end of [-1, 1]) {
       const a = P(end * Le, -Se, he);
@@ -314,8 +325,16 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     const Le = L + EAVE;
     const Se = S + EAVE;
     const low0 = P(-Le, -shedSign * Se, H - shedDrop - 0.1);
-    out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour,
-      roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1)), -e2[0] * shedSign, -e2[1] * shedSign));
+    const shedSurface = roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1)), -e2[0] * shedSign, -e2[1] * shedSign);
+    out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour, shedSurface);
+    roofSlopeDecals(out, b, [P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], shedSurface, -e2[0] * shedSign, -e2[1] * shedSign, roofColour, 0, detail === "low");
+  }
+
+  // ---- an antenna or a dish on the ridge
+  if (!ruin && !onPiles && b.kind === "house" && (roofKind === "gable" || roofKind === "hip")) {
+    const s1 = L * (0.25 + 0.5 * hash01(b.id, 6172)) * (hash01(b.id, 6173) < 0.5 ? 1 : -1);
+    const pt = P(s1, 0, H);
+    roofGear(out, b, pt[0], pt[1], pt[2], 0, detail === "low");
   }
 
   // ---- the parts that are not the shell: porches, chimneys, additions, rooftop units, canopies, by the building's kind and its own history (`buildingParts.ts`)

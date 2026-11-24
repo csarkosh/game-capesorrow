@@ -360,7 +360,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
 
   /** The roadway of one stretch of paving, from `a` to `b`: bands across, the outer one at each side ragged where there is no curb. */
   function roadway(p: PS, a: number, b: number, pv: Paving, ix: number, key: number): void {
-    const sf = 0.86 + 0.28 * hashN(key, ix, 0, 1);
+    const sf = 0.78 + 0.5 * hashN(key, ix, 0, 1);
     const { layer, tint } = asphaltOf(pv, sf);
     const use = p.edge.use;
     // The texture runs along the street (its cracks do), shifted by a roll of the stretch's own.

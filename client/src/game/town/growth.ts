@@ -64,14 +64,14 @@ export function plant(x: number, z: number, n: number, tall: number, dry: number
 
 // Dark and olive greens (the standing layer lights them, and the overcast takes a good deal of it); a tuft in six is dead straw.
 const GREENS: readonly Rgb[] = [
-  [0.9, 1.2, 0.26],
-  [1.1, 1.3, 0.38],
-  [0.75, 1.05, 0.22],
-  [1.15, 1.2, 0.42],
+  [0.42, 0.62, 0.16],
+  [0.5, 0.66, 0.2],
+  [0.36, 0.56, 0.13],
+  [0.52, 0.6, 0.22],
 ];
-const STRAW: Rgb = [1.3, 1.05, 0.58];
-const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.5, c[1] * 0.55, c[2] * 0.55];
-const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.3, c[1] * 1.25, c[2] * 1.15];
+const STRAW: Rgb = [0.62, 0.5, 0.28];
+const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.7, c[1] * 0.75, c[2] * 0.6];
+const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.25, c[1] * 1.2, c[2] * 1.0];
 
 /** The blades of one tuft rooted at (x, y, z), into `m`: five to nine, narrow (1 to 3 cm at the foot), 8 to 30 cm tall, leaning different ways, a few bent over. */
 function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: number, blades: number, dry: number, small: boolean): void {
@@ -100,10 +100,13 @@ function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: numbe
     const px = -dz;
     const pz = dx;
     const tip: Vec3 = [fx + dx * lean, tipY, fz + dz * lean];
+    // Lit as if the blade faced up and outward, so the sky's light reaches it (its own normal is sideways, and a blade seen from the side would be black).
+    const nl = Math.sqrt(0.36 * 0.36 + 0.9 * 0.9 + 0.36 * 0.36);
+    const lit: [number, number, number] = [(dx * 0.36) / nl, 0.9 / nl, (dz * 0.36) / nl];
     const colour = tuftDry || r(70 + b) < 0.08 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
     const tipColour = LIGHT_TIP(colour);
     const foot = FOOT_COLOUR(colour);
-    m.poly([[fx - px * w, y, fz - pz * w], [fx + px * w, y, fz + pz * w], tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1 });
+    m.poly([[fx - px * w, y, fz - pz * w], [fx + px * w, y, fz + pz * w], tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1, normal: lit });
   }
 }
 
@@ -181,7 +184,7 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
       const off = 0.14 + 0.16 * roll(b.id * 61 + tag, i + 200);
       const x = x0 + tx * d + awayX * off;
       const z = z0 + tz * d + awayZ * off;
-      lay({ x: x + ax, z: z + az, n: 1, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
+      lay({ x: x + ax, z: z + az, n: 1.15, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
     }
   };
   for (const b of plan.buildings) {
