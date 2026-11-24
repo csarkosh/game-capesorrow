@@ -31,6 +31,8 @@ import { SignAtlas } from "./signAtlas.js";
 import { groundStains } from "./groundStains.js";
 import { growthGeometry, resetGrowth } from "./growth.js";
 import { resetSeam } from "./houseSeam.js";
+import { seamGround } from "./seamGround.js";
+import { seamWall } from "./seamWall.js";
 import { forgetMarks } from "./surface.js";
 import { resetLedger } from "./faceLedger.js";
 import type { Detail, TownGround } from "./townTypes.js";
@@ -127,6 +129,8 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   }
   yield;
   // The tufts that grow in the street's seams and at the feet of walls and posts (`growth.ts`); after the houses, whose doors and walls it reads (`houseSeam.ts`).
+  seamGround(g, sinks.flat, detail);
+  if (detail !== "low") seamWall(g, sinks.solid);
   growthGeometry(g, sinks.solid, detail);
   yield;
 

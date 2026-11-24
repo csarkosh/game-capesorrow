@@ -232,13 +232,13 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
       for (let d = 0.3, i = 0; d < w.length - 0.3; d += 1.8 + 2.4 * roll(b.id * 53 + k, i), i++) {
         // Runs of about three metres are green or bare; the more let go the house, the more of them are green.
         if (roll(b.id * 83 + k, Math.floor(d / 2.5)) > 0.15 + 0.85 * neg * (north ? 1.2 : 1) - (front ? 0.2 : 0)) continue;
-        if (roll(b.id * 59 + k, i + 100) > 0.25 + 0.55 * neg) continue;
+        if (roll(b.id * 59 + k, i + 100) > 0.2 + 0.45 * neg) continue;
         if (doorS !== null && Math.abs(d - doorS.s) < doorS.half + 0.5) continue;
         const off = 0.2 + 0.18 * roll(b.id * 61 + k, i + 200);
         const px = w.ax + w.tx * d + w.nx * off;
         const pz = w.az + w.tz * d + w.nz * off;
         const fernHere = north && roll(b.id * 29 + k, i + 600) < 0.5;
-        lay({ x: px, z: pz, n: fernHere ? 1 : 2 + Math.floor(roll(b.id * 67 + k, i + 300) * 1.99), wide: 0.2, tall: 0.4 + 0.6 * roll(b.id * 71 + k, i + 400), high: 0.1 + 0.28 * neg, dry: 0.2 + 0.5 * neg, ax: w.nx, az: w.nz, ...(fernHere ? { fern: true, blades: 5 } : {}), seed: b.id * 977 + k * 101 + i });
+        lay({ x: px, z: pz, n: fernHere ? 1 : 1 + Math.floor(roll(b.id * 67 + k, i + 300) * 1.99), blades: fernHere ? 5 : 4, wide: 0.2, tall: 0.4 + 0.6 * roll(b.id * 71 + k, i + 400), high: 0.1 + 0.28 * neg, dry: 0.2 + 0.5 * neg, ax: w.nx, az: w.nz, ...(fernHere ? { fern: true } : {}), seed: b.id * 977 + k * 101 + i });
       }
     });
     // Round the steps and the porch's posts: weeds stand where the mower and the broom do not reach.

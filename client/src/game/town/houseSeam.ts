@@ -12,6 +12,13 @@ export type HouseSeam = {
   readonly refs: readonly WallRef[];
   readonly blocked: readonly boolean[];
   readonly frontAt: number;
+  readonly roofKind: string;
+  /** What the house builder has already stood on the ground against a wall (a heat pump, a propane tank): the stations along wall `k`, which the things at the seam keep clear of. */
+  /** The owner's addition, if it has one: the wall it is built against, its extent along it and how far it reaches out. */
+  added: { readonly k: number; readonly s0: number; readonly s1: number; readonly depth: number } | null;
+  /** How far out of its wall's face the foundation stands, by wall. */
+  readonly foundOff: readonly number[];
+  readonly occupied: { readonly k: number; readonly s0: number; readonly s1: number }[];
   readonly baseY: number;
   /** The top of the foundation band, over the lowest ground (it is the same all the way round). */
   readonly foundTop: number;

@@ -29,7 +29,7 @@ export const wallRef = (ax: number, az: number, bx: number, bz: number, nx: numb
 export const wat = (w: WallRef, s: number, y: number, off: number): Vec3 => [w.ax + w.tx * s + w.nx * off, y, w.az + w.tz * s + w.nz * off];
 
 /** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). */
-export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface, fx?: Fx, inward = false): void {
+export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface, fx?: Fx, inward = false): number {
   const k = inward ? -1 : 1;
   // A face asked for where another already stands (a plate over a frame, a sticker over a plate) stands a step further out (`faceLedger.ts`).
   const a = wat(w, s0, y0, off);
@@ -38,6 +38,7 @@ export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: 
   const dir = off < -0.001 ? -1 : 1;
   const o = off + dir * standOff(w.nx * k, w.nz * k, a[0], a[2], b[0], b[2], y0, y1, k === 1 ? dir : (-dir as 1 | -1));
   out.poly([wat(w, s0, y0, o), wat(w, s1, y0, o), wat(w, s1, y1, o), wat(w, s0, y1, o)], [w.nx * k, 0, w.nz * k], colour, surface, fx);
+  return o;
 }
 
 /**
