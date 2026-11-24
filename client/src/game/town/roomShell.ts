@@ -30,6 +30,8 @@ export type RoomIn = {
   readonly trade: Trade | null;
   readonly id: number;
   readonly era: number;
+  /** The decade the tenant opened (0 for a vacant unit). */
+  readonly opened: number;
   readonly detail: Detail;
   readonly openings: readonly Opening[];
   readonly remodel: Unit["remodel"];
@@ -50,6 +52,10 @@ export type Finish = {
   readonly stripe: { readonly y: number; readonly h: number; readonly paint: Rgb } | null;
   /** How stained the surfaces are (0 to 1). */
   readonly stain: number;
+  /** A picture rail: a trim band round the wall under the ceiling, or null. */
+  readonly rail: Rgb | null;
+  /** The colour of the dark squares of a black-and-white tile floor, or null. */
+  readonly checker: Rgb | null;
 };
 
 /** The reciprocal of a layer's mean colour (linear), so a tint of a colour on it comes out that colour on average. A paintable layer carries its paint as it is. */
@@ -75,6 +81,28 @@ const TRADE_STRIPE: Partial<Record<Trade, Rgb>> = { grocery: [0.15, 0.4, 0.2], "
 
 /** The finish of a unit's room, from its record. */
 export function finishOf(r: RoomIn): Finish {
+  let f: Finish = { ...finishBase(r), checker: null, rail: null };
+  const open = r.state !== "vacant for lease" && r.state !== "vacant boarded";
+  if (open) {
+    const type = r.interior.type;
+    const food = r.trade !== null && ["cafe", "diner", "restaurant", "bakery", "espresso stand", "pizza and burgers", "fish market"].includes(r.trade);
+    // A strong dado in another colour and another material than the wall's: tile in a kitchen's room, dark panelling in a bar, a painted band elsewhere.
+    if (type === "bar") f = { ...f, wainscot: { ...lay("planks_weathered", [0.16, 0.09, 0.05]), h: 1.2 }, rail: [0.1, 0.06, 0.04] };
+    else if (food && hash01(r.id, 727) < 0.7) f = { ...f, wainscot: { ...lay(null, pickOf([[0.85, 0.85, 0.8], [0.35, 0.5, 0.45], [0.75, 0.82, 0.85], [0.8, 0.7, 0.55]] as readonly Rgb[], r.id, 728)), h: 1.2 }, rail: [0.25, 0.2, 0.15] };
+    else if (type !== "workshop" && type !== "laundromat" && (f.wainscot === null || hash01(r.id, 723) < 0.3)) {
+      const band: Rgb = hash01(r.id, 724) < 0.4 ? scaled(f.wall.paint, 0.5) : pickOf([[0.2, 0.32, 0.3], [0.4, 0.2, 0.18], [0.22, 0.26, 0.4], [0.5, 0.42, 0.25], [0.25, 0.4, 0.22]] as readonly Rgb[], r.id, 725);
+      f = { ...f, wainscot: { ...lay(null, band), h: 0.9 + hash01(r.id, 726) * 0.3 } };
+    }
+    if (f.rail === null && type !== "workshop" && hash01(r.id, 729) < 0.55) f = { ...f, rail: scaled(f.wall.paint, 0.45) };
+    // A ceiling darker than the walls, so that the room stops glowing as a pale box.
+    if (type !== "bar") f = { ...f, ceiling: { ...f.ceiling, paint: scaled(f.ceiling.paint, 0.6) } };
+  }
+  // An old diner has black-and-white tile.
+  if (open && r.trade === "diner" && (r.opened < 1985 || r.era < 1965) && hash01(r.id, 722) < 0.8) f = { ...f, floor: lay(null, [0.74, 0.72, 0.64]), checker: [0.12, 0.12, 0.13] };
+  return f;
+}
+
+function finishBase(r: RoomIn): Omit<Finish, "checker" | "rail"> {
   const vacant = r.state === "vacant for lease" || r.state === "vacant boarded";
   const type = r.interior.type;
   // A vacant unit keeps the last tenant's paint; an open one its own trade's; a plain one a colour of the town's.
@@ -172,7 +200,7 @@ export type ShellOut = { readonly doorS: number; readonly doorW: number; readonl
  * one), the doorway at the back and its recess or a shut door. `anchors` are the stations of the furnishings' edges on the floor
  * (`s` and `d`), where the floor's grid has its lines so that a shadow under a counter has an edge.
  */
-export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]; d: number[] }): ShellOut {
+export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]; d: number[] }, dw: { s: number; open: boolean; w: number }): ShellOut {
   const { out, xf, floorY } = c;
   const full = c.detail === "full";
   const d0 = 0.15;
@@ -185,9 +213,9 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
   const surf = (f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | undefined => (f.layer === null ? undefined : { layer: f.layer, frame: { origin, u: unit3(u), v: unit3(v) } as UvFrame, tint: f.gain });
   const stain = fin.stain;
   // The doorway: at a station of the back wall where no tall furnishing stands, 0.9 m wide; open (a lit back room) or shut (a door).
-  const doorW = 0.45;
-  const ds = s0 + doorW + 0.35 + hash01(c.seed, 327) * Math.max(0.1, s1 - s0 - 2 * (doorW + 0.35));
-  const open = hash01(c.seed, 741) < 0.55;
+  const doorW = dw.w;
+  const ds = dw.s;
+  const open = dw.open;
 
   // ---- floor
   {
@@ -225,7 +253,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
       y = 0.12;
     }
     const wh = fin.wainscot !== null ? Math.min(fin.wainscot.h, top - 0.8) : 0;
-    if (full && fin.wainscot !== null && wh > y) {
+    if (fin.wainscot !== null && wh > y) {
       bands.push({ y0: y, y1: wh, f: fin.wainscot, kind: "wain" });
       y = wh;
     }
@@ -233,6 +261,11 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
       bands.push({ y0: y, y1: fin.stripe.y, f: fin.wall, kind: "wall" });
       bands.push({ y0: fin.stripe.y, y1: fin.stripe.y + fin.stripe.h, f: lay(null, fin.stripe.paint), kind: "stripe" });
       y = fin.stripe.y + fin.stripe.h;
+    }
+    if (fin.rail !== null && top - 0.62 > y + 0.3) {
+      bands.push({ y0: y, y1: top - 0.62, f: fin.wall, kind: "wall" });
+      bands.push({ y0: top - 0.62, y1: top - 0.5, f: lay(null, fin.rail), kind: "stripe" });
+      y = top - 0.5;
     }
     bands.push({ y0: y, y1: top, f: fin.wall, kind: "wall" });
     return bands;
@@ -302,6 +335,13 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     out.poly(p, xd(xf, 0, -1), [shade(c, leaf, ds - doorW, d1, 0, 0), shade(c, leaf, ds + doorW, d1, 0, 0), shade(c, leaf, ds + doorW, d1, doorTop, 0), shade(c, leaf, ds - doorW, d1, doorTop, 0)], undefined, { glow: 1 });
     const kp = rx(ds + doorW - 0.1, d1 - 0.04, 1.0);
     out.cylinder(kp[0], kp[2], kp[1] - 0.03, 0.035, 0.06, 5, [0.6, 0.5, 0.25], [0.7, 0.6, 0.3]);
+    if (c.type === "counter service" || c.type === "dining room") {
+      // A kitchen's swing door: a lit porthole, a push plate and a kick plate of steel.
+      const ring: Vec3[] = [];
+      for (let m = 0; m < 8; m++) ring.push(rx(ds + Math.cos((m / 8) * Math.PI * 2 + Math.PI / 8) * 0.13, d1 - 0.05, 1.5 + Math.sin((m / 8) * Math.PI * 2 + Math.PI / 8) * 0.13));
+      out.poly(ring, xd(xf, 0, -1), [0.95, 0.82, 0.55], undefined, { glow: c.lit ? 1.6 : 0.2 });
+      out.poly([rx(ds - doorW + 0.04, d1 - 0.05, 0.02), rx(ds + doorW - 0.04, d1 - 0.05, 0.02), rx(ds + doorW - 0.04, d1 - 0.05, 0.3), rx(ds - doorW + 0.04, d1 - 0.05, 0.3)], xd(xf, 0, -1), [shade(c, [0.62, 0.62, 0.65], ds, d1, 0.1, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.1, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.3, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.3, 0)], undefined, { glow: 1 });
+    }
   }
   return { doorS: ds, doorW, open };
 }

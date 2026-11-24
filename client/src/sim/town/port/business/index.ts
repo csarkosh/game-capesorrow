@@ -11,11 +11,11 @@
  * windows above.
  */
 import { OWNER_SURNAMES, PLACE_WORDS, businessName } from "../../names.js";
-import { chance, int, pick, range, weighted, type Rng } from "../../rng.js";
+import { chance, hashSeed, int, pick, range, weighted, type Rng } from "../../rng.js";
 import type { Building, BuildingUse, FrontFrame, Landmark, PastTenant, Sign, Tenant, Trade, Unit, UnitState, UpperUse, WindowState, Opening, WindowCover } from "../../types.js";
 import { NOW, dec, districtOf, r1, r2, sub, type BizCtx, type BizInput } from "./ctx.js";
 import { frontFrame, streetOf } from "./frame.js";
-import { furnish } from "./interiors.js";
+import { furnish, nameHash, partitionDepth } from "./interiors.js";
 import { civicSigns, gasSign, motelSign, pickBrand, unitSigns } from "./signs.js";
 import { fit, openedDecade, pastTrade, pickTrade } from "./tenants.js";
 import { FAMILY, classOf, tradeDef, type TradeDef } from "./trades.js";
@@ -301,10 +301,13 @@ function finish(ctx: BizCtx, d: Draft, takeName: (stem: string) => string): Buil
     const lit = state === "open";
     const opened = tenant?.opened ?? 0;
     const openings = coverAll(rng, g, state, def);
-    const roomDepth = r1(Math.min(frame.depth - 0.3, Math.max(4, Math.min(24, frame.depth - range(rng, 1.5, 4)))));
+    const deep = r1(Math.min(frame.depth - 0.3, Math.max(4, Math.min(24, frame.depth - range(rng, 1.5, 4)))));
     const ceiling = r1(Math.min(b.era < 1930 ? 4.3 : b.era < 1970 ? 3.6 : 3.1, b.height - 0.7) - (g.remodel?.what === "dropped fascia" ? 0.4 : 0));
     const type = vacant ? "empty" : def!.interior;
-    const room = furnish({ rng, type, trade, lit, s0: g.s0, s1: g.s1, depth: roomDepth, ceiling, doorS: g.door.s, doorW: g.door.width, openings });
+    // The back partition stands where the trade's room ends, from the unit's own hash (its building, its place in it, its tenant's name).
+    const sig = hashSeed(hashSeed(ctx.base, b.id * 64 + k), nameHash(tenant?.name ?? ""));
+    const roomDepth = partitionDepth(type, sig, deep);
+    const room = furnish({ rng: { state: hashSeed(sig, 0x726f6f6d) }, type, trade, lit, s0: g.s0, s1: g.s1, depth: roomDepth, ceiling, doorS: g.door.s, doorW: g.door.width, openings, sig, opened, remodel: g.remodel?.decade ?? 0 });
     const usigns = unitSigns({
       rng, ctx, b, frame, district: d.district,
       lotOut: b.kind === "gas station" || b.kind === "motel" ? 0 : d.lotOut,

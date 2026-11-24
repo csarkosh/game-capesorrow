@@ -7,7 +7,8 @@
 import { scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import type { RoomField } from "./roomLight.js";
 import type { Fx } from "./townSurface.js";
-import type { Trade } from "../../sim/town/types.js";
+import type { InteriorType, Trade } from "../../sim/town/types.js";
+import type { Foot, Style } from "./roomFill.js";
 import type { Detail } from "./townTypes.js";
 
 /** A building's front as the world sees it: the frame's origin on the ground, its outward normal, along-direction, and its size. */
@@ -41,6 +42,16 @@ export type Ctx = {
   n: number;
   /** Where the chairs stand, so that two tables do not both put one in a place. */
   readonly chairs: [number, number][];
+  readonly type: InteriorType;
+  /** The wall's paint and the baseboard's colour, for the things built of the same. */
+  readonly paint: Rgb;
+  readonly base: Rgb;
+  /** Where the door is (`s`, and its width), which nothing stands in the way of. */
+  readonly door: { readonly s: number; readonly w: number };
+  /** The footprints of the furnishings, for what must stand clear of them. */
+  readonly feet: readonly Foot[];
+  /** The unit's own fittings: chrome or wood, matched or not, how young. */
+  readonly style: Style;
 };
 
 /** An albedo lit by the room at a point (`yl` over the floor): what the room's light makes of it; a surface close to the floor is dimmer (it is lit from above and shaded by what is round it). */
@@ -128,6 +139,13 @@ export function wallQuad(c: Ctx, wall: WallName, a0: number, a1: number, y0: num
     ? [shade(c, lo, ...wallSD(c, wall, a0, off), y0, 0), shade(c, lo, ...wallSD(c, wall, a1, off), y0, 0), shade(c, albedo, ...wallSD(c, wall, a1, off), y1, 0), shade(c, albedo, ...wallSD(c, wall, a0, off), y1, 0)]
     : albedo;
   c.out.poly(p, wallFacing(c, wall), cols, undefined, { glow: baked ? 1 : glow });
+}
+
+/** A flat polygon on a wall through points (`a` along the wall, `y` over the floor), `off` off it (the steps of `ladder`), lit by the room: a tilted frame, a dartboard. */
+export function wallPoly(c: Ctx, wall: WallName, pts: readonly (readonly [number, number])[], offAsked: number, albedo: Rgb, glow: number = BAKED): void {
+  const off = ladder(offAsked);
+  const baked = glow === BAKED;
+  c.out.poly(pts.map(([a, y]) => wallPoint(c, wall, a, y, off)), wallFacing(c, wall), baked ? pts.map(([a, y]) => shade(c, albedo, ...wallSD(c, wall, a, off), y, 0)) : albedo, undefined, { glow: baked ? 1 : glow });
 }
 
 /** A box standing out from a wall: a frame, a shelf, a board with depth. `depth` is how far it stands out. Lit from the room. */
