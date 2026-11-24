@@ -27,6 +27,9 @@ the game wants to draw it, not as it was made:
   * What is not shipped: the badges and the lettering (the makers' names and logos in the source's badge sheet are not used), the
     plates' lettering (the plates are blank), the sidewall lettering on the tyres (painted out of the image), the source's
     second texture coordinates and its clear-coat and specular maps. Textures are WebP, no larger than TEXTURE_CAP of their kind.
+    The files that ship carry the same images as KTX2: they are re-encoded after this script, outside this repository (a quarter of
+    the GPU memory a WebP image decodes to), and the manifest's sizes and hashes are those files'. After a rebuild the step is run
+    again; the test beside this script fails until it is.
 
 The manifest says what the game needs of each: the neutral id, the footprint (length, width, height), where its wheels touch (the
 four contact points) and their radius, the material roles, the triangle count, what was removed, and its credit id in CREDITS.md.
