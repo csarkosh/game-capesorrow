@@ -17,6 +17,7 @@ import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_S
 import { townClearingX } from "./start.js";
 import { STREET_TUNABLES, streetChannelD } from "./streetField.js";
 import { TOWN_GEN } from "./version.js";
+import { townWildlifeGround } from "./wildlifeGround.js";
 
 export const CAPE_PLACE: CoastOverlay = {
   tunables: {
@@ -43,4 +44,6 @@ export const CAPE_PLACE: CoastOverlay = {
   // On a yard the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and trees.
   shoreStrip: { lift: YARD_LIFT, forestFloor: 0, at: townStripWeight },
   clearing: { z: COVE_Z, x: townClearingX },
+  // Where animals may not be (`wildlifeGround.ts`): the renderer's alone, so no tunable and no part of the level id.
+  wildlifeGround: townWildlifeGround,
 };
