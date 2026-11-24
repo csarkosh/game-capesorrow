@@ -281,7 +281,7 @@ export function bedGrid(b: MeshBuilder, frames: readonly Frame[], look: Look, lo
         const st = stretches[i] as Stretch;
         const low = (lows[i] as number[])[j] as number;
         const off = (offs[i] as number[])[j] as number;
-        if (low > 0) return [0.35 + 0.6 * low * Math.max(0.4, st.mud), "damp"];
+        if (low > 0) return [0.4 + 0.55 * low * Math.max(0.4, st.mud), "grime"];
         const a = Math.abs(off);
         if (st.age > 0.5 && a > 1.1) return [(st.age - 0.5) * 0.9 * (0.4 + st.weeds), "growth"];
         return [0, "moss"];

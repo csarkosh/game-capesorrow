@@ -179,7 +179,7 @@ export function shoulderSurface(look: Look, f: Frame): Surface {
   return {
     layer: "gravel",
     frame: groundFrame({ x: 0, z: 0 }),
-    tint: [0.5 - 0.1 * st.age, 0.46 - 0.12 * st.age, 0.41 - 0.16 * st.age],
+    tint: [0.34 - 0.08 * st.age, 0.31 - 0.09 * st.age, 0.27 - 0.1 * st.age],
     wear: 0.25 + 0.3 * st.age,
     wearKind: "grime",
     wear2: 0.15 + 0.7 * st.weeds * st.age,
@@ -403,7 +403,7 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
     return clamp01((lat - (hw - 0.6)) / 0.6) * 0.6 + 0.12;
   };
   const spec: SurfaceSpec = c.paved
-    ? { layer: "asphalt", tint: [1.1, 1.08, 1.05], wear: worn, wearKind: "grime", wear2: 0.18, wearKind2: "damp" }
+    ? { layer: "asphalt", tint: [1.1, 1.08, 1.05], wear: worn, wearKind: "grime", wear2: 0.18, wearKind2: "grime" }
     : { layer: "planks_weathered", tint: [1.05, 0.95, 0.85], wear: worn, wearKind: "grime", wear2: 0.12, wearKind2: "moss" };
   // The panel: a grid of the roadway's width in five columns and four rows (the ramps, the flat, the ramps), so the wear can be said at its edges.
   const lats = [-hw, -hw * 0.6, 0, hw * 0.6, hw];
