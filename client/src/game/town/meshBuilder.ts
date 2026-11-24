@@ -49,6 +49,92 @@ export const SURFACE_FLOATS = 12;
 
 const ONE: Rgb = [1, 1, 1];
 
+/**
+ * A run of 32-bit numbers that grows: what a builder keeps its vertices in. Not a plain array, which holds eight bytes a number where the
+ * mesh will hold four, and is copied whole into a typed array at the end: a town's 36 million numbers were 290 MB of the tab's memory while
+ * it was built, and 146 MB more as they were copied. It doubles as it fills, and `taken` hands over exactly what was written.
+ */
+abstract class Run<T extends Float32Array | Uint32Array> {
+  data: T;
+  length = 0;
+  protected constructor(first: T) {
+    this.data = first;
+  }
+  protected abstract make(size: number): T;
+  /** Room for `more` numbers after the last. */
+  protected room(more: number): void {
+    if (this.length + more <= this.data.length) return;
+    let size = Math.max(256, this.data.length * 2);
+    while (size < this.length + more) size *= 2;
+    const grown = this.make(size);
+    grown.set(this.data.subarray(0, this.length) as unknown as ArrayLike<number>);
+    this.data = grown;
+  }
+  /** A copy of what was written, no longer than it. */
+  copy(): T {
+    return this.data.slice(0, this.length) as T;
+  }
+  /** What was written, and the run is left empty (its storage let go). */
+  taken(): T {
+    const out = this.copy();
+    this.data = this.make(0);
+    this.length = 0;
+    return out;
+  }
+  push2(a: number, b: number): void {
+    this.room(2);
+    const d = this.data;
+    const i = this.length;
+    d[i] = a;
+    d[i + 1] = b;
+    this.length = i + 2;
+  }
+  push3(a: number, b: number, c: number): void {
+    this.room(3);
+    const d = this.data;
+    const i = this.length;
+    d[i] = a;
+    d[i + 1] = b;
+    d[i + 2] = c;
+    this.length = i + 3;
+  }
+  push4(a: number, b: number, c: number, e: number): void {
+    this.room(4);
+    const d = this.data;
+    const i = this.length;
+    d[i] = a;
+    d[i + 1] = b;
+    d[i + 2] = c;
+    d[i + 3] = e;
+    this.length = i + 4;
+  }
+  push6(a: number, b: number, c: number, e: number, f: number, g: number): void {
+    this.push3(a, b, c);
+    this.push3(e, f, g);
+  }
+  push12(a: number, b: number, c: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number): void {
+    this.push4(a, b, c, e);
+    this.push4(f, g, h, i);
+    this.push4(j, k, l, m);
+  }
+}
+class Floats extends Run<Float32Array> {
+  constructor() {
+    super(new Float32Array(0));
+  }
+  protected make(size: number): Float32Array {
+    return new Float32Array(size);
+  }
+}
+class Ints extends Run<Uint32Array> {
+  constructor() {
+    super(new Uint32Array(0));
+  }
+  protected make(size: number): Uint32Array {
+    return new Uint32Array(size);
+  }
+}
+
 export class MeshBuilder {
   /** Debugging: when set, each polygon records where in the builders it was made (`tags`: its first triangle's index, and the callers), for a script that hunts overlaps. Off in the game. */
   static trace = false;
@@ -59,12 +145,12 @@ export class MeshBuilder {
     const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder") && !l.includes("/surface.ts")).slice(0, 4);
     this.tags.push([from, lines.map((l) => l.replace(/^\s*at\s+(?:async\s+)?(?:new\s+)?(\S+)\s+\(.*\/(game|test)\/town\//, "$1 ").replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
   }
-  private pos: number[] = [];
-  private nor: number[] = [];
-  private col: number[] = [];
-  private uv: number[] = [];
-  private srf: number[] = [];
-  private idx: number[] = [];
+  private pos = new Floats();
+  private nor = new Floats();
+  private col = new Floats();
+  private uv = new Floats();
+  private srf = new Floats();
+  private idx = new Ints();
 
   get vertices(): number {
     return this.pos.length / 3;
@@ -72,14 +158,14 @@ export class MeshBuilder {
 
   /** Calls `fn` with the position of each vertex from vertex number `from` on (for a part that wants its own extent or a fingerprint). */
   forEachPosition(from: number, fn: (x: number, y: number, z: number) => void): void {
-    for (let i = from * 3; i < this.pos.length; i += 3) fn(this.pos[i] as number, this.pos[i + 1] as number, this.pos[i + 2] as number);
+    for (let i = from * 3; i < this.pos.length; i += 3) fn(this.pos.data[i] as number, this.pos.data[i + 1] as number, this.pos.data[i + 2] as number);
   }
 
   /** A fingerprint of the geometry from vertex `from` on: positions to a centimetre, folded in order (FNV-1a), as an unsigned 32-bit number. */
   hashFrom(from: number): number {
     let h = 0x811c9dc5;
     for (let i = from * 3; i < this.pos.length; i++) {
-      h ^= Math.round((this.pos[i] as number) * 100) | 0;
+      h ^= Math.round((this.pos.data[i] as number) * 100) | 0;
       h = Math.imul(h, 0x01000193);
     }
     return h >>> 0;
@@ -145,28 +231,28 @@ export class MeshBuilder {
       // A corner's own colour, times the surface's gain (a layer whose picture is darker than the paint it carries is lifted by it).
       const gain = surface?.tint ?? ONE;
       const tint: Rgb = per && surface !== undefined ? [colourHere[0] * gain[0], colourHere[1] * gain[1], colourHere[2] * gain[2]] : tint0;
-      this.pos.push(p[0], p[1], p[2]);
-      if (fx?.normal === undefined) this.nor.push(nx, ny, nz);
-      else this.nor.push(fx.normal[0], fx.normal[1], fx.normal[2]);
-      this.col.push(colourHere[0], colourHere[1], colourHere[2], 1);
+      this.pos.push3(p[0], p[1], p[2]);
+      if (fx?.normal === undefined) this.nor.push3(nx, ny, nz);
+      else this.nor.push3(fx.normal[0], fx.normal[1], fx.normal[2]);
+      this.col.push4(colourHere[0], colourHere[1], colourHere[2], 1);
       if (basis === null || surface === undefined) {
         const cuv = fx?.uvs?.[pointIndex];
-        this.uv.push(cuv?.[0] ?? 0, cuv?.[1] ?? 0);
+        this.uv.push2(cuv?.[0] ?? 0, cuv?.[1] ?? 0);
         // A pane's own data rides in the floats a flat vertex does not use (`townMaterial.ts` says which).
-        this.srf.push(NO_LAYER, fx?.dirt ?? 0, fx?.seed ?? 0, glow, 1, 1, 1, clear, fx?.size?.[0] ?? 0, fx?.size?.[1] ?? 0, fx?.tilt?.[0] ?? 0, fx?.rank ?? fx?.tilt?.[1] ?? 0);
+        this.srf.push12(NO_LAYER, fx?.dirt ?? 0, fx?.seed ?? 0, glow, 1, 1, 1, clear, fx?.size?.[0] ?? 0, fx?.size?.[1] ?? 0, fx?.tilt?.[0] ?? 0, fx?.rank ?? fx?.tilt?.[1] ?? 0);
       } else {
         const [u, v] = uvAt(basis, p);
-        this.uv.push(u, v);
+        this.uv.push2(u, v);
         const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
         const w2 = surface.wear2 === undefined ? 0 : typeof surface.wear2 === "number" ? surface.wear2 : surface.wear2(p);
-        this.srf.push(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, 0, fx?.rank ?? 0);
+        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, 0, fx?.rank ?? 0);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
     // wind it against the normal, as the engine's boxes are (reversed from the fan when the order already faces the hint).
     for (let i = 1; i < n - 1; i++) {
-      if (flip) this.idx.push(base, base + i, base + i + 1);
-      else this.idx.push(base, base + i + 1, base + i);
+      if (flip) this.idx.push3(base, base + i, base + i + 1);
+      else this.idx.push3(base, base + i + 1, base + i);
     }
     // A back with no look of its own is of what the front is: its material, or its surface a shade darker.
     if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx, given);
@@ -206,16 +292,16 @@ export class MeshBuilder {
     const flip = (nx * hint[0] + ny * hint[1] + nz * hint[2]) / len < 0;
     const k = flip ? -1 / len : 1 / len;
     points.forEach((p, i) => {
-      this.pos.push(p[0], p[1], p[2]);
-      this.nor.push(nx * k, ny * k, nz * k);
-      this.col.push(tint[0], tint[1], tint[2], 1);
+      this.pos.push3(p[0], p[1], p[2]);
+      this.nor.push3(nx * k, ny * k, nz * k);
+      this.col.push4(tint[0], tint[1], tint[2], 1);
       const uv = uvs[i] as readonly [number, number];
-      this.uv.push(uv[0], uv[1]);
-      this.srf.push(NO_LAYER, 0, 0, fx?.glow ?? 0, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, 0, 0);
+      this.uv.push2(uv[0], uv[1]);
+      this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? 0, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, 0, 0);
     });
     for (let i = 1; i < n - 1; i++) {
-      if (flip) this.idx.push(base, base + i, base + i + 1);
-      else this.idx.push(base, base + i + 1, base + i);
+      if (flip) this.idx.push3(base, base + i, base + i + 1);
+      else this.idx.push3(base, base + i + 1, base + i);
     }
   }
 
@@ -256,17 +342,17 @@ export class MeshBuilder {
         const b = vs[j] as number;
         const p: Vec3 = [origin[0] + du[0] * a + dv[0] * b, origin[1] + du[1] * a + dv[1] * b, origin[2] + du[2] * a + dv[2] * b];
         const c = colourAt(i, j, p);
-        this.pos.push(p[0], p[1], p[2]);
-        this.nor.push(nx, ny, nz);
-        this.col.push(c[0], c[1], c[2], 1);
+        this.pos.push3(p[0], p[1], p[2]);
+        this.nor.push3(nx, ny, nz);
+        this.col.push4(c[0], c[1], c[2], 1);
         if (basis === null) {
-          this.uv.push(0, 0);
-          this.srf.push(NO_LAYER, 0, 0, glow, 1, 1, 1, 0, 0, 0, 0, 0);
+          this.uv.push2(0, 0);
+          this.srf.push12(NO_LAYER, 0, 0, glow, 1, 1, 1, 0, 0, 0, 0, 0);
         } else {
           const [u, v] = uvAt(basis, p);
-          this.uv.push(u, v);
+          this.uv.push2(u, v);
           const g = surface?.tint ?? ONE;
-          this.srf.push(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, 0, 0);
+          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, 0, 0);
         }
       }
     }
@@ -276,8 +362,8 @@ export class MeshBuilder {
         const q1 = q0 + 1;
         const q3 = q0 + nu;
         const q2 = q3 + 1;
-        if (flip) this.idx.push(q0, q1, q2, q0, q2, q3);
-        else this.idx.push(q0, q2, q1, q0, q3, q2);
+        if (flip) this.idx.push6(q0, q1, q2, q0, q2, q3);
+        else this.idx.push6(q0, q2, q1, q0, q3, q2);
       }
     }
   }
@@ -464,30 +550,30 @@ export class MeshBuilder {
         const p = (rows[i] as readonly Vec3[])[j] as Vec3;
         const k = (i * nc + j) * 3;
         const l = Math.sqrt((nor[k] as number) * (nor[k] as number) + (nor[k + 1] as number) * (nor[k + 1] as number) + (nor[k + 2] as number) * (nor[k + 2] as number));
-        this.pos.push(p[0], p[1], p[2]);
+        this.pos.push3(p[0], p[1], p[2]);
         // A corner of no area (a point where the sheet closes) has no normal of its own: it takes up.
-        if (l > 1e-12) this.nor.push((nor[k] as number) / l, (nor[k + 1] as number) / l, (nor[k + 2] as number) / l);
-        else this.nor.push(0, 1, 0);
+        if (l > 1e-12) this.nor.push3((nor[k] as number) / l, (nor[k + 1] as number) / l, (nor[k + 2] as number) / l);
+        else this.nor.push3(0, 1, 0);
         const c = typeof v.colour === "function" ? v.colour(i, j) : v.colour;
-        this.col.push(c[0], c[1], c[2], 1);
+        this.col.push4(c[0], c[1], c[2], 1);
         if (auto !== null) {
           // By the grid's own lines: the metres run along its row and down its column to this corner (so the texture is at true scale and
           // follows the body round), from a place of the body's own.
-          this.uv.push((autoU[i * nc + j] as number) / auto.tile[0], (autoV[i * nc + j] as number) / auto.tile[1]);
+          this.uv.push2((autoU[i * nc + j] as number) / auto.tile[0], (autoV[i * nc + j] as number) / auto.tile[1]);
           const t = auto.tint(c);
-          this.srf.push(autoLayer, auto.wear, autoKind, 0, t[0], t[1], t[2], 0, 0, 0, 0, 0);
+          this.srf.push12(autoLayer, auto.wear, autoKind, 0, t[0], t[1], t[2], 0, 0, 0, 0, 0);
         } else if (layer === NO_LAYER) {
-          this.uv.push(0, 0);
-          this.srf.push(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, v.wire === undefined ? 0 : -Math.max(1, Math.round(v.wire * 1000)), 0);
+          this.uv.push2(0, 0);
+          this.srf.push12(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, v.wire === undefined ? 0 : -Math.max(1, Math.round(v.wire * 1000)), 0);
         } else {
           const uv = v.uv === undefined ? [0, 0] : v.uv(i, j);
-          this.uv.push(uv[0] / (tile[0] as number), uv[1] / (tile[1] as number));
+          this.uv.push2(uv[0] / (tile[0] as number), uv[1] / (tile[1] as number));
           const t = typeof v.tint === "function" ? v.tint(i, j) : (v.tint ?? c);
           const w1 = v.wear === undefined ? ([0, "moss"] as const) : v.wear(i, j);
           const w2 = v.wear2 === undefined ? ([0, "moss"] as const) : v.wear2(i, j);
           const k1 = (WEAR_KIND_NUMBER[w1[1]] ?? 0) + (v.streaks === true ? 0.5 : 0);
           const k2 = (WEAR_KIND_NUMBER[w2[1]] ?? 0) + (v.streaks2 === true ? 0.5 : 0);
-          this.srf.push(layer, Math.min(1, Math.max(0, w1[0])), k1, 0, t[0], t[1], t[2], v.clear ?? 0, Math.min(1, Math.max(0, w2[0])), k2, 0, 0);
+          this.srf.push12(layer, Math.min(1, Math.max(0, w1[0])), k1, 0, t[0], t[1], t[2], v.clear ?? 0, Math.min(1, Math.max(0, w2[0])), k2, 0, 0);
         }
       }
     }
@@ -499,8 +585,8 @@ export class MeshBuilder {
         const c = a + nc + 1;
         const d = a + nc;
         // The sum of the quad's normal faces out when `sign` is 1; wind so the engine's front face looks out (as `poly` does).
-        if (sign > 0) this.idx.push(a, c, b, a, d, c);
-        else this.idx.push(a, b, c, a, c, d);
+        if (sign > 0) this.idx.push6(a, c, b, a, d, c);
+        else this.idx.push6(a, b, c, a, c, d);
       }
     }
     if (v.back !== undefined && !reversed) {
@@ -519,10 +605,14 @@ export class MeshBuilder {
    * town to that, so that this step stays a copy.
    */
   finish(): MeshArrays {
-    const arrays: MeshArrays = {
-      positions: new Float32Array(this.pos), normals: new Float32Array(this.nor), colors: new Float32Array(this.col),
-      uvs: new Float32Array(this.uv), surface: new Float32Array(this.srf), indices: Uint32Array.from(this.idx),
-    };
+    const arrays: MeshArrays = { positions: this.pos.copy(), normals: this.nor.copy(), colors: this.col.copy(), uvs: this.uv.copy(), surface: this.srf.copy(), indices: this.idx.copy() };
+    if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [t, s]));
+    return arrays;
+  }
+
+  /** As `finish`, and the builder is left empty: its own storage is let go, so a town's builders do not stand beside their finished arrays. */
+  take(): MeshArrays {
+    const arrays: MeshArrays = { positions: this.pos.taken(), normals: this.nor.taken(), colors: this.col.taken(), uvs: this.uv.taken(), surface: this.srf.taken(), indices: this.idx.taken() };
     if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [t, s]));
     return arrays;
   }
