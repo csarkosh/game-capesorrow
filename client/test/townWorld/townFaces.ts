@@ -54,7 +54,7 @@ export type Found = { readonly patch: Patch; readonly tall: boolean };
 export function unsafePatches(f: TownFaces, groundAt: (x: number, z: number) => number, sea: number): { readonly found: Found[]; readonly flat: number } {
   const high = (at: readonly [number, number, number]): boolean => at[1] - Math.max(groundAt(at[0], at[2]), sea) >= RULE.tallFrom;
   const limit = (q: NearPair): number => (q.a.layer === "flat" && q.b.layer === "flat" ? RULE.gap : high(q.at) ? RULE.tallGap : RULE.gap);
-  const pairs = nearPairs(f.tris, RULE.tallGap, 1e-6).filter((q) => q.gap < limit(q) && !alike(q.a, q.b));
+  const pairs = nearPairs(f.tris, RULE.tallGap, 1e-6).filter((q) => q.gap < limit(q) && !alike(q.a, q.b, q.area));
   /** Two flat faces of different ranks are held apart by the rank (a fixed number of depth steps a rank), not by their distance: not a pair. */
   const ground = (q: NearPair): boolean => q.a.layer === "flat" && q.b.layer === "flat";
   const ranked = (q: NearPair): boolean => ground(q) && q.a.rank !== q.b.rank;
@@ -67,6 +67,8 @@ export function unsafePatches(f: TownFaces, groundAt: (x: number, z: number) => 
 
 /** Where a patch came from, for a failure message: its two faces' layers and the code that made them. */
 export function describe(p: Patch, seed: number, detail: string): string {
+  // What each face looks like: its layer, colour, tint and wear, and its first corner's UV.
+  const look = (t: Tri): string => `[layer ${t.look[0]} colour ${t.look.slice(1, 4).map((x) => x.toFixed(2)).join(" ")} tint ${t.tint.map((x) => x.toFixed(2)).join(" ")} uv ${t.uv[0].toFixed(3)} ${t.uv[1].toFixed(3)}]`;
   const where = (t: Tri): string => (t.tag ?? "(untraced)").split(" < ").filter((x) => !x.includes("at ")).slice(0, 3).join(" < ");
-  return `seed ${seed} ${detail} at ${p.at.map((x) => x.toFixed(1)).join(",")}: ${p.a.layer}/${p.b.layer} ${(p.gap * 1000).toFixed(1)} mm apart, ${(p.area * 1e4).toFixed(0)} cm2 overlap\n  A ${where(p.a)}\n  B ${where(p.b)}`;
+  return `seed ${seed} ${detail} at ${p.at.map((x) => x.toFixed(1)).join(",")}: ${p.a.layer}/${p.b.layer} ${(p.gap * 1000).toFixed(1)} mm apart, ${(p.area * 1e4).toFixed(0)} cm2 overlap\n  A ${where(p.a)} ${look(p.a)}\n  B ${where(p.b)} ${look(p.b)}`;
 }

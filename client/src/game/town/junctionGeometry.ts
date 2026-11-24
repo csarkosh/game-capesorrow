@@ -18,6 +18,7 @@ import type { JunctionCorner, JunctionLeg, Vec } from "../../sim/town/types.js";
 import { clamp01, hashN, hashS, smooth } from "./groundNoise.js";
 import { RANK, type Over } from "./groundSurfaces.js";
 import type { Rgb } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import { ASPHALT, CURB, DOME, GRAVEL, PLANTER, SIDEWALK } from "./palette.js";
 import { CURB_WIDTH, ROADWAY_LIFT, WALK_LIFT } from "./streetGeometry.js";
 import type { WJunction } from "./junctionWorld.js";
@@ -201,5 +202,5 @@ function closedLeg(surf: Surface, solid: Sink, l: JunctionLeg, road: RoadSet): v
   if (l.mouth - Math.min(l.bandLeft, l.bandRight) > 0.02) road.tile([q(l.bandRight, -l.half), q(l.mouth, -l.half), q(l.mouth, l.half), q(l.bandLeft, l.half)], ROADWAY_LIFT, ASPHALT);
   const mid = onLeg(l, l.mouth + PLANTER_DEPTH / 2, 0);
   const base = surf.g.heightAt(mid.x, mid.z) + ROADWAY_LIFT;
-  solid(mid.x, mid.z).box(mid.x, mid.z, base, -l.dz, l.dx, l.half, PLANTER_DEPTH / 2, PLANTER_HEIGHT, CURB, PLANTER);
+  withMat("concrete", () => solid(mid.x, mid.z).box(mid.x, mid.z, base, -l.dz, l.dx, l.half, PLANTER_DEPTH / 2, PLANTER_HEIGHT, CURB, PLANTER));
 }

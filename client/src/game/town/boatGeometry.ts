@@ -13,6 +13,7 @@
  * Boats do not move: there is no bobbing.
  */
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { withMat, type MatName } from "./materials.js";
 import { GLASS } from "./palette.js";
 import type { Boat } from "../../sim/town/types.js";
 
@@ -108,15 +109,15 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
       const hint: Vec3 = [mx - fr.hx * along, my - centreY, mz - fr.hz * along];
       // The two upper segments of each side are above the waterline.
       const above = k === 0 || k === 7;
-      m.poly([a0, a1, b1, b0], hint, above ? hull : antifoul);
+      m.poly([a0, a1, b1, b0], hint, above ? hull : antifoul, "painted");
     }
   }
   // The transom closes the stern, and the deck covers the hull between the sheer lines.
-  m.poly(rings[0] as Vec3[], D(-1, 0, 0), hull);
+  m.poly(rings[0] as Vec3[], D(-1, 0, 0), hull, "painted");
   for (let i = 0; i < T.length - 1; i++) {
     const r0 = rings[i] as Vec3[];
     const r1 = rings[i + 1] as Vec3[];
-    m.poly([r0[0] as Vec3, r1[0] as Vec3, r1[8] as Vec3, r0[8] as Vec3], D(0, 1, 0), deck);
+    m.poly([r0[0] as Vec3, r1[0] as Vec3, r1[8] as Vec3, r0[8] as Vec3], D(0, 1, 0), deck, "wood");
   }
   const deckY = f * 0.74;
   const house1 = (x0: number, x1: number, y1: number, half: number, colour: Rgb, windows: boolean): void => {
@@ -129,8 +130,8 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
       [[c(x1, y0, -half), c(x1, y0, half), c(x1, top, half), c(x1, top, -half)], D(1, 0, 0)],
       [[c(x0, y0, -half), c(x0, y0, half), c(x0, top, half), c(x0, top, -half)], D(-1, 0, 0)],
     ];
-    for (const [pts, hint] of faces) m.poly(pts, hint, colour);
-    m.poly([c(x0, top, -half), c(x1, top, -half), c(x1, top, half), c(x0, top, half)], D(0, 1, 0), scaled(colour, 0.9));
+    for (const [pts, hint] of faces) m.poly(pts, hint, colour, "painted");
+    m.poly([c(x0, top, -half), c(x1, top, -half), c(x1, top, half), c(x0, top, half)], D(0, 1, 0), scaled(colour, 0.9), "painted");
     if (!windows) return;
     // Dark windows, a band round the upper part: on both sides, the front and the back.
     const wy0 = deckY + y1 * 0.45;
@@ -142,13 +143,13 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
       for (let k = 0; k < n; k++) {
         const a = x0 + (lenH * (k + 0.15)) / n;
         const e = x0 + (lenH * (k + 0.85)) / n;
-        m.poly([c(a, wy0, sgn * (half + eps)), c(e, wy0, sgn * (half + eps)), c(e, wy1, sgn * (half + eps)), c(a, wy1, sgn * (half + eps))], D(0, 0, sgn), GLASS);
+        m.poly([c(a, wy0, sgn * (half + eps)), c(e, wy0, sgn * (half + eps)), c(e, wy1, sgn * (half + eps)), c(a, wy1, sgn * (half + eps))], D(0, 0, sgn), GLASS, "painted");
       }
     }
-    m.poly([c(x1 + eps, wy0, -half + 0.12), c(x1 + eps, wy0, half - 0.12), c(x1 + eps, wy1, half - 0.12), c(x1 + eps, wy1, -half + 0.12)], D(1, 0, 0), GLASS);
-    m.poly([c(x0 - eps, wy0, -half + 0.12), c(x0 - eps, wy0, half - 0.12), c(x0 - eps, wy1, half - 0.12), c(x0 - eps, wy1, -half + 0.12)], D(-1, 0, 0), GLASS);
+    m.poly([c(x1 + eps, wy0, -half + 0.12), c(x1 + eps, wy0, half - 0.12), c(x1 + eps, wy1, half - 0.12), c(x1 + eps, wy1, -half + 0.12)], D(1, 0, 0), GLASS, "painted");
+    m.poly([c(x0 - eps, wy0, -half + 0.12), c(x0 - eps, wy0, half - 0.12), c(x0 - eps, wy1, half - 0.12), c(x0 - eps, wy1, -half + 0.12)], D(-1, 0, 0), GLASS, "painted");
   };
-  const stick = (p0: Vec3, p1: Vec3, r: number, colour: Rgb, sides = 4): void => m.prism(p0, p1, r, sides, colour, colour);
+  const stick = (p0: Vec3, p1: Vec3, r: number, colour: Rgb, sides = 4, mat: MatName = "wood"): void => withMat(mat, () => m.prism(p0, p1, r, sides, colour, colour));
   const gear = !derelict;
   const sunk = b.state === "sunk";
 
@@ -164,14 +165,14 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
           stick(P(mastX, deckY + 1.6, sgn * 0.1), P(mastX - L * 0.2, deckY + L * 0.32, sgn * (B / 2 + L * 0.42)), 0.04, POLE);
         }
         // Stays from the mast's head to the bow and the stern.
-        stick(P(mastX, mastTop, 0), P(x(1) - 0.4, deckY + 0.3, 0), 0.012, BLACK, 3);
+        stick(P(mastX, mastTop, 0), P(x(1) - 0.4, deckY + 0.3, 0), 0.012, BLACK, 3, "rope");
       }
       break;
     }
     case "gillnetter": {
       const hxm = x(0.4);
       house1(hxm - L * 0.12, hxm + L * 0.1, 1.8, B * 0.34, house, true);
-      if (gear) m.prism(P(x(0.08), deckY + 0.7, -B * 0.32), P(x(0.08), deckY + 0.7, B * 0.32), 0.48 + 0.02 * L, 10, NET, scaled(NET, 0.7));
+      if (gear) withMat("rope", () => m.prism(P(x(0.08), deckY + 0.7, -B * 0.32), P(x(0.08), deckY + 0.7, B * 0.32), 0.48 + 0.02 * L, 10, NET, scaled(NET, 0.7)));
       if (!sunk) stick(P(hxm + L * 0.03, deckY + 1.8, 0), P(hxm + L * 0.03, deckY + 3.6, 0), 0.05, POLE, 6);
       break;
     }
@@ -189,8 +190,8 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
             const pts = (y: number): Vec3[] => [P(xl - 0.5, y, zl - 0.5), P(xl + 0.5, y, zl - 0.5), P(xl + 0.5, y, zl + 0.5), P(xl - 0.5, y, zl + 0.5)];
             const lo = pts(deckY);
             const hi = pts(deckY + high * 0.78);
-            for (let q = 0; q < 4; q++) m.poly([lo[q] as Vec3, lo[(q + 1) % 4] as Vec3, hi[(q + 1) % 4] as Vec3, hi[q] as Vec3], D(q === 0 ? 0 : q === 1 ? 1 : q === 2 ? 0 : -1, 0, q === 0 ? -1 : q === 2 ? 1 : 0), POT);
-            m.poly(hi, D(0, 1, 0), scaled(POT, 1.2));
+            for (let q = 0; q < 4; q++) m.poly([lo[q] as Vec3, lo[(q + 1) % 4] as Vec3, hi[(q + 1) % 4] as Vec3, hi[q] as Vec3], D(q === 0 ? 0 : q === 1 ? 1 : q === 2 ? 0 : -1, 0, q === 0 ? -1 : q === 2 ? 1 : 0), POT, "steel");
+            m.poly(hi, D(0, 1, 0), scaled(POT, 1.2), "steel");
           }
         }
         // The boom and its crane post.
@@ -203,18 +204,18 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
       const hxm = x(0.45);
       house1(hxm - L * 0.15, hxm + L * 0.15, 3, B * 0.4, house, true);
       house1(hxm - L * 0.12, hxm + L * 0.1, 1.2, B * 0.3, house, true);
-      m.cylinder(P(hxm - L * 0.2, 0, 0)[0], P(hxm - L * 0.2, 0, 0)[2], P(0, deckY, 0)[1], 0.4, 3.4, 8, b.colour % 2 === 0 ? [0.5, 0.08, 0.06] : BLACK, BLACK);
+      withMat("painted", () => m.cylinder(P(hxm - L * 0.2, 0, 0)[0], P(hxm - L * 0.2, 0, 0)[2], P(0, deckY, 0)[1], 0.4, 3.4, 8, b.colour % 2 === 0 ? [0.5, 0.08, 0.06] : BLACK, BLACK));
       // Push knees: a black block at the bow.
       const k0 = x(0.94);
-      for (const sgn of [-1, 1]) m.prism(P(k0, deckY - 0.3, sgn * B * 0.25), P(k0, deckY + 1.2, sgn * B * 0.25), 0.28, 6, BLACK, BLACK);
+      for (const sgn of [-1, 1]) withMat("rubber", () => m.prism(P(k0, deckY - 0.3, sgn * B * 0.25), P(k0, deckY + 1.2, sgn * B * 0.25), 0.28, 6, BLACK, BLACK));
       break;
     }
     case "skiff": {
       // An outboard on the transom and a bench.
       const ox = x(0.02);
-      m.prism(P(ox, deckY + 0.55, 0), P(ox, deckY - 0.2, 0), 0.13, 6, BLACK, BLACK);
-      m.poly([P(ox - 0.3, deckY + 0.55, -0.22), P(ox + 0.3, deckY + 0.55, -0.22), P(ox + 0.3, deckY + 0.55, 0.22), P(ox - 0.3, deckY + 0.55, 0.22)], D(0, 1, 0), BLACK);
-      m.poly([P(x(0.5) - 0.2, deckY + 0.05, -B * 0.4), P(x(0.5) + 0.2, deckY + 0.05, -B * 0.4), P(x(0.5) + 0.2, deckY + 0.05, B * 0.4), P(x(0.5) - 0.2, deckY + 0.05, B * 0.4)], D(0, 1, 0), [0.45, 0.35, 0.22]);
+      withMat("painted", () => m.prism(P(ox, deckY + 0.55, 0), P(ox, deckY - 0.2, 0), 0.13, 6, BLACK, BLACK));
+      m.poly([P(ox - 0.3, deckY + 0.55, -0.22), P(ox + 0.3, deckY + 0.55, -0.22), P(ox + 0.3, deckY + 0.55, 0.22), P(ox - 0.3, deckY + 0.55, 0.22)], D(0, 1, 0), BLACK, "painted");
+      m.poly([P(x(0.5) - 0.2, deckY + 0.05, -B * 0.4), P(x(0.5) + 0.2, deckY + 0.05, -B * 0.4), P(x(0.5) + 0.2, deckY + 0.05, B * 0.4), P(x(0.5) - 0.2, deckY + 0.05, B * 0.4)], D(0, 1, 0), [0.45, 0.35, 0.22], "wood");
       break;
     }
     case "sailboat": {
@@ -226,16 +227,16 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
         const boomY = deckY + 1.3;
         stick(P(mastX, boomY, 0), P(x(0.04), boomY + 0.1, 0), 0.05, POLE);
         // The furled sail, a long white roll on the boom.
-        m.prism(P(mastX - 0.2, boomY + 0.18, 0), P(x(0.1), boomY + 0.2, 0), 0.16, 6, SAIL, SAIL);
-        stick(P(mastX, deckY + h, 0), P(x(1) - 0.3, deckY + 0.4, 0), 0.012, BLACK, 3);
-        stick(P(mastX, deckY + h, 0), P(x(0.02), deckY + 0.5, 0), 0.012, BLACK, 3);
+        withMat("cloth", () => m.prism(P(mastX - 0.2, boomY + 0.18, 0), P(x(0.1), boomY + 0.2, 0), 0.16, 6, SAIL, SAIL));
+        stick(P(mastX, deckY + h, 0), P(x(1) - 0.3, deckY + 0.4, 0), 0.012, BLACK, 3, "rope");
+        stick(P(mastX, deckY + h, 0), P(x(0.02), deckY + 0.5, 0), 0.012, BLACK, 3, "rope");
       }
       break;
     }
     case "pleasure": {
       house1(x(0.3), x(0.66), 1.3, B * 0.34, house, true);
       // A windscreen's slope on the front of the cabin and a small arch for the radar.
-      if (gear) stick(P(x(0.36), deckY + 1.3, 0), P(x(0.36), deckY + 2.1, 0), 0.04, POLE, 6);
+      if (gear) stick(P(x(0.36), deckY + 1.3, 0), P(x(0.36), deckY + 2.1, 0), 0.04, POLE, 6, "steel");
       break;
     }
   }

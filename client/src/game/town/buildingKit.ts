@@ -8,6 +8,7 @@
  */
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import type { Fx, Surface } from "./townSurface.js";
+import { currentMat, isMat, surfaceOn, type MatRef } from "./materials.js";
 import { noteFace, standOff } from "./faceLedger.js";
 
 export type WallRef = {
@@ -29,7 +30,7 @@ export const wallRef = (ax: number, az: number, bx: number, bz: number, nx: numb
 export const wat = (w: WallRef, s: number, y: number, off: number): Vec3 => [w.ax + w.tx * s + w.nx * off, y, w.az + w.tz * s + w.nz * off];
 
 /** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). */
-export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface, fx?: Fx, inward = false): number {
+export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface | MatRef, fx?: Fx, inward = false): number {
   const k = inward ? -1 : 1;
   // A face asked for where another already stands (a plate over a frame, a sticker over a plate) stands a step further out (`faceLedger.ts`).
   const a = wat(w, s0, y0, off);
@@ -45,10 +46,12 @@ export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: 
  * A box on a wall from `off0` to `off1` (off1 the farther out): its face, its top and its two ends, and its bottom when `under` (by default when it is a hand deep or more: a trim on the wall has none) (an
  * awning's soffit, a canopy's underside, a sill's, which are seen from the street; a bulkhead standing on the ground says false).
  */
-export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: number, y1: number, off0: number, off1: number, colour: Rgb, top: Rgb = colour, under?: boolean, surface?: Surface, back = false): void {
+export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: number, y1: number, off0: number, off1: number, colour: Rgb, top: Rgb = colour, under?: boolean, surface?: Surface | MatRef, back = false): void {
   wquad(out, w, s0, y0, s1, y1, off1, colour, surface);
-  out.poly([wat(w, s0, y1, off0), wat(w, s1, y1, off0), wat(w, s1, y1, off1), wat(w, s0, y1, off1)], [0, 1, 0], top);
-  if (under ?? (off1 - off0 >= 0.1 || off0 > 0.3)) out.poly([wat(w, s0, y0, off0), wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s0, y0, off1)], [0, -1, 0], scaled(colour, 0.6));
+  // The other faces are of what the face is: the same material, or the face's own surface laid by each face's own lie.
+  const side = (pts: readonly Vec3[], n: Vec3, c: Rgb): void => out.poly(pts, n, c, surface === undefined || isMat(surface) ? surface : surfaceOn(surface, pts, n));
+  side([wat(w, s0, y1, off0), wat(w, s1, y1, off0), wat(w, s1, y1, off1), wat(w, s0, y1, off1)], [0, 1, 0], top);
+  if (under ?? (off1 - off0 >= 0.1 || off0 > 0.3)) side([wat(w, s0, y0, off0), wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s0, y0, off1)], [0, -1, 0], scaled(colour, 0.6));
   // Its back, toward the wall: a parapet or a cornice stands over the wall's top, where there is no wall behind it, and is seen from the roof. Asked for with `back` by what stands over a wall's top, and laid by itself under a canopy or a porch deeper than 40 cm and by a post or a column that stands off the wall (a trim or a sill on the wall has none). The back stands 3 cm in from the wall's own plane, so that no sign or plate laid on the wall under it is a face in its plane.
   if (back || off1 - off0 > 0.4 || off0 > 0.3) {
     // It stands clear of every face already laid in its plane (`faceLedger.ts`): 3 cm in from the wall's own plane at the least.
@@ -56,7 +59,7 @@ export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: n
     const e = wat(w, s0, y0, o0);
     const f = wat(w, s1, y0, o0);
     const o = o0 + standOff(-w.nx, -w.nz, e[0], e[2], f[0], f[2], y0, y1, -1);
-    out.poly([wat(w, s0, y0, o), wat(w, s1, y0, o), wat(w, s1, y1, o), wat(w, s0, y1, o)], [-w.nx, 0, -w.nz], scaled(colour, 0.7));
+    side([wat(w, s0, y0, o), wat(w, s1, y0, o), wat(w, s1, y1, o), wat(w, s0, y1, o)], [-w.nx, 0, -w.nz], scaled(colour, 0.7));
   }
   // The box's ends are faces on the ledger too, so what is put beside it later stands clear of them.
   const e0 = wat(w, s0, y0, off0);
@@ -65,8 +68,8 @@ export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: n
   const e1b = wat(w, s1, y0, off1);
   noteFace(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y1);
   noteFace(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y1);
-  out.poly([wat(w, s0, y0, off0), wat(w, s0, y0, off1), wat(w, s0, y1, off1), wat(w, s0, y1, off0)], [-w.tx, 0, -w.tz], scaled(colour, 0.85));
-  out.poly([wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s1, y1, off1), wat(w, s1, y1, off0)], [w.tx, 0, w.tz], scaled(colour, 0.85));
+  side([wat(w, s0, y0, off0), wat(w, s0, y0, off1), wat(w, s0, y1, off1), wat(w, s0, y1, off0)], [-w.tx, 0, -w.tz], scaled(colour, 0.85));
+  side([wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s1, y1, off1), wat(w, s1, y1, off0)], [w.tx, 0, w.tz], scaled(colour, 0.85));
 }
 
 /** A hole in a wall: between two stations and two heights. Holes of one wall never overlap (`cutWall` drops the later of two that do). */
@@ -163,20 +166,73 @@ export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1:
   wquad(glass, w, s0, y0, s1, y1, off, tint, undefined, fx, false);
 }
 
-/** The four faces of a hole's reveal, `depth` deep (into the building), the hole running from station `sa` to `sb` (sa < sb) and from `y0` to `y1`. */
-export function reveal(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: number, y1: number, depth: number, colour: Rgb, sillColour: Rgb = colour): void {
+/**
+ * The four faces of a hole's reveal, `depth` deep (into the building), the hole running from station `sa` to `sb` (sa < sb) and from `y0` to `y1`.
+ * Of the material its builder is working in, or `mat`, or painted (a jamb is painted wood or the wall's own render).
+ */
+export function reveal(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: number, y1: number, depth: number, colour: Rgb, sillColour: Rgb = colour, mat?: Surface | MatRef, sillMat?: Surface | MatRef): void {
   const t: Vec3 = [w.tx, 0, w.tz];
   const nt: Vec3 = [-w.tx, 0, -w.tz];
-  out.poly([wat(w, sa, y0, 0), wat(w, sa, y0, -depth), wat(w, sa, y1, -depth), wat(w, sa, y1, 0)], t, scaled(colour, 0.85));
-  out.poly([wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sb, y1, 0)], nt, scaled(colour, 0.85));
-  out.poly([wat(w, sa, y0, 0), wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sa, y0, -depth)], [0, 1, 0], sillColour);
-  out.poly([wat(w, sa, y1, 0), wat(w, sb, y1, 0), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], scaled(colour, 0.7));
+  // A surface given for the wall's own plane (a deep recess's returns are the wall's) is laid on each face by that face's own lie.
+  const given = mat ?? currentMat() ?? "painted";
+  const face = (pts: readonly Vec3[], n: Vec3, c: Rgb, of: Surface | MatRef = given): void => out.poly(pts, n, c, isMat(of) ? of : surfaceOn(of, pts, n));
+  face([wat(w, sa, y0, 0), wat(w, sa, y0, -depth), wat(w, sa, y1, -depth), wat(w, sa, y1, 0)], t, scaled(colour, 0.85));
+  face([wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sb, y1, 0)], nt, scaled(colour, 0.85));
+  face([wat(w, sa, y0, 0), wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sa, y0, -depth)], [0, 1, 0], sillColour, sillMat ?? given);
+  face([wat(w, sa, y1, 0), wat(w, sb, y1, 0), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], scaled(colour, 0.7));
+}
+
+/**
+ * A door's leaf in its hole: the leaf fills the hole from edge to edge, `depth` in from the wall's face, and the hole's reveal runs exactly to
+ * the leaf (wherever the ledger put it), so there is no gap round a door from any angle and nothing is seen past it. The threshold is `sill`.
+ * Returns the leaf's offset: what is put on the leaf (a panel, a light, a handle) stands off from that.
+ */
+export function doorIn(out: MeshBuilder, w: WallRef, h: Hole, depth: number, leaf: Rgb, leafMat: Surface | MatRef, jamb: Rgb, sill: Rgb = jamb, jambMat?: Surface | MatRef, casing?: Rgb): number {
+  const o = wquad(out, w, h.s0, h.y0, h.s1, h.y1, -depth, leaf, leafMat);
+  reveal(out, w, h.s0, h.s1, h.y0, h.y1, -o, jamb, sill, jambMat, "concrete");
+  if (casing !== undefined) {
+    // The casing: a board up each side of the hole and one across its head, standing out of the wall with its edges.
+    const bar = 0.09;
+    // (From a hand over the sill: a porch's deck or a step stands against the wall below that.)
+    wbox(out, w, h.s0 - bar, h.s0, h.y0 + 0.08, h.y1, 0, 0.03, casing, casing, true, "painted");
+    wbox(out, w, h.s1, h.s1 + bar, h.y0 + 0.08, h.y1, 0, 0.03, casing, casing, true, "painted");
+    wbox(out, w, h.s0 - bar - 0.02, h.s1 + bar + 0.02, h.y1, h.y1 + bar + 0.02, 0, 0.04, casing, casing, true, "painted");
+  }
+  return o;
+}
+
+/**
+ * A pair of boarded doors in their hole (a church's, a hall's): the leaves fill the hole and the reveal runs to them (`doorIn`), a panel above and
+ * below on each, the dark line where they meet, and a pull on each.
+ */
+export function pairedDoors(out: MeshBuilder, w: WallRef, h: Hole, depth: number, col: Rgb, jamb: Rgb, sill: Rgb = jamb): void {
+  const o = doorIn(out, w, h, depth, col, "boards", jamb, sill);
+  const m = (h.s0 + h.s1) / 2;
+  for (const [a, e] of [[h.s0 + 0.12, m - 0.08], [m + 0.08, h.s1 - 0.12]] as const) {
+    wquad(out, w, a, h.y0 + 0.25, e, h.y0 + 1.0, o + 0.03, scaled(col, 0.8), "boards");
+    wquad(out, w, a, h.y0 + 1.15, e, h.y1 - 0.2, o + 0.03, scaled(col, 0.8), "boards");
+  }
+  wquad(out, w, m - 0.012, h.y0, m + 0.012, h.y1, o + 0.03, scaled(col, 0.35), "boards");
+  for (const k of [-1, 1]) wquad(out, w, m + k * 0.1 - 0.02, h.y0 + 0.95, m + k * 0.1 + 0.02, h.y0 + 1.2, o + 0.06, [0.5, 0.42, 0.2], "steel");
+}
+
+/**
+ * A glazed frame that fills a rectangle of a wall's plane: four bars `bar` wide at `off`, edge to edge, and the pane between them a centimetre
+ * behind (the glass of a shop's door or its transom: the room is seen through it and through nothing else).
+ */
+export function glazed(out: MeshBuilder, glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, bar: number, colour: Rgb, mat: Surface | MatRef, look: PaneLook = {}): void {
+  wquad(out, w, s0, y0, s1, y0 + bar, off, colour, mat);
+  wquad(out, w, s0, y1 - bar, s1, y1, off, colour, mat);
+  wquad(out, w, s0, y0 + bar, s0 + bar, y1 - bar, off, colour, mat);
+  wquad(out, w, s1 - bar, y0 + bar, s1, y1 - bar, off, colour, mat);
+  pane(glass, w, s0 + bar, y0 + bar, s1 - bar, y1 - bar, off - 0.01, GLASS_CLEAR, GLASS_TINT, look);
 }
 
 /** A frame round a hole: four bars `bar` wide laid `off` off the wall. */
-export function frameBars(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: number, y1: number, bar: number, off: number, colour: Rgb): void {
-  wquad(out, w, sa - bar, y0 - bar, sb + bar, y0, off, colour);
-  wquad(out, w, sa - bar, y1, sb + bar, y1 + bar, off, colour);
-  wquad(out, w, sa - bar, y0, sa, y1, off, colour);
-  wquad(out, w, sb, y0, sb + bar, y1, off, colour);
+export function frameBars(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: number, y1: number, bar: number, off: number, colour: Rgb, mat?: Surface | MatRef): void {
+  const m = mat ?? currentMat() ?? "painted";
+  wquad(out, w, sa - bar, y0 - bar, sb + bar, y0, off, colour, m);
+  wquad(out, w, sa - bar, y1, sb + bar, y1 + bar, off, colour, m);
+  wquad(out, w, sa - bar, y0, sa, y1, off, colour, m);
+  wquad(out, w, sb, y0, sb + bar, y1, off, colour, m);
 }

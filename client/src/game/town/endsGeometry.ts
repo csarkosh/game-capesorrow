@@ -10,6 +10,7 @@
  */
 import { RANK, flatSurfaceFor } from "./groundSurfaces.js";
 import { Surface } from "./surface.js";
+import { withMat } from "./materials.js";
 import { BARRICADE_RED, BARRICADE_WHITE, GRAVEL, TIMBER, PILE } from "./palette.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { endMarker } from "./signGeometry.js";
@@ -86,17 +87,17 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
       for (const t of [-cw + 0.15, 0, cw - 0.15]) {
         const [px, pz] = at(1, t);
         // The posts stand 28 cm over the top board's top (1.17 m: the ground across the road's width falls by up to 20 cm), so the boards' tops (ends inside the outer posts) are not faces in their planes.
-        solid(px, pz).box(px, pz, base(px, pz) - 0.05, ox, oz, 0.06, 0.06, 1.5, TIMBER, TIMBER);
+        withMat("wood", () => solid(px, pz).box(px, pz, base(px, pz) - 0.05, ox, oz, 0.06, 0.06, 1.5, TIMBER, TIMBER));
       }
       // To the outer posts' middles, so a board's end is inside its post.
       const half = cw - 0.15;
       for (const [y, colour] of [[0.65, BARRICADE_RED], [0.95, BARRICADE_WHITE]] as const) {
-        solid(bx, bz).box(bx, bz, base(bx, bz) + y, nx, nz, half, 0.03, 0.22, colour, colour);
+        withMat("painted", () => solid(bx, bz).box(bx, bz, base(bx, bz) + y, nx, nz, half, 0.03, 0.22, colour, colour));
       }
     } else {
       // A landing: a low timber bumper across the end.
       const [bx, bz] = at(length, 0);
-      solid(bx, bz).box(bx, bz, base(bx, bz) - 0.05, nx, nz, cw, 0.15, 0.45, TIMBER, PILE);
+      withMat("wood", () => solid(bx, bz).box(bx, bz, base(bx, bz) - 0.05, nx, nz, cw, 0.15, 0.45, TIMBER, PILE));
     }
   }
 }

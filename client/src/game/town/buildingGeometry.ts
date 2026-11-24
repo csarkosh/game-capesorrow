@@ -20,12 +20,13 @@ import type { Building, BuildingKind, LandmarkRole } from "../../sim/town/types.
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { roofStyle, roofTint, wallStyle, wallTint } from "./buildingSurfaces.js";
 import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.js";
-import { wallRef, type WallRef } from "./buildingKit.js";
+import { cutWall, doorIn, pairedDoors, wallRef, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { withMat } from "./materials.js";
 import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
 import { blockedWalls, cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
 import { wallTone } from "./wallTone.js";
 import { roofGear, roofSlopeDecals } from "./roofTone.js";
-import { lotDepthOut, partsGeometry } from "./buildingParts.js";
+import { lotDepthOut, partsGeometry, wallMatOf } from "./buildingParts.js";
 import type { Xf } from "./roomGeometry.js";
 import { signsGeometry } from "./shopSigns.js";
 import {
@@ -222,7 +223,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   };
 
   if (role === "tsunami refuge") {
-    refugeGeometry(g, f, b, out, baseY, H, walls, frontAt, floorY);
+    withMat("concrete", () => refugeGeometry(g, f, b, out, baseY, H, walls, frontAt, floorY));
     return;
   }
 
@@ -276,10 +277,10 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
       const c = P(sb * (L - inset), tb * (S - inset), H);
       // The inner face looks into the roof: toward its centre from the middle of the edge it stands on.
       const hintIn: Vec3 = [f.cx - (a[0] + c[0]) / 2, 0, f.cz - (a[2] + c[2]) / 2];
-      out.poly([a, c, [c[0], H + 0.5, c[2]], [a[0], H + 0.5, a[2]]], hintIn, inner);
+      out.poly([a, c, [c[0], H + 0.5, c[2]], [a[0], H + 0.5, a[2]]], hintIn, inner, wallMatOf(b.material));
       const ao = P(sa * L, ta * S, H + 0.5);
       const co = P(sb * L, tb * S, H + 0.5);
-      out.poly([ao, co, [c[0], H + 0.5, c[2]], [a[0], H + 0.5, a[2]]], [0, 1, 0], wall);
+      out.poly([ao, co, [c[0], H + 0.5, c[2]], [a[0], H + 0.5, a[2]]], [0, 1, 0], wall, wallMatOf(b.material));
     }
   } else if (roofKind === "gable") {
     const Le = L + EAVE;
@@ -365,7 +366,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
         const r = half * 1.3;
         if (lumps.some((q) => (q.x - x) * (q.x - x) + (q.z - z) * (q.z - z) < (q.r + r + 0.1) * (q.r + r + 0.1))) continue;
         lumps.push({ x, z, r });
-        out.box(x, z, g.heightAt(x, z) - 0.1, f.ux, f.uz, half, half * 0.8, h + 0.1, inner, scaled(inner, 0.8));
+        withMat(wallMatOf(b.material), () => out.box(x, z, g.heightAt(x, z) - 0.1, f.ux, f.uz, half, half * 0.8, h + 0.1, inner, scaled(inner, 0.8)));
         break;
       }
     }
@@ -399,7 +400,7 @@ function brokenWall(out: MeshBuilder, w: Wall, baseY: number, floorY: number, H:
     // A run stands level to the lower of its two ends' heights, so the line is stepped.
     const top = Math.min(h0, h1);
     out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], out3, colour, surface);
-    out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], in3, inner);
+    out.poly([[a[0], baseY, a[2]], [b[0], baseY, b[2]], [b[0], top, b[2]], [a[0], top, a[2]]], in3, inner, surface);
   }
 }
 
@@ -414,62 +415,109 @@ function landmarkTouch(
   const tz = (w.bz - w.az) / w.length;
   const mid: [number, number] = [(w.ax + w.bx) / 2, (w.az + w.bz) / 2];
   if (role === "fbi") {
-    // A plain, formal front: a stone cornice along the top of the front wall, a portico over the door, a flagpole with its flag.
-    const top = Math.max(w.topA, w.topB);
-    out.box(mid[0] + w.nx * 0.15, mid[1] + w.nz * 0.15, top - 0.46, tx, tz, w.length / 2 + 0.1, 0.25, 0.5, STONE_TRIM, STONE_TRIM);
-    // Over the street door where the ground floor has one (the old Federal Building's post office door is at the end of its front, not its middle); over the middle otherwise.
-    const slab = floorY + 3.3;
-    if (streetDoor === null) {
-      const px = mid[0] + w.nx * 1.2;
-      const pz = mid[1] + w.nz * 1.2;
-      out.box(px, pz, slab, tx, tz, 2.2, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
-      for (const s of [-1.7, 1.7]) {
-        const cx = px + tx * s + w.nx * 0.7;
-        const cz = pz + tz * s + w.nz * 0.7;
-        out.box(cx, cz, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
+    withMat("concrete", () => {
+      // A plain, formal front: a stone cornice along the top of the front wall, a portico over the door, a flagpole with its flag.
+      const top = Math.max(w.topA, w.topB);
+      out.box(mid[0] + w.nx * 0.15, mid[1] + w.nz * 0.15, top - 0.46, tx, tz, w.length / 2 + 0.1, 0.25, 0.5, STONE_TRIM, STONE_TRIM);
+      // Over the street door where the ground floor has one (the old Federal Building's post office door is at the end of its front, not its middle); over the middle otherwise.
+      const slab = floorY + 3.3;
+      if (streetDoor === null) {
+        const px = mid[0] + w.nx * 1.2;
+        const pz = mid[1] + w.nz * 1.2;
+        out.box(px, pz, slab, tx, tz, 2.2, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
+        for (const s of [-1.7, 1.7]) {
+          const cx = px + tx * s + w.nx * 0.7;
+          const cz = pz + tz * s + w.nz * 0.7;
+          out.box(cx, cz, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
+        }
+      } else {
+        // A canopy 3.4 m long ending a metre past the door (or at the corner), carried on one column at its far end: a column at the door's side would stand in the doorway.
+        // The unit's `s` runs along the front as the street sees it; the wall runs the other way round (the front's right end is the wall's start).
+        const door = w.length - streetDoor;
+        const c = Math.max(1.8, Math.min(door + 0.9, w.length - 1.7));
+        const px = w.ax + tx * c + w.nx * 1.2;
+        const pz = w.az + tz * c + w.nz * 1.2;
+        out.box(px, pz, slab, tx, tz, 1.7, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
+        const lc = door < c ? 1.45 : -1.45;
+        out.box(px + tx * lc + w.nx * 0.7, pz + tz * lc + w.nz * 0.7, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
       }
-    } else {
-      // A canopy 3.4 m long ending a metre past the door (or at the corner), carried on one column at its far end: a column at the door's side would stand in the doorway.
-      // The unit's `s` runs along the front as the street sees it; the wall runs the other way round (the front's right end is the wall's start).
-      const door = w.length - streetDoor;
-      const c = Math.max(1.8, Math.min(door + 0.9, w.length - 1.7));
-      const px = w.ax + tx * c + w.nx * 1.2;
-      const pz = w.az + tz * c + w.nz * 1.2;
-      out.box(px, pz, slab, tx, tz, 1.7, 1.3, 0.35, STONE_TRIM, STONE_TRIM);
-      const lc = door < c ? 1.45 : -1.45;
-      out.box(px + tx * lc + w.nx * 0.7, pz + tz * lc + w.nz * 0.7, floorY, tx, tz, 0.17, 0.17, slab - floorY, STONE_TRIM, STONE_TRIM);
-    }
-    const bx = w.ax + tx * 0.8 + w.nx * 2.2;
-    const bz = w.az + tz * 0.8 + w.nz * 2.2;
-    const by = g.heightAt(bx, bz);
-    out.box(bx, bz, by, 1, 0, 0.05, 0.05, 8.5, FLAG_POLE, FLAG_POLE);
-    const fx = bx + tx * 0.7;
-    const fz = bz + tz * 0.7;
-    const flag = [[bx + tx * 0.05, by + 8.4, bz + tz * 0.05], [fx + tx * 0.5, by + 8.4, fz + tz * 0.5], [fx + tx * 0.5, by + 7.5, fz + tz * 0.5], [bx + tx * 0.05, by + 7.5, bz + tz * 0.05]] as Vec3[];
-    out.poly(flag, [w.nx, 0, w.nz], FLAG_RED);
-    out.poly(flag, [-w.nx, 0, -w.nz], FLAG_RED);
+      const bx = w.ax + tx * 0.8 + w.nx * 2.2;
+      const bz = w.az + tz * 0.8 + w.nz * 2.2;
+      const by = g.heightAt(bx, bz);
+      withMat("steel", () => out.box(bx, bz, by, 1, 0, 0.05, 0.05, 8.5, FLAG_POLE, FLAG_POLE));
+      const fx = bx + tx * 0.7;
+      const fz = bz + tz * 0.7;
+      const flag = [[bx + tx * 0.05, by + 8.4, bz + tz * 0.05], [fx + tx * 0.5, by + 8.4, fz + tz * 0.5], [fx + tx * 0.5, by + 7.5, fz + tz * 0.5], [bx + tx * 0.05, by + 7.5, bz + tz * 0.05]] as Vec3[];
+      out.poly(flag, [w.nx, 0, w.nz], FLAG_RED, "cloth");
+      out.poly(flag, [-w.nx, 0, -w.nz], FLAG_RED, "cloth");
+    });
   } else if (role === "church") {
-    // A steeple over the front: a square tower and a spire.
+    // A steeple over the front: a square tower of the church's own walls, entered at its foot by a pair of doors, with louvres at the bells and a shingled spire.
     const half = Math.min(1.7, w.length / 2 - 0.3);
     const cx = mid[0] + w.nx * 0.2;
     const cz = mid[1] + w.nz * 0.2;
     const tower = H + 3.5;
-    out.box(cx, cz, baseY, tx, tz, half, half, tower - baseY, scaled(wallColour(b.material, b.id), 0.95), ROOF_SHINGLE);
-    const apex: Vec3 = [cx, tower + half * 3.2, cz];
-    const c = (su: number, sv: number): Vec3 => [cx + tx * half * su + w.nx * half * sv, tower, cz + tz * half * su + w.nz * half * sv];
-    const ring = [c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)];
-    for (let i = 0; i < 4; i++) {
-      const p = ring[i] as Vec3;
-      const q = ring[(i + 1) % 4] as Vec3;
-      const mx = (p[0] + q[0]) / 2 - cx;
-      const mz = (p[2] + q[2]) / 2 - cz;
-      out.poly([p, q, apex], [mx, 0.5, mz], ROOF_SHINGLE, undefined, { back: true });
-    }
+    const colour = scaled(wallColour(b.material, b.id), 0.95);
+    const style = wallStyle(b);
+    const at = (su: number, sv: number): [number, number] => [cx + tx * half * su + w.nx * half * sv, cz + tz * half * su + w.nz * half * sv];
+    // The four walls round, each looking out: the front first.
+    const faces: [number, number, number, number, number, number][] = [[-1, 1, 1, 1, w.nx, w.nz], [1, 1, 1, -1, tx, tz], [1, -1, -1, -1, -w.nx, -w.nz], [-1, -1, -1, 1, -tx, -tz]];
+    let along = 0;
+    // The sill of the doors: a step over the ground before the tower, as the building's own street door is.
+    let before = -Infinity;
+    for (let k = 0; k <= 4; k++) before = Math.max(before, g.heightAt(cx + tx * half * (k / 2 - 1) + w.nx * (half + 1), cz + tz * half * (k / 2 - 1) + w.nz * (half + 1)));
+    const sill = Math.max(baseY + 0.3, Math.min(floorY, before + 0.12));
+    faces.forEach(([sa, va, sb, vb, nx, nz], k) => {
+      const [ax, az] = at(sa, va);
+      const [bx, bz] = at(sb, vb);
+      const r = wallRef(ax, az, bx, bz, nx, nz);
+      const surface: Surface = { layer: style.layer, frame: wallFrame(ax, az, r.tx, r.tz, baseY, along, style.turned), ...(style.paint ? {} : { tint: wallTint(b) }) };
+      along += r.length;
+      const m = r.length / 2;
+      const holes: Hole[] = [];
+      // The belfry: a louvred opening high on every face.
+      const lw = Math.min(0.5, half * 0.4);
+      const louvre: Hole = { s0: m - lw, s1: m + lw, y0: tower - 2.0, y1: tower - 0.7 };
+      holes.push(louvre);
+      const dw = Math.min(0.85, half - 0.35);
+      const door: Hole = { s0: m - dw, s1: m + dw, y0: sill, y1: sill + 2.5 };
+      if (k === 0) holes.push(door);
+      cutWall(out, r, baseY, tower, tower, holes, colour, () => surface);
+      const lo = doorIn(out, r, louvre, 0.1, [0.07, 0.07, 0.07], "boards", scaled(colour, 0.8));
+      for (let y = louvre.y0 + 0.08; y < louvre.y1 - 0.1; y += 0.2) wquad(out, r, louvre.s0, y, louvre.s1, y + 0.11, lo + 0.03, [0.2, 0.19, 0.17], "boards");
+      // A band of trim under the spire's eave.
+      // The front's and the back's run on round the corners, and the sides' stop at them: no two of them lie in one plane.
+      const lap = k % 2 === 0 ? 0.06 : 0;
+      wbox(out, r, -lap, r.length + lap, tower - 0.32, tower - 0.1, 0, 0.06, [0.6, 0.59, 0.55], [0.6, 0.59, 0.55], true, "painted");
+      if (k === 0) {
+        pairedDoors(out, r, door, 0.16, [0.3, 0.1, 0.08], scaled(colour, 0.8), [0.4, 0.4, 0.38]);
+        // The head over the doors, and the stoop before them: a slab of concrete and, where the ground is lower, a step down from it.
+        wbox(out, r, door.s0 - 0.12, door.s1 + 0.12, door.y1, door.y1 + 0.14, 0, 0.07, [0.6, 0.59, 0.55], [0.6, 0.59, 0.55], true, "painted");
+        const ground = g.heightAt(cx + w.nx * (half + 0.6), cz + w.nz * (half + 0.6));
+        wbox(out, r, door.s0 - 0.35, door.s1 + 0.35, Math.min(ground, sill) - 0.15, sill, 0, 1.0, [0.4, 0.4, 0.38], [0.45, 0.45, 0.43], false, "concrete");
+        if (sill - ground > 0.24) wbox(out, r, door.s0 - 0.35, door.s1 + 0.35, ground - 0.15, sill - (sill - ground) / 2, 1.0, 1.35, [0.4, 0.4, 0.38], [0.45, 0.45, 0.43], false, "concrete");
+      }
+    });
+    withMat("shingle", () => {
+      const eave = half + 0.18;
+      const apex: Vec3 = [cx, tower + half * 3.2, cz];
+      const c = (su: number, sv: number): Vec3 => [cx + tx * eave * su + w.nx * eave * sv, tower - 0.06, cz + tz * eave * su + w.nz * eave * sv];
+      const ring = [c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)];
+      for (let i = 0; i < 4; i++) {
+        const p = ring[i] as Vec3;
+        const q = ring[(i + 1) % 4] as Vec3;
+        const mx = (p[0] + q[0]) / 2 - cx;
+        const mz = (p[2] + q[2]) / 2 - cz;
+        out.poly([p, q, apex], [mx, 0.5, mz], ROOF_SHINGLE, undefined, { back: true });
+      }
+      // The spire's underside, which its eave shows.
+      out.poly(ring, [0, -1, 0], scaled(ROOF_SHINGLE, 0.6), "painted");
+    });
   } else if (role === "mill") {
     // A smokestack at one end.
     const x = f.cx + e1[0] * L * 0.6;
     const z = f.cz + e1[1] * L * 0.6;
-    out.box(x, z, baseY, e1[0], e1[1], 1.1, 1.1, H + 12 - baseY, wallColour("brick", b.id), scaled(wallColour("brick", b.id), 0.5));
+    withMat("brick", () => out.box(x, z, baseY, e1[0], e1[1], 1.1, 1.1, H + 12 - baseY, wallColour("brick", b.id), scaled(wallColour("brick", b.id), 0.5)));
   }
   void e2;
   void S;
@@ -510,17 +558,17 @@ function refugeGeometry(g: TownGround, f: Frame, b: Building, out: MeshBuilder, 
     const len = Math.sqrt((c[0] - a[0]) * (c[0] - a[0]) + (c[2] - a[2]) * (c[2] - a[2]));
     const dx = (c[0] - a[0]) / len;
     const dz = (c[2] - a[2]) / len;
-    for (const y of [platform + 0.5, railTop - 0.05]) out.box((a[0] + c[0]) / 2, (a[2] + c[2]) / 2, y, dx, dz, len / 2 - 0.05, 0.025, 0.08, FLAG_POLE, FLAG_POLE);
-    out.box(a[0], a[2], platform, 1, 0, 0.05, 0.05, 1.1, FLAG_POLE, FLAG_POLE);
+    for (const y of [platform + 0.5, railTop - 0.05]) withMat("steel", () => out.box((a[0] + c[0]) / 2, (a[2] + c[2]) / 2, y, dx, dz, len / 2 - 0.05, 0.025, 0.08, FLAG_POLE, FLAG_POLE));
+    withMat("steel", () => out.box(a[0], a[2], platform, 1, 0, 0.05, 0.05, 1.1, FLAG_POLE, FLAG_POLE));
   }
   // A small roof on four posts over the middle, for shelter.
   const roofY = platform + 3.2;
   for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
     const x = cx + ux * su * hu * 0.4 + vx * sv * hv * 0.4;
     const z = cz + uz * su * hu * 0.4 + vz * sv * hv * 0.4;
-    out.box(x, z, platform, 1, 0, 0.1, 0.1, roofY - platform, FLAG_POLE, FLAG_POLE);
+    withMat("steel", () => out.box(x, z, platform, 1, 0, 0.1, 0.1, roofY - platform, FLAG_POLE, FLAG_POLE));
   }
-  out.box(cx, cz, roofY, ux, uz, hu * 0.5, hv * 0.5, 0.2, ROOF_METAL, ROOF_METAL);
+  withMat("sheet", () => out.box(cx, cz, roofY, ux, uz, hu * 0.5, hv * 0.5, 0.2, ROOF_METAL, ROOF_METAL));
   // The stair: a slope along the side away from the front, from the ground to the platform.
   const w = walls[frontAt] as Wall;
   const back = dot(vx, vz, w.nx, w.nz) > 0 ? -1 : 1;

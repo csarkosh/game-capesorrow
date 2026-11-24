@@ -10,6 +10,7 @@
  * (a laundromat's pale blue and white, a bar's dark wood, an office's grey and carpet). What is authored: every colour, the heights and
  * spacings, how much each state stains.
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINTS, pickOf } from "./buildingKit.js";
 import { BAKED, fbox, shade, wallPoint, xd, xp, type Ctx, type Xf } from "./roomKit.js";
@@ -222,13 +223,13 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     const us = lines(s0, s1, full ? step : 4, anchors.s, full ? 12 : 3);
     const vs = lines(d0, d1, full ? step : 4, anchors.d, full ? 22 : 4);
     const origin = xp(xf, s0, d0, floorY + 0.08);
-    out.litGrid(origin, xd(xf, s1 - s0, 0), xd(xf, 0, d1 - d0), frac(us), frac(vs), [0, 1, 0], (i, j) => {
+    withMat(c.era < 1950 ? "boards" : "concrete", () => out.litGrid(origin, xd(xf, s1 - s0, 0), xd(xf, 0, d1 - d0), frac(us), frac(vs), [0, 1, 0], (i, j) => {
       const s = us[i] as number;
       const d = vs[j] as number;
       const mottle = 1 + noise(i, j, 0) * (0.12 + stain * 0.3);
       const a = scaled(fin.floor.paint, mottle * c.field.under(s, d));
       return shade(c, a, s, d, 0, 1);
-    }, surf(fin.floor, origin, xd(xf, 1, 0), xd(xf, 0, 1)), { glow: 1 });
+    }, surf(fin.floor, origin, xd(xf, 1, 0), xd(xf, 0, 1)), { glow: 1 }));
   }
   // ---- ceiling
   {
@@ -236,12 +237,12 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     const us = lines(s0, s1, cstep, [], 8);
     const vs = lines(d0, d1, cstep, [], 12);
     const origin = xp(xf, s0, d0, floorY + top);
-    out.litGrid(origin, xd(xf, s1 - s0, 0), xd(xf, 0, d1 - d0), frac(us), frac(vs), [0, -1, 0], (i, j) => {
+    withMat("plaster", () => out.litGrid(origin, xd(xf, s1 - s0, 0), xd(xf, 0, d1 - d0), frac(us), frac(vs), [0, -1, 0], (i, j) => {
       const s = us[i] as number;
       const d = vs[j] as number;
       const leak = vacant && noise(i, j, 1) > 0.18 ? 0.7 : 1;
       return shade(c, scaled(fin.ceiling.paint, (1 + noise(i, j, 2) * 0.1) * leak), s, d, top, -1);
-    }, surf(fin.ceiling, origin, xd(xf, 1, 0), xd(xf, 0, 1)), { glow: 1 });
+    }, surf(fin.ceiling, origin, xd(xf, 1, 0), xd(xf, 0, 1)), { glow: 1 }));
   }
 
   // ---- the walls, in bands from the floor up
@@ -282,7 +283,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     const along: Vec3 = wall === "back" ? xd(xf, a1 - a0, 0) : xd(xf, 0, a1 - a0);
     const facing: Vec3 = wall === "back" ? xd(xf, 0, -1) : wall === "left" ? xd(xf, 1, 0) : xd(xf, -1, 0);
     const where = (a: number): [number, number] => (wall === "back" ? [a, d1] : wall === "left" ? [s0, a] : [s1, a]);
-    out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), facing, (i, j) => {
+    withMat(kind === "base" || kind === "stripe" ? "boards" : "plaster", () => out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), facing, (i, j) => {
       const a = us[i] as number;
       const y = vs[j] as number;
       const [s, d] = where(a);
@@ -292,7 +293,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
       if (kind === "wall" && y > top - 0.9 && noise(i + k * 7, 0, 4) > 0.2 - stain * 0.3) mod *= 1 - 0.25 * stain - (vacant ? 0.12 : 0);
       if (y < 0.5 && stain > 0.2) mod *= 0.85;
       return shade(c, scaled(f.paint, mod * wallK), s, d, y, 0);
-    }, surf(f, origin, along, [0, 1, 0]), { glow: 1 });
+    }, surf(f, origin, along, [0, 1, 0]), { glow: 1 }));
   };
   const doorTop = 2.05;
   for (const b of bands) {
@@ -313,9 +314,9 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
   const dj = 0.06;
   const trim = vacant ? [0.35, 0.33, 0.3] as Rgb : [0.55, 0.52, 0.45] as Rgb;
   if (full) {
-    fbox(c, ds - doorW - dj / 2, d1 - 0.03, 0, doorTop, dj / 2, 0.03, { x: 1, z: 0 }, trim, trim, BAKED, false);
-    fbox(c, ds + doorW + dj / 2, d1 - 0.03, 0, doorTop, dj / 2, 0.03, { x: 1, z: 0 }, trim, trim, BAKED, false);
-    fbox(c, ds, d1 - 0.03, doorTop, 0.06, doorW + dj, 0.03, { x: 1, z: 0 }, trim, trim, BAKED, false);
+    withMat("boards", () => fbox(c, ds - doorW - dj / 2, d1 - 0.03, 0, doorTop, dj / 2, 0.03, { x: 1, z: 0 }, trim, trim, BAKED, false));
+    withMat("boards", () => fbox(c, ds + doorW + dj / 2, d1 - 0.03, 0, doorTop, dj / 2, 0.03, { x: 1, z: 0 }, trim, trim, BAKED, false));
+    withMat("boards", () => fbox(c, ds, d1 - 0.03, doorTop, 0.06, doorW + dj, 0.03, { x: 1, z: 0 }, trim, trim, BAKED, false));
   }
   const rx = (s: number, d: number, y: number): Vec3 => xp(xf, s, d, floorY + y);
   if (open) {
@@ -323,24 +324,26 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     const deep = Math.max(0.3, Math.min(1.6, xf.depth - d1 - 0.1));
     const glowing = c.lit ? 0.42 : 0.07;
     const wallC: Rgb = c.lit ? [0.62, 0.5, 0.36] : [0.3, 0.3, 0.3];
-    out.poly([rx(ds - doorW, d1 + deep, 0), rx(ds + doorW, d1 + deep, 0), rx(ds + doorW, d1 + deep, doorTop), rx(ds - doorW, d1 + deep, doorTop)], xd(xf, 0, -1), wallC, undefined, { glow: glowing });
-    out.poly([rx(ds - doorW, d1, 0), rx(ds - doorW, d1 + deep, 0), rx(ds - doorW, d1 + deep, doorTop), rx(ds - doorW, d1, doorTop)], xd(xf, 1, 0), scaled(wallC, 0.7), undefined, { glow: glowing * 0.8 });
-    out.poly([rx(ds + doorW, d1, 0), rx(ds + doorW, d1 + deep, 0), rx(ds + doorW, d1 + deep, doorTop), rx(ds + doorW, d1, doorTop)], xd(xf, -1, 0), scaled(wallC, 0.55), undefined, { glow: glowing * 0.8 });
-    out.poly([rx(ds - doorW, d1, 0.01), rx(ds + doorW, d1, 0.01), rx(ds + doorW, d1 + deep, 0.01), rx(ds - doorW, d1 + deep, 0.01)], [0, 1, 0], scaled(wallC, 0.8), undefined, { glow: glowing * 1.2 });
-    out.poly([rx(ds - doorW, d1, doorTop), rx(ds + doorW, d1, doorTop), rx(ds + doorW, d1 + deep, doorTop), rx(ds - doorW, d1 + deep, doorTop)], [0, -1, 0], scaled(wallC, 0.3), undefined, { glow: glowing * 0.4 });
+    withMat("plaster", () => {
+      out.poly([rx(ds - doorW, d1 + deep, 0), rx(ds + doorW, d1 + deep, 0), rx(ds + doorW, d1 + deep, doorTop), rx(ds - doorW, d1 + deep, doorTop)], xd(xf, 0, -1), wallC, undefined, { glow: glowing });
+      out.poly([rx(ds - doorW, d1, 0), rx(ds - doorW, d1 + deep, 0), rx(ds - doorW, d1 + deep, doorTop), rx(ds - doorW, d1, doorTop)], xd(xf, 1, 0), scaled(wallC, 0.7), undefined, { glow: glowing * 0.8 });
+      out.poly([rx(ds + doorW, d1, 0), rx(ds + doorW, d1 + deep, 0), rx(ds + doorW, d1 + deep, doorTop), rx(ds + doorW, d1, doorTop)], xd(xf, -1, 0), scaled(wallC, 0.55), undefined, { glow: glowing * 0.8 });
+      out.poly([rx(ds - doorW, d1, 0.01), rx(ds + doorW, d1, 0.01), rx(ds + doorW, d1 + deep, 0.01), rx(ds - doorW, d1 + deep, 0.01)], [0, 1, 0], scaled(wallC, 0.8), undefined, { glow: glowing * 1.2 });
+      out.poly([rx(ds - doorW, d1, doorTop), rx(ds + doorW, d1, doorTop), rx(ds + doorW, d1 + deep, doorTop), rx(ds - doorW, d1 + deep, doorTop)], [0, -1, 0], scaled(wallC, 0.3), undefined, { glow: glowing * 0.4 });
+    });
   } else if (full) {
     // A shut door: a painted board door in the frame, with a knob.
     const leaf: Rgb = vacant ? [0.32, 0.28, 0.22] : pickOf([[0.35, 0.22, 0.14], [0.45, 0.45, 0.42], [0.3, 0.34, 0.3]] as readonly Rgb[], c.seed, 742);
     const p = [rx(ds - doorW, d1 - 0.02, 0), rx(ds + doorW, d1 - 0.02, 0), rx(ds + doorW, d1 - 0.02, doorTop), rx(ds - doorW, d1 - 0.02, doorTop)];
-    out.poly(p, xd(xf, 0, -1), [shade(c, leaf, ds - doorW, d1, 0, 0), shade(c, leaf, ds + doorW, d1, 0, 0), shade(c, leaf, ds + doorW, d1, doorTop, 0), shade(c, leaf, ds - doorW, d1, doorTop, 0)], undefined, { glow: 1 });
+    withMat("boards", () => out.poly(p, xd(xf, 0, -1), [shade(c, leaf, ds - doorW, d1, 0, 0), shade(c, leaf, ds + doorW, d1, 0, 0), shade(c, leaf, ds + doorW, d1, doorTop, 0), shade(c, leaf, ds - doorW, d1, doorTop, 0)], undefined, { glow: 1 }));
     const kp = rx(ds + doorW - 0.1, d1 - 0.04, 1.0);
-    out.cylinder(kp[0], kp[2], kp[1] - 0.03, 0.035, 0.06, 5, [0.6, 0.5, 0.25], [0.7, 0.6, 0.3]);
+    withMat("steel", () => out.cylinder(kp[0], kp[2], kp[1] - 0.03, 0.035, 0.06, 5, [0.6, 0.5, 0.25], [0.7, 0.6, 0.3]));
     if (c.type === "counter service" || c.type === "dining room") {
       // A kitchen's swing door: a lit porthole, a push plate and a kick plate of steel.
       const ring: Vec3[] = [];
       for (let m = 0; m < 8; m++) ring.push(rx(ds + Math.cos((m / 8) * Math.PI * 2 + Math.PI / 8) * 0.13, d1 - 0.05, 1.5 + Math.sin((m / 8) * Math.PI * 2 + Math.PI / 8) * 0.13));
-      out.poly(ring, xd(xf, 0, -1), [0.95, 0.82, 0.55], undefined, { glow: c.lit ? 1.6 : 0.2 });
-      out.poly([rx(ds - doorW + 0.04, d1 - 0.05, 0.02), rx(ds + doorW - 0.04, d1 - 0.05, 0.02), rx(ds + doorW - 0.04, d1 - 0.05, 0.3), rx(ds - doorW + 0.04, d1 - 0.05, 0.3)], xd(xf, 0, -1), [shade(c, [0.62, 0.62, 0.65], ds, d1, 0.1, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.1, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.3, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.3, 0)], undefined, { glow: 1 });
+      withMat("painted", () => out.poly(ring, xd(xf, 0, -1), [0.95, 0.82, 0.55], undefined, { glow: c.lit ? 1.6 : 0.2 }));
+      withMat("steel", () => out.poly([rx(ds - doorW + 0.04, d1 - 0.05, 0.02), rx(ds + doorW - 0.04, d1 - 0.05, 0.02), rx(ds + doorW - 0.04, d1 - 0.05, 0.3), rx(ds - doorW + 0.04, d1 - 0.05, 0.3)], xd(xf, 0, -1), [shade(c, [0.62, 0.62, 0.65], ds, d1, 0.1, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.1, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.3, 0), shade(c, [0.62, 0.62, 0.65], ds, d1, 0.3, 0)], undefined, { glow: 1 }));
     }
   }
   return { doorS: ds, doorW, open };

@@ -15,6 +15,7 @@
  * section, so the track sits on the ground the simulation made, and a spur's end can meet it: the rails' tops are `RAIL_TOP`
  * over the bench, their gauge `RAIL_GAUGE`.
  */
+import { withMat } from "./materials.js";
 import { frameAlong, runLength, BALLAST_SKIRT, BALLAST_TOP, BALLAST_TOP_HALF, RAIL_FOOT, RAIL_TOP, TIE_PITCH, pointOf, type Frame, type Profile } from "./railConstants.js";
 import { MeshBuilder, hash01, scaled, type MeshArrays, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { DECK, PAINT_WHITE, PILE, TIMBER, TIMBER_WEATHERED, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
@@ -193,7 +194,7 @@ export function railPair(sink: MeshBuilder, frames: readonly Frame[], look: Look
   const spec = railSpecs(look, mid.x, mid.z);
   const rails = lod === 0 ? RAIL_PROFILE : RAIL_PLAIN;
   const topEdges = lod === 0 ? [5] : [1];
-  for (const side of [-1, 1]) sweep(sink, frames, rails, (side * RAIL_GAUGE) / 2, spec.flatSide, true, spec.flatTop, { top: spec.top, side: spec.side, topEdges, ...(lift === undefined ? {} : { lift }) });
+  for (const side of [-1, 1]) withMat("rusty", () => sweep(sink, frames, rails, (side * RAIL_GAUGE) / 2, spec.flatSide, true, spec.flatTop, { top: spec.top, side: spec.side, topEdges, ...(lift === undefined ? {} : { lift }) }));
 }
 
 /** Frames along z from `za` to `zb` every `step` metres, with the ends exact. */
@@ -330,6 +331,7 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
   if (frames.length < 2) return;
   const timber = (tint: Rgb, wear: number | ((p: Vec3) => number), kind: WearKind = "grime", streaks = false): SurfaceSpec => ({ layer: "planks_weathered", tint, wear, wearKind: kind, streaks, wear2: 0.12, wearKind2: "moss" });
   // The planked deck and the stringers under it, swept along the frames: boards that run along the deck, worn grey in the wheel-less middle and dark at the edges.
+  withMat("wood", () => {
   sweep(b, frames, [[-TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.08]], 0, DECK, false, DECK, { top: timber([1.25, 1.12, 1.0], 0.3), side: timber([1.1, 1.0, 0.9], 0.3) });
   sweep(b, frames, [[-TRESTLE_HALF, 0.04], [-TRESTLE_HALF, 0.08]], 0, TIMBER, false, TIMBER, { side: timber([1.0, 0.9, 0.8], 0.4) });
   sweep(b, frames, [[TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.04]], 0, TIMBER, false, TIMBER, { side: timber([1.0, 0.9, 0.8], 0.4) });
@@ -340,6 +342,7 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
     sweep(b, frames, [[off - 0.05, 1.0], [off - 0.05, 1.1], [off + 0.05, 1.1], [off + 0.05, 1.0]], 0, TIMBER, true, TIMBER, { top: timber([1.1, 1.0, 0.9], 0.3), side: timber([1.1, 1.0, 0.9], 0.3) });
     sweep(b, frames, [[off - 0.04, 0.55], [off - 0.04, 0.62], [off + 0.04, 0.62], [off + 0.04, 0.55]], 0, TIMBER, true, TIMBER, { top: timber([1.1, 1.0, 0.9], 0.3), side: timber([1.1, 1.0, 0.9], 0.3) });
   }
+  });
   const length = runLength(frames);
   // Ties on the deck, as on the bed: individuals.
   if (lod === 0) {
@@ -356,18 +359,18 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
     const f = frameAlong(frames, (length * i) / nb);
     const capBottom = f.g - 0.55;
     const stain = (p: Vec3): number => 0.2 + 0.7 * clamp01(1 - (capBottom - p[1]) / 0.6) + (p[1] > capBottom ? 0.2 : 0);
-    texBox(b, f.x, f.z, capBottom, f.nx, f.nz, 1.55, 0.14, 0.25, timber([0.95, 0.85, 0.75], 0.45, "grime", true), false, PILE, true);
+    withMat("wood", () => texBox(b, f.x, f.z, capBottom, f.nx, f.nz, 1.55, 0.14, 0.25, timber([0.95, 0.85, 0.75], 0.45, "grime", true), false, PILE, true));
     for (const off of [-1.15, 0, 1.15]) {
       const x = f.x + f.nx * off;
       const z = f.z + f.nz * off;
       const bottom = Math.min(heightAt(x, z), f.g - 1) - 0.4;
-      texBox(b, x, z, bottom, 1, 0, 0.16, 0.16, capBottom - bottom, timber([0.75, 0.66, 0.58], stain, "grime", true), true, PILE, true);
+      withMat("wood", () => texBox(b, x, z, bottom, 1, 0, 0.16, 0.16, capBottom - bottom, timber([0.75, 0.66, 0.58], stain, "grime", true), true, PILE, true));
     }
     if (lod < 2) {
       for (const side of [-1, 1]) {
         const x = f.x + f.nx * side * (TRESTLE_HALF - 0.06);
         const z = f.z + f.nz * side * (TRESTLE_HALF - 0.06);
-        b.box(x, z, f.g + 0.08, 1, 0, 0.06, 0.06, 1.05, TIMBER, TIMBER, true, null);
+        withMat("wood", () => b.box(x, z, f.g + 0.08, 1, 0, 0.06, 0.06, 1.05, TIMBER, TIMBER, true, null));
       }
     }
   }
@@ -448,7 +451,7 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
     const lat = (c.roadway / 2 + 0.9) * (rightOf[0] * L[0] + rightOf[1] * L[1]);
     const [px, pz] = at(lat, side * CROSSBUCK_DISTANCE);
     const foot = w.heightAt(px, pz);
-    solid.box(px, pz, foot - 0.1, 1, 0, 0.05, 0.05, CROSSBUCK_POST + 0.1, PAINT_WHITE, PAINT_WHITE);
+    withMat("steel", () => solid.box(px, pz, foot - 0.1, 1, 0, 0.05, 0.05, CROSSBUCK_POST + 0.1, PAINT_WHITE, PAINT_WHITE));
     // Two boards crossed, in the plane across the street, facing back along the approach.
     const top = foot + CROSSBUCK_AT;
     const face: Vec3 = [-travel[0], 0, -travel[1]];
@@ -458,10 +461,10 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
       // The board's own cross direction in its plane, perpendicular to `dir`.
       const cross: Vec3 = [L[0] * 0.7071 * turn * -1, 0.7071, L[1] * 0.7071 * turn * -1];
       const corner = (a: number, bq: number): Vec3 => [px + dir[0] * a + cross[0] * bq + thick[0], top + dir[1] * a + cross[1] * bq, pz + dir[2] * a + cross[2] * bq + thick[2]];
-      solid.quad(corner(-0.55, -0.07), corner(0.55, -0.07), corner(0.55, 0.07), corner(-0.55, 0.07), face, WHITE_SIGN);
+      solid.quad(corner(-0.55, -0.07), corner(0.55, -0.07), corner(0.55, 0.07), corner(-0.55, 0.07), face, WHITE_SIGN, "painted");
       const back: Vec3 = [-thick[0], 0, -thick[2]];
       const corner2 = (a: number, bq: number): Vec3 => [px + dir[0] * a + cross[0] * bq + back[0], top + dir[1] * a + cross[1] * bq, pz + dir[2] * a + cross[2] * bq + back[2]];
-      solid.quad(corner2(-0.55, -0.07), corner2(0.55, -0.07), corner2(0.55, 0.07), corner2(-0.55, 0.07), [-face[0], 0, -face[2]], scaled(WHITE_SIGN, 0.8));
+      solid.quad(corner2(-0.55, -0.07), corner2(0.55, -0.07), corner2(0.55, 0.07), corner2(-0.55, 0.07), [-face[0], 0, -face[2]], scaled(WHITE_SIGN, 0.8), "painted");
     }
   }
   // The stop lines, one on each approach, across the lane that comes to the line: at least 15 ft (4.6 m) from the nearest rail (the
@@ -476,7 +479,7 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
     const cc = at(lane * (c.roadway / 2 - 0.1), n1);
     const d = at(lane * 0.15, n1);
     const up = (p: [number, number]): Vec3 => [p[0], w.heightAt(p[0], p[1]) + 0.135, p[1]];
-    flat.quad(up(a), up(bb), up(cc), up(d), [0, 1, 0], PAINT_WHITE);
+    flat.quad(up(a), up(bb), up(cc), up(d), [0, 1, 0], PAINT_WHITE, "painted");
   }
 }
 
@@ -484,7 +487,7 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
 function pole(w: RailWorld, solid: MeshBuilder, p: Pole, next: Pole, lod: RailLod): void {
   const foot = w.heightAt(p.x, p.z) - 0.3;
   const top = foot + POLE_HEIGHT;
-  solid.cylinder(p.x, p.z, foot, POLE_RADIUS, POLE_HEIGHT + 0.3, lod === 0 ? 7 : 4, POLE_COLOUR, POLE_COLOUR, POLE_RADIUS * 0.8);
+  withMat("wood", () => solid.cylinder(p.x, p.z, foot, POLE_RADIUS, POLE_HEIGHT + 0.3, lod === 0 ? 7 : 4, POLE_COLOUR, POLE_COLOUR, POLE_RADIUS * 0.8));
   // The line's direction at the pole: toward the next.
   const dx = next.x - p.x;
   const dz = next.z - p.z;
@@ -493,11 +496,11 @@ function pole(w: RailWorld, solid: MeshBuilder, p: Pole, next: Pole, lod: RailLo
   const uz = len > 1e-6 ? -dx / len : 0;
   // Across the line: the crossarm lies along (ux, uz).
   const armY = top - 0.7;
-  solid.box(p.x, p.z, armY, ux, uz, CROSSARM / 2, 0.06, 0.12, POLE_COLOUR, POLE_COLOUR);
+  withMat("wood", () => solid.box(p.x, p.z, armY, ux, uz, CROSSARM / 2, 0.06, 0.12, POLE_COLOUR, POLE_COLOUR));
   if (lod === 2) return;
   const attach = (off: number, y: number): Vec3 => [p.x + ux * off, y, p.z + uz * off];
   const here: Vec3[] = [attach(-CROSSARM / 2 + 0.12, armY + 0.12 + 0.18), attach(CROSSARM / 2 - 0.12, armY + 0.12 + 0.18), attach(0, top + 0.12)];
-  for (const a of here) solid.box(a[0], a[2], a[1] - 0.18, 1, 0, 0.04, 0.04, 0.18, INSULATOR, INSULATOR);
+  for (const a of here) withMat("painted", () => solid.box(a[0], a[2], a[1] - 0.18, 1, 0, 0.04, 0.04, 0.18, INSULATOR, INSULATOR));
   if (len < 1e-6) return;
   // The next pole's attachments, in the same order: its crossarm is across the same line.
   const nfoot = w.heightAt(next.x, next.z) - 0.3;
@@ -518,7 +521,7 @@ function pole(w: RailWorld, solid: MeshBuilder, p: Pole, next: Pole, lod: RailLo
     for (let s = 1; s <= WIRE_SEGMENTS; s++) {
       const t = s / WIRE_SEGMENTS;
       const cur: Vec3 = [a[0] + (bq[0] - a[0]) * t, a[1] + (bq[1] - a[1]) * t - sag * 4 * t * (1 - t), a[2] + (bq[2] - a[2]) * t];
-      solid.prism(prev, cur, WIRE_RADIUS, 3, WIRE, null);
+      withMat("steel", () => solid.prism(prev, cur, WIRE_RADIUS, 3, WIRE, null));
       prev = cur;
     }
   }
@@ -534,7 +537,7 @@ export function riprap(w: RailWorld, b: MeshBuilder, za: number, zb: number): vo
       const x = f.x + f.nx * off;
       const z = f.z + f.nz * off;
       const size = 0.35 + hash01(j, side + 9) * 0.35;
-      b.box(x, z, w.heightAt(x, z) - 0.15, 1, 0, size, size * 0.8, size * 1.2, STONE, scaled(STONE, 1.2));
+      withMat("stone", () => b.box(x, z, w.heightAt(x, z) - 0.15, 1, 0, size, size * 0.8, size * 1.2, STONE, scaled(STONE, 1.2)));
     }
   }
 }

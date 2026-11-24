@@ -7,6 +7,7 @@
  * (The tarps and the patches of other shingle are `buildingParts.ts`'s: a repair of the building's own.) A decal stands 8 cm and more off the slope along its normal (more than the 2.45 cm the depth buffer is held to). A roof whose ridge sags (an old wooden house's) gets no
  * decal, since its slope is no plane, but may have an antenna.
  */
+import { withMat } from "./materials.js";
 import { hash01, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { levelOf, exposureOf } from "./buildingWear.js";
 import type { Surface } from "./townSurface.js";
@@ -65,19 +66,19 @@ export function roofGear(out: MeshBuilder, b: Building, x: number, y: number, z:
     const lz = (r(3) - 0.5) * 0.9;
     const h = 2.4 + 1.2 * r(4);
     const top: Vec3 = [x + lx, y + h, z + lz];
-    out.prism([x, y - 0.2, z], top, 0.014, 4, grey, grey);
+    withMat("steel", () => out.prism([x, y - 0.2, z], top, 0.014, 4, grey, grey));
     for (let i = 0; i < 3; i++) {
       const k = 0.55 + 0.17 * i;
       const c: Vec3 = [x + lx * k, y - 0.2 + (h + 0.2) * k, z + lz * k];
       const w = 0.55 - 0.12 * i;
       const ax = r(5) < 0.5 ? 1 : 0;
       const az = 1 - ax;
-      out.prism([c[0] - ax * w, c[1], c[2] - az * w], [c[0] + ax * w, c[1], c[2] + az * w], 0.01, 4, grey, grey);
+      withMat("steel", () => out.prism([c[0] - ax * w, c[1], c[2] - az * w], [c[0] + ax * w, c[1], c[2] + az * w], 0.01, 4, grey, grey));
     }
   } else if (r(6) < 0.1) {
     // A dish on a short post, its face turned toward the south and up.
     const post: Vec3 = [x, y + 0.7, z];
-    out.prism([x, y - 0.1, z], post, 0.02, 4, grey, grey);
+    withMat("steel", () => out.prism([x, y - 0.1, z], post, 0.02, 4, grey, grey));
     const rr = 0.3 + 0.08 * r(7);
     const n: Vec3 = [(r(8) - 0.5) * 0.4, 0.6, -0.8];
     const nl = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
@@ -91,7 +92,9 @@ export function roofGear(out: MeshBuilder, b: Building, x: number, y: number, z:
       const sn = Math.sin(a) * rr;
       return [post[0] + nn[0] * 0.05 + ux[0] * cs + vx[0] * sn, post[1] + nn[1] * 0.05 + ux[1] * cs + vx[1] * sn, post[2] + nn[2] * 0.05 + ux[2] * cs + vx[2] * sn];
     });
-    out.poly(ring, nn, [0.72, 0.72, 0.7]);
-    out.poly(ring, [-nn[0], -nn[1], -nn[2]], [0.45, 0.45, 0.45]);
+    withMat("sheet", () => {
+      out.poly(ring, nn, [0.72, 0.72, 0.7]);
+      out.poly(ring, [-nn[0], -nn[1], -nn[2]], [0.45, 0.45, 0.45]);
+    });
   }
 }

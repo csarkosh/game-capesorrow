@@ -17,6 +17,7 @@ import { isClear } from "./faceLedger.js";
 import { wat, type WallRef } from "./buildingKit.js";
 import { neglectOf, seamHouses, type HouseSeam } from "./houseSeam.js";
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
+import { withMat, type MatRef } from "./materials.js";
 import { hash01, scaled } from "./meshBuilder.js";
 import type { Sink, TownGround } from "./townTypes.js";
 
@@ -85,7 +86,7 @@ function doorstep(h: HouseSeam, out: MeshBuilder, neg: number): void {
   if (hash01(b.id, 4000) < 0.65 - 0.35 * neg) {
     const c = at(d.s, 0.1 + (Math.min(depth, 0.9) - 0.1) * 0.5);
     const tone = 0.7 + 0.6 * hash01(b.id, 4001);
-    out.box(c[0], c[2], y, w.tx, w.tz, 0.32, Math.min(0.25, (depth - 0.1) / 2), 0.025, scaled([0.3, 0.22, 0.14], tone), scaled([0.34, 0.26, 0.16], tone), true, null);
+    withMat("rope", () => out.box(c[0], c[2], y, w.tx, w.tz, 0.32, Math.min(0.25, (depth - 0.1) / 2), 0.025, scaled([0.3, 0.22, 0.14], tone), scaled([0.34, 0.26, 0.16], tone), true, null));
   }
   const r = hash01(b.id, 4010);
   const side = hash01(b.id, 4011) < 0.5 ? -1 : 1;
@@ -94,19 +95,19 @@ function doorstep(h: HouseSeam, out: MeshBuilder, neg: number): void {
   if (r < 0.5 - 0.3 * neg && porch) {
     // A pot with a plant in it, beside the door.
     const c = at(d.s + side * sOff, 0.35);
-    out.cylinder(c[0], c[2], y, 0.15, 0.3, 7, [0.45, 0.2, 0.12], [0.1, 0.07, 0.04], 0.12);
-    out.cylinder(c[0], c[2], y + 0.3, 0.1, 0.22, 6, [0.1, 0.22, 0.07], [0.12, 0.26, 0.08], 0.2);
+    withMat("brick", () => out.cylinder(c[0], c[2], y, 0.15, 0.3, 7, [0.45, 0.2, 0.12], [0.1, 0.07, 0.04], 0.12));
+    withMat("plant", () => out.cylinder(c[0], c[2], y + 0.3, 0.1, 0.22, 6, [0.1, 0.22, 0.07], [0.12, 0.26, 0.08], 0.2));
   } else if (r < 0.8) {
     // A pair of boots by the door, one fallen over.
     for (let k = 0; k < 2; k++) {
       const c = at(d.s + side * (sOff + 0.15 * k), 0.3 + 0.12 * k);
-      out.box(c[0], c[2], y, w.tx, w.tz, k === 0 ? 0.05 : 0.13, k === 0 ? 0.13 : 0.05, k === 0 ? 0.22 : 0.1, [0.08, 0.07, 0.05], [0.1, 0.09, 0.06], true, null);
+      withMat("rubber", () => out.box(c[0], c[2], y, w.tx, w.tz, k === 0 ? 0.05 : 0.13, k === 0 ? 0.13 : 0.05, k === 0 ? 0.22 : 0.1, [0.08, 0.07, 0.05], [0.1, 0.09, 0.06], true, null));
     }
   } else if (porch) {
     // A broom leaning on the wall beside the door.
     const c = at(d.s + side * sOff, 0.2);
-    out.prism([c[0] + w.nx * 0.28, y + 0.02, c[2] + w.nz * 0.28], [c[0] + w.nx * 0.06, y + 1.25, c[2] + w.nz * 0.06], 0.012, 4, [0.4, 0.3, 0.17], [0.4, 0.3, 0.17]);
-    out.prism([c[0] + w.nx * 0.32, y + 0.02, c[2] + w.nz * 0.32], [c[0] + w.nx * 0.26, y + 0.3, c[2] + w.nz * 0.26], 0.05, 5, [0.5, 0.42, 0.2], [0.5, 0.42, 0.2]);
+    withMat("wood", () => out.prism([c[0] + w.nx * 0.28, y + 0.02, c[2] + w.nz * 0.28], [c[0] + w.nx * 0.06, y + 1.25, c[2] + w.nz * 0.06], 0.012, 4, [0.4, 0.3, 0.17], [0.4, 0.3, 0.17]));
+    withMat("rope", () => out.prism([c[0] + w.nx * 0.32, y + 0.02, c[2] + w.nz * 0.32], [c[0] + w.nx * 0.26, y + 0.3, c[2] + w.nz * 0.26], 0.05, 5, [0.5, 0.42, 0.2], [0.5, 0.42, 0.2]));
   }
 }
 
@@ -130,7 +131,17 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
     const Lk = { base: fo + L.base, line: fo + L.line, algae: fo + L.algae, mud: fo + L.mud };
     const north = w.nz > 0.3;
     // A column of the foundation from `s0` to `s1`, over the ground at its feet, up to `y1` (or less), off the wall `off`.
-    const col = (s0: number, s1: number, off: number, colour: Rgb, hMax = 9, tilt = 0): boolean => {
+    // The foundation stops at the front door, where the steps or the porch stand (`buildingParts.ts`): so does everything on it.
+    const gap: [number, number] | null = k === h.frontAt && h.door !== null ? [h.door.s - h.door.half, h.door.s + h.door.half] : null;
+    const inGap = (a: number, e: number): boolean => gap !== null && a < gap[1] && e > gap[0];
+    const col = (s0: number, s1: number, off: number, colour: Rgb, hMax = 9, tilt = 0, mat: MatRef = "concrete"): boolean => {
+      if (gap !== null && inGap(s0, s1)) {
+        // Cut at the door: what is left of it on either side.
+        let any = false;
+        if (gap[0] - s0 > 0.1) any = col(s0, gap[0], off, colour, hMax, tilt, mat) || any;
+        if (s1 - gap[1] > 0.1) any = col(gap[1], s1, off, colour, hMax, tilt, mat) || any;
+        return any;
+      }
       const ya = groundAt(g, w, s0) - 0.03;
       const yb = groundAt(g, w, s1) - 0.03;
       const t0 = Math.min(top, Math.max(ya, yb) + hMax);
@@ -141,7 +152,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       const ta = Math.max(ya + 0.03, Math.min(top, ya + hMax + 0.03) - tilt);
       const tb = Math.max(yb + 0.03, Math.min(top, yb + hMax + 0.03) + tilt);
       void t0;
-      out.poly([wat(w, s0, ya, off), wat(w, s1, yb, off), wat(w, s1, tb, off), wat(w, s0, ta, off)], [w.nx, 0, w.nz], colour);
+      out.poly([wat(w, s0, ya, off), wat(w, s1, yb, off), wat(w, s1, tb, off), wat(w, s0, ta, off)], [w.nx, 0, w.nz], colour, mat);
       return true;
     };
     // The tops over the ground at both feet: at least this, or the wall's foundation does not show here at all.
@@ -154,7 +165,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
     }
     if (kind === "pier") {
       // The skirt: a dark gap over the whole wall, boards on it, none quite level, one gone on a house that has been let go.
-      col(-0.05, w.length + 0.05, Lk.base, DARK);
+      col(-0.05, w.length + 0.05, Lk.base, DARK, 9, 0, "soil");
       let missing = false;
       for (let i = 0; i + 1 < stretches.length; i++) {
         const s0 = (stretches[i] as number) + 0.02 + 0.03 * hash01(key, 1200 + i);
@@ -165,7 +176,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
           continue;
         }
         const tone = 0.6 + 0.5 * hash01(key, 1500 + i);
-        col(s0, s1, Lk.line, scaled(WOOD, tone), Math.max(0.12, exposed(s0) - 0.14 * hash01(key, 1650 + i)), 0.12 * (hash01(key, 1600 + i) - 0.5));
+        col(s0, s1, Lk.line, scaled(WOOD, tone), Math.max(0.12, exposed(s0) - 0.14 * hash01(key, 1650 + i)), 0.12 * (hash01(key, 1600 + i) - 0.5), "wood");
       }
       void exposed;
     } else {
@@ -175,7 +186,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
         const s1 = stretches[i + 1] as number;
         const tone = kind === "brick" ? 0.8 + 0.4 * hash01(key, 1700 + i) : 0.84 + 0.26 * hash01(key, 1700 + i);
         const tint: Rgb = [base[0] * tone * (0.96 + 0.08 * hash01(key, 1750 + i)), base[1] * tone, base[2] * tone * (0.94 + 0.1 * hash01(key, 1760 + i))];
-        col(s0, s1, Lk.base, tint);
+        col(s0, s1, Lk.base, tint, 9, 0, kind === "brick" ? "brick" : kind === "block" ? "formed" : "concrete");
       }
       // Courses and form lines: thin dark lines along the whole wall, in runs with gaps, each at its own height over the ground.
       const lineColour = scaled(base, kind === "brick" ? 1.9 : 0.55);
@@ -190,8 +201,8 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
           if (hash01(key + c, 2000 + i) < 0.45) continue;
           const y0a = groundAt(g, w, a) + 0.1 + 0.15 * c + 0.012 * hash01(key + c, 2050 + i);
           const y0b = groundAt(g, w, s1) + 0.1 + 0.15 * c + 0.012 * hash01(key + c, 2060 + i);
-          if (y0a + 0.02 > top || y0b + 0.02 > top) continue;
-          out.poly([wat(w, a, y0a, Lk.line), wat(w, s1, y0b, Lk.line), wat(w, s1, y0b + 0.014, Lk.line), wat(w, a, y0a + 0.014, Lk.line)], [w.nx, 0, w.nz], lineColour);
+          if (y0a + 0.02 > top || y0b + 0.02 > top || inGap(a, s1)) continue;
+          out.poly([wat(w, a, y0a, Lk.line), wat(w, s1, y0b, Lk.line), wat(w, s1, y0b + 0.014, Lk.line), wat(w, a, y0a + 0.014, Lk.line)], [w.nx, 0, w.nz], lineColour, "brick");
         }
       }
       if (kind === "concrete" && hash01(key, 2100) < 0.55) {
@@ -201,8 +212,8 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
         for (let i = 0; i < 4; i++) {
           const ds = (hash01(key, 2110 + i) - 0.5) * 0.14;
           const dy = 0.05 + 0.04 * hash01(key, 2120 + i);
-          if (y - dy < groundAt(g, w, s) + 0.02) break;
-          out.poly([wat(w, s, y, Lk.line), wat(w, s + ds, y - dy, Lk.line), wat(w, s + ds + 0.012, y - dy, Lk.line), wat(w, s + 0.012, y, Lk.line)], [w.nx, 0, w.nz], [0.05, 0.05, 0.05]);
+          if (y - dy < groundAt(g, w, s) + 0.02 || inGap(s - 0.1, s + 0.1)) break;
+          out.poly([wat(w, s, y, Lk.line), wat(w, s + ds, y - dy, Lk.line), wat(w, s + ds + 0.012, y - dy, Lk.line), wat(w, s + 0.012, y, Lk.line)], [w.nx, 0, w.nz], [0.05, 0.05, 0.05], "concrete");
           s += ds;
           y -= dy;
         }
@@ -211,19 +222,19 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
         // A vent: a dark grille a hand above the ground.
         const vs = w.length * (0.2 + 0.6 * hash01(key, 2200));
         const g0 = groundAt(g, w, vs);
-        if (top - g0 > 0.35) out.poly([wat(w, vs, g0 + 0.17, Lk.line), wat(w, vs + 0.4, g0 + 0.17, Lk.line), wat(w, vs + 0.4, g0 + 0.33, Lk.line), wat(w, vs, g0 + 0.33, Lk.line)], [w.nx, 0, w.nz], [0.04, 0.04, 0.04]);
+        if (top - g0 > 0.35 && !inGap(vs, vs + 0.4)) out.poly([wat(w, vs, g0 + 0.17, Lk.line), wat(w, vs + 0.4, g0 + 0.17, Lk.line), wat(w, vs + 0.4, g0 + 0.33, Lk.line), wat(w, vs, g0 + 0.33, Lk.line)], [w.nx, 0, w.nz], [0.04, 0.04, 0.04], "steel");
       }
     }
     // Algae climbs the foundation in uneven columns on the shaded walls and the neglected, and the splash of mud goes up from the ground, higher in some places than others.
     const algae = clamp01((north ? 0.5 : 0.1) + 0.35 * neg);
     for (let s = 0, i = 0; s < w.length - 0.1; i++) {
       const s1 = Math.min(w.length, s + 1.4 + 1.4 * hash01(key, 2300 + i));
-      if (hash01(key, 2350 + i) < algae) col(s, s1, Lk.algae, scaled([0.2, 0.28, 0.13], 0.7 + 0.5 * hash01(key, 2360 + i)), 0.1 + 0.95 * hash01(key, 2370 + i) * (0.45 + 0.55 * algae));
+      if (hash01(key, 2350 + i) < algae) col(s, s1, Lk.algae, scaled([0.2, 0.28, 0.13], 0.7 + 0.5 * hash01(key, 2360 + i)), 0.1 + 0.95 * hash01(key, 2370 + i) * (0.45 + 0.55 * algae), 0, "plant");
       s = s1;
     }
     for (let s = 0, i = 0; s < w.length - 0.1; i++) {
       const s1 = Math.min(w.length, s + 0.9 + 1.4 * hash01(key, 2400 + i));
-      if (hash01(key, 2430 + i) < 0.5) col(s, s1, Lk.mud, scaled([0.14, 0.12, 0.1], 0.7 + 0.5 * hash01(key, 2410 + i)), 0.06 + 0.3 * hash01(key, 2420 + i) * (0.6 + 0.9 * neg));
+      if (hash01(key, 2430 + i) < 0.5) col(s, s1, Lk.mud, scaled([0.14, 0.12, 0.1], 0.7 + 0.5 * hash01(key, 2410 + i)), 0.06 + 0.3 * hash01(key, 2420 + i) * (0.6 + 0.9 * neg), 0, "soil");
       s = s1;
     }
   });
@@ -239,8 +250,8 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       h.occupied.push({ k: hk, s0: s - 0.3, s1: s + 0.95 });
       // Beyond the mud and algae columns, so as its own layer: 3 cm further out.
       const o = (h.foundOff[hk] as number) + 0.15;
-      out.poly([wat(w, s - 0.04, y0 - 0.04, o), wat(w, s + 0.64, y0 - 0.04, o), wat(w, s + 0.64, y1 + 0.04, o), wat(w, s - 0.04, y1 + 0.04, o)], [w.nx, 0, w.nz], [0.34, 0.33, 0.3]);
-      out.poly([wat(w, s, y0, o + 0.03), wat(w, s + 0.6, y0, o + 0.03), wat(w, s + 0.6, y1, o + 0.03), wat(w, s, y1, o + 0.03)], [w.nx, 0, w.nz], [0.2, 0.17, 0.12]);
+      out.poly([wat(w, s - 0.04, y0 - 0.04, o), wat(w, s + 0.64, y0 - 0.04, o), wat(w, s + 0.64, y1 + 0.04, o), wat(w, s - 0.04, y1 + 0.04, o)], [w.nx, 0, w.nz], [0.34, 0.33, 0.3], "painted");
+      out.poly([wat(w, s, y0, o + 0.03), wat(w, s + 0.6, y0, o + 0.03), wat(w, s + 0.6, y1, o + 0.03), wat(w, s, y1, o + 0.03)], [w.nx, 0, w.nz], [0.2, 0.17, 0.12], "boards");
     }
   }
 }
@@ -365,62 +376,62 @@ function place(g: TownGround, h: HouseSeam, out: MeshBuilder, kind: string, at: 
   if (kind === "hose") {
     // A bib on the foundation and a hose coiled under it, its end trailing across the grass.
     const bib = wat(w, s + 0.15, gy(s + 0.15, 0.2) + 0.4, 0.2);
-    out.box(bib[0], bib[2], bib[1], w.tx, w.tz, 0.03, 0.05, 0.07, [0.45, 0.38, 0.22], [0.5, 0.42, 0.25]);
+    withMat("steel", () => out.box(bib[0], bib[2], bib[1], w.tx, w.tz, 0.03, 0.05, 0.07, [0.45, 0.38, 0.22], [0.5, 0.42, 0.25]));
     const c = ctr(s + 0.6, 0.45);
-    out.cylinder(c[0], c[2], c[1], 0.2, 0.1, 8, [0.06, 0.2, 0.1], [0.05, 0.16, 0.08], 0.17);
-    out.prism([bib[0] + w.nx * 0.05, bib[1] - 0.02, bib[2] + w.nz * 0.05], [c[0] - w.tx * 0.1, c[1] + 0.1, c[2] - w.tz * 0.1], 0.014, 4, [0.06, 0.2, 0.1], [0.06, 0.2, 0.1]);
+    withMat("rubber", () => out.cylinder(c[0], c[2], c[1], 0.2, 0.1, 8, [0.06, 0.2, 0.1], [0.05, 0.16, 0.08], 0.17));
+    withMat("rubber", () => out.prism([bib[0] + w.nx * 0.05, bib[1] - 0.02, bib[2] + w.nz * 0.05], [c[0] - w.tx * 0.1, c[1] + 0.1, c[2] - w.tz * 0.1], 0.014, 4, [0.06, 0.2, 0.1], [0.06, 0.2, 0.1]));
     const e = ctr(s + 0.9 + 1.4 * hs(1), 0.9 + 1.6 * hs(2));
-    out.prism([c[0] + w.tx * 0.15, c[1] + 0.04, c[2] + w.tz * 0.15], [e[0], e[1] + 0.03, e[2]], 0.014, 4, [0.06, 0.2, 0.1], [0.06, 0.2, 0.1]);
+    withMat("rubber", () => out.prism([c[0] + w.tx * 0.15, c[1] + 0.04, c[2] + w.tz * 0.15], [e[0], e[1] + 0.03, e[2]], 0.014, 4, [0.06, 0.2, 0.1], [0.06, 0.2, 0.1]));
   } else if (kind === "drain") {
     // A splash block under the downspout, or a pipe that leads the water off across the lawn.
     const c = ctr(s + 0.3, 0.38);
     if (hs(3) < 0.5) {
-      out.box(c[0], c[2], c[1], w.tx, w.tz, 0.28, 0.14, 0.07, [0.5, 0.5, 0.48], [0.55, 0.55, 0.52]);
+      withMat("concrete", () => out.box(c[0], c[2], c[1], w.tx, w.tz, 0.28, 0.14, 0.07, [0.5, 0.5, 0.48], [0.55, 0.55, 0.52]));
     } else {
       const e = ctr(s + 0.3 + (hs(4) - 0.5) * 1.5, 2.2 + 2 * hs(5));
-      out.prism([c[0], c[1] + 0.06, c[2]], [e[0], e[1] + 0.05, e[2]], 0.055, 6, [0.07, 0.07, 0.08], [0.07, 0.07, 0.08]);
+      withMat("plastic", () => out.prism([c[0], c[1] + 0.06, c[2]], [e[0], e[1] + 0.05, e[2]], 0.055, 6, [0.07, 0.07, 0.08], [0.07, 0.07, 0.08]));
     }
   } else if (kind === "wood") {
     // A stack of split firewood against the wall, under a tarp on a house that is let go.
     const c = ctr(s + 0.85, 0.5);
     const hgt = 0.6 + 0.3 * hs(6);
-    out.box(c[0], c[2], c[1], w.tx, w.tz, 0.72, 0.25, hgt, [0.27, 0.18, 0.1], [0.3, 0.21, 0.12]);
-    if (neg > 0.3 || hs(7) < 0.35) out.box(c[0], c[2], c[1] + hgt, w.tx, w.tz, 0.8, 0.38, 0.05, [0.1, 0.22, 0.45], [0.12, 0.25, 0.5]);
+    withMat("wood", () => out.box(c[0], c[2], c[1], w.tx, w.tz, 0.72, 0.25, hgt, [0.27, 0.18, 0.1], [0.3, 0.21, 0.12]));
+    if (neg > 0.3 || hs(7) < 0.35) withMat("cloth", () => out.box(c[0], c[2], c[1] + hgt, w.tx, w.tz, 0.8, 0.38, 0.05, [0.1, 0.22, 0.45], [0.12, 0.25, 0.5]));
   } else if (kind === "ladder") {
     // A ladder leaning against the wall.
     const base = ctr(s + 0.4, 0.75);
     const top = wat(w, s + 0.4, base[1] + 2.5, 0.09);
     const tone: Rgb = hs(8) < 0.5 ? [0.58, 0.58, 0.6] : [0.4, 0.3, 0.17];
-    for (const sd of [-0.2, 0.2]) out.prism([base[0] + w.tx * sd, base[1], base[2] + w.tz * sd], [top[0] + w.tx * sd, top[1], top[2] + w.tz * sd], 0.022, 4, tone, tone);
+    for (const sd of [-0.2, 0.2]) withMat(hs(8) < 0.5 ? "sheet" : "wood", () => out.prism([base[0] + w.tx * sd, base[1], base[2] + w.tz * sd], [top[0] + w.tx * sd, top[1], top[2] + w.tz * sd], 0.022, 4, tone, tone));
     for (let r = 1; r <= 3; r++) {
       const f = r / 4;
       const px = base[0] + (top[0] - base[0]) * f;
       const py = base[1] + (top[1] - base[1]) * f;
       const pz = base[2] + (top[2] - base[2]) * f;
-      out.prism([px - w.tx * 0.2, py, pz - w.tz * 0.2], [px + w.tx * 0.2, py, pz + w.tz * 0.2], 0.014, 4, tone, tone);
+      withMat(hs(8) < 0.5 ? "sheet" : "wood", () => out.prism([px - w.tx * 0.2, py, pz - w.tz * 0.2], [px + w.tx * 0.2, py, pz + w.tz * 0.2], 0.014, 4, tone, tone));
     }
   } else if (kind === "barrow") {
     // A wheelbarrow tipped against the wall, wheel to the wall: its tray, its wheel and its two handles.
     const c = ctr(s + 0.5, 0.65);
     const col: Rgb = hs(9) < 0.5 ? [0.1, 0.28, 0.12] : [0.35, 0.12, 0.08];
-    out.box(c[0], c[2], c[1] + 0.3, w.tx, w.tz, 0.22, 0.4, 0.2, col, [0.06, 0.05, 0.04]);
+    withMat("steel", () => out.box(c[0], c[2], c[1] + 0.3, w.tx, w.tz, 0.22, 0.4, 0.2, col, [0.06, 0.05, 0.04]));
     const wheel = wat(w, s + 0.5, c[1], 0.3);
-    out.box(wheel[0], wheel[2], wheel[1], w.tx, w.tz, 0.04, 0.14, 0.3, [0.05, 0.05, 0.05], [0.08, 0.08, 0.08]);
-    for (const sd of [-0.18, 0.18]) out.prism([c[0] + w.tx * sd + w.nx * 0.35, c[1] + 0.32, c[2] + w.tz * sd + w.nz * 0.35], [c[0] + w.tx * sd + w.nx * 0.95, c[1] + 0.02, c[2] + w.tz * sd + w.nz * 0.95], 0.022, 4, [0.4, 0.3, 0.18], [0.4, 0.3, 0.18]);
+    withMat("rubber", () => out.box(wheel[0], wheel[2], wheel[1], w.tx, w.tz, 0.04, 0.14, 0.3, [0.05, 0.05, 0.05], [0.08, 0.08, 0.08]));
+    for (const sd of [-0.18, 0.18]) withMat("wood", () => out.prism([c[0] + w.tx * sd + w.nx * 0.35, c[1] + 0.32, c[2] + w.tz * sd + w.nz * 0.35], [c[0] + w.tx * sd + w.nx * 0.95, c[1] + 0.02, c[2] + w.tz * sd + w.nz * 0.95], 0.022, 4, [0.4, 0.3, 0.18], [0.4, 0.3, 0.18]));
   } else if (kind === "bucket") {
     const c = ctr(s + 0.2, 0.4);
-    out.cylinder(c[0], c[2], c[1], 0.15, 0.34, 8, hs(10) < 0.5 ? [0.82, 0.78, 0.7] : [0.7, 0.3, 0.08], [0.06, 0.06, 0.06], 0.17);
+    withMat("plastic", () => out.cylinder(c[0], c[2], c[1], 0.15, 0.34, 8, hs(10) < 0.5 ? [0.82, 0.78, 0.7] : [0.7, 0.3, 0.08], [0.06, 0.06, 0.06], 0.17));
   } else {
     // A pile of old boards, lying about, each at its own turn.
     const c = ctr(s + 0.9, 0.45);
     // A stack of boards: a thick pile and a few loose ones on it, each at its own turn (none lies in the plane of the drip band's 4 cm).
     const n = 2 + Math.floor(hs(11) * 3);
-    out.box(c[0], c[2], c[1], w.tx, w.tz, 0.85, 0.2, 0.17, [0.34, 0.28, 0.2], [0.36, 0.3, 0.22]);
+    withMat("wood", () => out.box(c[0], c[2], c[1], w.tx, w.tz, 0.85, 0.2, 0.17, [0.34, 0.28, 0.2], [0.36, 0.3, 0.22]));
     for (let i = 0; i < n; i++) {
       const turn = (hs(20 + i) - 0.5) * 0.5;
       const ux = w.tx * Math.cos(turn) + w.nx * Math.sin(turn);
       const uz = w.tz * Math.cos(turn) + w.nz * Math.sin(turn);
-      out.box(c[0] + (hs(30 + i) - 0.5) * 0.2, c[2] + (hs(40 + i) - 0.5) * 0.1, c[1] + 0.2 + i * 0.07, ux, uz, 0.8 - 0.2 * hs(50 + i), 0.09, 0.04, scaled([0.38, 0.32, 0.24], 0.7 + 0.5 * hs(60 + i)), scaled([0.4, 0.34, 0.26], 0.7 + 0.5 * hs(60 + i)));
+      withMat("wood", () => out.box(c[0] + (hs(30 + i) - 0.5) * 0.2, c[2] + (hs(40 + i) - 0.5) * 0.1, c[1] + 0.2 + i * 0.07, ux, uz, 0.8 - 0.2 * hs(50 + i), 0.09, 0.04, scaled([0.38, 0.32, 0.24], 0.7 + 0.5 * hs(60 + i)), scaled([0.4, 0.34, 0.26], 0.7 + 0.5 * hs(60 + i))));
     }
   }
 }

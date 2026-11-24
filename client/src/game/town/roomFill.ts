@@ -8,6 +8,7 @@
  * Detail is where it is seen: a thing on a table is drawn within about 8 m of the glass, a chair on both tiers' near rows, and nothing
  * behind the partition. Every small thing stands ON what carries it with its own faces 3 cm or more clear of any parallel face.
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, fcyl, shade, xd, xp, type Ctx } from "./roomKit.js";
@@ -591,105 +592,107 @@ export function cbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
 
 /** Ceiling fans over the dining floor, an exposed duct, hung signs over the aisles, hung goods: the ceiling's own things, drawn near the glass. */
 export function ceilingThings(c: Ctx, furnishings: readonly Furnishing[], lightS: readonly number[]): void {
-  if (c.detail !== "full") return;
-  const top = c.ceiling;
-  const t = c.trade;
-  const W = c.s1 - c.s0;
-  const reach = Math.min(c.d1 - 0.6, 8.5);
-  // An exposed duct along the room (a workshop, a modern shop, a bar), clear of the tubes.
-  const ductRoll = H(c, 1, 30);
-  const wantDuct = c.type === "workshop" || c.type === "bar" ? ductRoll < 0.6 : c.style.modern ? ductRoll < 0.5 : ductRoll < 0.12;
-  if (wantDuct && top >= 2.9) {
-    for (let k = 0; k < 6; k++) {
-      const s = c.s0 + 0.6 + H(c, k, 31) * (W - 1.2);
-      if (lightS.every((ls) => Math.abs(ls - s) > 1.05) && Math.abs(s - c.door.s) > 0.1) {
-        cbox(c, s, 0.5 + reach / 2, top - 0.5, 0.45, reach / 2, 0.17, { x: 0, z: 1 }, [0.55, 0.56, 0.58], [0.5, 0.51, 0.53]);
-        break;
+  withMat("steel", () => {
+    if (c.detail !== "full") return;
+    const top = c.ceiling;
+    const t = c.trade;
+    const W = c.s1 - c.s0;
+    const reach = Math.min(c.d1 - 0.6, 8.5);
+    // An exposed duct along the room (a workshop, a modern shop, a bar), clear of the tubes.
+    const ductRoll = H(c, 1, 30);
+    const wantDuct = c.type === "workshop" || c.type === "bar" ? ductRoll < 0.6 : c.style.modern ? ductRoll < 0.5 : ductRoll < 0.12;
+    if (wantDuct && top >= 2.9) {
+      for (let k = 0; k < 6; k++) {
+        const s = c.s0 + 0.6 + H(c, k, 31) * (W - 1.2);
+        if (lightS.every((ls) => Math.abs(ls - s) > 1.05) && Math.abs(s - c.door.s) > 0.1) {
+          withMat("sheet", () => cbox(c, s, 0.5 + reach / 2, top - 0.5, 0.45, reach / 2, 0.17, { x: 0, z: 1 }, [0.55, 0.56, 0.58], [0.5, 0.51, 0.53]));
+          break;
+        }
       }
     }
-  }
-  // Fans over the tables of an old or a plain dining room: a hub and four blades that do not overlap, hung 4 cm under the ceiling.
-  if ((c.type === "dining room" || c.type === "counter service" || c.type === "bar") && H(c, 2, 32) < 0.55 && top >= 2.9) {
-    const tables = furnishings.filter((f) => f.kind === "table" && f.d > 2 && f.d < reach);
-    const n = Math.min(2, Math.floor(tables.length / 3));
-    for (let k = 0; k < n; k++) {
-      const tb = tables[Math.floor((tables.length * (k + 0.5)) / Math.max(1, n))] as Furnishing;
-      // The fan hangs by its table, kept a blade's length from the walls.
-      const fs = Math.min(c.s1 - 0.85, Math.max(c.s0 + 0.85, tb.s + 0.7));
-      const fd = Math.min(c.d1 - 0.85, Math.max(1.2, tb.d + 0.4));
-      const a = H(c, k, 33) * 1.2;
-      fcyl(c, fs, fd, top - 0.738, 0.06, 0.1, 6, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1]);
-      c.out.prism(xp(c.xf, fs, fd, c.floorY + top), xp(c.xf, fs, fd, c.floorY + top - 0.64), 0.012, 4, [0.2, 0.15, 0.1], null);
-      for (let b = 0; b < 4; b++) {
-        const ang = a + (b * Math.PI) / 2;
-        const ux = Math.cos(ang);
-        const uz = Math.sin(ang);
-        cbox(c, fs + ux * 0.42, fd + uz * 0.42, top - 0.75, 0.012, 0.3, 0.07, { x: ux, z: uz }, [0.35, 0.25, 0.15], [0.4, 0.3, 0.18]);
+    // Fans over the tables of an old or a plain dining room: a hub and four blades that do not overlap, hung 4 cm under the ceiling.
+    if ((c.type === "dining room" || c.type === "counter service" || c.type === "bar") && H(c, 2, 32) < 0.55 && top >= 2.9) {
+      const tables = furnishings.filter((f) => f.kind === "table" && f.d > 2 && f.d < reach);
+      const n = Math.min(2, Math.floor(tables.length / 3));
+      for (let k = 0; k < n; k++) {
+        const tb = tables[Math.floor((tables.length * (k + 0.5)) / Math.max(1, n))] as Furnishing;
+        // The fan hangs by its table, kept a blade's length from the walls.
+        const fs = Math.min(c.s1 - 0.85, Math.max(c.s0 + 0.85, tb.s + 0.7));
+        const fd = Math.min(c.d1 - 0.85, Math.max(1.2, tb.d + 0.4));
+        const a = H(c, k, 33) * 1.2;
+        fcyl(c, fs, fd, top - 0.738, 0.06, 0.1, 6, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1]);
+        withMat("steel", () => c.out.prism(xp(c.xf, fs, fd, c.floorY + top), xp(c.xf, fs, fd, c.floorY + top - 0.64), 0.012, 4, [0.2, 0.15, 0.1], null));
+        for (let b = 0; b < 4; b++) {
+          const ang = a + (b * Math.PI) / 2;
+          const ux = Math.cos(ang);
+          const uz = Math.sin(ang);
+          cbox(c, fs + ux * 0.42, fd + uz * 0.42, top - 0.75, 0.012, 0.3, 0.07, { x: ux, z: uz }, [0.35, 0.25, 0.15], [0.4, 0.3, 0.18]);
+        }
       }
     }
-  }
-  // Bunting: a string of small flags across the room under the ceiling (a cafe, a bar, a gift shop), sagging between the walls.
-  if (t !== null && (FOOD.includes(t) || c.type === "bar" || t === "gift shop") && top >= 2.9 && H(c, 4, 39) < 0.5) {
-    const d = 2.2 + H(c, 5, 39) * Math.max(0.5, Math.min(reach, 7) - 2.5);
-    const flags = Math.max(8, Math.floor(W / 0.3));
-    for (let k = 0; k < flags; k++) {
-      const u0 = c.s0 + 0.15 + (k * (W - 0.3)) / flags;
-      const u1 = u0 + ((W - 0.3) / flags) * 0.8;
-      const sag = (x: number): number => 0.35 * (1 - Math.pow(((x - c.s0) / W) * 2 - 1, 2));
-      const y = (x: number): number => top - 0.45 - sag(x);
-      const col = pickOf([[0.8, 0.15, 0.1], [0.9, 0.75, 0.1], [0.15, 0.4, 0.7], [0.2, 0.55, 0.3], [0.9, 0.9, 0.85]] as readonly Rgb[], c.seed + k, 1063);
-      const m = (u0 + u1) / 2;
-      c.out.poly([xp(c.xf, u0, d, c.floorY + y(u0)), xp(c.xf, u1, d, c.floorY + y(u1)), xp(c.xf, m, d, c.floorY + y(m) - 0.2)], xd(c.xf, 0, -1), shade(c, col, m, d, y(m), 0), undefined, { glow: 1 });
-    }
-  }
-  // A pot rack over the back counter of a kitchen's room: a bar hung from the ceiling with pots on it.
-  const backCounter = furnishings.find((f) => f.kind === "counter" && f.d > c.d1 - 1.7);
-  if (backCounter !== undefined && t !== null && FOOD.includes(t) && top >= 2.9 && H(c, 3, 37) < 0.6) {
-    const rs = backCounter.s;
-    const rd = backCounter.d - 0.3;
-    cbox(c, rs, rd, top - 0.75, 0.04, Math.min(1.0, backCounter.sx / 2 - 0.2), 0.04, AX, [0.2, 0.2, 0.22], [0.25, 0.25, 0.27]);
-    for (const sg of [-1, 1]) c.out.prism(xp(c.xf, rs + sg * 0.9, rd, c.floorY + top), xp(c.xf, rs + sg * 0.9, rd, c.floorY + top - 0.72), 0.008, 3, [0.15, 0.15, 0.15], null);
-    for (let k = 0; k < 5; k++) {
-      const col: Rgb = k % 2 === 0 ? [0.55, 0.55, 0.58] : [0.25, 0.25, 0.27];
-      c.out.prism(xp(c.xf, rs - 0.8 + k * 0.4, rd, c.floorY + top - 0.75), xp(c.xf, rs - 0.8 + k * 0.4, rd, c.floorY + top - 0.86), 0.006, 3, [0.15, 0.15, 0.15], null);
-      fcyl(c, rs - 0.8 + k * 0.4, rd, top - 1.0, 0.1 - (k % 2) * 0.02, 0.14, 6, col, scaled(col, 1.2), 0.08);
-    }
-  }
-  // A canoe hung from the ceiling of a tackle or a marine shop, on two lines.
-  if ((t === "bait and tackle" || t === "marine supply") && top >= 3.0) {
-    for (let k = 0; k < 6; k++) {
-      const s = c.s0 + 0.9 + H(c, k, 38) * (W - 1.8);
-      if (lightS.every((ls) => Math.abs(ls - s) > 1.05)) {
-        const col: Rgb = pickOf([[0.6, 0.25, 0.12], [0.2, 0.4, 0.3], [0.7, 0.65, 0.5]] as readonly Rgb[], c.seed, 1062);
-        const ha = Math.max(0.6, Math.min(1.6, (c.d1 - 2.4) / 2));
-        cbox(c, s, 1.4 + ha, top - 1.05, 0.28, ha, 0.32, { x: 0, z: 1 }, col, scaled(col, 0.7));
-        for (const sg of [-1, 1]) c.out.prism(xp(c.xf, s, 1.4 + ha + sg * ha * 0.6, c.floorY + top), xp(c.xf, s, 1.4 + ha + sg * ha * 0.6, c.floorY + top - 0.77), 0.008, 3, [0.15, 0.15, 0.15], null);
-        break;
+    // Bunting: a string of small flags across the room under the ceiling (a cafe, a bar, a gift shop), sagging between the walls.
+    if (t !== null && (FOOD.includes(t) || c.type === "bar" || t === "gift shop") && top >= 2.9 && H(c, 4, 39) < 0.5) {
+      const d = 2.2 + H(c, 5, 39) * Math.max(0.5, Math.min(reach, 7) - 2.5);
+      const flags = Math.max(8, Math.floor(W / 0.3));
+      for (let k = 0; k < flags; k++) {
+        const u0 = c.s0 + 0.15 + (k * (W - 0.3)) / flags;
+        const u1 = u0 + ((W - 0.3) / flags) * 0.8;
+        const sag = (x: number): number => 0.35 * (1 - Math.pow(((x - c.s0) / W) * 2 - 1, 2));
+        const y = (x: number): number => top - 0.45 - sag(x);
+        const col = pickOf([[0.8, 0.15, 0.1], [0.9, 0.75, 0.1], [0.15, 0.4, 0.7], [0.2, 0.55, 0.3], [0.9, 0.9, 0.85]] as readonly Rgb[], c.seed + k, 1063);
+        const m = (u0 + u1) / 2;
+        withMat("cloth", () => c.out.poly([xp(c.xf, u0, d, c.floorY + y(u0)), xp(c.xf, u1, d, c.floorY + y(u1)), xp(c.xf, m, d, c.floorY + y(m) - 0.2)], xd(c.xf, 0, -1), shade(c, col, m, d, y(m), 0), undefined, { glow: 1 }));
       }
     }
-  }
-  // Aisle signs over a grocery's gondolas and goods hung in a hardware, marine or tackle shop.
-  const aisles = furnishings.filter((f) => f.kind === "endcap");
-  if (aisles.length > 0) {
-    for (const [k, f] of aisles.entries()) {
-      const col = pickOf([[0.15, 0.4, 0.2], [0.75, 0.15, 0.1], [0.15, 0.3, 0.55]] as readonly Rgb[], c.seed + k, 1060);
-      cbox(c, f.s, f.d - 0.1, top - 0.65, 0.3, 0.38, 0.02, AX, col, col);
-      for (const sg of [-1, 1]) c.out.prism(xp(c.xf, f.s + sg * 0.3, f.d - 0.1, c.floorY + top), xp(c.xf, f.s + sg * 0.3, f.d - 0.1, c.floorY + top - 0.35), 0.006, 3, [0.1, 0.1, 0.1], null);
+    // A pot rack over the back counter of a kitchen's room: a bar hung from the ceiling with pots on it.
+    const backCounter = furnishings.find((f) => f.kind === "counter" && f.d > c.d1 - 1.7);
+    if (backCounter !== undefined && t !== null && FOOD.includes(t) && top >= 2.9 && H(c, 3, 37) < 0.6) {
+      const rs = backCounter.s;
+      const rd = backCounter.d - 0.3;
+      cbox(c, rs, rd, top - 0.75, 0.04, Math.min(1.0, backCounter.sx / 2 - 0.2), 0.04, AX, [0.2, 0.2, 0.22], [0.25, 0.25, 0.27]);
+      for (const sg of [-1, 1]) withMat("steel", () => c.out.prism(xp(c.xf, rs + sg * 0.9, rd, c.floorY + top), xp(c.xf, rs + sg * 0.9, rd, c.floorY + top - 0.72), 0.008, 3, [0.15, 0.15, 0.15], null));
+      for (let k = 0; k < 5; k++) {
+        const col: Rgb = k % 2 === 0 ? [0.55, 0.55, 0.58] : [0.25, 0.25, 0.27];
+        withMat("steel", () => c.out.prism(xp(c.xf, rs - 0.8 + k * 0.4, rd, c.floorY + top - 0.75), xp(c.xf, rs - 0.8 + k * 0.4, rd, c.floorY + top - 0.86), 0.006, 3, [0.15, 0.15, 0.15], null));
+        fcyl(c, rs - 0.8 + k * 0.4, rd, top - 1.0, 0.1 - (k % 2) * 0.02, 0.14, 6, col, scaled(col, 1.2), 0.08);
+      }
     }
-  } else if (t === "hardware" || t === "marine supply" || t === "bait and tackle" || t === "garden and feed" || t === "sporting goods" || t === "auto parts") {
-    const n = Math.min(9, 3 + Math.floor(W / 1.5));
-    for (let k = 0; k < n; k++) {
-      const s = c.s0 + 0.5 + H(c, k, 34) * (W - 1);
-      const d = 2.8 + H(c, k + 20, 35) * (reach - 3.4);
-      if (Math.abs(s - c.door.s) < 0.8 && d < 3.4) continue;
-      const y = top - 0.9 - H(c, k, 36) * 0.4;
-      if (y < 1.95) continue;
-      const col = pickOf(t === "marine supply" || t === "bait and tackle" ? [[0.85, 0.3, 0.1], [0.9, 0.8, 0.7], [0.15, 0.3, 0.55]] as readonly Rgb[] : [[0.85, 0.4, 0.08], [0.7, 0.12, 0.1], [0.5, 0.52, 0.55], [0.8, 0.7, 0.1]] as readonly Rgb[], c.seed + k, 1061);
-      c.out.prism(xp(c.xf, s, d, c.floorY + top), xp(c.xf, s, d, c.floorY + y + 0.3), 0.006, 3, [0.1, 0.1, 0.1], null);
-      if (k % 2 === 0) fcyl(c, s, d, y, 0.15, 0.3, 6, col, up(col, 1.2), 0.1);
-      else fbox(c, s, d, y, 0.3, 0.12, 0.12, AX, col, up(col, 1.2), BAKED, false);
+    // A canoe hung from the ceiling of a tackle or a marine shop, on two lines.
+    if ((t === "bait and tackle" || t === "marine supply") && top >= 3.0) {
+      for (let k = 0; k < 6; k++) {
+        const s = c.s0 + 0.9 + H(c, k, 38) * (W - 1.8);
+        if (lightS.every((ls) => Math.abs(ls - s) > 1.05)) {
+          const col: Rgb = pickOf([[0.6, 0.25, 0.12], [0.2, 0.4, 0.3], [0.7, 0.65, 0.5]] as readonly Rgb[], c.seed, 1062);
+          const ha = Math.max(0.6, Math.min(1.6, (c.d1 - 2.4) / 2));
+          withMat("painted", () => cbox(c, s, 1.4 + ha, top - 1.05, 0.28, ha, 0.32, { x: 0, z: 1 }, col, scaled(col, 0.7)));
+          for (const sg of [-1, 1]) withMat("steel", () => c.out.prism(xp(c.xf, s, 1.4 + ha + sg * ha * 0.6, c.floorY + top), xp(c.xf, s, 1.4 + ha + sg * ha * 0.6, c.floorY + top - 0.77), 0.008, 3, [0.15, 0.15, 0.15], null));
+          break;
+        }
+      }
     }
-  }
+    // Aisle signs over a grocery's gondolas and goods hung in a hardware, marine or tackle shop.
+    const aisles = furnishings.filter((f) => f.kind === "endcap");
+    if (aisles.length > 0) {
+      for (const [k, f] of aisles.entries()) {
+        const col = pickOf([[0.15, 0.4, 0.2], [0.75, 0.15, 0.1], [0.15, 0.3, 0.55]] as readonly Rgb[], c.seed + k, 1060);
+        withMat("painted", () => cbox(c, f.s, f.d - 0.1, top - 0.65, 0.3, 0.38, 0.02, AX, col, col));
+        for (const sg of [-1, 1]) withMat("steel", () => c.out.prism(xp(c.xf, f.s + sg * 0.3, f.d - 0.1, c.floorY + top), xp(c.xf, f.s + sg * 0.3, f.d - 0.1, c.floorY + top - 0.35), 0.006, 3, [0.1, 0.1, 0.1], null));
+      }
+    } else if (t === "hardware" || t === "marine supply" || t === "bait and tackle" || t === "garden and feed" || t === "sporting goods" || t === "auto parts") {
+      const n = Math.min(9, 3 + Math.floor(W / 1.5));
+      for (let k = 0; k < n; k++) {
+        const s = c.s0 + 0.5 + H(c, k, 34) * (W - 1);
+        const d = 2.8 + H(c, k + 20, 35) * (reach - 3.4);
+        if (Math.abs(s - c.door.s) < 0.8 && d < 3.4) continue;
+        const y = top - 0.9 - H(c, k, 36) * 0.4;
+        if (y < 1.95) continue;
+        const col = pickOf(t === "marine supply" || t === "bait and tackle" ? [[0.85, 0.3, 0.1], [0.9, 0.8, 0.7], [0.15, 0.3, 0.55]] as readonly Rgb[] : [[0.85, 0.4, 0.08], [0.7, 0.12, 0.1], [0.5, 0.52, 0.55], [0.8, 0.7, 0.1]] as readonly Rgb[], c.seed + k, 1061);
+        withMat("steel", () => c.out.prism(xp(c.xf, s, d, c.floorY + top), xp(c.xf, s, d, c.floorY + y + 0.3), 0.006, 3, [0.1, 0.1, 0.1], null));
+        if (k % 2 === 0) withMat("plastic", () => fcyl(c, s, d, y, 0.15, 0.3, 6, col, up(col, 1.2), 0.1));
+        else withMat("plastic", () => fbox(c, s, d, y, 0.3, 0.12, 0.12, AX, col, up(col, 1.2), BAKED, false));
+      }
+    }
+  });
 }
 
 // ---- the floor: a mat, a checker, a cone, and what a vacant unit's floor holds
@@ -702,8 +705,10 @@ function floorQuad(c: Ctx, s0: number, d0: number, s1: number, d1: number, y: nu
 
 /** A rotated flat square on the floor (a tile that fell, a sheet of mail), side `w`, turned by the unit vector (ux, uz). */
 function floorSheet(c: Ctx, s: number, d: number, w: number, l: number, ux: number, uz: number, y: number, col: Rgb): void {
-  const pts: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [s + ux * (a as number) * l / 2 - uz * (b as number) * w / 2, d + uz * (a as number) * l / 2 + ux * (b as number) * w / 2]);
-  c.out.poly(pts.map(([x, z]) => xp(c.xf, x, z, c.floorY + y)), [0, 1, 0], pts.map(([x, z]) => shade(c, col, x, z, y, 1)), undefined, { glow: 1 });
+  withMat("cloth", () => {
+    const pts: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [s + ux * (a as number) * l / 2 - uz * (b as number) * w / 2, d + uz * (a as number) * l / 2 + ux * (b as number) * w / 2]);
+    c.out.poly(pts.map(([x, z]) => xp(c.xf, x, z, c.floorY + y)), [0, 1, 0], pts.map(([x, z]) => shade(c, col, x, z, y, 1)), undefined, { glow: 1 });
+  });
 }
 
 export function floorThings(c: Ctx, checker: Rgb | null): void {
@@ -725,7 +730,7 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
         const d = 0.2 + b * t;
         // A tile's whole square is clear of what stands (its baseboard, laid over the floor beside it, would meet the tile's edge).
         if (standing(s + t / 2, d + t / 2, t / 2)) continue;
-        floorQuad(c, s + 0.01, d + 0.01, s + t - 0.01, d + t - 0.01, 0.11, checker);
+        withMat("painted", () => floorQuad(c, s + 0.01, d + 0.01, s + t - 0.01, d + t - 0.01, 0.11, checker));
         count++;
       }
     }
@@ -735,14 +740,14 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
     const mat: Rgb = pickOf([[0.35, 0.12, 0.1], [0.2, 0.2, 0.22], [0.3, 0.22, 0.12], [0.12, 0.25, 0.2]] as readonly Rgb[], c.seed, 1070);
     const a = Math.max(c.s0 + 0.1, dw.s - 0.55);
     const b = Math.min(c.s1 - 0.1, dw.s + 0.55);
-    floorQuad(c, a, 0.3, b, 0.95, 0.14, scaled(mat, 1.5));
-    floorQuad(c, a + 0.06, 0.36, b - 0.06, 0.89, 0.17, mat);
+    withMat("rubber", () => floorQuad(c, a, 0.3, b, 0.95, 0.14, scaled(mat, 1.5)));
+    withMat("rubber", () => floorQuad(c, a + 0.06, 0.36, b - 0.06, 0.89, 0.17, mat));
   }
   if (!vacant && H(c, 4, 41) < 0.14) {
     const side = H(c, 5, 42) < 0.5 ? -1 : 1;
     const s = dw.s + side * (dw.w / 2 + 0.75);
     const d = 1.2 + H(c, 6, 43) * 1.0;
-    if (free(c, s, d, 0.2, -1)) fcyl(c, s, d, 0.08, 0.13, 0.55, 5, [0.92, 0.75, 0.08], [0.95, 0.8, 0.1], 0.03);
+    if (free(c, s, d, 0.2, -1)) withMat("plastic", () => fcyl(c, s, d, 0.08, 0.13, 0.55, 5, [0.92, 0.75, 0.08], [0.95, 0.8, 0.1], 0.03));
   }
   if (vacant) {
     // The post that came through the door and nobody picked up; a ceiling tile that came down.
@@ -761,6 +766,6 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
     const hs0 = c.s0 + 0.8 + H(c, 10, 50) * Math.max(0.2, W - 1.6);
     const hd = 1.8 + H(c, 11, 51) * Math.max(0.2, c.d1 - 3.6);
     const hole: [number, number][] = [[hs0 - 0.3, hd - 0.3], [hs0 + 0.3, hd - 0.3], [hs0 + 0.3, hd + 0.3], [hs0 - 0.3, hd + 0.3]];
-    c.out.poly(hole.map(([s, d]) => xp(c.xf, s, d, c.floorY + c.ceiling - 0.03)), [0, -1, 0], [0.04, 0.04, 0.045], undefined, { glow: 1 });
+    withMat("plaster", () => c.out.poly(hole.map(([s, d]) => xp(c.xf, s, d, c.floorY + c.ceiling - 0.03)), [0, -1, 0], [0.04, 0.04, 0.045], undefined, { glow: 1 }));
   }
 }

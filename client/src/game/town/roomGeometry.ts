@@ -10,6 +10,7 @@
  * heights, the number of tiers and items. What the plan causes: which furnishings stand where, which lights are on, whether the unit is
  * open, shut or vacant (the light's, in `roomLight.ts`).
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, shade as lightShade, xd, xp, type Ctx } from "./roomKit.js";
@@ -173,7 +174,7 @@ function rack(c: Ctx, f: Furnishing, i: number): void {
     const w = Math.min(0.2, ((f.sx - 0.16) / Math.min(n, 18)) * 0.45);
     // A garment is a flat panel hung across the rail, seen from the street.
     const sgn = pd > 0 ? -1 : 1;
-    c.out.poly([xp(c.xf, s - dir.x * w, d - dir.z * w, c.floorY + 1.43), xp(c.xf, s + dir.x * w, d + dir.z * w, c.floorY + 1.43), xp(c.xf, s + dir.x * w, d + dir.z * w, c.floorY + 1.43 - hgt), xp(c.xf, s - dir.x * w, d - dir.z * w, c.floorY + 1.43 - hgt)], xd(c.xf, px * sgn, pd * sgn), col, undefined, { glow: BAKED });
+    withMat("cloth", () => c.out.poly([xp(c.xf, s - dir.x * w, d - dir.z * w, c.floorY + 1.43), xp(c.xf, s + dir.x * w, d + dir.z * w, c.floorY + 1.43), xp(c.xf, s + dir.x * w, d + dir.z * w, c.floorY + 1.43 - hgt), xp(c.xf, s - dir.x * w, d - dir.z * w, c.floorY + 1.43 - hgt)], xd(c.xf, px * sgn, pd * sgn), col, undefined, { glow: BAKED }));
   }
 }
 
@@ -191,10 +192,10 @@ function crates(c: Ctx, f: Furnishing, i: number): void {
 function ladder(c: Ctx, f: Furnishing): void {
   const s = f.s;
   const d = f.d;
-  for (const sg of [-1, 1]) c.out.prism(xp(c.xf, s + sg * 0.2, d + 0.6, c.floorY), xp(c.xf, s + sg * 0.2, d, c.floorY + Math.min(2.4, f.h)), 0.022, 4, [0.6, 0.6, 0.62]);
+  for (const sg of [-1, 1]) withMat("steel", () => c.out.prism(xp(c.xf, s + sg * 0.2, d + 0.6, c.floorY), xp(c.xf, s + sg * 0.2, d, c.floorY + Math.min(2.4, f.h)), 0.022, 4, [0.6, 0.6, 0.62]));
   for (let k = 1; k < 6; k++) {
     const t = k / 6;
-    c.out.prism(xp(c.xf, s - 0.2, d + 0.6 * (1 - t), c.floorY + Math.min(2.4, f.h) * t), xp(c.xf, s + 0.2, d + 0.6 * (1 - t), c.floorY + Math.min(2.4, f.h) * t), 0.012, 4, [0.62, 0.62, 0.64], null);
+    withMat("steel", () => c.out.prism(xp(c.xf, s - 0.2, d + 0.6 * (1 - t), c.floorY + Math.min(2.4, f.h) * t), xp(c.xf, s + 0.2, d + 0.6 * (1 - t), c.floorY + Math.min(2.4, f.h) * t), 0.012, 4, [0.62, 0.62, 0.64], null));
   }
 }
 
@@ -207,7 +208,7 @@ function paintCans(c: Ctx, f: Furnishing, i: number): void {
     const gz = Math.floor(k / 3);
     const step = Math.min(0.27, Math.max(0.21, (f.sx - 0.1) / 2));
     const p = xp(c.xf, f.s + gx * step, Math.max(0.3, f.d + (gz - 0.5) * 0.27), c.floorY);
-    c.out.cylinder(p[0], p[2], c.floorY + 0.05, 0.1, 0.2, 6, cols[k % 4] as Rgb, [0.5, 0.5, 0.5]);
+    withMat("steel", () => c.out.cylinder(p[0], p[2], c.floorY + 0.05, 0.1, 0.2, 6, cols[k % 4] as Rgb, [0.5, 0.5, 0.5]));
   }
 }
 
@@ -226,68 +227,70 @@ function lift(c: Ctx, f: Furnishing, i: number): void {
 
 function furnishing(c: Ctx, f: Furnishing, i: number): void {
   switch (f.kind) {
-    case "shelf run": return shelfRun(c, f, i);
-    case "counter": return counter(c, f, i);
-    case "table": return tableSet(c, f, i);
-    case "booth": return booth(c, f, i);
-    case "stool row": return stools(c, f, i);
-    case "display case": return displayCase(c, f, i);
-    case "cooler": return cooler(c, f, i);
-    case "washer row": return washers(c, f);
-    case "desk": return deskSet(c, f, i);
-    case "rack": return rack(c, f, i);
-    case "stacked crates": return crates(c, f, i);
-    case "ladder": return ladder(c, f);
-    case "paint cans": return paintCans(c, f, i);
-    case "bench": return benchSet(c, f, i);
-    case "pool table": return poolTable(c, f);
-    case "lift": return lift(c, f, i);
-    case "partition": return partition(c, f, i);
-    case "endcap": return endcap(c, f, i);
-    case "checkout": return checkout(c, f, i);
-    case "bin": return bin(c, f, i);
-    case "cart": return cart(c, f, i);
-    case "couch": return couch(c, f, i);
-    case "machine": return machine(c, f, i);
-    case "cabinet": return cabinets(c, f, i);
-    case "water cooler": return waterCooler(c, f);
-    case "plant": return plant(c, f, i);
-    case "sheet": return sheet(c, f, i);
-    case "windowbar": return windowBar(c, f, i);
-    case "hightable": return highTable(c, f, i);
-    case "stand": return stand(c, f, i);
-    case "stack": return chairStack(c, f, i);
-    case "roll": return carpetRoll(c, f, i);
-    case "leaner": return leaner(c, f, i);
+    case "shelf run": return withMat("wood", () => shelfRun(c, f, i));
+    case "counter": return withMat("painted", () => counter(c, f, i));
+    case "table": return withMat("wood", () => tableSet(c, f, i));
+    case "booth": return withMat("boards", () => booth(c, f, i));
+    case "stool row": return withMat("wood", () => stools(c, f, i));
+    case "display case": return withMat("painted", () => displayCase(c, f, i));
+    case "cooler": return withMat("painted", () => cooler(c, f, i));
+    case "washer row": return withMat("painted", () => washers(c, f));
+    case "desk": return withMat("wood", () => deskSet(c, f, i));
+    case "rack": return withMat("steel", () => rack(c, f, i));
+    case "stacked crates": return withMat("wood", () => crates(c, f, i));
+    case "ladder": return withMat("steel", () => ladder(c, f));
+    case "paint cans": return withMat("steel", () => paintCans(c, f, i));
+    case "bench": return withMat("wood", () => benchSet(c, f, i));
+    case "pool table": return withMat("wood", () => poolTable(c, f));
+    case "lift": return withMat("steel", () => lift(c, f, i));
+    case "partition": return withMat("boards", () => partition(c, f, i));
+    case "endcap": return withMat("painted", () => endcap(c, f, i));
+    case "checkout": return withMat("painted", () => checkout(c, f, i));
+    case "bin": return withMat("plastic", () => bin(c, f, i));
+    case "cart": return withMat("steel", () => cart(c, f, i));
+    case "couch": return withMat("cloth", () => couch(c, f, i));
+    case "machine": return withMat("painted", () => machine(c, f, i));
+    case "cabinet": return withMat("painted", () => cabinets(c, f, i));
+    case "water cooler": return withMat("painted", () => waterCooler(c, f));
+    case "plant": return withMat("plant", () => plant(c, f, i));
+    case "sheet": return withMat("cloth", () => sheet(c, f, i));
+    case "windowbar": return withMat("wood", () => windowBar(c, f, i));
+    case "hightable": return withMat("wood", () => highTable(c, f, i));
+    case "stand": return withMat("wood", () => stand(c, f, i));
+    case "stack": return withMat("wood", () => chairStack(c, f, i));
+    case "roll": return withMat("rubber", () => carpetRoll(c, f, i));
+    case "leaner": return withMat("wood", () => leaner(c, f, i));
   }
 }
 
 function lights(c: Ctx, list: readonly RoomLight[], ceiling: number, dead: readonly boolean[]): void {
-  const NEON: readonly Rgb[] = [[1, 0.15, 0.12], [0.2, 0.55, 1], [1, 0.5, 0.15], [0.3, 1, 0.45]];
-  list.forEach((l, i) => {
-    const y = Math.min(l.h, ceiling - 0.05);
-    const on = l.on && dead[i] !== true;
-    switch (l.kind) {
-      case "tube": {
-        const dull: Rgb = dead[i] === true ? [0.38, 0.38, 0.34] : [0.55, 0.55, 0.52];
-        fbox(c, l.s, l.d, y - 0.04, 0.04, 0.6, 0.05, AX, on ? [1, 0.97, 0.88] : dull, on ? [1, 0.97, 0.88] : dull, on ? 3.5 : BAKED);
-        break;
+  withMat("painted", () => {
+    const NEON: readonly Rgb[] = [[1, 0.15, 0.12], [0.2, 0.55, 1], [1, 0.5, 0.15], [0.3, 1, 0.45]];
+    list.forEach((l, i) => {
+      const y = Math.min(l.h, ceiling - 0.05);
+      const on = l.on && dead[i] !== true;
+      switch (l.kind) {
+        case "tube": {
+          const dull: Rgb = dead[i] === true ? [0.38, 0.38, 0.34] : [0.55, 0.55, 0.52];
+          fbox(c, l.s, l.d, y - 0.04, 0.04, 0.6, 0.05, AX, on ? [1, 0.97, 0.88] : dull, on ? [1, 0.97, 0.88] : dull, on ? 3.5 : BAKED);
+          break;
+        }
+        case "pendant": {
+          const p = xp(c.xf, l.s, l.d, c.floorY + y);
+          withMat("steel", () => c.out.prism(xp(c.xf, l.s, l.d, c.floorY + ceiling), p, 0.008, 3, [0.1, 0.1, 0.1], null));
+          withMat("painted", () => c.out.cylinder(p[0], p[2], c.floorY + y - 0.2, 0.2, 0.2, 6, on ? [0.95, 0.8, 0.45] : [0.35, 0.3, 0.2], [1, 0.9, 0.6], 0.05));
+          break;
+        }
+        case "neon": {
+          const col = pickOf(NEON, c.seed + i, 326);
+          fbox(c, l.s, l.d, y, 0.04, 0.45, 0.02, AX, on ? col : scaled(col, 0.25), on ? col : scaled(col, 0.25), on ? 4 : 0.3, false);
+          break;
+        }
+        case "lamp":
+          fbox(c, l.s, l.d, y - 0.2, 0.2, 0.09, 0.09, AX, on ? [1, 0.85, 0.5] : [0.4, 0.35, 0.28], on ? [1, 0.85, 0.5] : [0.4, 0.35, 0.28], on ? 2.2 : 0.4, false);
+          break;
       }
-      case "pendant": {
-        const p = xp(c.xf, l.s, l.d, c.floorY + y);
-        c.out.prism(xp(c.xf, l.s, l.d, c.floorY + ceiling), p, 0.008, 3, [0.1, 0.1, 0.1], null);
-        c.out.cylinder(p[0], p[2], c.floorY + y - 0.2, 0.2, 0.2, 6, on ? [0.95, 0.8, 0.45] : [0.35, 0.3, 0.2], [1, 0.9, 0.6], 0.05);
-        break;
-      }
-      case "neon": {
-        const col = pickOf(NEON, c.seed + i, 326);
-        fbox(c, l.s, l.d, y, 0.04, 0.45, 0.02, AX, on ? col : scaled(col, 0.25), on ? col : scaled(col, 0.25), on ? 4 : 0.3, false);
-        break;
-      }
-      case "lamp":
-        fbox(c, l.s, l.d, y - 0.2, 0.2, 0.09, 0.09, AX, on ? [1, 0.85, 0.5] : [0.4, 0.35, 0.28], on ? [1, 0.85, 0.5] : [0.4, 0.35, 0.28], on ? 2.2 : 0.4, false);
-        break;
-    }
+    });
   });
 }
 
@@ -372,6 +375,6 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
   lights(c, interior.lights, interior.ceiling, field.dead);
   if (!lit && !vacant) {
     // A shut unit keeps a night light on at the back.
-    fbox(c, (r.s0 + r.s1) / 2, interior.depth - 0.4, 2.0, 0.1, 0.2, 0.04, AX, [1, 0.85, 0.5], [1, 0.85, 0.5], 2);
+    withMat("painted", () => fbox(c, (r.s0 + r.s1) / 2, interior.depth - 0.4, 2.0, 0.1, 0.2, 0.04, AX, [1, 0.85, 0.5], [1, 0.85, 0.5], 2));
   }
 }

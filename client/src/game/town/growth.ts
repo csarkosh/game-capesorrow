@@ -13,6 +13,7 @@
  */
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { hash01 } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import type { TownGround, Detail } from "./townTypes.js";
 import type { Building } from "../../sim/town/types.js";
 import { levelOf } from "./buildingWear.js";
@@ -137,7 +138,7 @@ function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: numbe
     const ly = gy * 0.7 + 0.7;
     const lz = gz * 0.7;
     const ll = Math.sqrt(lx * lx + ly * ly + lz * lz);
-    m.poly([pa, pb, tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1, normal: [lx / ll, ly / ll, lz / ll] });
+    withMat("plant", () => m.poly([pa, pb, tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1, normal: [lx / ll, ly / ll, lz / ll] }));
   }
 }
 

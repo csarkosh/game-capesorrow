@@ -16,6 +16,7 @@
  */
 import { SIGN_BEHIND_CURB, STOP_SIGN_SIZE, stopSignSpot } from "../../sim/town/junctions.js";
 import type { JunctionCorner, JunctionLeg, Vec } from "../../sim/town/types.js";
+import { withMat } from "./materials.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { FLAG_POLE, SIGN_BLACK, SIGN_GREEN, SIGN_RED, SIGN_WHITE, SIGN_YELLOW } from "./palette.js";
 import { GLYPH_H, textPixels, textRuns } from "./signFont.js";
@@ -46,8 +47,8 @@ function corner(c: Plane, u: number, v: number, off: number): Vec3 {
 /** A flat shape on a sign, on its front (`off` over the face) and its back. */
 function plate(solid: Sink, c: Plane, shape: readonly (readonly [number, number])[], front: Rgb | null, back: Rgb | null): void {
   const b = solid(c.x, c.z);
-  if (front !== null) b.poly(shape.map(([u, v]) => corner(c, u, v, 0.012)), [c.nx, 0, c.nz], front);
-  if (back !== null) b.poly(shape.map(([u, v]) => corner(c, u, v, -0.012)), [-c.nx, 0, -c.nz], back);
+  if (front !== null) withMat("painted", () => b.poly(shape.map(([u, v]) => corner(c, u, v, 0.012)), [c.nx, 0, c.nz], front));
+  if (back !== null) withMat("painted", () => b.poly(shape.map(([u, v]) => corner(c, u, v, -0.012)), [-c.nx, 0, -c.nz], back));
 }
 
 /** Words on a sign's face, or on both faces: `pixel` metres a pixel, the first row's top at `top` over the centre, centred across. */
@@ -59,15 +60,17 @@ function words(solid: Sink, c: Plane, text: string, pixel: number, top: number, 
     const u1 = run.c1 * pixel - width / 2;
     const v0 = top - run.r0 * pixel;
     const v1 = top - run.r1 * pixel;
-    b.poly([corner(c, u0, v0, LETTER_OFF), corner(c, u1, v0, LETTER_OFF), corner(c, u1, v1, LETTER_OFF), corner(c, u0, v1, LETTER_OFF)], [c.nx, 0, c.nz], colour);
-    // On the back the reader's right is the other way.
-    if (both) b.poly([corner(c, -u0, v0, -LETTER_OFF), corner(c, -u1, v0, -LETTER_OFF), corner(c, -u1, v1, -LETTER_OFF), corner(c, -u0, v1, -LETTER_OFF)], [-c.nx, 0, -c.nz], colour);
+    withMat("painted", () => {
+      b.poly([corner(c, u0, v0, LETTER_OFF), corner(c, u1, v0, LETTER_OFF), corner(c, u1, v1, LETTER_OFF), corner(c, u0, v1, LETTER_OFF)], [c.nx, 0, c.nz], colour);
+      // On the back the reader's right is the other way.
+      if (both) b.poly([corner(c, -u0, v0, -LETTER_OFF), corner(c, -u1, v0, -LETTER_OFF), corner(c, -u1, v1, -LETTER_OFF), corner(c, -u0, v1, -LETTER_OFF)], [-c.nx, 0, -c.nz], colour);
+    });
   }
 }
 
 function post(solid: Sink, g: TownGround, x: number, z: number, top: number): void {
   const base = g.heightAt(x, z);
-  solid(x, z).cylinder(x, z, base - 0.1, POST_RADIUS, top - base + 0.1, 6, FLAG_POLE, FLAG_POLE);
+  withMat("steel", () => solid(x, z).cylinder(x, z, base - 0.1, POST_RADIUS, top - base + 0.1, 6, FLAG_POLE, FLAG_POLE));
 }
 
 /** An octagon of the given width across its flats, as corners round the sign's centre. */

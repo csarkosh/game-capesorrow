@@ -4,6 +4,7 @@
  * newspapers, a high chair; and on the glass itself the sill's plants (some dead), a row of jars or bottles, a half-curtain on a rod, string
  * lights, a cat's bed. Every roll is the unit's own (a hash of it and of the window), so that no two windows of one unit read alike.
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, fcyl, shade, xd, xp, type Ctx } from "./roomKit.js";
@@ -111,107 +112,111 @@ export function leaner(c: Ctx, f: Furnishing, i: number): void {
 
 /** A coat tree, a floor lamp, a rack of newspapers, a high chair, a tall plant: three to five in the first 7 m, in free spots by the walls. */
 export function tallThings(c: Ctx, seed: number): void {
-  if (c.detail !== "full" || c.vacant) return;
-  const food = c.trade !== null && FOOD.includes(c.trade);
-  const office = c.type === "office" || c.type === "lobby";
-  const bar = c.type === "bar";
-  const n = 3 + Math.floor(H(c, 60, 120) * 3);
-  for (let k = 0; k < n; k++) {
-    const side = H(c, k, 121) < 0.5 ? c.s0 + 0.45 : c.s1 - 0.45;
-    const d = 1.0 + H(c, k, 122) * Math.min(6.5, c.d1 - 2.2);
-    const s = H(c, k, 123) < 0.8 ? side : c.door.s + (H(c, k, 124) < 0.5 ? -1 : 1) * (c.door.w / 2 + 1.0);
-    if (!free(c, s, d, 0.3, -1)) continue;
-    const kind = Math.floor(H(c, k + seed, 125) * (food ? 5 : bar ? 3 : office ? 4 : 3));
-    const which = food ? [0, 1, 2, 3, 4][kind] : bar ? [1, 4, 5][kind] : office ? [0, 1, 4, 2][kind] : [1, 4, 0][kind];
-    c.chairs.push([s, d]);
-    if (which === 0) {
-      // A coat tree: a pole, a foot and hooks with a coat or two.
-      fcyl(c, s, d, 0, 0.2, 0.05, 6, [0.2, 0.14, 0.1], [0.2, 0.14, 0.1]);
-      fcyl(c, s, d, 0.05, 0.025, 1.8, 4, [0.25, 0.17, 0.1], [0.25, 0.17, 0.1]);
-      for (let q = 0; q < 2; q++) if (H(c, k * 3 + q, 126) < 0.7) fbox(c, s + (q ? 0.1 : -0.1), d, 0.9 + q * 0.1, 0.7, 0.07, 0.1, AX, pickOf([[0.2, 0.25, 0.35], [0.45, 0.2, 0.15], [0.3, 0.32, 0.25]] as readonly Rgb[], c.seed + k + q, 1111), [0.3, 0.3, 0.3], BAKED, false);
-    } else if (which === 1) {
-      // A floor lamp: a foot, a pole and a lit shade.
-      fcyl(c, s, d, 0, 0.14, 0.03, 6, [0.15, 0.15, 0.16], [0.2, 0.2, 0.2]);
-      fcyl(c, s, d, 0.03, 0.015, 1.5, 4, [0.2, 0.2, 0.2], [0.2, 0.2, 0.2]);
-      fcyl(c, s, d, 1.5, 0.17, 0.3, 6, c.lit ? [1, 0.85, 0.55] : [0.5, 0.45, 0.35], [1, 0.9, 0.6], 0.11);
-    } else if (which === 2) {
-      // A rack of newspapers: a box with coloured heads, tall.
-      fbox(c, s, d, 0, 1.25, 0.25, 0.12, AX, [0.4, 0.4, 0.42], [0.5, 0.5, 0.52]);
-      for (let q = 0; q < 4; q++) fbox(c, s, d - 0.02, 0.35 + q * 0.22, 0.14, 0.22, 0.13, AX, pickOf([[0.85, 0.85, 0.8], [0.8, 0.75, 0.5], [0.7, 0.8, 0.85]] as readonly Rgb[], c.seed + k + q, 1112), [0.9, 0.9, 0.88], BAKED, false);
-    } else if (which === 3) {
-      // A high chair: a seat on legs with a tall back and a tray.
-      fbox(c, s, d, 0.5, 0.05, 0.17, 0.17, AX, [0.5, 0.35, 0.2], [0.6, 0.45, 0.28]);
-      fbox(c, s, d, 0, 0.5, 0.04, 0.04, AX, [0.4, 0.3, 0.2], [0.4, 0.3, 0.2], BAKED, false);
-      fbox(c, s, d + 0.15, 0.55, 0.45, 0.17, 0.02, AX, [0.5, 0.35, 0.2], [0.5, 0.35, 0.2], BAKED, false);
-    } else {
-      const green: Rgb = pickOf([[0.14, 0.36, 0.14], [0.2, 0.42, 0.18], [0.1, 0.3, 0.16]] as readonly Rgb[], c.seed + k, 1113);
-      fcyl(c, s, d, 0, 0.18, 0.4, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], c.seed + k, 1114), [0.2, 0.12, 0.08]);
-      for (let q = 0; q < 3; q++) fcyl(c, s + (q - 1) * 0.1, d, 0.38, 0.15, 1.1 - q * 0.2, 5, green, scaled(green, 1.3), 0.02);
+  withMat("painted", () => {
+    if (c.detail !== "full" || c.vacant) return;
+    const food = c.trade !== null && FOOD.includes(c.trade);
+    const office = c.type === "office" || c.type === "lobby";
+    const bar = c.type === "bar";
+    const n = 3 + Math.floor(H(c, 60, 120) * 3);
+    for (let k = 0; k < n; k++) {
+      const side = H(c, k, 121) < 0.5 ? c.s0 + 0.45 : c.s1 - 0.45;
+      const d = 1.0 + H(c, k, 122) * Math.min(6.5, c.d1 - 2.2);
+      const s = H(c, k, 123) < 0.8 ? side : c.door.s + (H(c, k, 124) < 0.5 ? -1 : 1) * (c.door.w / 2 + 1.0);
+      if (!free(c, s, d, 0.3, -1)) continue;
+      const kind = Math.floor(H(c, k + seed, 125) * (food ? 5 : bar ? 3 : office ? 4 : 3));
+      const which = food ? [0, 1, 2, 3, 4][kind] : bar ? [1, 4, 5][kind] : office ? [0, 1, 4, 2][kind] : [1, 4, 0][kind];
+      c.chairs.push([s, d]);
+      if (which === 0) {
+        // A coat tree: a pole, a foot and hooks with a coat or two.
+        withMat("wood", () => fcyl(c, s, d, 0, 0.2, 0.05, 6, [0.2, 0.14, 0.1], [0.2, 0.14, 0.1]));
+        withMat("wood", () => fcyl(c, s, d, 0.05, 0.025, 1.8, 4, [0.25, 0.17, 0.1], [0.25, 0.17, 0.1]));
+        for (let q = 0; q < 2; q++) if (H(c, k * 3 + q, 126) < 0.7) withMat("cloth", () => fbox(c, s + (q ? 0.1 : -0.1), d, 0.9 + q * 0.1, 0.7, 0.07, 0.1, AX, pickOf([[0.2, 0.25, 0.35], [0.45, 0.2, 0.15], [0.3, 0.32, 0.25]] as readonly Rgb[], c.seed + k + q, 1111), [0.3, 0.3, 0.3], BAKED, false));
+      } else if (which === 1) {
+        // A floor lamp: a foot, a pole and a lit shade.
+        withMat("steel", () => fcyl(c, s, d, 0, 0.14, 0.03, 6, [0.15, 0.15, 0.16], [0.2, 0.2, 0.2]));
+        withMat("steel", () => fcyl(c, s, d, 0.03, 0.015, 1.5, 4, [0.2, 0.2, 0.2], [0.2, 0.2, 0.2]));
+        withMat("cloth", () => fcyl(c, s, d, 1.5, 0.17, 0.3, 6, c.lit ? [1, 0.85, 0.55] : [0.5, 0.45, 0.35], [1, 0.9, 0.6], 0.11));
+      } else if (which === 2) {
+        // A rack of newspapers: a box with coloured heads, tall.
+        fbox(c, s, d, 0, 1.25, 0.25, 0.12, AX, [0.4, 0.4, 0.42], [0.5, 0.5, 0.52]);
+        for (let q = 0; q < 4; q++) withMat("cloth", () => fbox(c, s, d - 0.02, 0.35 + q * 0.22, 0.14, 0.22, 0.13, AX, pickOf([[0.85, 0.85, 0.8], [0.8, 0.75, 0.5], [0.7, 0.8, 0.85]] as readonly Rgb[], c.seed + k + q, 1112), [0.9, 0.9, 0.88], BAKED, false));
+      } else if (which === 3) {
+        // A high chair: a seat on legs with a tall back and a tray.
+        withMat("wood", () => fbox(c, s, d, 0.5, 0.05, 0.17, 0.17, AX, [0.5, 0.35, 0.2], [0.6, 0.45, 0.28]));
+        withMat("wood", () => fbox(c, s, d, 0, 0.5, 0.04, 0.04, AX, [0.4, 0.3, 0.2], [0.4, 0.3, 0.2], BAKED, false));
+        withMat("wood", () => fbox(c, s, d + 0.15, 0.55, 0.45, 0.17, 0.02, AX, [0.5, 0.35, 0.2], [0.5, 0.35, 0.2], BAKED, false));
+      } else {
+        const green: Rgb = pickOf([[0.14, 0.36, 0.14], [0.2, 0.42, 0.18], [0.1, 0.3, 0.16]] as readonly Rgb[], c.seed + k, 1113);
+        fcyl(c, s, d, 0, 0.18, 0.4, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], c.seed + k, 1114), [0.2, 0.12, 0.08]);
+        for (let q = 0; q < 3; q++) withMat("plant", () => fcyl(c, s + (q - 1) * 0.1, d, 0.38, 0.15, 1.1 - q * 0.2, 5, green, scaled(green, 1.3), 0.02));
+      }
     }
-  }
-  void hash01;
-  void NEAR;
-  void chair;
+    void hash01;
+    void NEAR;
+    void chair;
+  });
 }
 
 // ---- the glass and the sill
 
 /** Plants (some dead), jars, a half-curtain, string lights and a cat's bed in the unit's windows, by the unit's and the window's own rolls. */
 export function sillThings(c: Ctx, openings: readonly Opening[]): void {
-  if (c.detail !== "full") return;
-  const food = c.trade !== null && FOOD.includes(c.trade);
-  for (const [k, o] of openings.entries()) {
-    if (o.cover !== "none" && o.cover !== "blinds" && o.cover !== "display") continue;
-    const lo = Math.min(o.s0, o.s1);
-    const hi = Math.max(o.s0, o.s1);
-    if (hi - lo < 0.9) continue;
-    const r = (n: number): number => hash01(c.seed * 7 + k * 31 + n, 1130);
-    const sill = o.sill;
-    // A row of jars or bottles along the sill, or a cat's bed, or nothing.
-    if (o.cover !== "display" && r(1) < 0.4) {
-      const n = 3 + Math.floor(r(2) * 4);
-      const x0 = lo + 0.3 + r(3) * 0.4;
-      for (let q = 0; q < n && x0 + q * 0.17 < hi - 0.3; q++) {
-        const col = pickOf([[0.2, 0.45, 0.3], [0.6, 0.35, 0.15], [0.75, 0.75, 0.7], [0.25, 0.35, 0.6], [0.7, 0.2, 0.15]] as readonly Rgb[], c.seed + k * 9 + q, 1131);
-        fcyl(c, x0 + q * 0.17, 0.2, sill, 0.05, 0.14 + (q % 3) * 0.06, 5, col, scaled(col, 1.3), 0.03);
+  withMat("plant", () => {
+    if (c.detail !== "full") return;
+    const food = c.trade !== null && FOOD.includes(c.trade);
+    for (const [k, o] of openings.entries()) {
+      if (o.cover !== "none" && o.cover !== "blinds" && o.cover !== "display") continue;
+      const lo = Math.min(o.s0, o.s1);
+      const hi = Math.max(o.s0, o.s1);
+      if (hi - lo < 0.9) continue;
+      const r = (n: number): number => hash01(c.seed * 7 + k * 31 + n, 1130);
+      const sill = o.sill;
+      // A row of jars or bottles along the sill, or a cat's bed, or nothing.
+      if (o.cover !== "display" && r(1) < 0.4) {
+        const n = 3 + Math.floor(r(2) * 4);
+        const x0 = lo + 0.3 + r(3) * 0.4;
+        for (let q = 0; q < n && x0 + q * 0.17 < hi - 0.3; q++) {
+          const col = pickOf([[0.2, 0.45, 0.3], [0.6, 0.35, 0.15], [0.75, 0.75, 0.7], [0.25, 0.35, 0.6], [0.7, 0.2, 0.15]] as readonly Rgb[], c.seed + k * 9 + q, 1131);
+          withMat("plastic", () => fcyl(c, x0 + q * 0.17, 0.2, sill, 0.05, 0.14 + (q % 3) * 0.06, 5, col, scaled(col, 1.3), 0.03));
+        }
+      } else if (o.cover !== "display" && r(4) < 0.2) {
+        const s = lo + 0.35 + r(5) * (hi - lo - 0.7);
+        withMat("cloth", () => fcyl(c, s, 0.3, sill, 0.22, 0.08, 8, [0.5, 0.35, 0.3], [0.62, 0.5, 0.42]));
+        if (r(6) < 0.6) withMat("cloth", () => fcyl(c, s, 0.3, sill + 0.08, 0.1, 0.1, 6, [0.8, 0.5, 0.2], [0.85, 0.6, 0.3], 0.07));
       }
-    } else if (o.cover !== "display" && r(4) < 0.2) {
-      const s = lo + 0.35 + r(5) * (hi - lo - 0.7);
-      fcyl(c, s, 0.3, sill, 0.22, 0.08, 8, [0.5, 0.35, 0.3], [0.62, 0.5, 0.42]);
-      if (r(6) < 0.6) fcyl(c, s, 0.3, sill + 0.08, 0.1, 0.1, 6, [0.8, 0.5, 0.2], [0.85, 0.6, 0.3], 0.07);
-    }
-    // A plant at an end of the sill: green, or dead and brown.
-    if (r(7) < 0.4) {
-      const end = r(8) < 0.5 ? lo + 0.2 : hi - 0.2;
-      const dead = r(9) < 0.3;
-      const leaf: Rgb = dead ? [0.4, 0.3, 0.15] : [0.18, 0.4, 0.16];
-      fcyl(c, end, 0.28, sill, 0.1, 0.2, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], c.seed + k, 1132), [0.2, 0.12, 0.08]);
-      for (let q = 0; q < 3; q++) fcyl(c, end + (q - 1) * 0.06, 0.28, sill + 0.18, 0.07, (dead ? 0.15 : 0.3) + q * 0.07, 5, leaf, scaled(leaf, 1.3), 0.015);
-    }
-    // A half-curtain on a rod across the lower half of the glass (a cafe's, mostly).
-    if (o.cover === "none" && (food ? r(10) < 0.45 : r(10) < 0.12)) {
-      const y1 = sill + 0.62;
-      const y0 = sill + 0.28;
-      const col = pickOf([[0.85, 0.8, 0.7], [0.7, 0.3, 0.3], [0.3, 0.4, 0.5], [0.9, 0.9, 0.85]] as readonly Rgb[], c.seed + k, 1133);
-      fbox(c, (lo + hi) / 2, 0.22, y1, 0.02, (hi - lo) / 2 - 0.05, 0.015, AX, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1], BAKED, false);
-      const n = Math.max(3, Math.floor((hi - lo) / 0.3));
-      for (let q = 0; q < n; q++) {
-        const s0 = lo + 0.05 + (q * (hi - lo - 0.1)) / n;
-        const s1 = s0 + ((hi - lo - 0.1) / n) * 0.96;
-        const tone = scaled(col, q % 2 === 0 ? 1 : 0.82);
-        const bot = y0 + (q % 3) * 0.03;
-        const pts: [number, number, number][] = [[s0, 0.18, bot], [s1, 0.18, bot], [s1, 0.18, y1], [s0, 0.18, y1]];
-        c.out.poly(pts.map(([s, d, y]) => xp(c.xf, s, d, c.floorY + y)), xd(c.xf, 0, -1), pts.map(([s, d, y]) => shade(c, tone, s, d, y, 0)), undefined, { glow: 1 });
+      // A plant at an end of the sill: green, or dead and brown.
+      if (r(7) < 0.4) {
+        const end = r(8) < 0.5 ? lo + 0.2 : hi - 0.2;
+        const dead = r(9) < 0.3;
+        const leaf: Rgb = dead ? [0.4, 0.3, 0.15] : [0.18, 0.4, 0.16];
+        withMat("painted", () => fcyl(c, end, 0.28, sill, 0.1, 0.2, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], c.seed + k, 1132), [0.2, 0.12, 0.08]));
+        for (let q = 0; q < 3; q++) fcyl(c, end + (q - 1) * 0.06, 0.28, sill + 0.18, 0.07, (dead ? 0.15 : 0.3) + q * 0.07, 5, leaf, scaled(leaf, 1.3), 0.015);
+      }
+      // A half-curtain on a rod across the lower half of the glass (a cafe's, mostly).
+      if (o.cover === "none" && (food ? r(10) < 0.45 : r(10) < 0.12)) {
+        const y1 = sill + 0.62;
+        const y0 = sill + 0.28;
+        const col = pickOf([[0.85, 0.8, 0.7], [0.7, 0.3, 0.3], [0.3, 0.4, 0.5], [0.9, 0.9, 0.85]] as readonly Rgb[], c.seed + k, 1133);
+        withMat("wood", () => fbox(c, (lo + hi) / 2, 0.22, y1, 0.02, (hi - lo) / 2 - 0.05, 0.015, AX, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1], BAKED, false));
+        const n = Math.max(3, Math.floor((hi - lo) / 0.3));
+        for (let q = 0; q < n; q++) {
+          const s0 = lo + 0.05 + (q * (hi - lo - 0.1)) / n;
+          const s1 = s0 + ((hi - lo - 0.1) / n) * 0.96;
+          const tone = scaled(col, q % 2 === 0 ? 1 : 0.82);
+          const bot = y0 + (q % 3) * 0.03;
+          const pts: [number, number, number][] = [[s0, 0.18, bot], [s1, 0.18, bot], [s1, 0.18, y1], [s0, 0.18, y1]];
+          withMat("cloth", () => c.out.poly(pts.map(([s, d, y]) => xp(c.xf, s, d, c.floorY + y)), xd(c.xf, 0, -1), pts.map(([s, d, y]) => shade(c, tone, s, d, y, 0)), undefined, { glow: 1 }));
+        }
+      }
+      // String lights across the top of the glass: small bulbs that glow while the unit is open.
+      if (o.cover === "none" && c.lit && r(11) < 0.28) {
+        const n = Math.max(4, Math.floor((hi - lo) / 0.22));
+        for (let q = 0; q < n; q++) {
+          const s = lo + 0.1 + (q * (hi - lo - 0.2)) / (n - 1);
+          const col = pickOf([[1, 0.8, 0.4], [1, 0.4, 0.3], [0.5, 0.9, 0.5], [0.5, 0.7, 1]] as readonly Rgb[], c.seed + q, 1134);
+          withMat("painted", () => fbox(c, s, 0.13, o.head - 0.12 - (q % 2) * 0.04, 0.04, 0.02, 0.02, AX, col, col, 2.5, false));
+        }
       }
     }
-    // String lights across the top of the glass: small bulbs that glow while the unit is open.
-    if (o.cover === "none" && c.lit && r(11) < 0.28) {
-      const n = Math.max(4, Math.floor((hi - lo) / 0.22));
-      for (let q = 0; q < n; q++) {
-        const s = lo + 0.1 + (q * (hi - lo - 0.2)) / (n - 1);
-        const col = pickOf([[1, 0.8, 0.4], [1, 0.4, 0.3], [0.5, 0.9, 0.5], [0.5, 0.7, 1]] as readonly Rgb[], c.seed + q, 1134);
-        fbox(c, s, 0.13, o.head - 0.12 - (q % 2) * 0.04, 0.04, 0.02, 0.02, AX, col, col, 2.5, false);
-      }
-    }
-  }
+  });
 }

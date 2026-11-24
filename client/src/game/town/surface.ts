@@ -8,7 +8,7 @@
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import type { Surface as Surface_ } from "./townSurface.js";
-import { faceSurfaceFor, flatSurfaceFor, withOver, type Over } from "./groundSurfaces.js";
+import { RANK, faceSurfaceFor, flatSurfaceFor, withOver, type Over } from "./groundSurfaces.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
 export type P2 = readonly [number, number];
@@ -213,14 +213,16 @@ export class Surface {
    * of it that no mark of its rank covers. A piece cut off a mark takes the height of the ground at its corners and the mark's mean lift.
    */
   lay(builder: MeshBuilder, pts: readonly Vec3[], lifts: readonly number[], colour: Rgb, surface: Surface_ | undefined, rank: number, group: string | number | undefined = rank > 0 ? rank : undefined): void {
+    // A colour that names no ground material and lies at the paint's rank is road paint: smooth paint over the road.
+    const look = surface ?? (rank === RANK.paint ? "painted" : undefined);
     if (group === undefined) {
-      builder.poly(pts, UP, colour, surface, rank === 0 ? undefined : { rank });
+      builder.poly(pts, UP, colour, look, rank === 0 ? undefined : { rank });
       return;
     }
     const xz = pts.map((q): P2 => [q[0], q[2]]);
     const pieces = this.trim(xz, group);
     if (pieces.length === 1 && pieces[0] === xz) {
-      builder.poly(pts, UP, colour, surface, rank === 0 ? undefined : { rank });
+      builder.poly(pts, UP, colour, look, rank === 0 ? undefined : { rank });
       return;
     }
     const lift = lifts.reduce((t, l) => t + l, 0) / lifts.length;
@@ -231,7 +233,7 @@ export class Surface {
       for (const part of parts) {
         // A triangle of less than 5 mm^2 is nothing to draw.
         if (part.length === 3 && Math.abs(((part[1] as P2)[0] - (part[0] as P2)[0]) * ((part[2] as P2)[1] - (part[0] as P2)[1]) - ((part[1] as P2)[1] - (part[0] as P2)[1]) * ((part[2] as P2)[0] - (part[0] as P2)[0])) < 1e-5) continue;
-        builder.poly(part.map((q): Vec3 => [q[0], this.g.heightAt(q[0], q[1]) + lift, q[1]]), UP, colour, surface, rank === 0 ? undefined : { rank });
+        builder.poly(part.map((q): Vec3 => [q[0], this.g.heightAt(q[0], q[1]) + lift, q[1]]), UP, colour, look, rank === 0 ? undefined : { rank });
       }
     }
   }

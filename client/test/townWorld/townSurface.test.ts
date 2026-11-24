@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MeshBuilder, SURFACE_FLOATS, type Vec3 } from "../../src/game/town/meshBuilder.js";
+import { unnamed } from "../../src/game/town/materials.js";
 import { LAYER_NAMES, NO_LAYER, layerIndex, townLayer } from "../../src/game/town/townLayers.js";
 import { edgeFrame, groundFrame, groundSurface, tintOf, wallFrame, type Surface } from "../../src/game/town/townSurface.js";
 
@@ -11,15 +12,20 @@ function uvOf(a: ReturnType<MeshBuilder["finish"]>, i: number): [number, number]
 }
 
 describe("a polygon's surface", () => {
-  it("gives a colour-only polygon exactly what it was: its colour, no layer, no wear, a tint of the colour's own", () => {
+  it("gives a colour-only polygon its colour and a material's surface (the fallback's, counted, when nobody named one): never no layer", () => {
     const b = new MeshBuilder();
+    const before = unnamed.polygons;
     b.poly(quad(0, 0, 4, 2), FACING, [0.2, 0.3, 0.4]);
+    expect(unnamed.polygons).toBe(before + 1);
+    unnamed.polygons = before;
     const a = b.finish();
     expect(Array.from(a.colors)).toEqual(Array.from({ length: 4 }, () => [0.2, 0.3, 0.4, 1]).flat().map((v) => Math.fround(v)));
-    for (let i = 0; i < 4; i++) {
-      expect(Array.from(a.surface.slice(i * SURFACE_FLOATS, i * SURFACE_FLOATS + 4))).toEqual([NO_LAYER, 0, 0, 0]);
-      expect(uvOf(a, i)).toEqual([0, 0]);
-    }
+    for (let i = 0; i < 4; i++) expect(a.surface[i * SURFACE_FLOATS]).not.toBe(NO_LAYER);
+    // Glass is the one thing that carries no layer.
+    const g = new MeshBuilder();
+    g.poly(quad(0, 0, 4, 2), FACING, [0.2, 0.3, 0.4], undefined, { clear: 0.9 });
+    expect(g.finish().surface[0]).toBe(NO_LAYER);
+    expect(unnamed.polygons).toBe(before);
     expect(a.uvs.length).toBe(8);
     expect(a.surface.length).toBe(4 * SURFACE_FLOATS);
     // And the same polygon with a surface has the same positions, normals, colours and triangles.

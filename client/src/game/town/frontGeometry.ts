@@ -12,8 +12,9 @@
  * some just the ribs), the canopies of the strip malls (a unit in five of a front of 1960 or later). Every choice is a roll from the
  * unit's or the building's id and says what it stands for in a comment.
  */
+import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
-import { TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { doorIn, glazed, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
 import { drawWindow, frameColour, type WinCtx } from "./windowGeometry.js";
 import { slatBlinds, slatColour, verticalBlinds } from "./windowDressing.js";
@@ -87,7 +88,7 @@ export function planFront(i: FrontIn): FrontPlan {
         drawers.push(() => {
           const tint = scaled([1.12, 1.0, 0.9], 0.82 + hash01(b.id * 5 + k, 431) * 0.3);
           wquad(out, w, sa, y0, sb, y1, -0.02, scaled(i.wall, 1.1), { layer: "brick", frame: i.surface(w).frame, tint, wear: 0.1, wearKind: "grime" });
-          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.12, 0.03, [0.45, 0.43, 0.4]);
+          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.12, 0.03, [0.45, 0.43, 0.4], "concrete");
         });
         return;
       }
@@ -115,7 +116,7 @@ export function planFront(i: FrontIn): FrontPlan {
         // The frame's bars proud of the face and, on the old fronts, the transom bar.
         if (full) {
           frameBars(out, w, sa, sb, y0, y1, 0.06, 0.11, frameC);
-          if (b.era < 1930 && y1 - y0 > 1.8) wquad(out, w, sa, y1 - 0.5, sb, y1 - 0.45, -0.045, frameC);
+          if (b.era < 1930 && y1 - y0 > 1.8) wquad(out, w, sa, y1 - 0.5, sb, y1 - 0.45, -0.045, frameC, "painted");
         }
       });
     });
@@ -158,33 +159,27 @@ export function planFront(i: FrontIn): FrontPlan {
     const modern = u.remodel?.what === "new door" || b.era >= 1960;
     drawers.push(() => {
       const rec = u.door.recess;
-      const leafOff = -(rec > 0 ? rec : 0.1) - 0.02;
+      const depth = rec > 0 ? rec : 0.1;
       const dr = u.remodel?.what === "new door" ? frameColour(b.id * 3 + u.id, u.remodel.decade, false) : unitFrame(b, u, false);
       const timber = modern ? ([0.4, 0.42, 0.44] as Rgb) : dr;
-      // The return of the recess, its floor and its soffit; or the reveal of a flush door.
-      reveal(out, w, da, db, floorY, dHead, rec > 0 ? rec : 0.1, scaled(i.wall, 0.8), [0.35, 0.34, 0.32]);
-      if (rec > 0 && full) {
-        // A doorstep of the old entries: a tiled floor, and the glass flanking it (the windows run to the recess).
-        out.poly([wat(w, da, floorY + 0.04, 0), wat(w, db, floorY + 0.04, 0), wat(w, db, floorY + 0.04, -rec), wat(w, da, floorY + 0.04, -rec)], [0, 1, 0], [0.42, 0.4, 0.37]);
-      }
       const leafTop = floorY + 2.05;
+      // An aluminium door of the modern fronts, a painted timber one of the old.
+      const leafMat = modern ? "sheet" : "boards";
       if (boardedUnit) {
+        reveal(out, w, da, db, floorY, dHead, depth, scaled(i.wall, 0.8), [0.35, 0.34, 0.32]);
         wquad(out, w, da, floorY, db, dHead, 0.03, scaled([0.6, 0.45, 0.28], 0.9), { layer: "plywood", frame: i.surface(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
         return;
       }
-      wquad(out, w, da + 0.03, floorY, db - 0.03, floorY + 0.8, leafOff, scaled(timber, 0.9), undefined, undefined);
-      // The stiles run between the rails (no part of the leaf is drawn twice).
-      wquad(out, w, da + 0.03, floorY + 0.88, da + 0.14, leafTop - 0.1, leafOff, timber);
-      wquad(out, w, db - 0.14, floorY + 0.88, db - 0.03, leafTop - 0.1, leafOff, timber);
-      wquad(out, w, da + 0.03, leafTop - 0.1, db - 0.03, leafTop, leafOff, timber);
-      wquad(out, w, da + 0.03, floorY + 0.8, db - 0.03, floorY + 0.88, leafOff, timber);
-      pane(glass, w, da + 0.14, floorY + 0.88, db - 0.14, leafTop - 0.1, leafOff - 0.01);
-      if (dHead > floorY + 2.3) {
-        wquad(out, w, da, floorY + 2.05, db, floorY + 2.12, leafOff, timber);
-        pane(glass, w, da + 0.05, floorY + 2.12, db - 0.05, dHead - 0.05, leafOff - 0.01);
-      }
+      // The leaf fills its hole from edge to edge and from the floor to the head: a kick panel, the glass in its frame over it, and over that a
+      // transom or the head's rail. The return of the recess (or the reveal of a flush door) runs exactly to the leaf, so the room is seen
+      // through the glass and through nothing else.
+      const o = wquad(out, w, da, floorY, db, floorY + 0.8, -depth, scaled(timber, 0.9), leafMat);
+      glazed(out, glass, w, da, floorY + 0.8, db, leafTop, o, 0.1, timber, leafMat);
+      if (dHead > floorY + 2.3) glazed(out, glass, w, da, leafTop, db, dHead, o, 0.06, timber, leafMat);
+      else wquad(out, w, da, leafTop, db, dHead, o, timber, leafMat);
+      reveal(out, w, da, db, floorY, dHead, -o, scaled(i.wall, 0.8), [0.35, 0.34, 0.32], rec > 0 ? i.surface(w) : undefined, "concrete");
       // The pull, a plate of brass.
-      out.poly([wat(w, db - 0.18, floorY + 0.95, leafOff + 0.02), wat(w, db - 0.14, floorY + 0.95, leafOff + 0.02), wat(w, db - 0.14, floorY + 1.1, leafOff + 0.02), wat(w, db - 0.18, floorY + 1.1, leafOff + 0.02)], [w.nx, 0, w.nz], [0.6, 0.5, 0.2]);
+      wquad(out, w, db - 0.18, floorY + 0.95, db - 0.14, floorY + 1.1, o + 0.03, [0.6, 0.5, 0.2], "steel");
     });
     // The room behind the glass, for a unit the street can look into (a boarded one is shut up, and has none).
     if (!boardedUnit && u.interior.type !== undefined) {
@@ -219,13 +214,16 @@ export function planFront(i: FrontIn): FrontPlan {
     const [sa, sb] = ends(st.s - st.width / 2, st.s + st.width / 2);
     holes.push({ s0: sa, s1: sb, y0: floorY, y1: floorY + 2.3 });
     drawers.push(() => {
-      reveal(out, w, sa, sb, floorY, floorY + 2.3, 0.2, scaled(i.wall, 0.8), [0.35, 0.34, 0.32]);
       const col = pickOf([[0.12, 0.2, 0.14], [0.3, 0.1, 0.08], [0.14, 0.14, 0.15], [0.35, 0.3, 0.2]] as readonly Rgb[], b.id, 434);
-      wquad(out, w, sa + 0.03, floorY, sb - 0.03, floorY + 2.2, -0.2, col);
-      wquad(out, w, sa + 0.1, floorY + 1.3, sb - 0.1, floorY + 2.0, -0.17, scaled(col, 0.8));
-      pane(glass, w, sa + 0.05, floorY + 2.22, sb - 0.05, floorY + 2.3, -0.21);
+      // The leaf fills its hole and the reveal runs to it. A panel on it, and a narrow light over the door: glass over the dark of the stair.
+      const o = doorIn(out, w, { s0: sa, s1: sb, y0: floorY, y1: floorY + 2.3 }, 0.16, col, "boards", scaled(i.wall, 0.8), [0.35, 0.34, 0.32]);
+      wquad(out, w, sa + 0.1, floorY + 1.3, sb - 0.1, floorY + 2.0, o + 0.03, scaled(col, 0.8), "boards");
+      wquad(out, w, sa + 0.1, floorY + 0.2, sb - 0.1, floorY + 1.1, o + 0.03, scaled(col, 0.8), "boards");
+      wquad(out, w, sa + 0.06, floorY + 2.12, sb - 0.06, floorY + 2.26, o + 0.03, [0.05, 0.055, 0.06], "painted");
+      pane(glass, w, sa + 0.06, floorY + 2.12, sb - 0.06, floorY + 2.26, o + 0.06);
+      wquad(out, w, sb - 0.13, floorY + 0.95, sb - 0.08, floorY + 1.1, o + 0.03, [0.5, 0.45, 0.3], "steel");
       // The number plate.
-      wquad(out, w, sb + 0.1, floorY + 1.5, sb + 0.24, floorY + 1.62, 0.03, [0.7, 0.68, 0.6]);
+      wquad(out, w, sb + 0.1, floorY + 1.5, sb + 0.24, floorY + 1.62, 0.03, [0.7, 0.68, 0.6], "painted");
     });
   }
 
@@ -250,8 +248,8 @@ export function planFront(i: FrontIn): FrontPlan {
         drawWindow(winCtx, w, sa, sb, y0, y1, wnd.state, wnd.sill, up.storey * 50 + k, replaced);
         if (full && brick && !replaced) {
           // A stone sill and a lintel course over each opening of an old brick block.
-          wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.1, y0 - 0.02, 0, 0.1, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
-          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.16, 0.09, [0.45, 0.43, 0.4]);
+          wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.1, y0 - 0.02, 0, 0.1, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");
+          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.16, 0.09, [0.45, 0.43, 0.4], "concrete");
         }
       });
     });
@@ -259,23 +257,34 @@ export function planFront(i: FrontIn): FrontPlan {
 
   // ---- piers, a cornice and a water table, across the whole front
   drawers.push(() => {
-    if (full && (brick || old)) wbox(out, w, 0, w.length, floorY - 0.05, floorY + 0.35, 0, 0.08, scaled([0.4, 0.4, 0.38], 0.9 + hash01(b.id, 436) * 0.2), [0.45, 0.45, 0.43]);
+    if (full && (brick || old)) {
+      // The water table: a course of cast stone along the wall's foot. It stops at every door, which is entered from the sidewalk.
+      const gaps: [number, number][] = use.units.map((u): [number, number] => ends(u.door.s - u.door.width / 2, u.door.s + u.door.width / 2));
+      if (use.stair !== null) gaps.push(ends(use.stair.s - use.stair.width / 2, use.stair.s + use.stair.width / 2));
+      gaps.sort((p, q) => p[0] - q[0]);
+      const tone = scaled([0.4, 0.4, 0.38], 0.9 + hash01(b.id, 436) * 0.2);
+      let from = 0;
+      for (const [ga, gb] of [...gaps, [w.length, w.length] as [number, number]]) {
+        if (ga - from > 0.12) wbox(out, w, from, ga, floorY - 0.05, floorY + 0.35, 0, 0.08, tone, [0.45, 0.45, 0.43], undefined, "concrete");
+        from = Math.max(from, gb);
+      }
+    }
     // Pilasters on the line between two units, on the old brick fronts: the pier the plan leaves is as wide as it says.
     if (brick && b.era < 1940 && full) {
       for (const u of use.units) {
         if (u.s0 < 0.1) continue;
         const [sa, sb] = ends(u.s0 - 0.18, u.s0 + 0.18);
-        wbox(out, w, sa, sb, floorY + 0.35, Math.min(wallTop - 0.5, floorY + u.fascia + 0.5), 0, 0.07, scaled(i.wall, 1.12), scaled(i.wall, 1.2));
+        wbox(out, w, sa, sb, floorY + 0.35, Math.min(wallTop - 0.5, floorY + u.fascia + 0.5), 0, 0.07, scaled(i.wall, 1.12), scaled(i.wall, 1.2), undefined, i.surface(w));
       }
     }
     // The cornice: a corbelled band under the parapet's cap, its shape this building's own (a plain band, two bands, a dentilled course, or none).
     const shape = Math.floor(hash01(b.id, 437) * 4);
     if ((brick || b.era < 1940) && shape < 3) {
       const top = wallTop;
-      wbox(out, w, 0, w.length, top - 0.28, top - 0.08, 0, 0.14, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true);
-      if (shape === 1) wbox(out, w, 0, w.length, top - 0.55, top - 0.4, 0, 0.07, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true);
-      if (shape === 2) for (let s = 0.2; s < w.length - 0.2; s += 0.4) wbox(out, w, s, s + 0.2, top - 0.42, top - 0.28, 0, 0.1, scaled(i.wall, 1.15), scaled(i.wall, 1.2), true);
-      wbox(out, w, -0.1, w.length + 0.1, top - 0.08, top + 0.03, 0, 0.2, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
+      wbox(out, w, 0, w.length, top - 0.28, top - 0.08, 0, 0.14, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true, i.surface(w));
+      if (shape === 1) wbox(out, w, 0, w.length, top - 0.55, top - 0.4, 0, 0.07, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true, i.surface(w));
+      if (shape === 2) for (let s = 0.2; s < w.length - 0.2; s += 0.4) wbox(out, w, s, s + 0.2, top - 0.42, top - 0.28, 0, 0.1, scaled(i.wall, 1.15), scaled(i.wall, 1.2), true, i.surface(w));
+      wbox(out, w, -0.1, w.length + 0.1, top - 0.08, top + 0.03, 0, 0.2, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");
     }
   });
 
@@ -297,22 +306,22 @@ function awning(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: 
   const ribs: Rgb = hash01(id, 444) < 0.55 ? [0.36, 0.2, 0.12] : [0.3, 0.3, 0.32];
   for (let k = 0; k <= n; k++) {
     const s = sa + ((sb - sa) * k) / n;
-    out.prism(wat(w, s, top, 0.02), wat(w, s, eave, proj), 0.012, 4, ribs, null);
+    withMat("steel", () => out.prism(wat(w, s, top, 0.02), wat(w, s, eave, proj), 0.012, 4, ribs, null));
   }
-  out.prism(wat(w, sa, eave, proj), wat(w, sb, eave, proj), 0.014, 4, ribs, null);
+  withMat("steel", () => out.prism(wat(w, sa, eave, proj), wat(w, sb, eave, proj), 0.014, 4, ribs, null));
   if (bare) return;
   for (let k = 0; k < n; k++) {
     if (torn && k === Math.floor(n * 0.6)) continue;
     const a = sa + ((sb - sa) * k) / n;
     const c = sa + ((sb - sa) * (k + 1)) / n;
     const tone: Rgb = k % 2 === 0 ? face : scaled(faded ? [0.7, 0.68, 0.62] : [0.85, 0.82, 0.74], faded ? 1 : 0.85);
-    out.poly([wat(w, a, top, 0.02), wat(w, c, top, 0.02), wat(w, c, eave, proj), wat(w, a, eave, proj)], [w.nx * 0.4, 1, w.nz * 0.4], tone, undefined, { back: { colour: scaled(tone, 0.5) } });
-    out.poly([wat(w, a, eave, proj), wat(w, c, eave, proj), wat(w, c, eave - 0.22, proj), wat(w, a, eave - 0.22, proj)], [w.nx, 0, w.nz], scaled(tone, 0.9), undefined, { back: { colour: scaled(tone, 0.5) } });
+    out.poly([wat(w, a, top, 0.02), wat(w, c, top, 0.02), wat(w, c, eave, proj), wat(w, a, eave, proj)], [w.nx * 0.4, 1, w.nz * 0.4], tone, "cloth", { back: { colour: scaled(tone, 0.5) } });
+    out.poly([wat(w, a, eave, proj), wat(w, c, eave, proj), wat(w, c, eave - 0.22, proj), wat(w, a, eave - 0.22, proj)], [w.nx, 0, w.nz], scaled(tone, 0.9), "cloth", { back: { colour: scaled(tone, 0.5) } });
   }
 }
 
 /** A flat canopy of a strip front: a slab over the glass on its own posts' brackets. */
 function canopy(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: number, id: number): void {
   const col: Rgb = pickOf([[0.3, 0.3, 0.3], [0.4, 0.4, 0.38], [0.2, 0.25, 0.3]] as readonly Rgb[], id, 443);
-  wbox(out, w, sa, sb, head + 0.1, head + 0.3, 0, 1.4, col, scaled(col, 1.1), true);
+  wbox(out, w, sa, sb, head + 0.1, head + 0.3, 0, 1.4, col, scaled(col, 1.1), true, "painted");
 }

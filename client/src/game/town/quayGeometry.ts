@@ -14,6 +14,7 @@
  *   a deck leaves the quay.
  */
 import { type Vec3 } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import { BOLLARD, QUAY_CONCRETE, STEEL, STEEL_RUST, TIMBER, TIMBER_WEATHERED } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 import { QUAY_APRON } from "../../sim/town/levels.js";
@@ -107,23 +108,23 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
         const [a1x, a1z] = at(s1, 0);
         const [b0x, b0z] = at(s0, QUAY_APRON);
         const [b1x, b1z] = at(s1, QUAY_APRON);
-        flat(mid[0], mid[1]).poly([P(a0x, y, a0z), P(a1x, y, a1z), P(b1x, y, b1z), P(b0x, y, b0z)], UP, QUAY_CONCRETE);
+        flat(mid[0], mid[1]).poly([P(a0x, y, a0z), P(a1x, y, a1z), P(b1x, y, b1z), P(b0x, y, b0z)], UP, QUAY_CONCRETE, "concrete");
         const s = solid(...at(sm, faceOff));
         // The wall's face, from the cap down to the foot.
         const [f0x, f0z] = at(s0, faceOff);
         const [f1x, f1z] = at(s1, faceOff);
         if (timber) {
           // The face runs from under the cap down: the cap's own face is the wall's top.
-          s.poly([P(f0x, y - CAP_HEIGHT, f0z), P(f1x, y - CAP_HEIGHT, f1z), P(f1x, SEA - WALL_FOOT, f1z), P(f0x, SEA - WALL_FOOT, f0z)], out, faceColour);
+          s.poly([P(f0x, y - CAP_HEIGHT, f0z), P(f1x, y - CAP_HEIGHT, f1z), P(f1x, SEA - WALL_FOOT, f1z), P(f0x, SEA - WALL_FOOT, f0z)], out, faceColour, "wood");
           // Wales: horizontal timbers proud of the face, every 1.3 m from the cap's foot down to just under the water.
           for (let h = y - CAP_HEIGHT - 0.5; h > SEA - FACE_DETAIL; h -= 1.3) {
             const c = at(sm, faceOff + 0.04);
-            s.box(c[0], c[1], h, tx, tz, half, 0.04, 0.2, TIMBER, TIMBER);
+            withMat("wood", () => s.box(c[0], c[1], h, tx, tz, half, 0.04, 0.2, TIMBER, TIMBER));
           }
         } else {
           // Sheet piling: a corrugated face above the water, a plain one below it.
           const lowEdge = SEA - FACE_DETAIL;
-          s.poly([P(f0x, lowEdge, f0z), P(f1x, lowEdge, f1z), P(f1x, SEA - WALL_FOOT, f1z), P(f0x, SEA - WALL_FOOT, f0z)], out, faceColour);
+          s.poly([P(f0x, lowEdge, f0z), P(f1x, lowEdge, f1z), P(f1x, SEA - WALL_FOOT, f1z), P(f0x, SEA - WALL_FOOT, f0z)], out, faceColour, "steel");
           const panels = Math.max(2, Math.round((s1 - s0) / 0.45));
           for (let k = 0; k < panels; k++) {
             const t0 = s0 + ((s1 - s0) * k) / panels;
@@ -134,24 +135,26 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
             const [x1, z1] = at(t1, faceOff);
             const [xm, zm] = at(tm, faceOff + (k % 2 === 0 ? 0.08 : -0.02));
             // Two flanks meeting at a ridge or a trough.
-            s.poly([P(x0, lowEdge, z0), P(xm, lowEdge, zm), P(xm, y - CAP_HEIGHT, zm), P(x0, y - CAP_HEIGHT, z0)], out, colour);
-            s.poly([P(xm, lowEdge, zm), P(x1, lowEdge, z1), P(x1, y - CAP_HEIGHT, z1), P(xm, y - CAP_HEIGHT, zm)], out, colour);
+            s.poly([P(x0, lowEdge, z0), P(xm, lowEdge, zm), P(xm, y - CAP_HEIGHT, zm), P(x0, y - CAP_HEIGHT, z0)], out, colour, "steel");
+            s.poly([P(xm, lowEdge, zm), P(x1, lowEdge, z1), P(x1, y - CAP_HEIGHT, z1), P(xm, y - CAP_HEIGHT, zm)], out, colour, "steel");
           }
         }
         // The cap along the top: a beam from just inboard of the edge to the face, flush with the deck.
         const cc = at(sm, faceOff - 0.3);
-        s.box(cc[0], cc[1], y - CAP_HEIGHT, tx, tz, half, 0.3, CAP_HEIGHT + 0.02, capColour, capColour, true, null);
+        withMat(timber ? "wood" : "concrete", () => s.box(cc[0], cc[1], y - CAP_HEIGHT, tx, tz, half, 0.3, CAP_HEIGHT + 0.02, capColour, capColour, true, null));
       }
       // Fender piles down the face, from the cap to well under the water, proud of the face by their own radius.
       for (let s = p0 + FENDER_STEP / 2; s < p1 - 1; s += FENDER_STEP) {
         const [x, z] = at(s, faceOff + 0.17);
-        solid(x, z).cylinder(x, z, SEA - WALL_FOOT + 0.5, 0.17, y - 0.15 - (SEA - WALL_FOOT + 0.5), 6, TIMBER, TIMBER);
+        withMat("wood", () => solid(x, z).cylinder(x, z, SEA - WALL_FOOT + 0.5, 0.17, y - 0.15 - (SEA - WALL_FOOT + 0.5), 6, TIMBER, TIMBER));
       }
       // Bollards along the apron, set back from the edge.
       for (let s = p0 + BOLLARD_STEP / 2; s < p1 - 1; s += BOLLARD_STEP) {
         const [x, z] = at(s, QUAY_APRON - 1.3);
-        solid(x, z).cylinder(x, z, y, 0.2, 0.5, 8, BOLLARD, BOLLARD);
-        solid(x, z).cylinder(x, z, y + 0.5, 0.26, 0.1, 8, BOLLARD, BOLLARD);
+        withMat("steel", () => {
+          solid(x, z).cylinder(x, z, y, 0.2, 0.5, 8, BOLLARD, BOLLARD);
+          solid(x, z).cylinder(x, z, y + 0.5, 0.26, 0.1, 8, BOLLARD, BOLLARD);
+        });
       }
     }
     // Ladders every LADDER_STEP m along the stretch, where no deck stands: two rails and rungs down to the water, on the face.
@@ -163,11 +166,11 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
       for (const side of [-0.3, 0.3]) {
         // Out from the face past the wales (which stand 8 cm proud of it), so a pile's sides and a wale's ends are not in one plane.
         const [x, z] = at(s + side, faceOff + 0.16);
-        solid(x, z).box(x, z, foot, tx, tz, 0.05, 0.05, top - foot, STEEL, STEEL);
+        withMat("steel", () => solid(x, z).box(x, z, foot, tx, tz, 0.05, 0.05, top - foot, STEEL, STEEL));
       }
       const [cx, cz] = at(s, faceOff + 0.16);
       const rungs = Math.round((top - foot) / 0.3);
-      for (let k = 0; k < rungs; k++) solid(cx, cz).box(cx, cz, foot + 0.15 + k * 0.3, tx, tz, 0.3, 0.02, 0.04, STEEL, STEEL);
+      for (let k = 0; k < rungs; k++) withMat("steel", () => solid(cx, cz).box(cx, cz, foot + 0.15 + k * 0.3, tx, tz, 0.3, 0.02, 0.04, STEEL, STEEL));
     }
   }
 }

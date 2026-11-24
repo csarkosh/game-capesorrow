@@ -5,6 +5,7 @@
  * and a windscreen). Some are under a tarp, drawn over the hull in a plain tarp colour with sag between its lashings. Weeds are grown through a trailer that
  * has stood: tufts of dry grass round the wheels and under the hull, more where the yard is not kept.
  */
+import { withMat } from "../materials.js";
 import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Detail, TownGround } from "../townTypes.js";
 import type { BoatTrailer } from "../../../sim/town/types.js";
@@ -47,7 +48,7 @@ function hull(m: MeshBuilder, gl: MeshBuilder, pl: Place, t: BoatTrailer, y0: nu
   const inner: Rgb = alu ? [0.14, 0.15, 0.16] : [0.3, 0.3, 0.28];
   // Each side its own sheet, so that every quad of it faces away from the centre line; its back is the hull's inside, dark.
   for (const half of [0, 1]) {
-    m.grid(rows.map((r) => (half === 0 ? r.slice(0, 4) : r.slice(3))), insides, {
+    withMat(alu ? "sheet" : "painted", () => m.grid(rows.map((r) => (half === 0 ? r.slice(0, 4) : r.slice(3))), insides, {
       colour,
       back: inner,
       layer: alu ? "roof_metal" : "roof_bitumen",
@@ -55,22 +56,27 @@ function hull(m: MeshBuilder, gl: MeshBuilder, pl: Place, t: BoatTrailer, y0: nu
       uv: (i, j) => [(T[i] as number) * Lb, j * 0.5],
       wear: () => [alu ? 0.08 : t.weeds * 0.3, alu ? "grime" : "algae"],
       wear2: (_, j) => [j === 0 || j === 3 ? 0.1 + t.weeds * 0.2 : 0.02, "grime"],
-    });
+    }));
   }
   // The transom, and inside: a floor and the bench, dark.
-  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour, undefined, { back: { colour: inner } });
+  const hullMat = alu ? "sheet" : "painted";
+  withMat(hullMat, () => m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour, undefined, { back: { colour: inner } }));
   const fl = (x: number, c: number): Vec3 => P(pl, x, y0 + 0.17, c);
-  m.poly([fl(x0 + 0.1, -B * 0.4), fl(x0 + Lb * 0.78, -B * 0.28), fl(x0 + Lb * 0.78, B * 0.28), fl(x0 + 0.1, B * 0.4)], [0, 1, 0], inner);
+  withMat(hullMat, () => m.poly([fl(x0 + 0.1, -B * 0.4), fl(x0 + Lb * 0.78, -B * 0.28), fl(x0 + Lb * 0.78, B * 0.28), fl(x0 + 0.1, B * 0.4)], [0, 1, 0], inner));
   if (detail === "low") return;
   // A bench, a console and an outboard.
-  lbox(m, pl, x0 + Lb * 0.45, x0 + Lb * 0.5, y0 + 0.17, y0 + 0.42, -B * 0.4, B * 0.4, alu ? GALV : white);
-  lbox(m, pl, x0 + Lb * 0.62, x0 + Lb * 0.7, y0 + 0.17, y0 + 0.55, -B * 0.34, B * 0.34, alu ? GALV : white);
+  withMat(hullMat, () => {
+    lbox(m, pl, x0 + Lb * 0.45, x0 + Lb * 0.5, y0 + 0.17, y0 + 0.42, -B * 0.4, B * 0.4, alu ? GALV : white);
+    lbox(m, pl, x0 + Lb * 0.62, x0 + Lb * 0.7, y0 + 0.17, y0 + 0.55, -B * 0.34, B * 0.34, alu ? GALV : white);
+  });
   const motor: Rgb = [0.05, 0.05, 0.06];
-  lbox(m, pl, x0 - 0.22, x0 - 0.03, y0 + H * 0.5, y0 + H * 0.5 + 0.3, -0.12, 0.12, mixC(motor, paint, 0.3));
-  lbox(m, pl, x0 - 0.2, x0 - 0.12, y0 - 0.25, y0 + H * 0.5, -0.04, 0.04, motor);
-  lbox(m, pl, x0 - 0.3, x0 - 0.1, y0 - 0.32, y0 - 0.22, -0.1, 0.1, motor);
+  withMat("painted", () => {
+    lbox(m, pl, x0 - 0.22, x0 - 0.03, y0 + H * 0.5, y0 + H * 0.5 + 0.3, -0.12, 0.12, mixC(motor, paint, 0.3));
+    lbox(m, pl, x0 - 0.2, x0 - 0.12, y0 - 0.25, y0 + H * 0.5, -0.04, 0.04, motor);
+    lbox(m, pl, x0 - 0.3, x0 - 0.1, y0 - 0.32, y0 - 0.22, -0.1, 0.1, motor);
+  });
   if (!alu) {
-    lbox(m, pl, x0 + Lb * 0.52, x0 + Lb * 0.6, y0 + 0.17, y0 + 0.75, 0.05, B * 0.3, white);
+    withMat("painted", () => lbox(m, pl, x0 + Lb * 0.52, x0 + Lb * 0.6, y0 + 0.17, y0 + 0.75, 0.05, B * 0.3, white));
     const xs = x0 + Lb * 0.56;
     gl.poly([P(pl, xs, y0 + 0.75, -B * 0.4), P(pl, xs, y0 + 0.75, B * 0.4), P(pl, xs + 0.3, y0 + 1.1, B * 0.38), P(pl, xs + 0.3, y0 + 1.1, -B * 0.38)], D(pl, 1, 0.6, 0), GLASS_CAR, undefined, { clear: 0.55 });
   }
@@ -93,14 +99,16 @@ function tarp(m: MeshBuilder, pl: Place, t: BoatTrailer, y0: number, detail: Det
     rows.push([P(pl, x, y0 + 0.25, -w * 1.05), P(pl, x, y0 + H * 0.8, -w * 1.08), P(pl, x, y0 + crest - 0.06, -w * 0.5), P(pl, x, y0 + crest, 0), P(pl, x, y0 + crest - 0.06, w * 0.5), P(pl, x, y0 + H * 0.8, w * 1.08), P(pl, x, y0 + 0.25, w * 1.05)]);
     ins.push(P(pl, x, y0 + 0.2, 0));
   }
-  m.grid(rows, ins, { colour, back: true });
-  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), mixC(colour, [0, 0, 0], 0.3), undefined, { back: true });
-  m.poly(rows[N] as Vec3[], D(pl, 1, 0, 0), mixC(colour, [0, 0, 0], 0.3), undefined, { back: true });
+  withMat("cloth", () => {
+    m.grid(rows, ins, { colour, back: true });
+    m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), mixC(colour, [0, 0, 0], 0.3), undefined, { back: true });
+    m.poly(rows[N] as Vec3[], D(pl, 1, 0, 0), mixC(colour, [0, 0, 0], 0.3), undefined, { back: true });
+  });
   // The lashings: rope round the hull in three places.
   for (const u of detail === "low" ? [] : [0.25, 0.5, 0.75]) {
     const x = x0 + u * Lb;
     const r = rows[Math.round(u * N)] as Vec3[];
-    tube(m, [r[1] as Vec3, P(pl, x, y0 - 0.1, -0.6), P(pl, x, y0 - 0.2, 0), P(pl, x, y0 - 0.1, 0.6), r[5] as Vec3], 0.015, [0.25, 0.22, 0.15], 3);
+    withMat("rope", () => tube(m, [r[1] as Vec3, P(pl, x, y0 - 0.1, -0.6), P(pl, x, y0 - 0.2, 0), P(pl, x, y0 - 0.1, 0.6), r[5] as Vec3], 0.015, [0.25, 0.22, 0.15], 3));
   }
 }
 
@@ -119,8 +127,10 @@ function weeds(m: MeshBuilder, pl: Place, t: BoatTrailer, detail: Detail): void 
       const dx = Math.cos(a) * 0.07;
       const dz = Math.sin(a) * 0.07;
       const bend = 0.12 + 0.1 * rnd(t.seed, 200 + k + b);
-      m.poly([P(pl, x - dx, -0.02, z - dz), P(pl, x + dx, -0.02, z + dz), P(pl, x + bend * Math.cos(a + 1.5), h, z + bend * Math.sin(a + 1.5))], D(pl, -Math.sin(a), 0.2, Math.cos(a)), c);
-      m.poly([P(pl, x + dx, -0.02, z + dz), P(pl, x - dx, -0.02, z - dz), P(pl, x + bend * Math.cos(a + 1.5), h, z + bend * Math.sin(a + 1.5))], D(pl, Math.sin(a), 0.2, -Math.cos(a)), c);
+      withMat("plant", () => {
+        m.poly([P(pl, x - dx, -0.02, z - dz), P(pl, x + dx, -0.02, z + dz), P(pl, x + bend * Math.cos(a + 1.5), h, z + bend * Math.sin(a + 1.5))], D(pl, -Math.sin(a), 0.2, Math.cos(a)), c);
+        m.poly([P(pl, x + dx, -0.02, z + dz), P(pl, x - dx, -0.02, z - dz), P(pl, x + bend * Math.cos(a + 1.5), h, z + bend * Math.sin(a + 1.5))], D(pl, Math.sin(a), 0.2, -Math.cos(a)), c);
+      });
     }
   }
 }
@@ -133,33 +143,37 @@ export function trailerGeometry(g: TownGround, sinks: VehicleSinks, t: BoatTrail
   const rear = -L / 2;
   const front = L / 2;
   const railTop = 0.62;
-  // The rails and cross members, the tongue and the hitch.
-  for (const z of [-0.55, 0.55]) lbox(m, pl, rear, front - 1.35, railTop - 0.12, railTop, z - 0.04, z + 0.04, GALV);
-  for (const x of [rear + 0.2, rear + 1.5, front - 1.5]) lbox(m, pl, x - 0.03, x + 0.03, railTop - 0.1, railTop - 0.04, -0.55, 0.55, GALV);
-  m.prism(P(pl, front - 1.35, railTop - 0.06, -0.55), P(pl, front, railTop - 0.15, 0), 0.035, 4, GALV);
-  m.prism(P(pl, front - 1.35, railTop - 0.06, 0.55), P(pl, front, railTop - 0.15, 0), 0.035, 4, GALV);
-  lbox(m, pl, front - 0.12, front + 0.05, railTop - 0.28, railTop - 0.12, -0.05, 0.05, FRAME);
-  lbox(m, pl, front - 1.55, front - 1.45, railTop, railTop + 0.5, -0.04, 0.04, FRAME);
-  // A jack wheel under the tongue.
-  m.prism(P(pl, front - 0.3, railTop - 0.2, 0), P(pl, front - 0.3, 0.14, 0), 0.025, 4, FRAME);
-  // The axle, wheels and fenders.
-  const ax = rear + L * 0.36;
-  const r = 0.28;
-  for (const sg of [1, -1]) {
-    const n = detail === "low" ? 8 : 10;
-    const ring = (rad: number, z: number): Vec3[] => Array.from({ length: n + 1 }, (_, i) => P(pl, ax + Math.cos((i / n) * Math.PI * 2) * rad, r + Math.sin((i / n) * Math.PI * 2) * rad, z));
-    m.grid([ring(r, sg * 0.84), ring(r, sg * 1.0)], P(pl, ax, r, sg * 0.92), { colour: TYRE });
-    // The face, and the hub 3 cm proud of it.
-    m.poly(ring(r, sg * 1.0).slice(0, n), D(pl, 0, 0, sg), TYRE);
-    m.poly(ring(r * 0.6, sg * 1.03).slice(0, n), D(pl, 0, 0, sg), [0.3, 0.3, 0.32]);
-    lbox(m, pl, ax - 0.4, ax + 0.4, r + 0.32, r + 0.35, sg * 0.8, sg * 1.05, GALV);
-  }
-  lbox(m, pl, ax - 0.05, ax + 0.05, r - 0.04, r + 0.04, -0.9, 0.9, FRAME);
-  lbox(m, pl, rear - 0.03, rear + 0.04, railTop - 0.2, railTop - 0.1, -0.5, 0.5, [0.06, 0.06, 0.06]);
-  for (const sg of [1, -1]) lbox(m, pl, rear - 0.05, rear + 0.02, railTop - 0.2, railTop - 0.13, sg * 0.37, sg * 0.47, TAIL, TAIL, false);
+  withMat("steel", () => {
+    // The rails and cross members, the tongue and the hitch.
+    for (const z of [-0.55, 0.55]) lbox(m, pl, rear, front - 1.35, railTop - 0.12, railTop, z - 0.04, z + 0.04, GALV);
+    for (const x of [rear + 0.2, rear + 1.5, front - 1.5]) lbox(m, pl, x - 0.03, x + 0.03, railTop - 0.1, railTop - 0.04, -0.55, 0.55, GALV);
+    m.prism(P(pl, front - 1.35, railTop - 0.06, -0.55), P(pl, front, railTop - 0.15, 0), 0.035, 4, GALV);
+    m.prism(P(pl, front - 1.35, railTop - 0.06, 0.55), P(pl, front, railTop - 0.15, 0), 0.035, 4, GALV);
+    lbox(m, pl, front - 0.12, front + 0.05, railTop - 0.28, railTop - 0.12, -0.05, 0.05, FRAME);
+    lbox(m, pl, front - 1.55, front - 1.45, railTop, railTop + 0.5, -0.04, 0.04, FRAME);
+    // A jack wheel under the tongue.
+    m.prism(P(pl, front - 0.3, railTop - 0.2, 0), P(pl, front - 0.3, 0.14, 0), 0.025, 4, FRAME);
+    // The axle, wheels and fenders.
+    const ax = rear + L * 0.36;
+    const r = 0.28;
+    for (const sg of [1, -1]) {
+      const n = detail === "low" ? 8 : 10;
+      const ring = (rad: number, z: number): Vec3[] => Array.from({ length: n + 1 }, (_, i) => P(pl, ax + Math.cos((i / n) * Math.PI * 2) * rad, r + Math.sin((i / n) * Math.PI * 2) * rad, z));
+      m.grid([ring(r, sg * 0.84), ring(r, sg * 1.0)], P(pl, ax, r, sg * 0.92), { colour: TYRE, mat: "rubber" });
+      // The face, and the hub 3 cm proud of it.
+      m.poly(ring(r, sg * 1.0).slice(0, n), D(pl, 0, 0, sg), TYRE, "rubber");
+      m.poly(ring(r * 0.6, sg * 1.03).slice(0, n), D(pl, 0, 0, sg), [0.3, 0.3, 0.32], "steel");
+      lbox(m, pl, ax - 0.4, ax + 0.4, r + 0.32, r + 0.35, sg * 0.8, sg * 1.05, GALV);
+    }
+    lbox(m, pl, ax - 0.05, ax + 0.05, r - 0.04, r + 0.04, -0.9, 0.9, FRAME);
+    lbox(m, pl, rear - 0.03, rear + 0.04, railTop - 0.2, railTop - 0.1, -0.5, 0.5, [0.06, 0.06, 0.06]);
+    for (const sg of [1, -1]) withMat("painted", () => lbox(m, pl, rear - 0.05, rear + 0.02, railTop - 0.2, railTop - 0.13, sg * 0.37, sg * 0.47, TAIL, TAIL, false));
+  });
   // Bunks, carpeted, and the boat.
   if (t.boat !== "none") {
-    for (const z of [-0.45, 0.45]) lbox(m, pl, rear + 0.5, front - 1.7, railTop, railTop + 0.08, z - 0.06, z + 0.06, [0.08, 0.1, 0.09]);
+    withMat("cloth", () => {
+      for (const z of [-0.45, 0.45]) lbox(m, pl, rear + 0.5, front - 1.7, railTop, railTop + 0.08, z - 0.06, z + 0.06, [0.08, 0.1, 0.09]);
+    });
     hull(m, gl, pl, t, railTop + 0.52, detail);
     if (t.tarp) tarp(m, pl, t, railTop + 0.52, detail);
   }

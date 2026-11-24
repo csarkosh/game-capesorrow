@@ -17,6 +17,7 @@
  * Nothing here is in `sim/`: it draws, it never decides where anything stands.
  */
 import { MeshBuilder, hash01, scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { withMat } from "./materials.js";
 import { edgeFrame, type Surface, type WearKind } from "./townSurface.js";
 import type { LayerName } from "./townLayers.js";
 import { BALLAST_TOP, BALLAST_TOP_HALF, RAIL_FOOT, RAIL_TOP, TIE_BOTTOM, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP, pointOf, type Frame } from "./railConstants.js";
@@ -258,7 +259,7 @@ export function bedGrid(b: MeshBuilder, frames: readonly Frame[], look: Look, lo
     }
     return t;
   };
-  b.grid(
+  withMat("gravel", () => b.grid(
     rows,
     inside,
     {
@@ -288,7 +289,7 @@ export function bedGrid(b: MeshBuilder, frames: readonly Frame[], look: Look, lo
       },
       back: true,
     },
-  );
+  ));
 }
 
 /**
@@ -309,7 +310,7 @@ export function spill(b: MeshBuilder, look: Look, f: Frame, key: number, ground:
     const ux = Math.cos(turn);
     const uz = Math.sin(turn);
     const tone = 0.8 + 0.4 * hashAt(x, z, 95);
-    texBox(b, x, z, Math.max(f.g, ground(x, z)) - 0.01, ux, uz, half, half * 0.8, 0.06 + half, { layer: "gravel", tint: [0.85 * tone, 0.8 * tone, 0.75 * tone] }, true);
+    withMat("gravel", () => texBox(b, x, z, Math.max(f.g, ground(x, z)) - 0.01, ux, uz, half, half * 0.8, 0.06 + half, { layer: "gravel", tint: [0.85 * tone, 0.8 * tone, 0.75 * tone] }, true));
   }
 }
 
@@ -384,7 +385,7 @@ function slab(b: MeshBuilder, cx: number, cz: number, ux: number, uz: number, a0
     (rows[0] as Vec3[]).push([l[0], topAt(a), l[1]]);
     (rows[1] as Vec3[]).push([r[0], topAt(a), r[1]]);
   }
-  b.grid(
+  withMat("wood", () => b.grid(
     rows,
     [cx, y0 - 1, cz],
     {
@@ -398,7 +399,7 @@ function slab(b: MeshBuilder, cx: number, cz: number, ux: number, uz: number, a0
       },
       wear2: () => [0.18, "grime"],
     },
-  );
+  ));
   // The sides and ends, with the grain along the slab.
   const corner = (a: number, w: number, y: number): Vec3 => {
     const p = at(a, w);
@@ -564,7 +565,7 @@ export function jointBars(b: MeshBuilder, f: Frame, along: Vec3, dip: number): v
     const cz = f.z + f.nz * rail;
     for (const side of [rail < 0 ? -1 : 1]) {
       // A bar against the web, under the head and over the foot's ledge: 0.5 m long, 3 cm high (a grade of a few percent lifts its ends a centimetre off the rail's line, so it keeps under the head), 2.5 cm thick.
-      texBox(b, cx + vx * side * 0.0325, cz + vz * side * 0.0325, f.g + RAIL_FOOT + 0.04 + dip, ax, az, 0.26, 0.0125, 0.03, { layer: "rust", tint: [0.55, 0.36, 0.27], wear: 0.4, wearKind: "rust" }, false, [0.17, 0.1, 0.07], false);
+      withMat("rusty", () => texBox(b, cx + vx * side * 0.0325, cz + vz * side * 0.0325, f.g + RAIL_FOOT + 0.04 + dip, ax, az, 0.26, 0.0125, 0.03, { layer: "rust", tint: [0.55, 0.36, 0.27], wear: 0.4, wearKind: "rust" }, false, [0.17, 0.1, 0.07], false));
     }
   }
 }
@@ -624,7 +625,7 @@ export function tuft(m: MeshBuilder, x: number, y: number, z: number, seed: numb
     const ly = gy * 0.7 + 0.7;
     const lz = gz * 0.7;
     const ll = Math.sqrt(lx * lx + ly * ly + lz * lz);
-    m.poly([pa, pb, tip], [dx, 0.15, dz], [foot, foot, tipC], undefined, { glow: 0.1, normal: [lx / ll, ly / ll, lz / ll] });
+    withMat("plant", () => m.poly([pa, pb, tip], [dx, 0.15, dz], [foot, foot, tipC], undefined, { glow: 0.1, normal: [lx / ll, ly / ll, lz / ll] }));
   }
 }
 

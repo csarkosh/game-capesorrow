@@ -72,6 +72,8 @@ export type Surface = {
   readonly wear2?: number | ((p: Vec3) => number);
   readonly wearKind2?: WearKind;
   readonly streaks2?: boolean;
+  /** How many times finer than true size the texture is laid (1 when absent): a small thing shows more of the picture. */
+  readonly scale?: number;
 };
 
 /** A direction made unit length (a direction of no length is left as it is). */
@@ -92,7 +94,8 @@ export type FrameBasis = { readonly origin: Vec3; readonly u: Vec3; readonly v: 
 export function basisOf(surface: Surface): FrameBasis {
   const layer = TOWN_LAYERS[layerIndex(surface.layer)];
   if (layer === undefined) throw new Error(`no texture layer "${surface.layer}"`);
-  return { origin: surface.frame.origin, u: unit(surface.frame.u), v: unit(surface.frame.v), su: 1 / layer.tile[0], sv: 1 / layer.tile[1] };
+  const scale = surface.scale ?? 1;
+  return { origin: surface.frame.origin, u: unit(surface.frame.u), v: unit(surface.frame.v), su: scale / layer.tile[0], sv: scale / layer.tile[1] };
 }
 
 /** The UV of the point `p` of a polygon under `basis`. */

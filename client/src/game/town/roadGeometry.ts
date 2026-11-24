@@ -13,6 +13,7 @@
  * The destinations' standing parts go in the solid layer; none is a wall to the rules.
  */
 import { RANK, flatSurfaceFor } from "./groundSurfaces.js";
+import { withMat } from "./materials.js";
 import { Surface } from "./surface.js";
 import { FENCE, GRAVEL, HEADSTONE, LOG, ROAD_ASPHALT, TANK, TIMBER, TRACK } from "./palette.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
@@ -55,7 +56,7 @@ export function roadGeometry(g: TownGround, flat: Sink, solid: Sink): void {
           const corners = [at(t0, o0), at(t1, o0), at(t1, o1), at(t0, o1)];
           const pp = corners.map(([x, z]): Vec3 => [x, g.heightAt(x, z) + lift, z]);
           if (pp.every((q) => q[1] - lift < SEA + 0.1)) return;
-          surf.lay(flat(corners[0]![0], corners[0]![1]), pp, pp.map(() => lift), colour, flatSurfaceFor(colour, g.anchor), RANK.mark);
+          withMat("soil", () => surf.lay(flat(corners[0]![0], corners[0]![1]), pp, pp.map(() => lift), colour, flatSurfaceFor(colour, g.anchor), RANK.mark));
         };
         const w0 = wAt(t0) / 2;
         const w1 = wAt(t1) / 2;
@@ -99,10 +100,10 @@ function destinationGeometry(g: TownGround, road: Road, flat: Sink, solid: Sink)
       const tri: [number, number][] = [[cx, cz], p, q];
       const pp = tri.map(([px, pz]): Vec3 => [px, h(px, pz) + lift, pz]);
       if (pp.every((v) => v[1] - lift < SEA + 0.1)) continue;
-      flat(cx, cz).poly(pp, UP, colour, flatSurfaceFor(colour, g.anchor));
+      flat(cx, cz).poly(pp, UP, colour, flatSurfaceFor(colour, g.anchor) ?? "soil");
     }
   };
-  const post = (px: number, pz: number, height: number, colour: Rgb): void => solid(px, pz).box(px, pz, h(px, pz) - 0.05, 1, 0, 0.08, 0.08, height, colour, colour);
+  const post = (px: number, pz: number, height: number, colour: Rgb): void => withMat(colour === TIMBER ? "wood" : "steel", () => solid(px, pz).box(px, pz, h(px, pz) - 0.05, 1, 0, 0.08, 0.08, height, colour, colour));
   const bar = (ax: number, az: number, bx: number, bz: number, y: number, colour: Rgb, thick = 0.05): void => {
     const len = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
     if (!(len > 0.01)) return;
@@ -110,7 +111,7 @@ function destinationGeometry(g: TownGround, road: Road, flat: Sink, solid: Sink)
     const uz = (bz - az) / len;
     const mx = (ax + bx) / 2;
     const mz = (az + bz) / 2;
-    solid(mx, mz).box(mx, mz, Math.max(h(ax, az), h(bx, bz)) + y, ux, uz, len / 2, thick, thick * 2, colour, colour);
+    withMat(colour === TIMBER ? "wood" : "steel", () => solid(mx, mz).box(mx, mz, Math.max(h(ax, az), h(bx, bz)) + y, ux, uz, len / 2, thick, thick * 2, colour, colour));
   };
   switch (d.kind) {
     case "cemetery": {
@@ -152,7 +153,7 @@ function destinationGeometry(g: TownGround, road: Road, flat: Sink, solid: Sink)
       for (let row = 0; row < 3; row++) {
         for (let col = 0; col < 6; col++) {
           const [sx, sz] = [cx + ox * (-6 + row * 6) + nx * (-10 + col * 4), cz + oz * (-6 + row * 6) + nz * (-10 + col * 4)];
-          solid(sx, sz).box(sx, sz, h(sx, sz) - 0.05, nx, nz, 0.3, 0.08, 0.95, HEADSTONE, HEADSTONE);
+          withMat("stone", () => solid(sx, sz).box(sx, sz, h(sx, sz) - 0.05, nx, nz, 0.3, 0.08, 0.95, HEADSTONE, HEADSTONE));
         }
       }
       break;
@@ -163,7 +164,7 @@ function destinationGeometry(g: TownGround, road: Road, flat: Sink, solid: Sink)
       // Stacks of logs at the edge, three to a stack.
       for (const t of [-8, 0, 8]) {
         const [lx, lz] = at(d.radius * 1.05, t);
-        for (let k = 0; k < 3; k++) solid(lx, lz).box(lx + nx * (k - 1) * 1.1, lz + nz * (k - 1) * 1.1, h(lx, lz) + (k === 1 ? 0.9 : 0), ox, oz, 3.2, 0.5, 0.9, LOG, LOG);
+        for (let k = 0; k < 3; k++) withMat("wood", () => solid(lx, lz).box(lx + nx * (k - 1) * 1.1, lz + nz * (k - 1) * 1.1, h(lx, lz) + (k === 1 ? 0.9 : 0), ox, oz, 3.2, 0.5, 0.9, LOG, LOG));
       }
       break;
     }
@@ -177,8 +178,8 @@ function destinationGeometry(g: TownGround, road: Road, flat: Sink, solid: Sink)
       const [cx, cz] = at(5, 0);
       disc(cx, cz, 7, GRAVEL, ROAD_LIFT);
       const base = Math.max(h(cx - 1.5, cz - 1.5), h(cx + 1.5, cz + 1.5), h(cx - 1.5, cz + 1.5), h(cx + 1.5, cz - 1.5));
-      for (const [lx, lz] of [[-1.7, -1.7], [1.7, -1.7], [1.7, 1.7], [-1.7, 1.7]] as const) solid(cx + lx, cz + lz).box(cx + lx, cz + lz, h(cx + lx, cz + lz) - 0.05, 1, 0, 0.15, 0.15, base - h(cx + lx, cz + lz) + 4.05, FENCE, FENCE);
-      solid(cx, cz).box(cx, cz, base + 4, ox, oz, 2.4, 2.4, 3.2, TANK, TANK);
+      for (const [lx, lz] of [[-1.7, -1.7], [1.7, -1.7], [1.7, 1.7], [-1.7, 1.7]] as const) withMat("wood", () => solid(cx + lx, cz + lz).box(cx + lx, cz + lz, h(cx + lx, cz + lz) - 0.05, 1, 0, 0.15, 0.15, base - h(cx + lx, cz + lz) + 4.05, FENCE, FENCE));
+      withMat("steel", () => solid(cx, cz).box(cx, cz, base + 4, ox, oz, 2.4, 2.4, 3.2, TANK, TANK));
       break;
     }
     case "gate": {
