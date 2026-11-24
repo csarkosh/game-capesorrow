@@ -73,7 +73,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
     const reach = Math.max(a, b) * 1.05;
     const wear = (q: Vec3): number => Math.max(0, Math.min(1, (1 - Math.hypot(q[0] - mid[0], q[2] - mid[2]) / reach) * 2.6)) * mark.amount;
     // The mark is the mud layer under its own overlay, and the material cuts out the fragments the noise does not wear (`townMaterial.ts`): where it is not a mark nothing is drawn, so no polygon's edge shows against the road or the slab.
-    const surface: Surface = { layer: "mud", frame: groundFrame(g.anchor), tint: [1, 1, 1], wear, wearKind: mark.kind };
+    const surface: Surface = { layer: "mud", frame: groundFrame(g.anchor), tint: [0.32, 0.31, 0.31], wear, wearKind: mark.kind };
     flat(ax + x, az + z).poly([mid, ...pts, pts[0] as Vec3], [0, 1, 0], colour, surface, { rank });
   };
 
