@@ -49,24 +49,59 @@ function cart(m: MeshBuilder, pl: Place, b: Bin, tipped: boolean): void {
   }
 }
 
+/**
+ * A convex profile in the place's (x, y) plane (counter-clockwise, x forward, y up) extruded across z from `z0` to `z1`: a face on each edge not in `skip`, and a cap at each end that `caps` asks for. A twin of each face is laid when `back` (an open bin is seen from inside).
+ */
+function extrude(m: MeshBuilder, pl: Place, prof: readonly (readonly [number, number])[], z0: number, z1: number, colour: Rgb, surface: ((o: Vec3) => Surface) | undefined, back: boolean, skip: readonly number[] = [], caps: readonly [boolean, boolean] = [true, true]): void {
+  const n = prof.length;
+  let cx = 0;
+  let cy = 0;
+  for (const [x, y] of prof) {
+    cx += x / n;
+    cy += y / n;
+  }
+  const fx: { back: true } | undefined = back ? { back: true } : undefined;
+  const lay = (pts: Vec3[], hint: Vec3): void => m.poly(pts, hint, colour, surface?.(pts[0] as Vec3), fx);
+  for (let i = 0; i < n; i++) {
+    if (skip.includes(i)) continue;
+    const [ax, ay] = prof[i] as readonly [number, number];
+    const [bx, by] = prof[(i + 1) % n] as readonly [number, number];
+    lay([P(pl, ax, ay, z0), P(pl, bx, by, z0), P(pl, bx, by, z1), P(pl, ax, ay, z1)], D(pl, (ax + bx) / 2 - cx, (ay + by) / 2 - cy, 0));
+  }
+  if (caps[0]) lay(prof.map(([x, y]) => P(pl, x, y, z0)), D(pl, 0, 0, -1));
+  if (caps[1]) lay(prof.map(([x, y]) => P(pl, x, y, z1)).reverse(), D(pl, 0, 0, 1));
+}
+
+/** A steel front-loading bin: a body on two skids with a sloped front, a rear wall and two plastic lids hinged along the rear's top edge (one flipped back on some, hanging against the rear). */
 function dumpster(m: MeshBuilder, pl: Place, b: Bin): void {
   const colours: readonly Rgb[] = [[0.03, 0.1, 0.05], [0.03, 0.06, 0.16], [0.1, 0.09, 0.08], [0.2, 0.05, 0.03]];
   const c = colours[b.colour % 4] as Rgb;
   const w = 0.62;
   const wear = 0.1 + rnd(b.seed, 1) * 0.2;
   const sf = (o: Vec3): Surface => metal(o, c, wear);
-  const q = (pts: Vec3[], hint: Vec3): void => m.poly(pts, hint, c, sf(pts[0] as Vec3), { back: true });
-  q([P(pl, 0.95, 0.2, -w), P(pl, 0.95, 0.2, w), P(pl, 0.95, 1.2, w), P(pl, 0.95, 1.2, -w)], D(pl, 1, 0, 0));
-  q([P(pl, -0.95, 0.2, w), P(pl, -0.95, 0.2, -w), P(pl, -0.95, 1.2, -w), P(pl, -0.95, 1.2, w)], D(pl, -1, 0, 0));
-  q([P(pl, -0.95, 0.2, w), P(pl, 0.95, 0.2, w), P(pl, 0.95, 1.2, w), P(pl, -0.95, 1.2, w)], D(pl, 0, 0, 1));
-  q([P(pl, 0.95, 0.2, -w), P(pl, -0.95, 0.2, -w), P(pl, -0.95, 1.2, -w), P(pl, 0.95, 1.2, -w)], D(pl, 0, 0, -1));
-  // Its floor, seen from under it (it stands on feet), and lids: two slabs, one propped open on some.
-  m.poly([P(pl, -0.95, 0.2, -w), P(pl, 0.95, 0.2, -w), P(pl, 0.95, 0.2, w), P(pl, -0.95, 0.2, w)], [0, -1, 0], mixC(c, [0, 0, 0], 0.4));
-  const open = rnd(b.seed, 2) < 0.35;
-  m.poly([P(pl, -0.97, 1.2, -w - 0.02), P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.0, 1.26, w + 0.02), P(pl, -0.97, 1.26, w + 0.02)].map((p) => p) as Vec3[], [0, 1, 0], mixC(c, [0.02, 0.02, 0.02], 0.2), undefined, { back: true });
-  if (open) m.poly([P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.1, 1.9, -w - 0.02), P(pl, 0.1, 1.9, w + 0.02), P(pl, 0.0, 1.2, w + 0.02)], D(pl, -0.8, 0.4, 0), c, undefined, { back: true });
-  else m.poly([P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.97, 1.2, -w - 0.02), P(pl, 0.97, 1.26, w + 0.02), P(pl, 0.0, 1.26, w + 0.02)], [0, 1, 0], mixC(c, [0.02, 0.02, 0.02], 0.2), undefined, { back: true });
-  for (const x of [-0.7, 0.7]) for (const z of [-0.55, 0.55]) lbox(m, pl, x - 0.05, x + 0.05, 0.0, 0.2, z - 0.05, z + 0.05, [0.02, 0.02, 0.02]);
+  const foot = 0.12;
+  const top = 1.2;
+  // The body: floor, rear wall, front wall that slopes in toward the top; its top is open under the lids.
+  extrude(m, pl, [[-0.95, foot], [0.95, foot], [0.95, 0.45], [0.55, top], [-0.95, top]], -w, w, c, sf, true, [3]);
+  // Two skids under the floor. (No fork pockets: boxes standing out of its sides came within millimetres of the wall fittings a bin is put beside.)
+  // A skid's top stops 3 cm under the floor: the floor is seen from inside too, and its upper face would lie in the skid's top.
+  for (const z of [-0.42, 0.42]) lbox(m, pl, -0.9, 0.9, 0.0, foot - 0.03, z - 0.06, z + 0.06, [0.04, 0.04, 0.045]);
+  // The lids: grey plastic over half the width each, a hand over the rim at the rear hinge.
+  const plastic: Rgb = rnd(b.seed, 3) < 0.5 ? [0.05, 0.05, 0.055] : [0.1, 0.1, 0.11];
+  const flipped = rnd(b.seed, 2) < 0.35 ? (rnd(b.seed, 4) < 0.5 ? -1 : 1) : 0;
+  for (const sg of [-1, 1]) {
+    // A lid stops a centimetre inside the body's sides: a bin is put against walls, and a lid's end standing proud of the body came within a millimetre of the fittings there.
+    const z0 = sg < 0 ? -w + 0.01 : 0.01;
+    const z1 = sg < 0 ? -0.01 : w - 0.01;
+    // No end at the middle of the bin, where the two lids meet: only the outer end of each is closed.
+    const inner: readonly [boolean, boolean] = sg < 0 ? [true, false] : [false, true];
+    if (flipped === sg) {
+      // Thrown back on its hinge: it hangs against the rear, its foot a little out from it.
+      extrude(m, pl, [[-1.0, top + 0.07], [-1.22, 0.5], [-1.18, 0.49], [-0.96, top + 0.06]], z0, z1, plastic, undefined, false, [], inner);
+    } else {
+      extrude(m, pl, [[-0.99, top + 0.03], [0.6, top + 0.03], [0.6, top + 0.08], [-0.99, top + 0.1]], z0, z1, plastic, undefined, false, [], inner);
+    }
+  }
 }
 
 function pallets(m: MeshBuilder, pl: Place, b: Bin): void {
@@ -138,6 +173,7 @@ export function mailboxGeometry(g: TownGround, solid: Sink, mb: Mailbox, detail:
     [[corner(L, 0.02, -W), corner(L, 0.02, W), corner(L, 0.18, W), corner(L, 0.18, -W)], hb],
     [[corner(-L, 0.02, W), corner(-L, 0.02, -W), corner(-L, 0.18, -W), corner(-L, 0.18, W)], [-hb[0], 0, -hb[2]]],
     [[corner(-L, 0.18, -W), corner(L, 0.18, -W), corner(L, 0.18, W), corner(-L, 0.18, W)], [0, 1, 0]],
+    [[corner(-L, 0.02, -W), corner(L, 0.02, -W), corner(L, 0.02, W), corner(-L, 0.02, W)], [0, -1, 0]],
   ];
   for (const [pts, h] of sides) m.poly(pts, h, c);
   // The flag, up or down, and the door's seam.
