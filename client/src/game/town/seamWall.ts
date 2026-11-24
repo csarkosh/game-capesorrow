@@ -20,11 +20,12 @@ import { wat, type WallRef } from "./buildingKit.js";
 import { neglectOf, seamHouses, type HouseSeam } from "./houseSeam.js";
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { hash01, scaled } from "./meshBuilder.js";
+import { bedOf } from "./seamGround.js";
 import type { Sink, TownGround } from "./townTypes.js";
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
-const CONCRETE: Rgb = [0.4, 0.4, 0.38];
-const BRICK: Rgb = [0.27, 0.13, 0.1];
+const CONCRETE: Rgb = [0.3, 0.3, 0.28];
+const BRICK: Rgb = [0.2, 0.14, 0.12];
 const WOOD: Rgb = [0.3, 0.25, 0.19];
 const DARK: Rgb = [0.025, 0.025, 0.03];
 /** The layers a foundation's marks stand in, metres past the foundation's own face: 3 cm apart. */
@@ -49,7 +50,9 @@ export function seamWall(g: TownGround, solid: Sink): void {
     const out = solid(g.anchor.x + b.centre.x, g.anchor.z + b.centre.z);
     const neg = neglectOf(g.plan, b);
     foundation(g, h, out, neg);
+    if (bedOf(g, h) === "planted") shrubs(g, h, out);
     things(g, h, out, neg);
+    doorstep(h, out, neg);
     if (yard.kind !== "paved") moles(g, h, out, neg, yard.kind);
   }
 }
@@ -70,6 +73,81 @@ function neighbourAt(g: TownGround, b: HouseSeam["b"], w: WallRef): boolean {
     }
   }
   return false;
+}
+
+/** What stands at the front door by the household: a mat, then a pot of something, a pair of boots or a broom against the wall (one in a house, a roll of its own); a kept house has the pot and the mat, a let-go one the boots and the broom. */
+function doorstep(h: HouseSeam, out: MeshBuilder, neg: number): void {
+  const d = h.door;
+  const b = h.b;
+  if (d === null) return;
+  const w = h.refs[h.frontAt] as WallRef;
+  const porch = d.porch !== null;
+  const depth = d.out;
+  if (!porch && depth < 0.4) return;
+  const y = d.floorY;
+  const at = (s: number, off: number): Vec3 => wat(w, s, y, off);
+  // The mat, in front of the door: a low woven rectangle, no underside.
+  if (hash01(b.id, 4000) < 0.65 - 0.35 * neg) {
+    const c = at(d.s, 0.1 + (Math.min(depth, 0.9) - 0.1) * 0.5);
+    const tone = 0.7 + 0.6 * hash01(b.id, 4001);
+    out.box(c[0], c[2], y, w.tx, w.tz, 0.32, Math.min(0.25, (depth - 0.1) / 2), 0.025, scaled([0.3, 0.22, 0.14], tone), scaled([0.34, 0.26, 0.16], tone), true, null);
+  }
+  const r = hash01(b.id, 4010);
+  const side = hash01(b.id, 4011) < 0.5 ? -1 : 1;
+  const sOff = porch ? Math.min(d.half - 0.5, 0.9) : 0.62;
+  if (!porch && r < 0.5) return;
+  if (r < 0.5 - 0.3 * neg && porch) {
+    // A pot with a plant in it, beside the door.
+    const c = at(d.s + side * sOff, 0.35);
+    out.cylinder(c[0], c[2], y, 0.15, 0.3, 7, [0.45, 0.2, 0.12], [0.1, 0.07, 0.04], 0.12);
+    out.cylinder(c[0], c[2], y + 0.3, 0.1, 0.22, 6, [0.1, 0.22, 0.07], [0.12, 0.26, 0.08], 0.2);
+  } else if (r < 0.8) {
+    // A pair of boots by the door, one fallen over.
+    for (let k = 0; k < 2; k++) {
+      const c = at(d.s + side * (sOff + 0.15 * k), 0.3 + 0.12 * k);
+      out.box(c[0], c[2], y, w.tx, w.tz, k === 0 ? 0.05 : 0.13, k === 0 ? 0.13 : 0.05, k === 0 ? 0.22 : 0.1, [0.08, 0.07, 0.05], [0.1, 0.09, 0.06], true, null);
+    }
+  } else if (porch) {
+    // A broom leaning on the wall beside the door.
+    const c = at(d.s + side * sOff, 0.2);
+    out.prism([c[0] + w.nx * 0.28, y + 0.02, c[2] + w.nz * 0.28], [c[0] + w.nx * 0.06, y + 1.25, c[2] + w.nz * 0.06], 0.012, 4, [0.4, 0.3, 0.17], [0.4, 0.3, 0.17]);
+    out.prism([c[0] + w.nx * 0.32, y + 0.02, c[2] + w.nz * 0.32], [c[0] + w.nx * 0.26, y + 0.3, c[2] + w.nz * 0.26], 0.05, 5, [0.5, 0.42, 0.2], [0.5, 0.42, 0.2]);
+  }
+}
+
+/** Foundation shrubs in a planted bed along the front wall and one side: rounded, 0.6 to 1.2 m, each its own size and green, and one of them dead. */
+function shrubs(g: TownGround, h: HouseSeam, out: MeshBuilder): void {
+  const b = h.b;
+  const walls = [h.frontAt, (h.frontAt + 1) % h.refs.length];
+  const dead = Math.floor(hash01(b.id, 3600) * 4);
+  let n = 0;
+  for (const k of walls) {
+    const w = h.refs[k] as WallRef;
+    if (h.blocked[k]) continue;
+    for (let s = 0.7 + 0.8 * hash01(b.id * 3 + k, 3601), i = 0; s < w.length - 0.6; s += 1.7 + 1.2 * hash01(b.id * 3 + k, 3610 + i), i++) {
+      if (k === h.frontAt && h.door !== null && Math.abs(s - h.door.s) < h.door.half + 0.8) continue;
+      const r = 0.28 + 0.27 * hash01(b.id * 3 + k, 3620 + i);
+      const off = (h.foundOff[k] as number) + 0.12 + r + 0.1;
+      const p = wat(w, s, 0, off);
+      if (fenceWithin(g, p[0] - g.anchor.x, p[2] - g.anchor.z, r + 0.4)) continue;
+      h.occupied.push({ k, s0: s - r - 0.2, s1: s + r + 0.2 });
+      const y = g.heightAt(p[0], p[2]) - 0.02;
+      const ht = 0.55 + 0.6 * hash01(b.id * 3 + k, 3630 + i);
+      if (n++ === dead) {
+        const brown: Rgb = [0.25, 0.19, 0.11];
+        out.cylinder(p[0], p[2], y, r * 0.6, ht * 0.5, 6, brown, scaled(brown, 0.8), r * 0.3);
+        for (let c = 0; c < 3; c++) {
+          const a = c * 2.1 + hash01(b.id, 3640 + c) * 1.5;
+          out.prism([p[0], y + 0.15, p[2]], [p[0] + Math.cos(a) * r * 0.9, y + ht * 0.8, p[2] + Math.sin(a) * r * 0.9], 0.012, 4, brown, brown);
+        }
+        continue;
+      }
+      const tone = 0.7 + 0.5 * hash01(b.id * 3 + k, 3650 + i);
+      const green: Rgb = [0.1 * tone, 0.2 * tone, 0.07 * tone];
+      out.cylinder(p[0], p[2], y, r, ht * 0.6, 7, green, scaled(green, 0.9), r * 0.85);
+      out.cylinder(p[0], p[2], y + ht * 0.55, r * 0.8, ht * 0.45, 7, scaled(green, 1.1), scaled(green, 1.2), r * 0.3);
+    }
+  }
 }
 
 /** The ground's height at a station on a wall, a hand out from its face. */
@@ -127,7 +205,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
           continue;
         }
         const tone = 0.6 + 0.5 * hash01(key, 1500 + i);
-        col(s0, s1, Lk.line, scaled(WOOD, tone), 9, 0.04 * (hash01(key, 1600 + i) - 0.5));
+        col(s0, s1, Lk.line, scaled(WOOD, tone), Math.max(0.12, exposed(s0) - 0.14 * hash01(key, 1650 + i)), 0.12 * (hash01(key, 1600 + i) - 0.5));
       }
       void exposed;
     } else {
@@ -141,7 +219,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       }
       // Courses and form lines: thin dark lines along the whole wall, in runs with gaps, each at its own height over the ground.
       const lineColour = scaled(base, kind === "brick" ? 1.9 : 0.55);
-      for (let c = 0; c < (kind === "concrete" ? 0 : 1); c++) {
+      for (let c = 0; c < (kind === "brick" ? 1 : 0); c++) {
         let s = 0;
         let i = 0;
         while (s < w.length - 0.3) {
@@ -177,15 +255,15 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       }
     }
     // Algae climbs the foundation in uneven columns on the shaded walls and the neglected, and the splash of mud goes up from the ground, higher in some places than others.
-    const algae = clamp01((north ? 0.6 : 0.15) + 0.4 * neg);
+    const algae = clamp01((north ? 0.5 : 0.1) + 0.35 * neg);
     for (let s = 0, i = 0; s < w.length - 0.1; i++) {
-      const s1 = Math.min(w.length, s + 1 + 1.2 * hash01(key, 2300 + i));
-      if (hash01(key, 2350 + i) < algae) col(s, s1, Lk.algae, scaled([0.2, 0.28, 0.13], 0.7 + 0.5 * hash01(key, 2360 + i)), 0.12 + 0.4 * hash01(key, 2370 + i) * (0.5 + 0.5 * algae));
+      const s1 = Math.min(w.length, s + 1.4 + 1.4 * hash01(key, 2300 + i));
+      if (hash01(key, 2350 + i) < algae) col(s, s1, Lk.algae, scaled([0.2, 0.28, 0.13], 0.7 + 0.5 * hash01(key, 2360 + i)), 0.1 + 0.95 * hash01(key, 2370 + i) * (0.45 + 0.55 * algae));
       s = s1;
     }
     for (let s = 0, i = 0; s < w.length - 0.1; i++) {
       const s1 = Math.min(w.length, s + 0.9 + 1.4 * hash01(key, 2400 + i));
-      if (hash01(key, 2430 + i) < 0.6) col(s, s1, Lk.mud, scaled([0.14, 0.12, 0.1], 0.7 + 0.5 * hash01(key, 2410 + i)), 0.06 + 0.2 * hash01(key, 2420 + i) * (0.6 + 0.6 * neg));
+      if (hash01(key, 2430 + i) < 0.5) col(s, s1, Lk.mud, scaled([0.14, 0.12, 0.1], 0.7 + 0.5 * hash01(key, 2410 + i)), 0.06 + 0.3 * hash01(key, 2420 + i) * (0.6 + 0.9 * neg));
       s = s1;
     }
   });
@@ -216,7 +294,7 @@ function things(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number): voi
   if (walls.length === 0) return;
   const used = new Map<number, [number, number][]>();
   for (const o of h.occupied) used.set(o.k, [...(used.get(o.k) ?? []), [o.s0, o.s1]]);
-  const count = 1 + (hash01(b.id, 3000) < 0.4 ? 1 : 0) + (neg > 0.5 && hash01(b.id, 3001) < 0.5 ? 1 : 0);
+  const count = 1 + (hash01(b.id, 3000) < 0.12 ? 1 : 0) + (neg > 0.5 && hash01(b.id, 3001) < 0.5 ? 1 : 0);
   const KINDS = ["hose", "drain", "wood", "ladder", "barrow", "bucket", "boards"] as const;
   const picked: string[] = [];
   for (let j = 0; picked.length < count && j < 12; j++) {

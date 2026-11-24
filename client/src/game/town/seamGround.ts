@@ -12,18 +12,23 @@
  * Laid as marks of `RANK.mark` over the ground (`surface.ts` cuts one off another of its rank, and the walk and drive are base surfaces: none is laid over
  * a walk, a drive, the steps or a porch).
  */
+import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import { lotIdAt } from "../../sim/town/lotIndex.js";
 import { inYardRect, yardShape, type YardRect } from "../../sim/town/yardShapes.js";
 import type { Rgb } from "./meshBuilder.js";
 import { hash01, scaled } from "./meshBuilder.js";
 import { neglectOf, seamHouses, type HouseSeam } from "./houseSeam.js";
 import { RANK, type Over } from "./groundSurfaces.js";
+import { GRAVEL } from "./palette.js";
 import { Surface, type P2 } from "./surface.js";
 import type { Detail, Sink, TownGround } from "./townTypes.js";
 import { wat } from "./buildingKit.js";
+import { spoutOf } from "./houseSeam.js";
 
 /** A mark lies this much over the ground (as the yard's own patches do). */
 const LIFT = 0.04;
+/** The lawn's patches lie as the yard's own do (`yardGeometry.ts`). */
+const YARD = 0.04;
 /** The foundation stands this far out of the wall's face, and the band starts just past it. */
 const FOUND = 0.11;
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -61,6 +66,14 @@ function fall(g: TownGround, h: HouseSeam): { x: number; z: number; steep: numbe
   const gz = (g.heightAt(ax + c.x, az + c.z + d) - g.heightAt(ax + c.x, az + c.z - d)) / (2 * d);
   const l = Math.sqrt(gx * gx + gz * gz);
   return l < 1e-6 ? { x: 0, z: 0, steep: 0 } : { x: -gx / l, z: -gz / l, steep: l };
+}
+
+/** The tone of one patch of the band: the house's own kind most of the time, another now and then (a wall's ground is never of one piece). */
+function toneFor(kind: Bed, key: number, i: number): { colour: Rgb; over: Over } {
+  const r = hash01(key, i + 970);
+  const alt: Bed[] = kind === "soil" ? ["soil", "soil", "moss", "weeds"] : kind === "moss" ? ["moss", "moss", "soil", "weeds"] : kind === "gravel" ? ["gravel", "gravel", "gravel", "soil"] : kind === "bark" ? ["bark", "bark", "bark", "soil"] : kind === "weeds" ? ["weeds", "moss", "soil", "weeds"] : kind === "planted" ? ["planted", "planted", "planted", "soil"] : [kind];
+  const t = alt[Math.min(alt.length - 1, Math.floor(r * alt.length))] as Bed;
+  return LOOK[t === "walk" ? "soil" : t];
 }
 
 export function seamGround(g: TownGround, flat: Sink, detail: Detail): void {
@@ -130,18 +143,27 @@ export function seamGround(g: TownGround, flat: Sink, detail: Detail): void {
           surf.flat([ext(sa2, FOUND + 0.02), ext(sb2, FOUND + 0.02), ext(sb2, 0.62 + j(1)), ext(sa2, 0.62 + j(2))], LIFT, lk.colour, over);
           continue;
         }
-        // The inner part, full wear (as wide as the band's solid core), and the outer part falling from full to none, which the ground's noise cuts ragged.
-        const m0 = FOUND + 0.02 + 0.6 * (w0 - FOUND - 0.02);
-        const m1 = FOUND + 0.02 + 0.6 * (w1 - FOUND - 0.02);
+        // The low tier's band is one flat piece at full wear.
         const { wear: _w, ...rest } = over;
         void _w;
-        // The low tier's band is one flat piece at full wear.
         if (detail === "low") {
           surf.flat(pts, LIFT, lk.colour, { ...rest, wear: 0.8 });
           continue;
         }
-        surf.flat([ext(sa2, FOUND + 0.02), ext(sb2, FOUND + 0.02), ext(sb2, m1), ext(sa2, m0)], LIFT, lk.colour, { ...rest, wear: 1 });
-        surf.flat([ext(sa2, m0), ext(sb2, m1), ext(sb2, w1), ext(sa2, w0)], LIFT, lk.colour, { ...rest, wear: (p) => (p === undefined ? 0 : wear(p)) });
+        // One ragged patch: wear full at the foundation, falling away outward, the outer edge wandering by 15 to 40 cm along its length, wider at a downspout; each patch its own tone.
+        const tone = toneFor(kindHere, b.id * 19 + k, i);
+        const spoutHere = spoutOf(h, k);
+        const wp = ((w0 + w1) / 2) * (Math.abs((sa + s1) / 2 - spoutHere) < 1.4 ? 1.7 : 1);
+        const n = Math.max(3, Math.ceil((sb2 - sa2) / 0.5));
+        const outer: P2[] = [];
+        for (let q = n; q >= 0; q--) {
+          const a = sa2 + ((sb2 - sa2) * q) / n;
+          const o = Math.max(0.3, Math.min(1.2, wp * (0.55 + 0.75 * hash01(b.id * 23 + k, i * 17 + q + 940))));
+          outer.push(ext(a, o));
+        }
+        const poly: P2[] = [ext(sa2, FOUND + 0.02), ext(sb2, FOUND + 0.02), ...outer];
+        const ring = (p: readonly [number, number, number]): number => ((p[0] - w.ax) * w.nx + (p[2] - w.az) * w.nz < FOUND + 0.06 ? 1 : 0.3 + 0.4 * hash01(Math.round(((p[0] - w.ax) * w.tx + (p[2] - w.az) * w.tz) * 7) + b.id * 5, k + 960));
+        surf.flat(poly, LIFT, tone.colour, { ...tone.over, rank: RANK.mark, wear: ring });
       }
       void planted;
     });
@@ -149,6 +171,7 @@ export function seamGround(g: TownGround, flat: Sink, detail: Detail): void {
     pad(g, surf, h, neg, onRect);
     if (shape.walk === null || yard.walk === null) wornPath(g, surf, h, neg, shape.front, rects);
     puddle(g, surf, h, neg, yard.kind, onRect);
+    lawn(g, surf, h, neg, yard.kind, onRect);
   }
 }
 
@@ -239,4 +262,102 @@ function puddle(g: TownGround, surf: Surface, h: HouseSeam, neg: number, kind: s
   }
   if (pts.some((q) => onRect(q[0], q[1]) || lotIdAt(g.plan, q[0] - ax, q[1] - az) !== b.lot)) return;
   surf.fill(pts, LIFT, scaled(LOOK.soil.colour, 0.8), 1, { ...LOOK.soil.over, rank: RANK.mark, wear: 1, tint: [0.35, 0.34, 0.34] });
+}
+
+/** The tones the lawn comes in, by cause: clover and fresh grass (bright), a dull mossy green, dry straw, and bare worn earth. */
+const LAWN: Readonly<Record<"clover" | "dull" | "straw" | "bare", { layer: "moss" | "mud"; tint: Rgb }>> = {
+  clover: { layer: "moss", tint: [0.95, 1.3, 0.6] },
+  dull: { layer: "moss", tint: [0.85, 1.0, 0.8] },
+  straw: { layer: "moss", tint: [1.4, 1.2, 0.62] },
+  bare: { layer: "mud", tint: [1.0, 0.9, 0.8] },
+};
+
+/** Whether (x, z) (world) is inside a building's footprint grown by `m` metres. */
+function nearBuilding(g: TownGround, x: number, z: number, m: number): boolean {
+  const px = x - g.anchor.x;
+  const pz = z - g.anchor.z;
+  for (const o of g.plan.buildings) {
+    if (o.kind === "pier" || Math.abs(o.centre.x - px) > 30 || Math.abs(o.centre.z - pz) > 30) continue;
+    const u = bearingU(o.bearing);
+    const v = bearingV(o.bearing);
+    const dx = px - o.centre.x;
+    const dz = pz - o.centre.z;
+    if (Math.abs(dx * u.x + dz * u.z) < o.halfAlong + m && Math.abs(dx * v.x + dz * v.z) < o.halfAcross + m) return true;
+  }
+  return false;
+}
+
+/**
+ * The lawn is not one plane of one green: patches of clover, dull moss, straw and bare worn earth cover a third to a half of a let-go yard (a few on a kept one, which
+ * is even), each a fan from its middle (wear full there, falling to the rim, which the ground's noise cuts ragged), and humps of earth 3 to 6 cm high here and there
+ * that the light catches. By the yard's kind: a mossy one is dull and green, a bare one earth and straw, a tall or shaggy one straw and clover.
+ */
+function lawn(g: TownGround, surf: Surface, h: HouseSeam, neg: number, kind: string, onRect: (x: number, z: number) => boolean): void {
+  const b = h.b;
+  const ax = g.anchor.x;
+  const az = g.anchor.z;
+  const reachA = Math.max(b.halfAlong, b.halfAcross);
+  const count = Math.round(2 + 4.5 * neg);
+  const mix: readonly (keyof typeof LAWN)[] = kind === "mossy" ? ["dull", "dull", "clover", "bare"] : kind === "bare" ? ["bare", "bare", "straw", "dull"] : kind === "tall" || kind === "brush" ? ["straw", "straw", "clover", "dull"] : kind === "shaggy" ? ["clover", "straw", "dull", "bare"] : ["clover", "clover", "dull", "straw"];
+  const lot = g.plan.lots[b.lot];
+  let bx0 = Infinity;
+  let bx1 = -Infinity;
+  let bz0 = Infinity;
+  let bz1 = -Infinity;
+  for (const q of lot?.polygon ?? []) {
+    bx0 = Math.min(bx0, q.x);
+    bx1 = Math.max(bx1, q.x);
+    bz0 = Math.min(bz0, q.z);
+    bz1 = Math.max(bz1, q.z);
+  }
+  void reachA;
+  const place = (key: number, rmin: number, rmax: number, tries: number): { cx: number; cz: number; r: number } | null => {
+    if (!(bx1 > bx0)) return null;
+    for (let t = 0; t < tries * 4; t++) {
+      const r = rmin + (rmax - rmin) * hash01(key, 1020 + t);
+      const cx = ax + bx0 + (bx1 - bx0) * hash01(key, 1000 + t);
+      const cz = az + bz0 + (bz1 - bz0) * hash01(key, 1010 + t);
+      let ok = lotIdAt(g.plan, cx - ax, cz - az) === b.lot && !nearBuilding(g, cx, cz, r * 1.2 + 0.8) && !onRect(cx, cz);
+      for (let q = 0; q < 6 && ok; q++) {
+        const px = cx + Math.cos(q) * r * 1.3;
+        const pz = cz + Math.sin(q) * r;
+        if (lotIdAt(g.plan, px - ax, pz - az) !== b.lot || onRect(px, pz)) ok = false;
+      }
+      if (ok) return { cx, cz, r };
+    }
+    return null;
+  };
+  const fan = (cx: number, cz: number, r: number, key: number, tone: { layer: "moss" | "mud"; tint: Rgb }, lift0: number): void => {
+    // A ragged ring of six or seven corners round the middle; the middle is raised for a hump (each triangle of the fan has its own corner lifts).
+    const n = 6;
+    const pts: P2[] = [];
+    const rot = hash01(key, 1100) * 3;
+    const sq = 0.6 + 0.5 * hash01(key, 1101);
+    for (let q = 0; q < n; q++) {
+      const a = (q / n) * Math.PI * 2 + rot + 0.3 * (hash01(key, 1110 + q) - 0.5);
+      const rr = r * (0.65 + 0.7 * hash01(key, 1120 + q));
+      pts.push([cx + Math.cos(a) * rr * 1.2, cz + Math.sin(a) * rr * sq]);
+    }
+    const over: Over = { layer: tone.layer, tint: tone.tint, frame: { origin: [cx, 0, cz], u: [1, 0, 0], v: [0, 0, 1] }, rank: RANK.mark };
+    for (let q = 0; q < n; q++) {
+      const a = pts[q] as P2;
+      const c = pts[(q + 1) % n] as P2;
+      surf.poly([[cx, cz, lift0], [a[0], a[1], YARD], [c[0], c[1], YARD]], GRAVEL, over);
+    }
+  };
+  for (let i = 0; i < count; i++) {
+    const key = b.id * 131 + i * 7;
+    const at = place(key, 1.5, 3 + 1 * neg, 3);
+    if (at === null) continue;
+    const t = mix[Math.min(mix.length - 1, Math.floor(hash01(key, 1200) * mix.length))] as keyof typeof LAWN;
+    fan(at.cx, at.cz, at.r, key, LAWN[t], YARD);
+  }
+  // Humps: low mounds of earth, a few on any lawn (more where it is let go).
+  const humps = Math.round(1 + 2 * neg);
+  for (let i = 0; i < humps; i++) {
+    const key = b.id * 137 + i * 11 + 5;
+    const at = place(key, 0.8, 1.5, 3);
+    if (at === null) continue;
+    fan(at.cx, at.cz, at.r, key, LAWN[kind === "bare" ? "bare" : "dull"], YARD + 0.03 + 0.03 * hash01(key, 1300));
+  }
 }
