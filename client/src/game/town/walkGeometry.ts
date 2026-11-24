@@ -75,7 +75,7 @@ const lift = (e: number): number => WALK_TOP + e;
 export const SPACINGS = [1.35, 1.5, 1.5, 1.65, 1.8] as const;
 
 /** The pour's tint: older concrete is greyer and yellower and darker, newer lighter and bluer. */
-function pourTint(decade: number): Rgb {
+export function pourTint(decade: number): Rgb {
   const t = clamp01((decade - 1900) / 120);
   return [0.52 + 0.4 * t, 0.5 + 0.4 * t, 0.43 + 0.45 * t];
 }
@@ -222,13 +222,13 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const idle = 1 - 0.3 * use;
         for (let q = ss0 + 0.25; q < ss1 - 0.15; q += 0.45 + 0.5 * hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 100)) {
           const roll100 = hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 101);
-          if (roll100 > 0.04 + 0.09 * grown * idle) continue;
+          if (roll100 > 0.03 + 0.05 * grown * idle) continue;
           const tb = Math.min(T1 - d0, T1 - d1) - 0.09 - 0.12 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 102);
           const [px, pz] = at(q, tb);
           plant(px, pz, 1 + 0.5 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 103), 0.35 + 0.65 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 104) * (0.5 + 0.5 * grown / 2), 0.15 + 0.3 * hashN(key, runIx, i, 105), key + i * 53 + Math.floor(q * 10), -f.nx * sigma, -f.nz * sigma);
         }
         for (let q = ss0 + 0.2; q < ss1 - 0.15; q += 0.9 + 1.0 * hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 106)) {
-          if (hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 107) > 0.07 + 0.12 * grown) continue;
+          if (hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 107) > 0.03 + 0.04 * grown) continue;
           const [px, pz] = at(q, T0 + 0.04 + 0.05 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 108));
           plant(px, pz, 1, 0.3 + 0.4 * hashN(key, runIx, i, 110), 0.25, key + i * 59 + Math.floor(q * 10), 0, 0);
         }
@@ -244,7 +244,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         surf.poly([slabPoint(f, sigma, heightAt, sj0, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T1 - d1, jy(0)), slabPoint(f, sigma, heightAt, sj0, T1 - d1, jy(0))], SIDEWALK, { layer: "mud", tint: [0.55, 0.5, 0.45], frame, dirt: 0.5, rank: RANK.detail });
         if (hashN(key, runIx, i, 16) < 0.25 + 0.55 * w) weeds(sj0 - 0.02, sj1 + 0.02, T0 + 0.1, T1 - 0.15, 1, i, 0.5, "sidewalk", tint);
         // Moss in the joint: a strip a hand wide, full along its middle and none at its edges.
-        if (!low && hashN(key, runIx, i, 146) < 0.3 + 0.3 * mossK + 0.15 * w) {
+        if (!low && hashN(key, runIx, i, 146) < 0.12 + 0.3 * mossK + 0.1 * w) {
           const hw2 = 0.06 + 0.04 * hashN(key, runIx, i, 147);
           const jc = ss1 + JOINT_WIDTH / 2;
           const amt = 0.7 + 0.3 * hashN(key, runIx, i, 148);
@@ -255,7 +255,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
           surf.poly([mp(jc, T0), mp(jc + hw2, T0), mp(jc + hw2, T1 - d1), mp(jc, T1 - d1)], SIDEWALK, mo);
         }
         // Tufts out of the joint: low ones, in most joints of an old run, fewer on a busy front.
-        const jn = Math.floor((0.05 + 0.45 * hashN(key, runIx, i, 111)) * (0.35 + 1.1 * w + 0.8 * neglected) * (1 - 0.3 * use));
+        const jn = Math.floor((0.02 + 0.3 * hashN(key, runIx, i, 111)) * (0.35 + 1.1 * w + 0.8 * neglected) * (1 - 0.3 * use));
         for (let q = 0; q < jn; q++) {
           const [px, pz] = at(sj0 + JOINT_WIDTH / 2, T0 + 0.15 + (T1 - T0 - 0.3) * hashN(key, runIx, i * 8 + q, 112));
           plant(px, pz, 1, 0.1 + 0.3 * hashN(key, runIx, i * 8 + q, 113), 0.3, key + i * 61 + q * 7, 0, 0);

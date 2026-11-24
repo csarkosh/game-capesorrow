@@ -19,13 +19,41 @@ import type { Building } from "../../sim/town/types.js";
 type Sink = (x: number, z: number) => MeshBuilder;
 
 /** A place where something grows: world x and z, how many tufts (a fraction is a chance), how tall (0 low, 1 tall), how dead (0 green, 1 straw), and the way the wall is (`ax`, `az`: unit, away from it; 0, 0 for none). */
-export type Site = { readonly x: number; readonly z: number; readonly n: number; readonly tall: number; readonly dry: number; readonly ax: number; readonly az: number; readonly seed: number };
+export type Site = { readonly blades?: number; readonly wide?: number; readonly x: number; readonly z: number; readonly n: number; readonly tall: number; readonly dry: number; readonly ax: number; readonly az: number; readonly seed: number };
 
 let sites: Site[] = [];
+/** The directions the blades already stand in, by cell of 0.4 m: two blades near each other never look one way (the finder holds faces that do, and lie within 2.45 cm, apart). */
+let claimed = new Map<number, number[]>();
+
+function claim(x: number, z: number, ang: number): number {
+  let a = ang;
+  for (let tries = 0; tries < 12; tries++) {
+    let clash = false;
+    const cx = Math.floor(x / 0.4);
+    const cz = Math.floor(z / 0.4);
+    for (let i = -1; i <= 1 && !clash; i++) {
+      for (let j = -1; j <= 1 && !clash; j++) {
+        for (const q of claimed.get((cx + i) * 100003 + (cz + j)) ?? []) {
+          let d = Math.abs(a - q) % (Math.PI * 2);
+          if (d > Math.PI) d = Math.PI * 2 - d;
+          if (d < 0.14) clash = true;
+        }
+      }
+    }
+    if (!clash) break;
+    a += 0.19;
+  }
+  const key = Math.floor(x / 0.4) * 100003 + Math.floor(z / 0.4);
+  const l = claimed.get(key);
+  if (l === undefined) claimed.set(key, [a]);
+  else l.push(a);
+  return a;
+}
 
 /** Forgets the sites of the last build (`townGeometry` calls it first). */
 export function resetGrowth(): void {
   sites = [];
+  claimed = new Map();
 }
 
 /** Plants a site (the sidewalk builder's seams). */
@@ -50,24 +78,19 @@ function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: numbe
   const hMax = (small ? 0.14 : 0.24) + (small ? 0.1 : 0.2) * s.tall * (0.5 + 0.5 * r(1)) + 0.06 * r(2);
   const tuftDry = r(3) < dry;
   for (let b = 0; b < blades; b++) {
-    const ang = base + ((b + 0.25 * (r(10 + b) - 0.5)) / blades) * Math.PI * 2;
-    let dx = Math.cos(ang);
-    let dz = Math.sin(ang);
-    // Away from a wall: a blade that would lean toward it is turned to lean along it.
-    if (s.ax !== 0 || s.az !== 0) {
-      const into = dx * s.ax + dz * s.az;
-      if (into < 0.1) {
-        const k2 = 0.1 - into;
-        dx += s.ax * k2;
-        dz += s.az * k2;
-        const l = Math.hypot(dx, dz) || 1;
-        dx /= l;
-        dz /= l;
-      }
-    }
+    // Round a free root the blades fan over the whole circle; against a wall, over the half that leans away from it (no two of a tuft look the same way).
+    const walled = s.ax !== 0 || s.az !== 0;
+    const ang = walled
+      ? Math.atan2(s.az, s.ax) + ((b + 0.5) / blades - 0.5) * Math.PI * 0.92 + 0.12 * (r(10 + b) - 0.5)
+      : base + ((b + 0.25 * (r(10 + b) - 0.5)) / blades) * Math.PI * 2;
+    const fx0 = x + 0;
+    const fz0 = z + 0;
+    const ang2 = claim(fx0, fz0, ang);
+    const dx = Math.cos(ang2);
+    const dz = Math.sin(ang2);
     const h = hMax * (0.45 + 0.55 * r(20 + b));
     const lean = reach * (0.35 + 0.65 * r(30 + b)) * (0.5 + h / 0.35);
-    const w = 0.03 + 0.02 * r(40 + b);
+    const w = (0.03 + 0.02 * r(40 + b)) * (s.wide ?? 1);
     // The foot is a few cm off the root, so the blades fan.
     const fx = x + dx * 0.025 * r(50 + b);
     const fz = z + dz * 0.025 * r(60 + b);
@@ -104,7 +127,7 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
       const x = s.x + ox;
       const z = s.z + oz;
       const y = g.heightAt(x, z) + 0.02;
-      tuft(m, x, y, z, s, k, low ? 3 : BLADES_FULL - (s.tall < 0.3 ? 1 : 0), s.dry, s.tall < 0.25);
+      tuft(m, x, y, z, s, k, low ? 3 : (s.blades ?? BLADES_FULL - (s.tall < 0.3 ? 1 : 0)), s.dry, s.tall < 0.25);
     }
   };
   for (const s of sites) lay(s);
@@ -116,13 +139,11 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
   for (const p of plan.props.poles) {
     // Poles stand along the street at the sidewalk's edge: weeds round the base, more under the older ones.
     foot(p.x + 0.16, p.z + 0.1, p.seed * 5 + 1, 1, 0.7, 0.3);
-    foot(p.x - 0.14, p.z - 0.12, p.seed * 5 + 2, 0.4, 0.5, 0.4);
   }
   for (const f of plan.props.furniture) {
     const n = f.kind === "hydrant" ? 1 : f.kind === "sign post" ? 1 : f.kind === "trash can" ? 1 : f.kind === "planter" ? 1 : 0.6;
     // At the side away from the walking line: toward the lot (hx, hz point where the thing faces: the street).
     foot(f.x - f.hx * 0.3 + f.hz * 0.12, f.z - f.hz * 0.3 - f.hx * 0.12, f.seed * 5 + 3, n, 0.55, 0.3);
-    foot(f.x - f.hx * 0.25 - f.hz * 0.3, f.z - f.hz * 0.25 + f.hx * 0.3, f.seed * 5 + 4, n * 0.35, 0.5, 0.3);
   }
   for (const b of plan.props.bins) {
     foot(b.x - b.hz * 0.8, b.z + b.hx * 0.8, b.seed * 5 + 5, 1, 0.8, 0.4);
@@ -152,12 +173,12 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     const tx = (x1 - x0) / len;
     const tz = (z1 - z0) / len;
     // A step of 0.9 m with a roll: 0.5 to 1.3.
-    for (let d = 0.3, i = 0; d < len - 0.3; d += 1.1 + 1.3 * roll(b.id * 53 + tag, i), i++) {
+    for (let d = 0.3, i = 0; d < len - 0.3; d += 0.55 + 0.55 * roll(b.id * 53 + tag, i), i++) {
       if (roll(b.id * 59 + tag, i + 100) > density) continue;
       const off = 0.14 + 0.16 * roll(b.id * 61 + tag, i + 200);
       const x = x0 + tx * d + awayX * off;
       const z = z0 + tz * d + awayZ * off;
-      lay({ x: x + ax, z: z + az, n: 1 + 0.5 * roll(b.id * 67 + tag, i + 300), tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
+      lay({ x: x + ax, z: z + az, n: 1, blades: 4, wide: 2.3, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
     }
   };
   for (const b of plan.buildings) {
@@ -172,10 +193,10 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     const cz = b.centre.z;
     const house = b.kind === "house";
     const neglect = b.state === "ruin" ? 1 : b.state === "vacant" ? 0.8 : 0.45;
-    const density = (house ? 0.04 : 0.24) * (0.5 + 0.7 * neglect) * (0.6 + 0.4 * Math.min(1, (2026 - b.era) / 100));
+    const density = (house ? 0.04 : 1.0) * (0.55 + 0.6 * neglect) * (0.7 + 0.3 * Math.min(1, (2026 - b.era) / 100));
     // The back wall (the far side from the street) and the two sides, from the back corner toward the front; the clearance off the wall's plane is the tuft's own.
     alongFoot(b, cx - fx * hB - ux * hA, cz - fz * hB - uz * hA, cx - fx * hB + ux * hA, cz - fz * hB + uz * hA, -fx, -fz, density, 1);
-    alongFoot(b, cx - fx * hB - ux * hA, cz - fz * hB - uz * hA, cx + fx * hB * 0.55 - ux * hA, cz + fz * hB * 0.55 - uz * hA, -ux, -uz, density * 0.9, 2);
-    alongFoot(b, cx - fx * hB + ux * hA, cz - fz * hB + uz * hA, cx + fx * hB * 0.55 + ux * hA, cz + fz * hB * 0.55 + uz * hA, ux, uz, density * 0.9, 3);
+    alongFoot(b, cx - fx * hB - ux * hA, cz - fz * hB - uz * hA, cx + fx * hB * 0.55 - ux * hA, cz + fz * hB * 0.55 - uz * hA, -ux, -uz, density * 0.55, 2);
+    alongFoot(b, cx - fx * hB + ux * hA, cz - fz * hB + uz * hA, cx + fx * hB * 0.55 + ux * hA, cz + fz * hB * 0.55 + uz * hA, ux, uz, density * 0.55, 3);
   }
 }

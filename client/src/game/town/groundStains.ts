@@ -13,6 +13,7 @@
  */
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { groundFrame, type Surface, type WearKind } from "./townSurface.js";
+import { pourTint } from "./walkGeometry.js";
 import { hash01 } from "./meshBuilder.js";
 import type { TownGround } from "./townTypes.js";
 import type { Vehicle } from "../../sim/town/types.js";
@@ -44,7 +45,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
     return true;
   };
   /** A soft blob at (x, z) (plan frame), `ux`,`uz` its long axis, half lengths `a` and `b`, seven to nine points, each swung by `seed`. */
-  const blob = (x: number, z: number, ux: number, uz: number, a: number, b: number, colour: Rgb, rank: number, seed: number, mark?: { readonly kind: WearKind; readonly layer: "asphalt" | "sidewalk"; readonly amount: number }): void => {
+  const blob = (x: number, z: number, ux: number, uz: number, a: number, b: number, colour: Rgb, rank: number, seed: number, mark?: { readonly kind: WearKind; readonly layer: "asphalt" | "sidewalk"; readonly amount: number; readonly tint?: Rgb }): void => {
     if (!free(rank, x, z, Math.max(a, b) * 1.25)) return;
     const n = 8;
     const pts: Vec3[] = [];
@@ -72,8 +73,35 @@ export function groundStains(g: TownGround, flat: Sink): void {
     const mid: Vec3 = [ax + x, hc + LIFT_MARK, az + z];
     const reach = Math.max(a, b) * 1.05;
     const wear = (q: Vec3): number => Math.max(0, Math.min(1, (1 - Math.hypot(q[0] - mid[0], q[2] - mid[2]) / reach) * 2.6)) * mark.amount;
-    const surface: Surface = { layer: mark.layer, frame: groundFrame(g.anchor), tint: mark.layer === "asphalt" ? [1, 1, 1] : [0.7, 0.7, 0.66], wear, wearKind: mark.kind };
+    // The ground's own material under the mark, so its rim (no wear) is the ground and not a polygon's edge: a roadway's is the stretch's (`asphaltOf`), a sidewalk's the pour's.
+    const under = mark.layer === "asphalt" ? roadUnder(x, z) : { layer: "sidewalk" as const, tint: mark.tint ?? ([0.7, 0.7, 0.66] as Rgb) };
+    const surface: Surface = { layer: under.layer, frame: groundFrame(g.anchor), tint: under.tint, wear, wearKind: mark.kind };
     flat(ax + x, az + z).poly([mid, ...pts, pts[0] as Vec3], [0, 1, 0], colour, surface, { rank });
+  };
+
+  /** The asphalt a roadway has at a plan point: the paving stretch of the nearest street (`streetGeometry.ts`, `asphaltOf`). */
+  const roadUnder = (x: number, z: number): { layer: "asphalt" | "asphalt_dark"; tint: Rgb } => {
+    let best = Infinity;
+    let at: { layer: "asphalt" | "asphalt_dark"; tint: Rgb } = { layer: "asphalt", tint: [1, 1, 0.98] };
+    for (const st of plan.streets) {
+      if (st.kind !== "street" && st.kind !== "main" && st.kind !== "avenue" && st.kind !== "alley") continue;
+      const e = plan.edges[st.id];
+      if (e === undefined) continue;
+      const dx = st.b.x - st.a.x;
+      const dz = st.b.z - st.a.z;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      const t = Math.max(0, Math.min(len, ((x - st.a.x) * dx + (z - st.a.z) * dz) / len));
+      const qx = st.a.x + (dx / len) * t - x;
+      const qz = st.a.z + (dz / len) * t - z;
+      const d2 = qx * qx + qz * qz;
+      if (d2 >= best) continue;
+      best = d2;
+      const pv = e.paving.find((q) => t >= q.s0 && t <= q.s1) ?? e.paving[0];
+      if (pv === undefined) continue;
+      const fresh = pv.decade >= 2000 && pv.wear < 0.5;
+      at = fresh ? { layer: "asphalt_dark", tint: [1.15, 1.15, 1.15] } : { layer: "asphalt", tint: [1, 1, 0.98] };
+    }
+    return at;
   };
 
   const OIL: Rgb = [0.006, 0.006, 0.008];
@@ -179,7 +207,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
             const n = 2 + Math.floor(roll(seed, 81) * 3);
             for (let k = 0; k < n; k++) {
               const [qx, qz] = at(s + (k - 1) * 0.5 + (roll(seed, 82 + k) - 0.5) * 0.4, tb - 0.2 * roll(seed, 90 + k));
-              blob(qx, qz, tx, tz, 0.12 + 0.2 * roll(seed, 100 + k), 0.06 + 0.07 * roll(seed, 110 + k), roll(seed, 120 + k) < 0.5 ? [0.1, 0.06, 0.025] : [0.08, 0.07, 0.025], 6, seed * 13 + k, { kind: "leaf", layer: "sidewalk", amount: 1 });
+              blob(qx, qz, tx, tz, 0.12 + 0.2 * roll(seed, 100 + k), 0.06 + 0.07 * roll(seed, 110 + k), roll(seed, 120 + k) < 0.5 ? [0.1, 0.06, 0.025] : [0.08, 0.07, 0.025], 6, seed * 13 + k, { kind: "leaf", layer: "sidewalk", amount: 1, tint: pourTint(run.decade) });
             }
           }
         }

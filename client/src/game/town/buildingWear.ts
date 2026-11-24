@@ -49,18 +49,21 @@ export function wallWear(b: Building, style: WallStyle, nx: number, nz: number, 
   const high = (p: Vec3): number => p[1] - baseY;
   const metal = style.wearKind === "rust";
   // The foot: dirt thrown up by the rain, and algae where the sun does not reach.
-  const splash = (p: Vec3): number => clamp01(kept * (0.42 + 0.35 * age + 0.3 * neglect) * (1 - smooth(0.05, FOOT, high(p))) + 0.1 * (1 - smooth(0, 0.35, high(p))) + 0.04);
-  const algaeFoot = (p: Vec3): number => clamp01(kept * (0.18 + 0.5 * e.shade + 0.2 * neglect + 0.15 * age) * (1 - smooth(0.6, 2.8, high(p))));
+  const splash = (p: Vec3): number => clamp01(kept * (0.6 + 0.4 * age + 0.3 * neglect) * (1 - smooth(0.05, FOOT, high(p))) + 0.2 * (1 - smooth(0, 0.35, high(p))) + 0.06);
+  // A tide of algae up the first metre or two, taller on the shaded side and on a neglected building, with a ragged top (the noise breaks it).
+  const algaeTop = 1.1 + 1.0 * e.shade + 0.6 * neglect + 0.4 * age;
+  const algaeFoot = (p: Vec3): number => clamp01((0.45 + 0.5 * e.shade + 0.25 * neglect + 0.2 * age) * (0.55 + 0.45 * kept) * (1 - smooth(0.25, algaeTop, high(p))));
   // Above it: the weather side fails (wood), the shaded side greens (masonry), metal rusts.
   const primary = (p: Vec3): number => {
     const h = smooth(0.8, 3.5, high(p));
     if (metal) return clamp01(0.12 + 0.35 * age + 0.4 * neglect + 0.1 * h);
     if (style.paint && style.wearKind === "moss" && b.material === "wood") return clamp01((0.02 + 0.2 * age * (0.25 + 0.75 * Math.max(0, e.weather)) + 0.34 * neglect * (0.4 + 0.6 * Math.max(0, e.weather))) * (0.6 + 0.4 * h));
     if (b.material === "wood") return clamp01(0.04 + 0.26 * age * Math.max(0, e.weather) + 0.3 * neglect);
-    return clamp01(0.02 + 0.2 * kept * e.shade * (0.4 + 0.6 * age) + 0.2 * neglect);
+    // Brick, block, stucco and stone: a green film on the shaded faces, and a patchy one on every other.
+    return clamp01(0.1 + 0.45 * kept * e.shade * (0.4 + 0.6 * age) + 0.1 * age + 0.3 * neglect);
   };
   // Dirt that runs from under the eave: more near the top of a wall, more with age.
-  const run = (p: Vec3): number => clamp01(kept * (0.05 + 0.16 * age + 0.2 * neglect) * (0.3 + 0.7 * smooth(2, 6, high(p))));
+  const run = (p: Vec3): number => clamp01((0.28 + 0.4 * age + 0.3 * neglect) * (0.55 + 0.45 * kept) * (0.5 + 0.5 * smooth(1.2, 5, high(p))));
   const upperKind: WearKind = metal ? "rust" : b.material === "wood" ? (style.layer === "shingle_siding" ? "algae" : "peel") : "algae";
   return {
     foot: { wear: splash, wearKind: "grime", wear2: algaeFoot, wearKind2: "algae" },
@@ -80,7 +83,7 @@ export function roofWear(b: Building, kind: "flat" | "gable" | "hip" | "shed", m
 
 /** A decal of dirt under a sill: wide as the window, tall as `drop`, strongest at the top. Its surface is the wall's own. */
 export function sillStreak(base: Surface, strength: number, y0: number, drop: number): Surface {
-  return { ...base, wear: (p: Vec3): number => clamp01(strength * (1 - clamp01((y0 - p[1]) / drop))), wearKind: "grime", streaks: true, wear2: 0 };
+  return { ...base, wear: (p: Vec3): number => clamp01(strength * (1.15 - clamp01((y0 - p[1]) / drop))), wearKind: "grime", streaks: true, wear2: 0 };
 }
 
 /**

@@ -83,7 +83,8 @@ export function paintRequest(surface: Surface2, req: SignRequest): void {
   ctx.clip();
   ctx.translate(x, y);
   ctx.clearRect(0, 0, w, h);
-  const age = 1 - cond;
+  // A sign is older than its record says: a sign of 1975 must look fifty years old, so the years are pressed harder.
+  const age = Math.min(1, (1 - cond) * 1.4 + 0.2);
   const neon = spec.style === "neon and porcelain";
   const box = spec.style === "backlit box";
   const lit = spec.lit;
@@ -236,7 +237,7 @@ function paintGas(ctx: Ctx2, w: number, h: number, lines: readonly string[], fg:
 
 /** What the years do: peeling, streaks of rust and dirt, specks, a cracked or missing panel. */
 function wear(ctx: Ctx2, w: number, h: number, spec: SignRequest["spec"], r: () => number, cond: number, bg: Rgb255, clear: boolean): void {
-  const age = 1 - cond;
+  const age = Math.min(1, (1 - cond) * 1.4 + 0.2);
   if (spec.kind === "open" || spec.kind === "lease") return;
   const area = w * h;
   // Peeling: patches of paint gone to bare wood (or, paint on a wall and lettering on glass, to nothing).
@@ -265,22 +266,33 @@ function wear(ctx: Ctx2, w: number, h: number, spec: SignRequest["spec"], r: () 
     return;
   }
   // Streaks down from the top: rust from the fixings of a metal or old board, dirt on the rest.
-  if (!clear && age > 0.25) {
-    const n = Math.floor(2 + age * 7);
+  if (!clear && age > 0.15) {
+    // The whole face dulled by dirt, darker toward the bottom, then rust running from each fixing and dirt from the top edge.
+    ctx.fillStyle = `rgba(62,56,46,${0.1 + 0.22 * age})`;
+    ctx.fillRect(0, 0, w, h);
+    for (const fx of [0.05, 0.95, 0.5]) {
+      if (fx === 0.5 && r() < 0.5) continue;
+      const gr2 = ctx.createLinearGradient(0, 0, 0, h * (0.5 + 0.5 * r()));
+      gr2.addColorStop(0, `rgba(130,62,26,${0.45 + 0.4 * age})`);
+      gr2.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = gr2;
+      ctx.fillRect(w * fx - 1.5, 0, 3 + r() * 3, h);
+    }
+    const n = Math.floor(4 + age * 12);
     for (let k = 0; k < n; k++) {
       const sx = r() * w;
       const len = h * (0.3 + r() * 0.7);
       const gr = ctx.createLinearGradient(0, 0, 0, len);
       const rust = spec.style === "hand-painted" || spec.style === "neon and porcelain";
-      gr.addColorStop(0, rust ? `rgba(120,60,28,${0.25 * age + 0.05})` : `rgba(70,64,56,${0.2 * age})`);
+      gr.addColorStop(0, rust ? `rgba(120,60,28,${0.4 * age + 0.1})` : `rgba(50,46,40,${0.4 * age + 0.1})`);
       gr.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = gr;
-      ctx.fillRect(sx, 0, Math.max(1, w * 0.01 + r() * 3), len);
+      ctx.fillRect(sx, 0, Math.max(2, w * 0.02 + r() * 5), len);
     }
     // A grimy lower edge.
     const g2 = ctx.createLinearGradient(0, h * 0.7, 0, h);
     g2.addColorStop(0, "rgba(40,36,30,0)");
-    g2.addColorStop(1, `rgba(40,36,30,${0.35 * age})`);
+    g2.addColorStop(1, `rgba(40,36,30,${0.55 * age})`);
     ctx.fillStyle = g2;
     ctx.fillRect(0, h * 0.7, w, h * 0.3);
   }
