@@ -142,10 +142,16 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     if (count === 0) return;
     if (low && hash01(s.seed, 778) > 0.06) return;
     const m = solid(s.x, s.z);
-    const spread = 0.07;
+    const spread = s.wide ?? 0.07;
     for (let k = 0; k < count; k++) {
-      const ox = (hash01(s.seed * 7 + k, 91) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
-      const oz = (hash01(s.seed * 7 + k, 92) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
+      let ox = (hash01(s.seed * 7 + k, 91) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
+      let oz = (hash01(s.seed * 7 + k, 92) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
+      // Against a wall a clump spreads along it and outward, never in toward it.
+      const inward = ox * s.ax + oz * s.az;
+      if ((s.ax !== 0 || s.az !== 0) && inward < 0) {
+        ox -= 2 * inward * s.ax;
+        oz -= 2 * inward * s.az;
+      }
       const x = s.x + ox;
       const z = s.z + oz;
       const y = g.heightAt(x, z) + 0.02;
@@ -196,13 +202,15 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     const tz = (z1 - z0) / len;
     // The foot grows in runs with gaps: a stretch of about three metres is green or bare by the building's own weathering, and in a green one the clumps stand close.
     const level = levelOf(b);
-    for (let d = 0.3, i = 0; d < len - 0.3; d += 0.6 + 0.7 * roll(b.id * 53 + tag, i), i++) {
-      if (roll(b.id * 83 + tag, Math.floor(d / 3)) > 0.42 + 0.55 * level) continue;
+    // The foot is a ragged fringe: clumps of three to six tufts a couple of metres apart, with gaps (and the run gating above: green or bare by the building's own weathering).
+    for (let d = 0.3, i = 0; d < len - 0.3; d += 1.6 + 2.4 * roll(b.id * 53 + tag, i), i++) {
+      if (roll(b.id * 83 + tag, Math.floor(d / 3)) > 0.65 + 0.35 * level) continue;
       if (roll(b.id * 59 + tag, i + 100) > density) continue;
       const off = 0.14 + 0.16 * roll(b.id * 61 + tag, i + 200);
       const x = x0 + tx * d + awayX * off;
       const z = z0 + tz * d + awayZ * off;
-      lay({ x: x + ax, z: z + az, n: 1.15, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
+      const count = 3 + Math.floor(roll(b.id * 67 + tag, i + 300) * 2.99);
+      lay({ x: x + ax, z: z + az, n: count, wide: 0.2, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
     }
   };
   for (const b of plan.buildings) {

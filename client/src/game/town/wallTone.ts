@@ -51,55 +51,50 @@ export function wallTone(c: WallToneCtx): void {
       return freeOf(s0, s1, y0, y1);
     };
     const freeOf = (s0: number, s1: number, y0: number, y1: number): boolean =>
-      !holes.some((h) => h.s0 < s1 + 0.3 && h.s1 > s0 - 0.3 && h.y0 < baseY + y1 + 0.3 && h.y1 > baseY + y0 - 1.4) &&
+      !holes.some((h) => h.s0 < s1 + 0.4 && h.s1 > s0 - 0.4 && h.y0 < baseY + y1 + 0.4 && h.y1 > baseY + y0 - 0.4) &&
       !placed.some((q) => q.s0 < s1 + 0.1 && q.s1 > s0 - 0.1 && q.y0 < y1 + 0.1 && q.y1 > y0 - 0.1);
     const base = c.surfaceOf(w, 1);
+    /** An unpainted wall (concrete, brick, weathered boards) is dark in the textures, so a darker mark shows nothing on it: its marks are the lighter ones (efflorescence, chalk, repaint) and rust. */
+    const dark = !c.paint;
     const r = (k: number): number => hash01(b.id * 31 + i * 7 + k, 5151);
     /** The wall's own surface and colour, scaled in tone by `k`. */
-    const tone = (k: number, over?: Partial<Surface>): { colour: Rgb; surface: Surface } => ({
-      colour: scaled(c.colour, k),
-      surface: { ...base, ...(c.paint || base.tint === undefined ? {} : { tint: scaled(base.tint, k) }), ...(over ?? {}) },
-    });
+    const tone = (k: number, over?: Partial<Surface>): { colour: Rgb; surface: Surface } =>
+      dark
+        ? // On a dark textured wall a lighter mark is paint or chalk, a layer of its own (the paintable one, whose colour is the paint's), not the wall's texture turned up.
+          { colour: [0.2 * k, 0.185 * k, 0.16 * k], surface: { layer: "siding_painted", frame: base.frame, wear: 0.05, wear2: 0, ...(over ?? {}) } }
+        : {
+            colour: scaled(c.colour, k),
+            surface: { ...base, ...(c.paint || base.tint === undefined ? {} : { tint: scaled(base.tint, k) }), ...(over ?? {}) },
+          };
     const put = (s0: number, y0: number, s1: number, y1: number, t: { colour: Rgb; surface: Surface }): void => {
-      wquad(out, w, s0, baseY + y0, s1, baseY + y1, OFF, t.colour, t.surface);
+        wquad(out, w, s0, baseY + y0, s1, baseY + y1, OFF, t.colour, t.surface);
       placed.push({ s0, s1, y0, y1 });
     };
 
-    // ---- the dark lower third, with a ragged top
-    if (r(1) < 0.8 + 0.2 * L) {
-      const piece = c.low ? 12 : 4.5;
-      const n = Math.max(1, Math.ceil(w.length / piece));
-      const reach = Math.min(4.4, topLow * (0.3 + 0.12 * L + 0.08 * r(2)));
-      const k = 1 - (0.18 + 0.3 * L) * (0.8 + 0.4 * r(3));
-      for (let j = 0; j < n; j++) {
-        const s0 = (w.length * j) / n;
-        const s1 = (w.length * (j + 1)) / n;
-        const hgt = Math.max(1.2, reach * (0.65 + 0.7 * hash01(b.id * 17 + i * 5 + j, 5152)));
-        if (!free(s0, s1, 0, hgt)) continue;
-        put(s0, 0.02, s1, hgt, tone(k));
+    const bandPass = (): void => {
+      // ---- the lower third, with a ragged top
+      if (r(1) < 0.8 + 0.2 * L) {
+        const piece = c.low ? 12 : 4.5;
+        const n = Math.max(1, Math.ceil(w.length / piece));
+        const reach = Math.min(4.4, topLow * (0.3 + 0.12 * L + 0.08 * r(2)));
+        const k = dark ? 1.15 + 0.25 * L + 0.1 * r(3) : 1 - (0.18 + 0.3 * L) * (0.8 + 0.4 * r(3));
+        for (let j = 0; j < n; j++) {
+          const s0 = (w.length * j) / n;
+          const s1 = (w.length * (j + 1)) / n;
+          const hgt = Math.max(1.2, reach * (0.65 + 0.7 * hash01(b.id * 17 + i * 5 + j, 5152)));
+          if (!free(s0, s1, 0, hgt)) continue;
+          put(s0, 0.02, s1, hgt, tone(k, dark ? { wear: 0.05, wear2: 0 } : undefined));
+        }
       }
+    };
+    if (c.low) {
+      bandPass();
+      return;
     }
-    if (c.low) return;
 
-    // ---- run-off: broad vertical stains from the roofline down, where the gutter overflowed or the parapet leaks, ragged at the bottom
-    const runs = Math.floor((w.length / 7) * (0.5 + 1.2 * L) + r(70));
-    for (let j = 0; j < runs; j++) {
-      const rw = 0.6 + 1.3 * r(71 + j);
-      const rh = Math.min(topLow - 2.5, 2.8 + 4.5 * r(80 + j) * (0.5 + L));
-      if (rh < 1.5 || w.length < rw + 1) continue;
-      const s0 = 0.4 + (w.length - rw - 0.8) * hash01(b.id * 5 + i * 3 + j, 5160);
-      const y1 = topLow - 1.3;
-      if (!free(s0, s0 + rw, y1 - rh, y1)) continue;
-      // Two columns of the stain, the second shorter or longer: a stepped, wandering foot.
-      const half = rw * (0.35 + 0.3 * r(90 + j));
-      const k = 0.8 - 0.14 * L - 0.06 * r(95 + j);
-      put(s0, y1 - rh, s0 + half, y1, tone(k, { wear: 0.2, wearKind: "grime", streaks: true }));
-      const rh2 = rh * (0.55 + 0.6 * r(100 + j));
-      put(s0 + half, y1 - rh2, s0 + rw, y1, tone(k * 1.05, { wear: 0.2, wearKind: "grime", streaks: true }));
-    }
 
     // ---- patches: a repaint, a leak's stain, a sheet of plywood
-    const patches = 1 + (age > 0.45 || L > 0.6 ? 1 : 0) + (r(4) < 0.3 ? 1 : 0);
+    const patches = Math.min(5, 1 + Math.floor(w.length / 9)) + (age > 0.45 || L > 0.6 ? 1 : 0) + (r(4) < 0.3 ? 1 : 0);
     for (let p = 0; p < patches; p++) {
       const big = w.length > 12 && topLow > 4;
       const pw = (big ? 3 : 1.4) + (big ? 4.5 : 2.8) * r(10 + p);
@@ -111,7 +106,7 @@ export function wallTone(c: WallToneCtx): void {
         const s0 = 0.5 + (w.length - pw - 1) * hash01(b.id * 13 + i * 3 + p * 5 + t, 5153);
         const y0 = 1.6 + (topLow - ph - 2.4) * hash01(b.id * 19 + i * 3 + p * 5 + t, 5154);
         if (!free(s0, s0 + pw, y0, y0 + ph)) continue;
-        if (kindRoll < 0.6) put(s0, y0, s0 + pw, y0 + ph, tone(1.45 + 0.2 * r(40 + p), { wear: 0.04, wear2: 0 }));
+        if (kindRoll < 0.6 || (dark && kindRoll < 0.8)) put(s0, y0, s0 + pw, y0 + ph, tone((dark ? 1.3 : 1.45) + 0.2 * r(40 + p), { wear: 0.04, wear2: 0 }));
         else if (kindRoll < 0.8 || !wood || L < 0.35) put(s0, y0, s0 + pw * 0.6, y0 + ph * 1.5, tone(0.78 - 0.1 * L, { wear: 0.25, wearKind: "grime" }));
         else {
           const pw2 = Math.min(pw, 1.3 + 0.9 * r(50 + p));
@@ -157,5 +152,30 @@ export function wallTone(c: WallToneCtx): void {
         break;
       }
     }
+    // ---- run-off below the parapet and the joints: on a light wall, broad dark stains; on a dark one, pale efflorescence in thin runs and rust-brown runs below fixings
+    const runs = Math.floor((w.length / (dark ? 3.5 : 7)) * (0.5 + 1.2 * L) + r(70));
+    for (let j = 0; j < runs; j++) {
+      const rw = dark ? 0.3 + 0.6 * r(71 + j) : 0.6 + 1.3 * r(71 + j);
+      const rh = Math.min(topLow - 2.5, (dark ? 1.8 : 2.8) + 4.5 * r(80 + j) * (0.5 + L));
+      if (rh < 1.5 || w.length < rw + 1) continue;
+      const s0 = 0.4 + (w.length - rw - 0.8) * hash01(b.id * 5 + i * 3 + j, 5160);
+      const y1 = topLow - 1.3;
+      if (!free(s0, s0 + rw, y1 - rh, y1)) continue;
+      if (dark && r(110 + j) < 0.3) {
+        // Rust-brown, from a fixing: narrow, ragged at its foot.
+        wquad(out, w, s0, baseY + y1 - rh * 0.8, s0 + Math.min(rw, 0.3), baseY + y1, OFF, [0.3, 0.15, 0.08], { layer: "siding_painted", frame: base.frame, wear: 0.1, wear2: 0 });
+        placed.push({ s0, s1: s0 + rw, y0: y1 - rh * 0.8, y1 });
+        continue;
+      }
+      const half = rw * (0.35 + 0.3 * r(90 + j));
+      const k = dark ? 1.4 + 0.3 * r(95 + j) : 0.8 - 0.14 * L - 0.06 * r(95 + j);
+      const ov = dark ? { wear: 0.05, wear2: 0 } : { wear: 0.2, wearKind: "grime" as const, streaks: true };
+      put(s0, y1 - rh, s0 + half, y1, tone(k, ov));
+      const rh2 = rh * (0.55 + 0.6 * r(100 + j));
+      put(s0 + half, y1 - rh2, s0 + rw, y1, tone(k * 1.03, ov));
+    }
+
+    // The lower band last: it takes what the patches and the runs leave.
+    bandPass();
   });
 }

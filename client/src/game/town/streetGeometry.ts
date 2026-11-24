@@ -134,9 +134,23 @@ type Span = { lo: number; hi: number; backCentre: number; backPark: number; fwdC
 /** The curb top's lift when the ground beside the curb has come up: the lots' level is read this far past the curb line. */
 const CURB_LEVEL = CURB_OUT + 0.01;
 /** The asphalt of a stretch: the new layer after 2000 and under half worn, else the old one. */
-function asphaltOf(pv: Paving, sf: number): { layer: "asphalt" | "asphalt_dark"; tint: Rgb } {
+export function asphaltOf(pv: Paving, sf: number): { layer: "asphalt" | "asphalt_dark"; tint: Rgb } {
   const fresh = pv.decade >= 2000 && pv.wear < 0.5;
   return fresh ? { layer: "asphalt_dark", tint: [1.15 * sf, 1.15 * sf, 1.15 * sf] } : { layer: "asphalt", tint: [sf, sf, sf * 0.98] };
+}
+
+/** What a stretch of roadway is made of: its asphalt, its tone, its texture's frame and the dirt and wear that gather toward the gutters. Shared with the wheel tracks (`roadTone.ts`), which must have the roadway's own look at their edges so no edge shows. */
+export function roadwayLook(p: PS, pv: Paving, ix: number, key: number): Over & { tint: Rgb; layer: "asphalt" | "asphalt_dark" } {
+  const sf = 0.78 + 0.5 * hashN(key, ix, 0, 1);
+  const { layer, tint } = asphaltOf(pv, sf);
+  const use = p.edge.use;
+  // The texture runs along the street (its cracks do), shifted by a roll of the stretch's own.
+  const frame = { origin: [p.ax + hashN(key, ix, 0, 2) * 5, 0, p.az + hashN(key, ix, 0, 3) * 5] as Vec3, u: [p.nx, 0, p.nz] as Vec3, v: [p.tx, 0, p.tz] as Vec3 };
+  const across = (q: readonly [number, number, number]): number => Math.abs((q[0] - p.ax) * p.nx + (q[2] - p.az) * p.nz) / p.cw;
+  // Dirt gathers toward the gutters, the more where the stretch is worn and the street little used; the middle is cleaner where the wheels go.
+  const dirt = (q: readonly [number, number, number]): number => clamp01(0.02 + 0.08 * pv.wear + (0.1 + 0.25 * (1 - use * 0.6)) * smooth(0.55, 1, across(q)));
+  const wear = (q: readonly [number, number, number]): number => clamp01((0.02 + 0.12 * pv.wear * (1 - use * 0.5)) * smooth(0.6, 1.05, across(q)));
+  return { layer, tint, frame, dirt, wear };
 }
 
 export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, detail: Detail = "full"): void {
@@ -360,16 +374,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
 
   /** The roadway of one stretch of paving, from `a` to `b`: bands across, the outer one at each side ragged where there is no curb. */
   function roadway(p: PS, a: number, b: number, pv: Paving, ix: number, key: number): void {
-    const sf = 0.78 + 0.5 * hashN(key, ix, 0, 1);
-    const { layer, tint } = asphaltOf(pv, sf);
-    const use = p.edge.use;
-    // The texture runs along the street (its cracks do), shifted by a roll of the stretch's own.
-    const frame = { origin: [p.ax + hashN(key, ix, 0, 2) * 5, 0, p.az + hashN(key, ix, 0, 3) * 5] as Vec3, u: [p.nx, 0, p.nz] as Vec3, v: [p.tx, 0, p.tz] as Vec3 };
-    const across = (q: readonly [number, number, number]): number => Math.abs((q[0] - p.ax) * p.nx + (q[2] - p.az) * p.nz) / p.cw;
-    // Dirt gathers toward the gutters, the more where the stretch is worn and the street little used; the middle is cleaner where the wheels go.
-    const dirt = (q: readonly [number, number, number]): number => clamp01(0.02 + 0.08 * pv.wear + (0.1 + 0.25 * (1 - use * 0.6)) * smooth(0.55, 1, across(q)));
-    const wear = (q: readonly [number, number, number]): number => clamp01((0.02 + 0.12 * pv.wear * (1 - use * 0.5)) * smooth(0.6, 1.05, across(q)));
-    const over: Over = { layer, tint, frame, dirt, wear };
+    const over: Over = roadwayLook(p, pv, ix, key);
     for (const sg of [1, -1]) {
       const side = p.edge.sides[sideIx(sg)] as SideEdge;
       const lat = (u0: number, u1: number): [number, number] => (sg > 0 ? [u0, u1] : [-u1, -u0]);

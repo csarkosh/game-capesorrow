@@ -35,7 +35,7 @@ export function barOffsets(t0: number, t1: number): number[] {
   return Array.from({ length: n }, (_, i) => t0 + i * (BAR_WIDTH + gap));
 }
 
-export function junctionPaint(_g: TownGround, surf: Surface, junctions: readonly WJunction[], pavements: RoadSet): void {
+export function junctionPaint(g: TownGround, surf: Surface, junctions: readonly WJunction[], pavements: RoadSet): void {
   /** Paint on the roadway, without any junction's pavement under it. */
   const paint = (pts: P2[], lift: number, colour: typeof PAINT_WHITE, engine = false, over?: Over): void => {
     for (const piece of engine ? [pts] : pavements.free(pts)) {
@@ -44,10 +44,15 @@ export function junctionPaint(_g: TownGround, surf: Surface, junctions: readonly
     }
   };
   const lift = ROADWAY_LIFT + MARK_OVER;
+  /** A main street or an avenue is kept up (its paint is faint in the wheel paths and broken, never gone); a back street may lose its bars. */
+  const kept = (street: number): boolean => {
+    const k = g.plan.streets.find((q) => q.id === street)?.kind;
+    return k === "main" || k === "avenue";
+  };
   for (const j of junctions) {
     if (j.polygon.length < 3) continue;
     for (const l of j.legs) {
-      if (l.marked) crosswalk(paint, j, l, lift, Math.imul(j.id + 11, 40503) ^ Math.imul(l.street + 3, 9973));
+      if (l.marked) crosswalk(paint, j, l, lift, Math.imul(j.id + 11, 40503) ^ Math.imul(l.street + 3, 9973), kept(l.street));
       if (l.stops && l.stopLine !== null) {
         // The stop line is faded and broken like the bars, a piece at a time.
         const sk = Math.imul(j.id + 17, 40503) ^ Math.imul(l.street + 5, 9973);
@@ -55,7 +60,7 @@ export function junctionPaint(_g: TownGround, surf: Surface, junctions: readonly
         for (let i = 0; i < n; i++) {
           const t0 = 0.1 + ((l.half - 0.2) * i) / n;
           const t1 = 0.1 + ((l.half - 0.2) * (i + 0.97)) / n;
-          const w = wornPiece(sk, i, (t0 + t1) / 2, l.half);
+          const w = wornPiece(sk, i, (t0 + t1) / 2, l.half, kept(l.street));
           if (w === null) continue;
           const pts: P2[] = [onLeg(l, l.stopLine, t0), onLeg(l, l.stopLine + STOP_LINE_WIDTH, t0), onLeg(l, l.stopLine + STOP_LINE_WIDTH, t1), onLeg(l, l.stopLine, t1)].map((v) => [v.x, v.z]);
           paint(pts, lift, PAINT_WHITE, false, w);
@@ -71,20 +76,22 @@ export function junctionPaint(_g: TownGround, surf: Surface, junctions: readonly
  * (0.8 m either side of each lane's middle) have worn it pale and thin, some pieces are gone, and the dirt shows through where it is worn. A leg's whole run
  * is now and then fresh (it was repainted last year), and then only its wheel paths show it. Null for a piece worn away.
  */
-function wornPiece(key: number, i: number, t: number, half: number): Over | null {
+function wornPiece(key: number, i: number, t: number, half: number, kept: boolean): Over | null {
   const repainted = hashN(key, 0, 0, 301) < 0.22;
   const lane = half / 2;
   const d = Math.min(Math.abs(Math.abs(t) - (lane - 0.8)), Math.abs(Math.abs(t) - (lane + 0.8)));
   const path = 1 - smooth(0.12, 0.55, d);
-  const age = repainted ? 0.05 : 0.2 + 0.45 * hashN(key, 0, 0, 302);
+  const age = repainted ? 0.05 : kept ? 0.1 + 0.25 * hashN(key, 0, 0, 302) : 0.2 + 0.45 * hashN(key, 0, 0, 302);
   const roll = hashN(key, i, 0, 303);
   const wear = Math.min(1, age * (0.45 + 0.9 * roll) + path * (repainted ? 0.4 : 0.5));
-  if (wear > 0.88) return null;
-  const k = (1 - 0.6 * wear) * (0.85 + 0.15 * roll);
-  return { layer: "asphalt", tint: [0.62 * k * 2.1, 0.62 * k * 2.1, 0.6 * k * 2.1], dirt: 0.1 + 0.6 * wear, wear: 0.04 };
+  // A kept street's bars are faint and broken in the wheel paths and plain between them: a piece is thinned, never taken away.
+  if (!kept && wear > 0.88) return null;
+  const wornTo = kept ? Math.min(wear, 0.6) : wear;
+  const k = (1 - 0.6 * wornTo) * (0.85 + 0.15 * roll);
+  return { layer: "asphalt", tint: [0.62 * k * 2.1, 0.62 * k * 2.1, 0.6 * k * 2.1], dirt: 0.1 + 0.6 * wornTo, wear: 0.04 };
 }
 
-function crosswalk(paint: (pts: P2[], lift: number, colour: typeof PAINT_WHITE, engine?: boolean, over?: Over) => void, j: WJunction, l: JunctionLeg, lift: number, wkey: number): void {
+function crosswalk(paint: (pts: P2[], lift: number, colour: typeof PAINT_WHITE, engine?: boolean, over?: Over) => void, j: WJunction, l: JunctionLeg, lift: number, wkey: number, kept: boolean): void {
   let t0: number;
   let t1: number;
   let at = lift;
@@ -113,7 +120,7 @@ function crosswalk(paint: (pts: P2[], lift: number, colour: typeof PAINT_WHITE, 
     for (let i = 0; i < n; i++) {
       const m0 = l.mouth + (CROSSWALK_WIDTH * i) / n;
       const m1 = l.mouth + (CROSSWALK_WIDTH * (i + 0.97)) / n;
-      const w = wornPiece(wkey, bi * 7 + i, t + BAR_WIDTH / 2, l.half);
+      const w = wornPiece(wkey, bi * 7 + i, t + BAR_WIDTH / 2, l.half, kept);
       if (w === null) continue;
       const pts: P2[] = [onLeg(l, m0, t), onLeg(l, m1, t), onLeg(l, m1, t + BAR_WIDTH), onLeg(l, m0, t + BAR_WIDTH)].map((v) => [v.x, v.z]);
       paint(pts, at, PAINT_WHITE, false, w);

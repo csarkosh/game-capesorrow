@@ -332,30 +332,33 @@ function junctionTone(surf: Surface, j: WJunction, key: number): void {
   if (!(reach > 2.4) || !(reach < 20)) return;
   const frame = { origin: [j.x, 0, j.z] as const, u: [1, 0, 0] as const, v: [0, 0, 1] as const };
   const over = (layer: "asphalt" | "asphalt_dark", k: number, rank: number, dirt = 0.05): Over => ({ layer, tint: [k, k, k * 0.99], frame: { origin: [...frame.origin], u: [...frame.u], v: [...frame.v] }, rank, dirt });
+  // Patches: rectangles of a different asphalt, 1 to 4 m on a side, laid along one of the junction's legs (a trench, a square cut), with their corners nudged a
+  // little so no edge is ruled. Each lies wholly inside the pavement (30 cm clear of its edge): none is cut by the curb, so no shard is left.
   const patches = 2 + Math.floor(hashN(key, 0, 0, 200) * 2.2);
   for (let i = 0; i < patches; i++) {
-    const a = hashN(key, i, 0, 201) * 6.283;
-    const d = reach * (0.05 + 0.3 * hashN(key, i, 0, 202));
-    const cx = j.x + Math.cos(a) * d;
-    const cz = j.z + Math.sin(a) * d;
-    const hl = Math.min(0.6 + 1.0 * hashN(key, i, 0, 203), reach * 0.3);
-    const hw = Math.min(0.5 + 0.6 * hashN(key, i, 0, 204), reach * 0.25);
-    const ang = hashN(key, i, 0, 205) * 3.1416;
-    const c = Math.cos(ang);
-    const s = Math.sin(ang);
-    const r = (x: number, z: number): P2 => [cx + x * c - z * s, cz + x * s + z * c];
-    const pale = hashN(key, i, 0, 206) < 0.45;
-    const k = pale ? 1.45 + 0.35 * hashN(key, i, 0, 207) : 0.8 + 0.12 * hashN(key, i, 0, 207);
-    const corners: P2[] = [r(-hl, -hw), r(hl, -hw + 0.1 * hashS(key, i, 0, 208)), r(hl + 0.1 * hashS(key, i, 0, 209), hw), r(-hl, hw)];
-    if (!within(corners)) continue;
-    surf.flat(corners, ROADWAY_LIFT + 0.0016, pale ? ([0.19, 0.19, 0.2] as const) : ASPHALT, over(pale ? "asphalt" : "asphalt_dark", k, RANK.mark));
+    const leg = j.legs[Math.floor(hashN(key, i, 0, 201) * j.legs.length)];
+    if (leg === undefined) continue;
+    const ax = leg.dx;
+    const az = leg.dz;
+    const bx = -az;
+    const bz = ax;
+    const hl = 0.5 + 1.1 * hashN(key, i, 0, 203);
+    const hw = 0.5 + 0.8 * hashN(key, i, 0, 204);
+    const pale = hashN(key, i, 0, 206) < 0.4;
+    const k = pale ? 1.2 + 0.12 * hashN(key, i, 0, 207) : 0.84 + 0.08 * hashN(key, i, 0, 207);
+    for (let t = 0; t < 6; t++) {
+      const u = (hashS(key, i * 7 + t, 0, 202) * 0.5) * reach;
+      const v = (hashS(key, i * 7 + t, 0, 205) * 0.5) * reach;
+      const cx = j.x + ax * u + bx * v;
+      const cz = j.z + az * u + bz * v;
+      const r = (x: number, z: number): P2 => [cx + ax * x + bx * z, cz + az * x + bz * z];
+      const nudge = (m: number): number => 0.05 * hashS(key, i, m, 208);
+      const corners: P2[] = [r(-hl + nudge(1), -hw + nudge(2)), r(hl + nudge(3), -hw + nudge(4)), r(hl + nudge(5), hw + nudge(6)), r(-hl + nudge(7), hw + nudge(8))];
+      if (!within(corners)) continue;
+      // Dropped if it came out under half a square metre.
+      if (4 * hl * hw < 0.5) break;
+      surf.flat(corners, ROADWAY_LIFT + 0.0016, pale ? ([0.19, 0.19, 0.2] as const) : ASPHALT, over(pale ? "asphalt" : "asphalt_dark", k, RANK.mark));
+      break;
+    }
   }
-  // The oil where cars wait: a dark smear off the middle.
-  const oa = hashN(key, 0, 0, 210) * 6.283;
-  const od = reach * 0.3;
-  const ox = j.x + Math.cos(oa) * od;
-  const oz = j.z + Math.sin(oa) * od;
-  const n = 6;
-  const oil = Array.from({ length: n }, (_, k) => [ox + Math.cos((k / n) * 6.283) * Math.min(1.2 + 0.5 * hashN(key, k, 0, 211), reach * 0.3), oz + Math.sin((k / n) * 6.283) * Math.min(0.8 + 0.4 * hashN(key, k, 0, 212), reach * 0.25)] as P2);
-  if (within(oil)) surf.flat(oil, ROADWAY_LIFT + 0.0018, ASPHALT, over("asphalt_dark", 0.7, RANK.mark, 0.15));
 }
