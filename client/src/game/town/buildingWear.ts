@@ -40,27 +40,51 @@ export function agingOf(b: Building): { age: number; neglect: number } {
 
 export type WallWear = { readonly foot: Pick<Surface, "wear" | "wearKind" | "streaks" | "wear2" | "wearKind2" | "streaks2">; readonly upper: Pick<Surface, "wear" | "wearKind" | "streaks" | "wear2" | "wearKind2" | "streaks2"> };
 
+/**
+ * How weathered a building is, 0 (light) to 1 (heavy), from its own record: its age, whether it is kept up, vacant or a ruin, and a roll of its own for the
+ * paint it was last given. The levels spread: about a quarter of the buildings come out light (short streaks under some sills, a low algae line), about half
+ * moderate and about a quarter heavy (the old, the vacant and the neglected), and two neighbours usually differ.
+ */
+export function levelOf(b: Building): number {
+  const { age, neglect } = agingOf(b);
+  const score = 0.5 * hash01(b.id, 73) + 0.22 * age + 0.38 * neglect + 0.12 * hash01(b.id, 74);
+  return clamp01((score - 0.2) / 0.8);
+}
+
+/**
+ * The share of a wall the green film may cover: a tenth on a light building, a third on a heavy one (more only on a ruin), and more on a shaded face.
+ * It gathers where water does (the foot, under the eave and the parapet), not evenly: the wears below spend this share by place.
+ */
+export function filmCap(b: Building, shade: number): number {
+  const L = levelOf(b);
+  return 0.07 + 0.26 * L * (0.7 + 0.3 * shade) + (b.state === "ruin" ? 0.2 : 0);
+}
+
 /** The two wears of a wall's foot band and of the wall above it, for a wall of `style` facing (`nx`, `nz`) on base height `baseY`. */
 export function wallWear(b: Building, style: WallStyle, nx: number, nz: number, baseY: number): WallWear {
   const e = exposureOf(nx, nz);
-  const { age, neglect } = agingOf(b);
-  // This building's own keeping: an owner who washed the front in 2015 (or never has) scales its dirt, 0.35 to 1.15 (a roll from its id).
-  const kept = 0.35 + 0.8 * hash01(b.id, 70);
+  const L = levelOf(b);
+  const { neglect } = agingOf(b);
   const high = (p: Vec3): number => p[1] - baseY;
   const metal = style.wearKind === "rust";
-  // The foot: dirt thrown up by the rain, and algae where the sun does not reach.
-  const splash = (p: Vec3): number => clamp01(kept * (0.42 + 0.35 * age + 0.3 * neglect) * (1 - smooth(0.05, FOOT, high(p))) + 0.1 * (1 - smooth(0, 0.35, high(p))) + 0.04);
-  const algaeFoot = (p: Vec3): number => clamp01(kept * (0.18 + 0.5 * e.shade + 0.2 * neglect + 0.15 * age) * (1 - smooth(0.6, 2.8, high(p))));
-  // Above it: the weather side fails (wood), the shaded side greens (masonry), metal rusts.
+  const cap = filmCap(b, e.shade);
+  const foot = (p: Vec3): number => 1 - smooth(0.2, 2.4, high(p));
+  const top = (p: Vec3): number => clamp01(1 - (b.height - high(p)) / 0.9);
+  // The foot: dirt thrown up by the rain (to a hand's height or two), and a tide of algae where the sun does not reach, up a half metre to one and a half.
+  const splash = (p: Vec3): number => clamp01((0.22 + 0.4 * L) * (1 - smooth(0.05, FOOT * 0.75, high(p))) + 0.14 * (1 - smooth(0, 0.3, high(p))) + 0.03);
+  const algaeTop = 0.5 + 1.0 * L * (0.5 + 0.5 * e.shade);
+  const algaeFoot = (p: Vec3): number => clamp01((0.12 + 0.5 * L) * (0.5 + 0.5 * e.shade) * (1 - smooth(0.12, algaeTop, high(p))));
+  // Above it: the weather side fails (wood), masonry takes a film that gathers at the foot and under the eave, metal rusts. Each is held to its share.
   const primary = (p: Vec3): number => {
     const h = smooth(0.8, 3.5, high(p));
-    if (metal) return clamp01(0.12 + 0.35 * age + 0.4 * neglect + 0.1 * h);
-    if (style.paint && style.wearKind === "moss" && b.material === "wood") return clamp01((0.02 + 0.2 * age * (0.25 + 0.75 * Math.max(0, e.weather)) + 0.34 * neglect * (0.4 + 0.6 * Math.max(0, e.weather))) * (0.6 + 0.4 * h));
-    if (b.material === "wood") return clamp01(0.04 + 0.26 * age * Math.max(0, e.weather) + 0.3 * neglect);
-    return clamp01(0.02 + 0.2 * kept * e.shade * (0.4 + 0.6 * age) + 0.2 * neglect);
+    if (metal) return clamp01(0.06 + 0.38 * L + 0.2 * neglect + 0.08 * h);
+    if (style.paint && style.wearKind === "moss" && b.material === "wood") return clamp01((0.01 + 0.17 * L * (0.25 + 0.75 * Math.max(0, e.weather))) * (0.6 + 0.4 * h));
+    if (b.material === "wood") return clamp01(0.03 + 0.3 * L * (0.3 + 0.7 * Math.max(0, e.weather)));
+    return clamp01(cap * (0.2 + 1.5 * foot(p) + 0.8 * top(p)));
   };
-  // Dirt that runs from under the eave: more near the top of a wall, more with age.
-  const run = (p: Vec3): number => clamp01(kept * (0.05 + 0.16 * age + 0.2 * neglect) * (0.3 + 0.7 * smooth(2, 6, high(p))));
+  // Run-off from the eave: narrow streaks, strongest just under it and fading out within a metre or so, more on a heavier building.
+  const reach = 0.5 + 1.0 * L;
+  const run = (p: Vec3): number => clamp01((0.05 + 0.4 * L) * clamp01(1 - (b.height - high(p)) / reach));
   const upperKind: WearKind = metal ? "rust" : b.material === "wood" ? (style.layer === "shingle_siding" ? "algae" : "peel") : "algae";
   return {
     foot: { wear: splash, wearKind: "grime", wear2: algaeFoot, wearKind2: "algae" },
@@ -80,7 +104,7 @@ export function roofWear(b: Building, kind: "flat" | "gable" | "hip" | "shed", m
 
 /** A decal of dirt under a sill: wide as the window, tall as `drop`, strongest at the top. Its surface is the wall's own. */
 export function sillStreak(base: Surface, strength: number, y0: number, drop: number): Surface {
-  return { ...base, wear: (p: Vec3): number => clamp01(strength * (1 - clamp01((y0 - p[1]) / drop))), wearKind: "grime", streaks: true, wear2: 0 };
+  return { ...base, wear: (p: Vec3): number => clamp01(strength * (1.15 - clamp01((y0 - p[1]) / drop))), wearKind: "grime", streaks: true, wear2: 0 };
 }
 
 /**

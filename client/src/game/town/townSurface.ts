@@ -24,9 +24,9 @@ import type { Rgb, Vec3 } from "./meshBuilder.js";
  * What a worn patch is: moss and grime, rust, peeling paint over bare boards, a green algae film, or dirt (splash at a wall's foot,
  * streaks under a sill). The kind picks the overlay layer and its colour grade in the material (`townMaterial.ts`).
  */
-export type WearKind = "moss" | "rust" | "peel" | "algae" | "grime";
+export type WearKind = "moss" | "rust" | "peel" | "algae" | "grime" | "oil" | "growth" | "leaf" | "damp";
 /** The kinds' numbers in a vertex (a streak adds one half). */
-export const WEAR_KIND_NUMBER: Readonly<Record<WearKind, number>> = { moss: 0, rust: 1, peel: 2, algae: 3, grime: 4 };
+export const WEAR_KIND_NUMBER: Readonly<Record<WearKind, number>> = { moss: 0, rust: 1, peel: 2, algae: 3, grime: 4, oil: 5, growth: 6, leaf: 7, damp: 8 };
 
 /**
  * Beside a polygon's colour: how much of it the renderer lights from itself (a lit sign, a room's light), and how see-through it is.

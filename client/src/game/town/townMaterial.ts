@@ -83,7 +83,7 @@ const NORMAL_STRENGTH = 1.0;
  * mustard where the sun is on it: lifted and turned toward green. The rust layer is mostly peeling white paint over bluish
  * grey with a little rust: turned toward rust, so a worn metal wall is not patched in lilac.
  */
-const MOSS_COLOUR: readonly [number, number, number] = [1.4, 1.9, 1.0];
+const MOSS_COLOUR: readonly [number, number, number] = [1.1, 2.3, 0.75];
 const RUST_COLOUR: readonly [number, number, number] = [1.35, 0.8, 0.5];
 /** The low tier's light is brighter and bluer than the other tiers' (it has no post chain to grade the frame), and the lifted moss is lime in it: a third less. */
 const LOW_MOSS = 0.65;
@@ -103,8 +103,8 @@ export function townDefinitions(low: boolean): string {
     `const TOWN_MOSS:i32=${layerIndex(WEAR_OVERLAY.moss)};`,
     `const TOWN_RUST:i32=${layerIndex(WEAR_OVERLAY.rust)};`,
     // The overlay layer and the grade of each wear kind: moss, rust, peel, algae, grime (xyz the colour's multiplier, w how much of it is laid).
-    `var<private> townOver:array<i32,5>=array<i32,5>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
-    `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(1.05,1.3,0.9,0.4),vec4<f32>(0.8,0.74,0.66,0.7));`,
+    `var<private> townOver:array<i32,9>=array<i32,9>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
+    `var<private> townGrade:array<vec4<f32>,9>=array<vec4<f32>,9>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? Math.round(c * LOW_MOSS * 10) / 10 : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(0.9,1.55,0.8,0.8),vec4<f32>(0.5,0.46,0.4,0.9),vec4<f32>(0.03,0.03,0.04,1.0),vec4<f32>(1.1,2.4,0.55,1.0),vec4<f32>(1.5,1.0,0.35,1.0),vec4<f32>(0.78,0.8,0.82,0.9));`,
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
     "var<private> townGlassC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
@@ -132,14 +132,19 @@ function wearSlot(amountExpr: string, kindExpr: string, low: boolean, n: string)
   const overData = low
     ? `tsRough=mix(tsRough,tsOd${n}.z,tsW${n});`
     : `tsN=mix(tsN,vec2<f32>(tsOd${n}.x*2.0-1.0,tsOd${n}.y*2.0-1.0),tsW${n});tsRough=mix(tsRough,tsOd${n}.z,tsW${n});tsAo=mix(tsAo,clamp(tsOd${n}.w*2.0-1.0,0.0,1.0),tsW${n});`;
+  // A mark of its own kind (oil, growth, leaf: laid on the ground as a polygon over the ground's own material) is cut out by the noise where it is not worn, so its edge is ragged and no polygon shows (first wear only).
+  const cut = n === "1" ? `if(${kindExpr}>=4.99&&tsA1<0.004){discard;}` : "";
+  const cut2 = n === "1" ? `if(tsK1>=5&&tsW1<0.03){discard;}` : "";
   return [
     `let tsA${n}=${amountExpr};`,
+    cut,
     `if(tsA${n}>0.001){`,
-    `let tsKf${n}=${kindExpr}+0.01;let tsK${n}=clamp(i32(floor(tsKf${n})),0,4);`,
+    `let tsKf${n}=${kindExpr}+0.01;let tsK${n}=clamp(i32(floor(tsKf${n})),0,8);`,
     `var tsWp${n}=input.worldPos;`,
-    `if(fract(tsKf${n})>0.25){tsWp${n}=vec3<f32>(tsWp${n}.x*2.6,tsWp${n}.y*0.32,tsWp${n}.z*2.6);}`,
+    `if(fract(tsKf${n})>0.25){tsWp${n}=vec3<f32>(tsWp${n}.x*6.5,tsWp${n}.y*0.45,tsWp${n}.z*6.5);}`,
     `let tsW${n}=townWear(tsWp${n},tsA${n})*townGrade[tsK${n}].w;`,
     `tsWm=max(tsWm,tsW${n});`,
+    cut2,
     `if(tsW${n}>0.004){`,
     `let tsOver${n}=townOver[tsK${n}];`,
     `let tsScale${n}=tsInfo.xy/townInfo[tsOver${n}].xy;`,

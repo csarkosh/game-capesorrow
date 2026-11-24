@@ -91,11 +91,12 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   }
   reveal(out, w, sa, sb, y0, y1, rv, scaled(c.wall, 0.8), scaled(c.trim, 0.9));
   // Under the sill the rain that runs off it leaves a streak of dirt down the wall (its own decal, in the wall's material); more on an older wall.
-  if (full && !shop && hash01(seed, 423) < 0.35 + 0.5 * Math.min(1, (2026 - c.era) / 120)) {
+  if (full && !shop && hash01(seed, 423) < 0.2 + 0.4 * Math.min(1, (2026 - c.era) / 120)) {
     const base = c.surface(w);
-    const cw = Math.min(width * (0.5 + hash01(seed, 424) * 0.5), width);
+    const cw = Math.min(width * (0.3 + hash01(seed, 424) * 0.4), 0.9);
+    const drop = 0.4 + 1.1 * hash01(seed, 426) * hash01(seed, 427);
     const mid = (sa + sb) / 2 + (hash01(seed, 425) - 0.5) * width * 0.25;
-    wquad(out, w, mid - cw / 2, y0 - 1.3, mid + cw / 2, y0 - 0.14, 0.03, c.wall, sillStreak(base, 0.7, y0, 1.3));
+    wquad(out, w, mid - cw / 2, y0 - drop, mid + cw / 2, y0 - 0.14, 0.03, c.wall, sillStreak(base, 0.65, y0, drop));
   }
   if (full && !shop) {
     // Trim boards round it, the sill under it (a replaced window has none: it was fitted in the old opening).

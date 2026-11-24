@@ -335,6 +335,8 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
               side,
               yardKindAt: (s) => yardKindAt(p, sg, s),
               plan,
+              use: p.edge.use,
+              low: detail === "low",
             },
             free,
             (x, z) => g.heightAt(x, z),
@@ -426,8 +428,10 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const s1 = a + ((b - a) * (i + 1)) / n;
       const roll = hashN(key, Math.floor(s0 * 2), 0, 7);
       const replaced = roll < 0.07;
-      const sh = (0.72 + 0.14 * hashN(key, Math.floor(s0 * 2), 0, 8)) * (replaced ? 1.18 : 1);
-      const tint: Rgb = [sh * 0.98, sh * 0.97, sh * 0.92];
+      const sh = (0.6 + 0.3 * hashN(key, Math.floor(s0 * 2), 0, 8)) * (replaced ? 1.3 : 1);
+      // Some sections are painted, long ago: a faded yellow (no parking), a faded red (a hydrant's), worn back to the concrete at the edges by the noise.
+      const painted = hashN(key, Math.floor(s0 * 2), 0, 11);
+      const tint: Rgb = painted < 0.1 ? [sh * 1.55, sh * 1.25, sh * 0.35] : painted < 0.15 ? [sh * 1.45, sh * 0.55, sh * 0.45] : [sh * 0.98, sh * 0.97, sh * 0.92];
       const frame = { origin: [p.ax + hashN(key, Math.floor(s0 * 2), 0, 9) * 3, 0, p.az + hashN(key, Math.floor(s0 * 2), 0, 10) * 3] as Vec3, u: [p.tx, 0, p.tz] as Vec3, v: [p.nx, 0, p.nz] as Vec3 };
       const top: Over = { rank: RANK.mark, layer: "sidewalk", tint, frame, wear: replaced ? 0.02 : 0.12, dirt: replaced ? 0.05 : 0.28 };
       const q = (s: number, t: number): P2 => at(p, s, sg * t);

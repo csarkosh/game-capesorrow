@@ -28,6 +28,7 @@ import { tally } from "./groundTally.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { SIDEWALK } from "./palette.js";
 import { RANK, type Over } from "./groundSurfaces.js";
+import { plant } from "./growth.js";
 import type { P2, P3, Surface } from "./surface.js";
 import type { UvFrame } from "./townSurface.js";
 
@@ -63,6 +64,10 @@ export type WalkContext = {
   /** The lot's yard kind at a point of the world (beside the sidewalk), for trees and vacancy; null off every lot. */
   readonly yardKindAt: (s: number) => YardKind | null;
   readonly plan: Parameters<typeof yardAt>[0];
+  /** How much the street is used, 0 to 1 (a busy front is walked clear of weeds). */
+  readonly use?: number;
+  /** The low tier: no moss strips, patches as one polygon, a few tufts. */
+  readonly low?: boolean;
 };
 
 const lift = (e: number): number => WALK_TOP + e;
@@ -70,9 +75,9 @@ const lift = (e: number): number => WALK_TOP + e;
 export const SPACINGS = [1.35, 1.5, 1.5, 1.65, 1.8] as const;
 
 /** The pour's tint: older concrete is greyer and yellower and darker, newer lighter and bluer. */
-function pourTint(decade: number): Rgb {
+export function pourTint(decade: number): Rgb {
   const t = clamp01((decade - 1900) / 120);
-  return [0.66 + 0.18 * t, 0.65 + 0.18 * t, 0.6 + 0.2 * t];
+  return [0.52 + 0.4 * t, 0.5 + 0.4 * t, 0.43 + 0.45 * t];
 }
 
 /** The slabs of one sub-interval [a, b] of a run: stations along the street, from `a` to `b`, the last slab absorbing what remains. */
@@ -111,6 +116,10 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
   const { surf, frame: f, sigma, side } = ctx;
   const key = Math.imul(f.id + 1, 2654435) ^ (sigma === 1 ? 0x51 : 0xa3);
   const out = f.hw;
+  const use = ctx.use ?? 0.5;
+  const low = ctx.low === true;
+  const slabX = (s: number, t: number): number => f.ax + f.tx * s + f.nx * sigma * t;
+  const slabZ = (s: number, t: number): number => f.az + f.tz * s + f.nz * sigma * t;
   const at = (s: number, t: number): P2 => [f.ax + f.tx * s + f.nx * sigma * t, f.az + f.tz * s + f.nz * sigma * t];
   const lat = (p: Vec3): number => (p[0] - f.ax) * f.nx * sigma + (p[2] - f.az) * f.nz * sigma;
   void lat;
@@ -127,7 +136,8 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
     const spacing = SPACINGS[Math.floor(hashN(key, runIx, 0, 3) * SPACINGS.length)] as number;
     const st = stations(key, runIx, a, b, spacing);
     const tone = pourTint(run.decade);
-    const w = run.wear;
+    // No run is new: a floor of wear (cracks, broken corners, gone slabs and moss come with it).
+    const w = Math.max(run.wear, 0.36);
     // The lot beside the run: a shady yard (trees) heaves the sidewalk and shades it, a vacant one is let go.
     const kind = ctx.yardKindAt((a + b) / 2);
     const shady = kind === "mossy" || kind === "brush" ? 1 : kind === "tall" || kind === "shaggy" ? 0.4 : 0;
@@ -155,25 +165,29 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
       const ss1 = s1 - j1;
       if (ss1 - ss0 < 0.1) continue;
       const roll = hashN(key, runIx, i, 1);
-      const replaced = hashN(key, runIx, i, 2) < 0.045;
+      const replaced = hashN(key, runIx, i, 2) < 0.11;
       const missing = w > 0.45 && hashN(key, runIx, i, 4) < 0.008 + 0.045 * (w - 0.45) + 0.03 * neglected;
       const d0 = wander(ss0, i);
       const d1 = wander(ss1, i + 1);
       const frame = slabFrame(f, key, runIx, i, sigma);
-      const shade = (0.93 + 0.12 * roll) * (replaced ? 1.16 : 1);
+      // Slabs differ a great deal: a new pale replacement beside old dark ones, one in eight stained near black with age.
+      const shade = (0.72 + 0.42 * roll) * (replaced ? 1.4 : hashN(key, runIx, i, 150) < 0.12 ? 0.68 : 1);
       const tint: Rgb = [tone[0] * shade, tone[1] * shade, tone[2] * shade];
       const sw = replaced ? 0.25 * w : w;
       const mossK = 0.08 + 0.3 * shady + 0.12 * w;
       const front = Math.max(inner, f.cw + 0.18);
       const slabWear = (p: Vec3): number => {
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
-        return replaced ? 0.02 + 0.1 * k : clamp01(0.03 + mossK * (0.2 + 0.9 * k * k) * (0.5 + sw));
+        return replaced ? 0.02 + 0.08 * k : clamp01(0.03 + mossK * (0.35 + 1.3 * k * k) * (0.6 + sw));
       };
       const slabDirt = (p: Vec3): number => {
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
-        return replaced ? 0.02 + 0.1 * k : clamp01(0.04 + (0.08 + 0.28 * sw) * (0.2 + 1.0 * k) + 0.14 * neglected * k);
+        return replaced ? 0.02 + 0.06 * k : clamp01(0.03 + (0.08 + 0.3 * sw) * (0.3 + 1.1 * k) + 0.12 * neglected * k);
       };
-      const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt, group: "base" };
+      // What stains this slab is its own: damp grey, a green bloom, leaf-brown, now and then rust from something that stood on it.
+      const dr = hashN(key, runIx, i, 151);
+      const dirtKind = dr < 0.4 ? "damp" : dr < 0.65 ? "grime" : dr < 0.82 ? "leaf" : dr < 0.92 ? "algae" : "rust";
+      const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt, dirtKind, group: "base" };
       const pt = (s: number, t: number, e: number): P3 => slabPoint(f, sigma, heightAt, s, t, lift(e));
       const T0 = front;
       const T1 = out;
@@ -183,14 +197,48 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         // Gone: filled with asphalt (a cheap mend) or left as gravel and weeds.
         const asphalt = hashN(key, runIx, i, 6) < 0.35;
         surf.poly([pt(ss0, T0, 0.002), pt(ss1, T0, 0.002), pt(ss1, T1 - d1, 0.002), pt(ss0, T1 - d0, 0.002)], SIDEWALK, asphalt ? { layer: "asphalt_dark", tint: [1.6, 1.6, 1.6], frame, dirt: 0.3, wear: 0.15, group: "base" } : { layer: "gravel", tint: [0.85, 0.8, 0.72], frame, dirt: 0.5, wear: 0.4, group: "base" });
-        weeds(ss0, ss1, T0, T1 - d0, 3 + Math.floor(3 * hashN(key, runIx, i, 12)), i, 1);
+        weeds(ss0, ss1, T0, T1 - d0, 3 + Math.floor(3 * hashN(key, runIx, i, 12)), i, 1, "gravel", [0.85, 0.8, 0.72]);
+        grow(ss0, ss1, T0 + 0.05, T1 - 0.1, 2, i, 0.9, 0.4);
       } else {
         surf.poly([pt(ss0, T0, l0), pt(ss1, T0, l1), pt(ss1, T1 - d1, l1), pt(ss0, T1 - d0, l0)], SIDEWALK, over);
         if (!replaced && hashN(key, runIx, i, 13) < 0.07 + 0.6 * w * w) crack(ss0, ss1, T0, T1 - Math.max(d0, d1), l0, l1, i, frame);
         if (!replaced && hashN(key, runIx, i, 14) < 0.02 + 0.22 * w) brokenCorner(ss0, ss1, T0, T1 - d0, T1 - d1, l0, l1, i, frame);
         // Weeds along the back edge, more where the run is worn and the lot beside it neglected.
         const edgeWeeds = Math.floor(hashN(key, runIx, i, 15) * (0.5 + 2.4 * sw + 1.8 * neglected));
-        if (edgeWeeds > 0) weeds(ss0, ss1, T1 - 0.45, T1 - Math.min(d0, d1), edgeWeeds, i, 0.8 + neglected);
+        if (edgeWeeds > 0 && hashN(key, runIx, i, 130) < 0.6) weeds(ss0, ss1, T1 - 0.45, T1 - Math.min(d0, d1), 1, i, 0.8 + neglected, "sidewalk", tint);
+        // Moss along the back edge and the kerb line: wear that is full at the edge and none a hand's breadth in, so the noise leaves it ragged.
+        const mossy = 0.45 + 0.8 * shady + 0.5 * sw;
+        if (!low && hashN(key, runIx, i, 140) < 0.22 + 0.25 * mossy) {
+          const tb = Math.min(T1 - d0, T1 - d1);
+          const wd = 0.24 + 0.16 * hashN(key, runIx, i, 141);
+          const amt = 0.9 + 0.1 * hashN(key, runIx, i, 142);
+          const wearAt = (q: Vec3): number => clamp01(amt * (1 - clamp01((tb - lat(q)) / wd)));
+          surf.poly([pt(ss0, tb - wd, l0), pt(ss1, tb - wd, l1), pt(ss1, tb, l1), pt(ss0, tb, l0)], SIDEWALK, { layer: "sidewalk", tint, frame, wear: wearAt, wearKind: "moss", rank: RANK.mark });
+        }
+        if (!low && hashN(key, runIx, i, 143) < 0.2 + 0.2 * mossy) {
+          const wd = 0.18 + 0.12 * hashN(key, runIx, i, 144);
+          const amt = 0.85 + 0.15 * hashN(key, runIx, i, 145);
+          const wearAt = (q: Vec3): number => clamp01(amt * (1 - clamp01((lat(q) - T0) / wd)));
+          surf.poly([pt(ss0, T0, l0), pt(ss1, T0, l1), pt(ss1, T0 + wd, l1), pt(ss0, T0 + wd, l0)], SIDEWALK, { layer: "sidewalk", tint, frame, wear: wearAt, wearKind: "moss", rank: RANK.mark });
+        }
+        // The crack between sidewalk and wall: a row of tufts along the back edge, thick where the run is old or the lot is let go; a few along the kerb line.
+        const grown = 0.45 + 1.0 * sw + 0.9 * neglected + 0.4 * shady;
+        const idle = 1 - 0.3 * use;
+        for (let q = ss0 + 0.25; q < ss1 - 0.15; q += 0.45 + 0.5 * hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 100)) {
+          const roll100 = hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 101);
+          if (roll100 > 0.03 + 0.05 * grown * idle) continue;
+          const tb = Math.min(T1 - d0, T1 - d1) - 0.09 - 0.12 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 102);
+          const [px, pz] = at(q, tb);
+          plant(px, pz, 1 + 0.5 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 103), 0.35 + 0.65 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 104) * (0.5 + 0.5 * grown / 2), 0.15 + 0.3 * hashN(key, runIx, i, 105), key + i * 53 + Math.floor(q * 10), -f.nx * sigma, -f.nz * sigma);
+        }
+        for (let q = ss0 + 0.2; q < ss1 - 0.15; q += 0.9 + 1.0 * hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 106)) {
+          if (hashN(key, runIx, i * 40 + Math.floor((q - ss0) * 10), 107) > 0.03 + 0.04 * grown) continue;
+          const [px, pz] = at(q, T0 + 0.04 + 0.05 * hashN(key, runIx, i * 40 + Math.floor(q - ss0), 108));
+          plant(px, pz, 1, 0.3 + 0.4 * hashN(key, runIx, i, 110), 0.25, key + i * 59 + Math.floor(q * 10), 0, 0);
+        }
+        // A crack and a broken corner have weeds in them.
+        if (hashN(key, runIx, i, 13) < 0.07 + 0.6 * w * w) grow(ss0, ss1, T0 + 0.3, T1 - 0.4, 1, i, 0.8, 0.3);
+        if (hashN(key, runIx, i, 14) < 0.02 + 0.22 * w) grow(ss0, ss1, T0 + 0.3, T1 - 0.3, 2, i, 0.9, 0.3);
       }
       // The joint after this slab: a dark groove, with weeds out of it where the run is old.
       if (i + 2 < st.length) {
@@ -198,7 +246,24 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const sj0 = ss1;
         const sj1 = ss1 + JOINT_WIDTH;
         surf.poly([slabPoint(f, sigma, heightAt, sj0, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T0, jy(0)), slabPoint(f, sigma, heightAt, sj1, T1 - d1, jy(0)), slabPoint(f, sigma, heightAt, sj0, T1 - d1, jy(0))], SIDEWALK, { layer: "mud", tint: [0.55, 0.5, 0.45], frame, dirt: 0.5, rank: RANK.detail });
-        if (hashN(key, runIx, i, 16) < 0.25 + 0.55 * w) weeds(sj0 - 0.02, sj1 + 0.02, T0 + 0.1, T1 - 0.15, 1 + Math.floor(2 * hashN(key, runIx, i, 17)), i, 0.35);
+        if (hashN(key, runIx, i, 16) < 0.25 + 0.55 * w) weeds(sj0 - 0.02, sj1 + 0.02, T0 + 0.1, T1 - 0.15, 1, i, 0.5, "sidewalk", tint);
+        // Moss in the joint: a strip a hand wide, full along its middle and none at its edges.
+        if (!low && hashN(key, runIx, i, 146) < 0.12 + 0.3 * mossK + 0.1 * w) {
+          const hw2 = 0.09 + 0.05 * hashN(key, runIx, i, 147);
+          const jc = ss1 + JOINT_WIDTH / 2;
+          const amt = 0.9 + 0.1 * hashN(key, runIx, i, 148);
+          const wearAt = (q: Vec3): number => clamp01(amt * (1 - Math.abs((q[0] - slabX(jc, T0)) * f.tx + (q[2] - slabZ(jc, T0)) * f.tz) / hw2));
+          const mp = (s2: number, t: number): P3 => slabPoint(f, sigma, heightAt, s2, t, WALK_TOP + 0.001);
+          const mo: Over = { layer: "sidewalk", tint, frame, wear: wearAt, wearKind: "moss", rank: RANK.mark };
+          surf.poly([mp(jc - hw2, T0), mp(jc, T0), mp(jc, T1 - d1), mp(jc - hw2, T1 - d1)], SIDEWALK, mo);
+          surf.poly([mp(jc, T0), mp(jc + hw2, T0), mp(jc + hw2, T1 - d1), mp(jc, T1 - d1)], SIDEWALK, mo);
+        }
+        // Tufts out of the joint: low ones, in most joints of an old run, fewer on a busy front.
+        const jn = Math.floor((0.02 + 0.3 * hashN(key, runIx, i, 111)) * (0.35 + 1.1 * w + 0.8 * neglected) * (1 - 0.3 * use));
+        for (let q = 0; q < jn; q++) {
+          const [px, pz] = at(sj0 + JOINT_WIDTH / 2, T0 + 0.15 + (T1 - T0 - 0.3) * hashN(key, runIx, i * 8 + q, 112));
+          plant(px, pz, 1, 0.1 + 0.3 * hashN(key, runIx, i * 8 + q, 113), 0.3, key + i * 61 + q * 7, 0, 0);
+        }
       }
     }
     // A utility cover on some runs: a rusted lid, and a water meter's small one.
@@ -264,15 +329,23 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
       void s0;
     }
 
+    /** Tufts at random places of a rectangle of the slab (`count` sites, `tall`, `dry` as the place's). */
+    function grow(s0: number, s1: number, t0: number, t1: number, count: number, i: number, tall: number, dry: number): void {
+      for (let c = 0; c < count; c++) {
+        const [px, pz] = at(s0 + (s1 - s0) * hashN(key, runIx, i * 16 + c, 120), t0 + (t1 - t0) * hashN(key, runIx, i * 16 + c, 121));
+        plant(px, pz, 1, tall * hashN(key, runIx, i * 16 + c, 122), dry, key + i * 67 + c * 13, 0, 0);
+      }
+    }
+
     /** Weed and grass blobs in a rectangle of the slab: irregular fans of triangles in the moss layer, tinted green. */
-    function weeds(s0: number, s1: number, t0: number, t1: number, count: number, i: number, scale: number): void {
+    function weeds(s0: number, s1: number, t0: number, t1: number, count: number, i: number, scale: number, baseLayer: "sidewalk" | "gravel", baseTint: Rgb): void {
       for (let c = 0; c < count; c++) {
         tally.weedBlobs++;
         const cs = s0 + (s1 - s0) * hashN(key, runIx, i * 16 + c, 60);
         const ct = t0 + (t1 - t0) * hashN(key, runIx, i * 16 + c, 61);
         const r = (0.07 + 0.3 * hashN(key, runIx, i * 16 + c, 62) * hashN(key, runIx, i * 16 + c, 63)) * scale;
         // Irregular growth: seven points with swings in radius and angle (kept star-shaped, so the fan stays whole), the whole stretched along a joint-ish direction (a roll), never a regular ring.
-        const n = 7;
+        const n = 5;
         const ring: P3[] = [];
         const rot = (hashN(key, runIx, i * 16 + c, 66) - 0.5) * 0.9;
         const stretch = 1.15 + 0.7 * hashN(key, runIx, i * 16 + c, 67);
@@ -286,13 +359,21 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
           ring.push(slabPoint(f, sigma, heightAt, cs + rx, Math.min(out - 0.003, ct + ry), WALK_TOP + 0.005));
         }
         const hue = hashN(key, runIx, i * 16 + c, 64);
-        // Dull, dry moss and weed, browning at the edges of the patch's range: not a lawn-green.
-        const tint: Rgb = [0.85 + 0.3 * hue, 0.95 + 0.25 * hue, 0.55 + 0.1 * hue];
-        surf.poly(ring, SIDEWALK, { layer: "moss", tint, frame: slabFrame(f, key, runIx, i * 16 + c, sigma), rank: RANK.crack });
+        if (low) {
+          surf.poly(ring, SIDEWALK, { layer: "moss", tint: [0.85 + 0.3 * hue, 0.95 + 0.25 * hue, 0.55 + 0.1 * hue], frame: slabFrame(f, key, runIx, i * 16 + c, sigma), rank: RANK.crack });
+          continue;
+        }
+        // Laid as wear over the slab's own surface: full at the centre, none at the rim, so the material's noise breaks the outline. One triangle a side of the ring, each corner's amount its distance from the middle.
+        const mid = slabPoint(f, sigma, heightAt, cs, ct, WALK_TOP + 0.005);
+        const reach = r * stretch * 1.1;
+        const wear = (q: Vec3): number => clamp01((1 - Math.hypot(q[0] - mid[0], q[2] - mid[1]) / reach) * 1.5);
+        const patchFrame = slabFrame(f, key, runIx, i * 16 + c, sigma);
+        for (let k = 0; k < n; k++) {
+          surf.poly([mid, ring[k] as P3, ring[(k + 1) % n] as P3], SIDEWALK, { layer: baseLayer, tint: baseTint, frame: patchFrame, wear, wearKind: hue < 0.3 ? "leaf" : "growth", rank: RANK.crack });
+        }
       }
     }
   }
-  void at;
   void smooth;
 }
 

@@ -80,6 +80,8 @@ export type Over = {
   readonly wear?: number | ((p: readonly [number, number, number]) => number);
   readonly wearKind?: WearKind;
   readonly dirt?: number | ((p: readonly [number, number, number]) => number);
+  /** What the dirt is: grime (the default), damp grey, algae, leaf-brown or rust. */
+  readonly dirtKind?: WearKind;
   /** The depth rank of flat ground (`townMaterial.ts`): 0 or left out for a base surface, more for what is laid on one. */
   readonly rank?: number;
   /** Marks and surfaces of one group are never laid over each other: the one laid later is cut back to where the earlier ones leave ground (`Surface`). A mark with a rank is in the group of its rank; a base surface that may overlap another (a sidewalk's slab and the next street's roadway, where two streets meet) is in the group `base`. */
@@ -104,5 +106,5 @@ export function withOver(base: Surface | undefined, colour: Rgb, anchor: { reado
   const wear2 = over.dirt ?? base?.wear2;
   const tint = over.tint ?? base?.tint;
   const wearKind = over.wearKind ?? base?.wearKind;
-  return { layer, frame, ...(tint === undefined ? {} : { tint }), ...(wear === undefined ? {} : { wear }), ...(wearKind === undefined ? {} : { wearKind }), ...(wear2 === undefined ? {} : { wear2, wearKind2: "grime" as const }) };
+  return { layer, frame, ...(tint === undefined ? {} : { tint }), ...(wear === undefined ? {} : { wear }), ...(wearKind === undefined ? {} : { wearKind }), ...(wear2 === undefined ? {} : { wear2, wearKind2: over.dirtKind ?? ("grime" as const) }) };
 }
