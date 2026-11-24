@@ -64,7 +64,9 @@ export function wallStyle(b: Building): WallStyle {
 export function wallTint(b: Building): Rgb {
   const dim = b.state === "ruin" ? 0.65 : b.state === "vacant" ? 0.8 : 1;
   // Brick is warmed a little: the overcast and the fog take the red out of a scanned wall.
-  const warm: Rgb = b.material === "brick" ? [1.12, 1, 0.92] : [1, 1, 1];
+  // The scanned cedar shingles and dark boards are near black as they are: the tint lifts them to the silver-grey and brown a weathered coast wall has, a shade of its own for each building.
+  const layer = wallStyle(b).layer;
+  const warm: Rgb = b.material === "brick" ? [1.12, 1, 0.92] : layer === "shingle_siding" ? [4.3, 4.0, 3.6] : layer === "planks_weathered" ? [3.8, 3.5, 3.2] : [1, 1, 1];
   return scaled(vary(warm, b.id, 7), dim);
 }
 

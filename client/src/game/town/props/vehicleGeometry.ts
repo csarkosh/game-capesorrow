@@ -13,7 +13,7 @@ import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
 import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
-import type { WearKind } from "../townSurface.js";
+import { groundFrame, type Surface, type WearKind } from "../townSurface.js";
 import { RANK } from "../groundSurfaces.js";
 import { drawnAsModel } from "./vehicleFleet.js";
 import { D, P, groundAt, lbox, lquadX, lquadZ, mix, mixC, placeOn, rnd, type Place } from "./kit.js";
@@ -457,7 +457,17 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
     const hl = v.length / 2 - 0.3;
     const hw = v.width / 2 - 0.22;
     const c: Array<[number, number]> = [[hl, hw * 0.6], [hl * 0.8, hw], [-hl * 0.8, hw], [-hl, hw * 0.6], [-hl, -hw * 0.6], [-hl * 0.8, -hw], [hl * 0.8, -hw], [hl, -hw * 0.6]];
-    sinks.flat(v.x, v.z).poly(c.map(([a, b]): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.012, pl.oz + pl.fz * a + pl.lz * b]), [0, 1, 0], [0.012, 0.012, 0.012], undefined, { rank: RANK.stain });
+    const corner = (a: number, b: number): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.03, pl.oz + pl.fz * a + pl.lz * b];
+    // The patch is wear over the ground (the mud layer under an oil overlay): full at its middle, none at its rim, cut out by the noise, so its edge is ragged and not eight straight sides.
+    const mid = corner(0, 0);
+    const wear = (q: Vec3): number => {
+      const a = ((q[0] - pl.ox) * pl.fx + (q[2] - pl.oz) * pl.fz) / hl;
+      const b = ((q[0] - pl.ox) * pl.lx + (q[2] - pl.oz) * pl.lz) / hw;
+      return Math.max(0, Math.min(1, (1.08 - Math.hypot(a, b)) * 2.2)) * 0.9;
+    };
+    const surface: Surface = { layer: "mud", frame: groundFrame(g.anchor), tint: [0.32, 0.31, 0.31], wear, wearKind: "oil" };
+    const ring = c.map(([a, b]): Vec3 => corner(a, b));
+    sinks.flat(v.x, v.z).poly([mid, ...ring, ring[0] as Vec3], [0, 1, 0], [0.012, 0.012, 0.012], surface, { rank: RANK.stain });
   }
   // On the full tier a vehicle with a model is that model's (`vehicleFleet.ts`): what is left of it here is the dark of the ground under it.
   if (drawnAsModel(v, detail)) return;

@@ -178,13 +178,16 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
       const front = Math.max(inner, f.cw + 0.18);
       const slabWear = (p: Vec3): number => {
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
-        return replaced ? 0.03 + 0.12 * k : clamp01(0.08 + mossK * (0.5 + 1.8 * k * k) * (0.7 + sw));
+        return replaced ? 0.02 + 0.08 * k : clamp01(0.03 + mossK * (0.35 + 1.3 * k * k) * (0.6 + sw));
       };
       const slabDirt = (p: Vec3): number => {
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
-        return replaced ? 0.03 + 0.1 * k : clamp01(0.12 + (0.2 + 0.5 * sw) * (0.35 + 1.0 * k) + 0.2 * neglected * k);
+        return replaced ? 0.02 + 0.06 * k : clamp01(0.03 + (0.08 + 0.3 * sw) * (0.3 + 1.1 * k) + 0.12 * neglected * k);
       };
-      const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt, group: "base" };
+      // What stains this slab is its own: damp grey, a green bloom, leaf-brown, now and then rust from something that stood on it.
+      const dr = hashN(key, runIx, i, 151);
+      const dirtKind = dr < 0.4 ? "damp" : dr < 0.65 ? "grime" : dr < 0.82 ? "leaf" : dr < 0.92 ? "algae" : "rust";
+      const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt, dirtKind, group: "base" };
       const pt = (s: number, t: number, e: number): P3 => slabPoint(f, sigma, heightAt, s, t, lift(e));
       const T0 = front;
       const T1 = out;

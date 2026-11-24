@@ -15,6 +15,7 @@ import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { hash01 } from "./meshBuilder.js";
 import type { TownGround, Detail } from "./townTypes.js";
 import type { Building } from "../../sim/town/types.js";
+import { levelOf } from "./buildingWear.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
 
@@ -61,51 +62,51 @@ export function plant(x: number, z: number, n: number, tall: number, dry: number
   sites.push({ x, z, n, tall, dry, ax, az, seed });
 }
 
+// Dark and olive greens (the standing layer lights them, and the overcast takes a good deal of it); a tuft in six is dead straw.
 const GREENS: readonly Rgb[] = [
-  [0.13, 0.25, 0.05],
-  [0.2, 0.33, 0.07],
-  [0.28, 0.4, 0.09],
+  [0.9, 1.2, 0.26],
+  [1.1, 1.3, 0.38],
+  [0.75, 1.05, 0.22],
+  [1.15, 1.2, 0.42],
 ];
-const STRAW: Rgb = [0.5, 0.42, 0.2];
-const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.45, c[1] * 0.5, c[2] * 0.5];
-const LIGHT_TIP = (c: Rgb): Rgb => [Math.min(1, c[0] * 1.5 + 0.03), Math.min(1, c[1] * 1.45 + 0.03), Math.min(1, c[2] * 1.3 + 0.01)];
+const STRAW: Rgb = [1.3, 1.05, 0.58];
+const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.5, c[1] * 0.55, c[2] * 0.55];
+const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.3, c[1] * 1.25, c[2] * 1.15];
 
-/** The blades of one tuft rooted at (x, y, z), into `m`. Returns the vertices laid. */
+/** The blades of one tuft rooted at (x, y, z), into `m`: five to nine, narrow (1 to 3 cm at the foot), 8 to 30 cm tall, leaning different ways, a few bent over. */
 function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: number, blades: number, dry: number, small: boolean): void {
   const r = (i: number): number => hash01(s.seed * 131 + k * 17 + i, 4242);
   const base = r(0) * Math.PI * 2;
-  const reach = small ? 0.07 : 0.1 + 0.18 * s.tall;
-  const hMax = (small ? 0.14 : 0.24) + (small ? 0.1 : 0.2) * s.tall * (0.5 + 0.5 * r(1)) + 0.06 * r(2);
-  const tuftDry = r(3) < dry;
+  const hMax = Math.min(0.3, (small ? 0.12 : 0.17) + (small ? 0.06 : 0.12) * s.tall * (0.5 + 0.5 * r(1)) + 0.04 * r(2));
+  const tuftDry = r(3) < dry * 0.4;
+  const walled = s.ax !== 0 || s.az !== 0;
   for (let b = 0; b < blades; b++) {
     // Round a free root the blades fan over the whole circle; against a wall, over the half that leans away from it (no two of a tuft look the same way).
-    const walled = s.ax !== 0 || s.az !== 0;
     const ang = walled
-      ? Math.atan2(s.az, s.ax) + ((b + 0.5) / blades - 0.5) * Math.PI * 0.92 + 0.12 * (r(10 + b) - 0.5)
+      ? Math.atan2(s.az, s.ax) + ((b + 0.5) / blades - 0.5) * Math.PI * 0.94 + 0.1 * (r(10 + b) - 0.5)
       : base + ((b + 0.25 * (r(10 + b) - 0.5)) / blades) * Math.PI * 2;
-    const fx0 = x + 0;
-    const fz0 = z + 0;
-    const ang2 = claim(fx0, fz0, ang);
+    const ang2 = claim(x, z, ang);
     const dx = Math.cos(ang2);
     const dz = Math.sin(ang2);
-    const h = hMax * (0.45 + 0.55 * r(20 + b));
-    const lean = reach * (0.35 + 0.65 * r(30 + b)) * (0.5 + h / 0.35);
-    const w = (0.03 + 0.02 * r(40 + b)) * (s.wide ?? 1);
+    const h = hMax * (0.4 + 0.6 * r(20 + b));
+    // One blade in five is bent over: its tip lies far out and low.
+    const bent = r(25 + b) < 0.2;
+    const lean = h * (bent ? 0.55 + 0.35 * r(30 + b) : 0.1 + 0.4 * r(30 + b));
+    const tipY = bent ? y + h * (0.55 + 0.2 * r(35 + b)) : y + h;
+    const w = 0.005 + 0.01 * r(40 + b);
     // The foot is a few cm off the root, so the blades fan.
-    const fx = x + dx * 0.025 * r(50 + b);
-    const fz = z + dz * 0.025 * r(60 + b);
+    const fx = x + dx * 0.03 * r(50 + b);
+    const fz = z + dz * 0.03 * r(60 + b);
     const px = -dz;
     const pz = dx;
-    const tip: Vec3 = [fx + dx * lean, y + h, fz + dz * lean];
-    const colour = tuftDry || r(70 + b) < dry * 0.5 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
+    const tip: Vec3 = [fx + dx * lean, tipY, fz + dz * lean];
+    const colour = tuftDry || r(70 + b) < 0.08 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
     const tipColour = LIGHT_TIP(colour);
     const foot = FOOT_COLOUR(colour);
-    m.poly([[fx - px * w, y, fz - pz * w], [fx + px * w, y, fz + pz * w], tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.6 });
+    m.poly([[fx - px * w, y, fz - pz * w], [fx + px * w, y, fz + pz * w], tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1 });
   }
 }
 
-/** The vertices a full tuft takes at most (five blades). */
-const BLADES_FULL = 5;
 
 /** Everything of the growth, into the standing layer. */
 export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void {
@@ -127,7 +128,7 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
       const x = s.x + ox;
       const z = s.z + oz;
       const y = g.heightAt(x, z) + 0.02;
-      tuft(m, x, y, z, s, k, low ? 3 : (s.blades ?? BLADES_FULL - (s.tall < 0.3 ? 1 : 0)), s.dry, s.tall < 0.25);
+      tuft(m, x, y, z, s, k, low ? 3 : (s.blades ?? 5 + Math.floor(hash01(s.seed, 95 + k) * 4.99)), s.dry, s.tall < 0.25);
     }
   };
   for (const s of sites) lay(s);
@@ -172,13 +173,15 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     const len = Math.hypot(x1 - x0, z1 - z0);
     const tx = (x1 - x0) / len;
     const tz = (z1 - z0) / len;
-    // A step of 0.9 m with a roll: 0.5 to 1.3.
-    for (let d = 0.3, i = 0; d < len - 0.3; d += 0.55 + 0.55 * roll(b.id * 53 + tag, i), i++) {
+    // The foot grows in runs with gaps: a stretch of about three metres is green or bare by the building's own weathering, and in a green one the clumps stand close.
+    const level = levelOf(b);
+    for (let d = 0.3, i = 0; d < len - 0.3; d += 0.6 + 0.7 * roll(b.id * 53 + tag, i), i++) {
+      if (roll(b.id * 83 + tag, Math.floor(d / 3)) > 0.42 + 0.55 * level) continue;
       if (roll(b.id * 59 + tag, i + 100) > density) continue;
       const off = 0.14 + 0.16 * roll(b.id * 61 + tag, i + 200);
       const x = x0 + tx * d + awayX * off;
       const z = z0 + tz * d + awayZ * off;
-      lay({ x: x + ax, z: z + az, n: 1, blades: 4, wide: 2.3, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
+      lay({ x: x + ax, z: z + az, n: 1, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
     }
   };
   for (const b of plan.buildings) {
@@ -193,7 +196,7 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     const cz = b.centre.z;
     const house = b.kind === "house";
     const neglect = b.state === "ruin" ? 1 : b.state === "vacant" ? 0.8 : 0.45;
-    const density = (house ? 0.04 : 1.0) * (0.55 + 0.6 * neglect) * (0.7 + 0.3 * Math.min(1, (2026 - b.era) / 100));
+    const density = (house ? 0.04 : 0.95) * (0.75 + 0.3 * neglect) * (0.8 + 0.2 * Math.min(1, (2026 - b.era) / 100));
     // The back wall (the far side from the street) and the two sides, from the back corner toward the front; the clearance off the wall's plane is the tuft's own.
     alongFoot(b, cx - fx * hB - ux * hA, cz - fz * hB - uz * hA, cx - fx * hB + ux * hA, cz - fz * hB + uz * hA, -fx, -fz, density, 1);
     alongFoot(b, cx - fx * hB - ux * hA, cz - fz * hB - uz * hA, cx + fx * hB * 0.55 - ux * hA, cz + fz * hB * 0.55 - uz * hA, -ux, -uz, density * 0.55, 2);

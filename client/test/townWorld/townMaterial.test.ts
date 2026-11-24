@@ -8,8 +8,8 @@ describe("the town's material plugin", () => {
   it("writes the layer table from the manifest: a row of tile size and gain for each layer, and the overlays' indices", () => {
     const defs = townDefinitions(false);
     expect(defs).toContain(`array<vec4<f32>,${TOWN_LAYERS.length}>`);
-    // The layer table, and the eight rows of the wear kinds' grades (moss, rust, peel, algae, grime, oil, growth, leaf).
-    expect(defs.match(/vec4<f32>\(/g)?.length).toBe(TOWN_LAYERS.length + 8);
+    // The layer table, and the nine rows of the wear kinds' grades (moss, rust, peel, algae, grime, oil, growth, leaf, damp).
+    expect(defs.match(/vec4<f32>\(/g)?.length).toBe(TOWN_LAYERS.length + 9);
     expect(defs).toContain(`TOWN_MOSS:i32=${layerIndex("moss")}`);
     expect(defs).toContain(`TOWN_RUST:i32=${layerIndex("rust")}`);
     // A paintable layer's gain is the paint gain; the others' is one.
