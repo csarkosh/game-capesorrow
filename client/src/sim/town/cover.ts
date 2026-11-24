@@ -153,33 +153,60 @@ export function coverIndexOf(plan: TownPlan): CoverIndex {
   return index;
 }
 
-/** One window's weight and gradient at a point: 0 if it is out of reach, 1 and no slope where it holds whole. */
-function windowD(w: Window, x: number, z: number): { v: number; dx: number; dz: number } {
+// The windows are asked at every point the ground is read at, several windows a point and several edges a window, and each answer was a
+// small object made and dropped: about 2 GB of them while a town loads. A window's answer is three numbers, so they are left in these and
+// read at once by the one caller; the arithmetic, and its order, is what it was.
+let stepD = 0;
+let winDx = 0;
+let winDz = 0;
+
+/** `smootherstepD`'s value, with its derivative left in `stepD`: the same arithmetic, and no object. */
+function step(edge0: number, edge1: number, x: number): number {
+  const span = edge1 - edge0;
+  if (x <= edge0) {
+    stepD = 0;
+    return 0;
+  }
+  if (x >= edge1) {
+    stepD = 0;
+    return 1;
+  }
+  const t = (x - edge0) / span;
+  stepD = (30 * t * t * (t - 1) * (t - 1)) / span;
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+/** One window's weight at a point, with its gradient left in `winDx` and `winDz`: 0 if it is out of reach, 1 and no slope where it holds whole. */
+function windowAt(w: Window, x: number, z: number): number {
   const edges = w.edges;
   const n = edges.length;
   const near = -w.hold;
   const far = -(w.hold + w.fade);
   let v = 1;
+  winDx = 0;
+  winDz = 0;
   for (let i = 0; i < n; i++) {
     const e = edges[i] as Edge;
     const dist = e.nx * x + e.nz * z - e.c;
-    if (dist <= far) return { v: 0, dx: 0, dz: 0 };
-    if (dist < near) v *= smootherstepD(far, near, dist).v;
+    if (dist <= far) return 0;
+    if (dist < near) v *= step(far, near, dist);
   }
-  if (v === 1) return { v: 1, dx: 0, dz: 0 };
+  if (v === 1) return 1;
   let dx = 0;
   let dz = 0;
   for (let i = 0; i < n; i++) {
     const e = edges[i] as Edge;
     const dist = e.nx * x + e.nz * z - e.c;
     if (dist >= near) continue;
-    const s = smootherstepD(far, near, dist);
+    const sv = step(far, near, dist);
     // The product of the other edges' factors.
-    const others = v / s.v;
-    dx += s.d * e.nx * others;
-    dz += s.d * e.nz * others;
+    const others = v / sv;
+    dx += stepD * e.nx * others;
+    dz += stepD * e.nz * others;
   }
-  return { v, dx, dz };
+  winDx = dx;
+  winDz = dz;
+  return v;
 }
 
 /** The quay's own window: 1 within `COVER_HOLD` metres of the quay's line, falling to 0 over `COVER_FADE` beyond, so the waterfront's ground is whole to its ends. */
@@ -226,12 +253,12 @@ function blocksCoverD(plan: TownPlan, xf: number, zr: number, withLots: boolean)
   for (let k = 0; k < list.length; k++) {
     const w = index.windows[list[k] as number] as Window;
     if (w.lot && !withLots) continue;
-    const a = windowD(w, xf, zr);
-    if (a.v === 0) continue;
-    if (a.v === 1) return { v: 1, dx: 0, dz: 0 };
-    restDx = (1 - a.v) * restDx - rest * a.dx;
-    restDz = (1 - a.v) * restDz - rest * a.dz;
-    rest *= 1 - a.v;
+    const av = windowAt(w, xf, zr);
+    if (av === 0) continue;
+    if (av === 1) return { v: 1, dx: 0, dz: 0 };
+    restDx = (1 - av) * restDx - rest * winDx;
+    restDz = (1 - av) * restDz - rest * winDz;
+    rest *= 1 - av;
   }
   return { v: 1 - rest, dx: 0 - restDx, dz: 0 - restDz };
 }
