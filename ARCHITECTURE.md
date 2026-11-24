@@ -9,7 +9,7 @@ what is still scaffold and unfinished.
 
 ## The engine and what the game hands it
 
-The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.7). The engine
+The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.8). The engine
 makes the world from a seed: the coast (the engine's `olympic` terrain, with its cove, its highway and its massif), the
 forest and the clutter on it, the weather and the sky. A game registers the coast with a place laid over it, and the
 world is then the engine's coast with that place's ground.
