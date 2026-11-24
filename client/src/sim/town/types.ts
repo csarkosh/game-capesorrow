@@ -540,13 +540,15 @@ export type RailCrossing = {
 export type TownRail = {
   readonly crossings: readonly RailCrossing[];
   readonly spurs: readonly Spur[];
+  /** The main line's centre in the town's frame, from the south of the site to the north (the highway's line shifted `RAIL_OFFSET` seaward): what the props keep clear of. */
+  readonly main: readonly Vec[];
 };
 
 /** A block's place the town did not take, left as woods: because the land would not bear it (too steep, too wet, a hump or a gully) or because the history's budget of blocks was spent. */
 export type Woods = { readonly polygon: Poly; readonly why: "land" | "budget" };
 
 /** Why a lot of the town's blocks has no building: a house taken down and the ground left to brush, a lot at a block's corner or end too small or too awkward to build on, or one at the water's edge. */
-export type Gap = { readonly lot: number; readonly why: "demolished" | "poor corner" | "shore" };
+export type Gap = { readonly lot: number; readonly why: "demolished" | "poor corner" | "shore" | "rail" };
 
 /** A building of the town's thinning edge, past the last full blocks, and why it stands where it does. */
 export type Outskirt = {

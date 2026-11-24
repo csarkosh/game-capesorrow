@@ -5,6 +5,7 @@
  * or gear a chain-link fence all round. A fence follows the lot line, inside it by a hand's width; it stops where a drive or the front
  * walk passes (a gate hangs there on a picket, wire or chain fence), and where a building stands against the line.
  */
+import { bearingU, bearingV } from "../../bearings.js";
 import { chance, next, range, weighted, type Rng } from "../../rng.js";
 import type { Fence, FenceKind } from "../../types.js";
 import { boxAt, inside, overlap, type Box } from "./boxes.js";
@@ -64,6 +65,24 @@ function inAnotherDrive(ctx: Context, info: LotInfo, panel: Box): boolean {
   return false;
 }
 
+/** The box a porch takes in front of a house built 1900 to 1949 (a metre either side of the porch's reach), or null. */
+function porchBox(info: LotInfo): Box | null {
+  const b = info.building;
+  if (b === undefined || b.kind !== "house" || b.front === null || b.era < 1900 || b.era >= 1950) return null;
+  const u = bearingU(b.bearing);
+  const v = bearingV(b.bearing);
+  const fu = b.front.x * u.x + b.front.z * u.z;
+  const fv = b.front.x * v.x + b.front.z * v.z;
+  const alongFront = Math.abs(fu) > Math.abs(fv);
+  const axis = alongFront ? u : v;
+  const sign = (alongFront ? fu : fv) > 0 ? 1 : -1;
+  const half = alongFront ? b.halfAlong : b.halfAcross;
+  const wide = alongFront ? b.halfAcross : b.halfAlong;
+  const fx = axis.x * sign;
+  const fz = axis.z * sign;
+  return { cx: b.centre.x + fx * (half + 1.1), cz: b.centre.z + fz * (half + 1.1), ux: fx, uz: fz, hu: 1.1, hv: wide };
+}
+
 /** Cuts a run along an edge (inset into the lot) at the gaps, and makes a Fence of each piece. */
 function runs(ctx: Context, out: Out, info: LotInfo, rng: Rng, e: Edge, kind: FenceKind, paint: number, wear: number, gaps: { at: number; width: number; leaf: boolean }[], keepAway = true): void {
   const dx = (e.bx - e.ax) / e.len;
@@ -82,6 +101,8 @@ function runs(ctx: Context, out: Out, info: LotInfo, rng: Rng, e: Edge, kind: Fe
   const z0 = e.az + nz * inset + dz * lo;
   const len = hi - lo;
   if (len < 1.2) return;
+  // A house of the porch years has its porch past the front wall (`buildingParts.ts`: two metres, with its posts and rail): no panel runs through it.
+  const porch = porchBox(info);
   const sorted = gaps.map((g) => ({ ...g, at: g.at + 0.3 - lo })).sort((a, b) => a.at - b.at);
   let cur = 0;
   const pieces: { s0: number; s1: number; gate: Fence["gate"] }[] = [];
@@ -107,7 +128,7 @@ function runs(ctx: Context, out: Out, info: LotInfo, rng: Rng, e: Edge, kind: Fe
       const mx = x0 + dx * (s + s1) / 2;
       const mz = z0 + dz * (s + s1) / 2;
       const panel = boxAt(mx, mz, dx, dz, s1 - s, 0.2);
-      const hit = keepAway && (ctx.bocc.hits(panel, 0.05) || ctx.occ.hits(panel, 0.3, "keep:spawn") || inAnotherDrive(ctx, info, panel));
+      const hit = keepAway && (ctx.bocc.hits(panel, 0.05) || ctx.occ.hits(panel, 0.3, "keep:spawn") || ctx.occ.hits(panel, 0, "keep:rail") || (porch !== null && overlap(panel, porch) > -0.05) || inAnotherDrive(ctx, info, panel));
       if (!hit) {
         if (ok0 < 0) ok0 = s;
         a = s1;

@@ -51,13 +51,13 @@ describe("the plan is deterministic", () => {
 
   // Pinned digests of three named world seeds. A change here means the same site now gives a different plan:
   // raise TOWN_GEN (client/src/sim/town/version.ts) in the same commit, then re-pin. (Version 6: junctions, where streets meet,
-  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 9: fewer blinds on offices' and bars' windows, so that the room shows. Version 10: what stands in the streets, yards and docks, `plan.props`. Version 11: the two together. Version 13: the town made to fit its houses: the grid held to the lots the houses fill, a short business street, the streets cut back to what the buildings serve, a shop's door on a sidewalk, `plan.gaps`. Version 14: each parked vehicle has a model of its own and its box is the model's footprint, `plan.props.vehicles[].model`. Version 15: the post office is named "Post Office", not "United States Post Office". Version 16: a banner says what the tenant's record allows, so no sale or grand opening on a post office, bank, clinic or office. Version 17: parked vehicles come in a rural spread of eighteen paints and no two of one model within 45 m share one. Version 18: what stands on the sidewalks and lies on them, `plan.props.furniture` and `plan.props.litter`. Version 19: the room behind each front ends at a back partition at a depth of its trade and its unit's own, and its furnishings are laid out afresh.)
+  // each with its legs, corners, control, crosswalks and ramps. Version 7: what is in the buildings, `plan.uses`. Version 8: what stands beside each street (its sidewalks, curbs and paving) and how each lot's ground is kept. Version 9: fewer blinds on offices' and bars' windows, so that the room shows. Version 10: what stands in the streets, yards and docks, `plan.props`. Version 11: the two together. Version 13: the town made to fit its houses: the grid held to the lots the houses fill, a short business street, the streets cut back to what the buildings serve, a shop's door on a sidewalk, `plan.gaps`. Version 14: each parked vehicle has a model of its own and its box is the model's footprint, `plan.props.vehicles[].model`. Version 15: the post office is named "Post Office", not "United States Post Office". Version 16: a banner says what the tenant's record allows, so no sale or grand opening on a post office, bank, clinic or office. Version 17: parked vehicles come in a rural spread of eighteen paints and no two of one model within 45 m share one. Version 18: what stands on the sidewalks and lies on them, `plan.props.furniture` and `plan.props.litter`. Version 19: the room behind each front ends at a back partition at a depth of its trade and its unit's own, and its furnishings are laid out afresh.  Version 20: nothing stands on the railroad: no building, porch, addition, fence, prop, vehicle or terminal yard within the clearance of the main line or the spur, and a lot the track crosses is a yard of gravel, weeds and brush.)
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
-    expect(TOWN_GEN).toBe(19);
+    expect(TOWN_GEN).toBe(20);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "af2755e0",
-      1: "15124c6c",
-      7: "a9978ed9",
+      20261121: "f911027c",
+      1: "bb21c36d",
+      7: "7fd8fa64",
     });
   });
 
@@ -67,7 +67,7 @@ describe("the plan is deterministic", () => {
   // and were taken again at 13 (4674c34c, b46785b3, 7e9ee956 were version 6's): the town-size change moved the layout, the lots and the buildings
   // themselves, so what they pin now is the plan's own part at 13, and the stages above it still add nothing to it.
   it("changes nothing earlier in the plan: with its new fields removed it is what the layout, lots and buildings made", () => {
-    const BEFORE: Record<number, string> = { 20261121: "71a358e0", 1: "6099e3bb", 7: "00cfbfeb" };
+    const BEFORE: Record<number, string> = { 20261121: "f1fae0ad", 1: "942b08ac", 7: "c5bf7753" };
     for (const seed of [20261121, 1, 7]) {
       const rest: Record<string, unknown> = { ...townFor(seed).plan };
       delete rest.version;

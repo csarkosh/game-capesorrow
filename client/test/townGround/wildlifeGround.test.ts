@@ -42,7 +42,7 @@ describe("the town's wildlife ground", () => {
     expect(CAPE_PLACE.wildlifeGround).toBe(townWildlifeGround);
     expect(Object.keys(CAPE_PLACE.tunables).filter((k) => /wildlife|animal|rabbit|deer|elk/i.test(k))).toEqual([]);
     expect(Object.keys(CAPE_PLACE.tunables).length).toBeGreaterThan(0);
-    expect(TOWN_GEN).toBe(19);
+    expect(TOWN_GEN).toBe(20);
   });
 
   for (const seed of SEEDS) {
