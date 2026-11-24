@@ -166,13 +166,13 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
         m.poly([[p0.x + nx * o, p0.y, p0.z + nz * o], [p1.x + nx * o, p1.y, p1.z + nz * o], top({ x: p1.x + nx * o, z: p1.z + nz * o, y: p1.y }, 1), top({ x: p0.x + nx * o, z: p0.z + nz * o, y: p0.y }, 1)], hint, [0.3, 0.28, 0.25], surfBoard([a.x, a.y, a.z]));
       };
       face([nx, 0.2 * lean * sg, nz], 0.045);
-      if (!low) face([-nx, 0.2 * lean * sg, -nz], -0.045);
+      face([-nx, 0.2 * lean * sg, -nz], -0.045);
       // The cap along the top.
-      if (!low && !down) m.poly([[a.x + nx * 0.07, a.y + H, a.z + nz * 0.07], [b.x + nx * 0.07, b.y + H, b.z + nz * 0.07], [b.x - nx * 0.07, b.y + H, b.z - nz * 0.07], [a.x - nx * 0.07, a.y + H, a.z - nz * 0.07]], [0, 1, 0], mixC(TIMBER, [0.3, 0.28, 0.25], 0.4));
+      if (!low && !down) m.poly([[a.x + nx * 0.07, a.y + H, a.z + nz * 0.07], [b.x + nx * 0.07, b.y + H, b.z + nz * 0.07], [b.x - nx * 0.07, b.y + H, b.z - nz * 0.07], [a.x - nx * 0.07, a.y + H, a.z - nz * 0.07]], [0, 1, 0], mixC(TIMBER, [0.3, 0.28, 0.25], 0.4), undefined, { back: true });
     } else if (f.kind === "picket") {
-      if (!low) for (const y of [0.25, 0.75]) m.poly([[a.x + nx * 0.03, a.y + y, a.z + nz * 0.03], [b.x + nx * 0.03, b.y + y, b.z + nz * 0.03], [b.x + nx * 0.03, b.y + y + 0.07, b.z + nz * 0.03], [a.x + nx * 0.03, a.y + y + 0.07, a.z + nz * 0.03]], [nx, 0, nz], postC);
+      if (!low) for (const y of [0.25, 0.75]) m.poly([[a.x + nx * 0.03, a.y + y, a.z + nz * 0.03], [b.x + nx * 0.03, b.y + y, b.z + nz * 0.03], [b.x + nx * 0.03, b.y + y + 0.07, b.z + nz * 0.03], [a.x + nx * 0.03, a.y + y + 0.07, a.z + nz * 0.03]], [nx, 0, nz], postC, undefined, { back: true });
       if (low) {
-        m.poly([[a.x - nx * BEHIND, a.y + 0.05, a.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + 0.05, b.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + H - 0.05, b.z - nz * BEHIND], [a.x - nx * BEHIND, a.y + H - 0.05, a.z - nz * BEHIND]], [nx, 0, nz], paint);
+        m.poly([[a.x - nx * BEHIND, a.y + 0.05, a.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + 0.05, b.z - nz * BEHIND], [b.x - nx * BEHIND, b.y + H - 0.05, b.z - nz * BEHIND], [a.x - nx * BEHIND, a.y + H - 0.05, a.z - nz * BEHIND]], [nx, 0, nz], paint, undefined, { back: true });
         continue;
       }
       const count = Math.max(2, Math.round((s1 - s0) / 0.14));
@@ -189,7 +189,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
         const h = H - 0.05 - (r < old * 0.3 ? 0.18 : 0);
         const o: Vec3 = [px, py, pz];
         const q: Vec3[] = [[px - dx * w, py + 0.04, pz - dz * w], [px + dx * w, py + 0.04, pz + dz * w], [px + dx * w + nx * lean, py + h, pz + dz * w + nz * lean], [px + nx * lean * 1.1, py + h + 0.07, pz + nz * lean * 1.1], [px - dx * w + nx * lean, py + h, pz - dz * w + nz * lean]];
-        m.poly(q, [nx, 0, nz], paint, surfPicket(o));
+        m.poly(q, [nx, 0, nz], paint, surfPicket(o), { back: true });
       }
     } else if (f.kind === "wire") {
       if (low) continue;

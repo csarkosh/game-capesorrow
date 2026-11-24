@@ -58,15 +58,19 @@ export function D(p: Place, a: number, b: number, c: number): Vec3 {
   return [p.fx * a + p.lx * c, b + p.pitch * a + p.roll * c, p.fz * a + p.lz * c];
 }
 
-/** A box in local coordinates: every face but the bottom. */
-export function lbox(m: MeshBuilder, p: Place, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, side: Rgb, top: Rgb = side): void {
+/** A box in local coordinates: every face but the bottom, which is added when the box is raised off the place's base (a seat, a shelf, a body over its wheels) and seen from below. */
+export function lbox(m: MeshBuilder, p: Place, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, side: Rgb, top: Rgb = side, under = true): void {
   const c = (a: number, b: number, d: number): Vec3 => P(p, a, b, d);
   m.poly([c(x1, y0, z0), c(x1, y0, z1), c(x1, y1, z1), c(x1, y1, z0)], D(p, 1, 0, 0), side);
   m.poly([c(x0, y0, z1), c(x0, y0, z0), c(x0, y1, z0), c(x0, y1, z1)], D(p, -1, 0, 0), side);
   m.poly([c(x0, y0, z1), c(x1, y0, z1), c(x1, y1, z1), c(x0, y1, z1)], D(p, 0, 0, 1), side);
   m.poly([c(x1, y0, z0), c(x0, y0, z0), c(x0, y1, z0), c(x1, y1, z0)], D(p, 0, 0, -1), side);
   m.poly([c(x0, y1, z0), c(x1, y1, z0), c(x1, y1, z1), c(x0, y1, z1)], D(p, 0, 1, 0), top);
+  if (under && y0 > RAISED) m.poly([c(x0, y0, z0), c(x1, y0, z0), c(x1, y0, z1), c(x0, y0, z1)], D(p, 0, -1, 0), greyed(scaled(side, 0.6), 0.2));
 }
+
+/** How far over a thing's base a box's bottom is when it is raised enough that a person can see it, metres. */
+const RAISED = 0.1;
 
 /** A flat quad in a local plane of constant `x`, `y` or `z`. */
 export function lquadX(m: MeshBuilder, p: Place, x: number, y0: number, y1: number, z0: number, z1: number, face: 1 | -1, colour: Rgb): void {
@@ -101,6 +105,7 @@ export function lcylY(m: MeshBuilder, p: Place, x: number, z: number, y0: number
     m.poly([a[i] as Vec3, a[j] as Vec3, b[j] as Vec3, b[i] as Vec3], D(p, Math.cos(mid), 0, Math.sin(mid)), side);
   }
   if (top !== null && r1 > 0) m.poly(b, D(p, 0, 1, 0), top);
+  if (y0 > RAISED && r > 0) m.poly(a, D(p, 0, -1, 0), greyed(scaled(side, 0.6), 0.2));
 }
 
 /** Linear interpolation. */

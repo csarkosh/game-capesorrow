@@ -463,7 +463,7 @@ function landmarkTouch(
       const q = ring[(i + 1) % 4] as Vec3;
       const mx = (p[0] + q[0]) / 2 - cx;
       const mz = (p[2] + q[2]) / 2 - cz;
-      out.poly([p, q, apex], [mx, 0.5, mz], ROOF_SHINGLE);
+      out.poly([p, q, apex], [mx, 0.5, mz], ROOF_SHINGLE, undefined, { back: true });
     }
   } else if (role === "mill") {
     // A smokestack at one end.
@@ -532,7 +532,7 @@ function refugeGeometry(g: TownGround, f: Frame, b: Building, out: MeshBuilder, 
   const foot = P(s0, sv, 0);
   const g0 = Math.min(g.heightAt(foot[0], foot[2]), baseY);
   const slope = [P(s0, sv - 0.8, g0), P(s1, sv - 0.8, platform), P(s1, sv + 0.8, platform), P(s0, sv + 0.8, g0)];
-  out.poly(slope, [0, 1, 0], conc);
+  out.poly(slope, [0, 1, 0], conc, undefined, { back: { colour: scaled(conc, 0.55) } });
   for (const side of [-1, 1]) out.poly([P(s0, sv + side * 0.8, g0), P(s1, sv + side * 0.8, platform), P(s1, sv + side * 0.8, g0 - 0.3), P(s0, sv + side * 0.8, g0 - 0.3)], [vx * side, 0, vz * side], scaled(conc, 0.8));
   void floorY;
 }

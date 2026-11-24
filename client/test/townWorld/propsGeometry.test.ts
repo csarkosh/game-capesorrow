@@ -7,8 +7,8 @@ import { townGround } from "../../src/game/town/townGeometry.js";
 import { WORLD_SEEDS } from "./world.js";
 
 const GAME_SEED = 20261121;
-/** The pass's budget over the town: vertices it may add, a tier each. */
-const BUDGET = { full: 200_000, low: 60_000 } as const;
+/** The pass's budget over the town: vertices it may add, a tier each. The low tier's is 6,000 over what it was: the backs and undersides of the props (a fence's second face, the bottoms of raised boxes), which no tier may leave to vanish. */
+const BUDGET = { full: 200_000, low: 66_000 } as const;
 
 function build(seed: number, detail: "full" | "low"): { vertices: number; mesh: MeshBuilder } {
   const g = townGround(seed);

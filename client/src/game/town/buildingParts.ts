@@ -118,7 +118,7 @@ function housePart(i: PartsIn, full: boolean): void {
         for (const s of [s0 + 0.1, s1 - 0.1]) wbox(out, front, s - 0.07, s + 0.07, floor + 0.05, top, pd - 0.2, pd - 0.06, TRIM, TRIM);
         if (full) wbox(out, front, s0, s1, floor + 0.7, floor + 0.78, pd - 0.08, pd, TRIM, TRIM);
       }
-      out.poly([wat(front, s0 - 0.15, top, 0), wat(front, s1 + 0.15, top, 0), wat(front, s1 + 0.15, top - 0.35, pd + 0.2), wat(front, s0 - 0.15, top - 0.35, pd + 0.2)], [front.nx * 0.5, 1, front.nz * 0.5], i.vacant ? [0.12, 0.11, 0.1] : [0.13, 0.12, 0.12]);
+      out.poly([wat(front, s0 - 0.15, top, 0), wat(front, s1 + 0.15, top, 0), wat(front, s1 + 0.15, top - 0.35, pd + 0.2), wat(front, s0 - 0.15, top - 0.35, pd + 0.2)], [front.nx * 0.5, 1, front.nz * 0.5], i.vacant ? [0.12, 0.11, 0.1] : [0.13, 0.12, 0.12], undefined, { back: { colour: i.vacant ? [0.32, 0.3, 0.27] : [0.5, 0.47, 0.42] } });
       out.poly([wat(front, s0 - 0.15, top, 0), wat(front, s0 - 0.15, top - 0.35, pd + 0.2), wat(front, s0 - 0.15, top - 0.35, 0)], [-front.tx, 0, -front.tz], scaled(i.wall, 0.8));
     } else {
       // Steps: as many as the ground needs, in concrete or timber, with a stoop at the top.
@@ -227,9 +227,11 @@ function addition(i: PartsIn): void {
   const rc: Rgb = hash01(b.id, 528) < 0.6 ? [0.3, 0.34, 0.38] : [0.2, 0.2, 0.2];
   const roofSurf: Surface = { layer: "roof_metal", frame: sf.frame, tint: [1, 1, 1], wear: 0.25 * age + 0.1, wearKind: "rust", streaks: true };
   // Each wall of the addition is a face on the ledger (`faceLedger.ts`), so what is put against the house afterwards is put clear of it.
-  const quad = (p: Vec3[], hint: Vec3, col: Rgb, s?: Surface): void => {
-    out.poly(p, hint, col, s);
+  const quad = (p: Vec3[], hint: Vec3, col: Rgb, s?: Surface, back = false): void => {
+    out.poly(p, hint, col, s, back ? { back: true } : undefined);
     noteFace(hint[0], hint[2], (p[0] as Vec3)[0], (p[0] as Vec3)[2], (p[1] as Vec3)[0], (p[1] as Vec3)[2], Math.min(...p.map((q) => q[1])), Math.max(...p.map((q) => q[1])));
+    // Its back, inside the lean-to, is a face on the ledger too.
+    if (back) noteFace(-hint[0], -hint[2], (p[0] as Vec3)[0], (p[0] as Vec3)[2], (p[1] as Vec3)[0], (p[1] as Vec3)[2], Math.min(...p.map((q) => q[1])), Math.max(...p.map((q) => q[1])));
   };
   const g = (s: number, off: number): number => i.g.heightAt(w.ax + w.tx * s + w.nx * off, w.az + w.tz * s + w.nz * off) - 0.3;
   if (carport) {
@@ -273,6 +275,8 @@ function addition(i: PartsIn): void {
     }
   } else {
     quad([wat(w, s0, base, depth), wat(w, s1, base, depth), wat(w, s1, low, depth), wat(w, s0, low, depth)], [w.nx, 0, w.nz], siding, surf);
+    // Its back, inside the lean-to, a hand's width in from the face (a fence run along the wall stands clear of it).
+    out.poly([wat(w, s0, base, depth - 0.03), wat(w, s1, base, depth - 0.03), wat(w, s1, low, depth - 0.03), wat(w, s0, low, depth - 0.03)], [-w.nx, 0, -w.nz], scaled(siding, 0.6));
     quad([wat(w, s0, base, 0), wat(w, s0, base, depth), wat(w, s0, low, depth), wat(w, s0, top, 0)], [-w.tx, 0, -w.tz], siding, surf);
     quad([wat(w, s1, base, 0), wat(w, s1, base, depth), wat(w, s1, low, depth), wat(w, s1, top, 0)], [w.tx, 0, w.tz], siding, surf);
     // A window in the end, and a door in the face: they are lit and glassed, never dark.
@@ -280,7 +284,7 @@ function addition(i: PartsIn): void {
     wquad(out, w, ws - 0.5, i.floorY + 1.0, ws + 0.5, i.floorY + 1.9, depth + 0.03, [0.55, 0.5, 0.4], undefined, { glow: 0.4 });
     pane(i.glass, w, ws - 0.5, i.floorY + 1.0, ws + 0.5, i.floorY + 1.9, depth + 0.06);
   }
-  out.poly([wat(w, s0 - 0.1, top + 0.1, 0), wat(w, s1 + 0.1, top + 0.1, 0), wat(w, s1 + 0.1, low, depth + 0.2), wat(w, s0 - 0.1, low, depth + 0.2)], [w.nx * 0.4, 1, w.nz * 0.4], rc, roofSurf);
+  out.poly([wat(w, s0 - 0.1, top + 0.1, 0), wat(w, s1 + 0.1, top + 0.1, 0), wat(w, s1 + 0.1, low, depth + 0.2), wat(w, s0 - 0.1, low, depth + 0.2)], [w.nx * 0.4, 1, w.nz * 0.4], rc, roofSurf, { back: { colour: [0.42, 0.4, 0.36] } });
 }
 
 /** A patch of newer siding where boards were replaced, a section of new roof, and a tarp weighed down on a neglected roof. */
@@ -429,7 +433,7 @@ function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
         for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
           const a: Vec3 = [q[0] + dx * 0.55, i.H + 1.2, q[2] + dz * 0.55];
           const c: Vec3 = [q[0] - dz * 0.55, i.H + 1.2, q[2] + dx * 0.55];
-          out.poly([a, c, apex], [dx - dz, 0.6, dz + dx], [0.13, 0.12, 0.12]);
+          out.poly([a, c, apex], [dx - dz, 0.6, dz + dx], [0.13, 0.12, 0.12], undefined, { back: true });
         }
       }
       break;
@@ -451,7 +455,7 @@ function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
         const w = front;
         const s = w.length / 2;
         const top = i.frontFloorY + Math.min(3.4, i.wallTop - i.frontFloorY - 0.4);
-        wbox(out, w, s - 2.0, s + 2.0, top, top + 0.3, 0, 1.6, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true);
+        wbox(out, w, s - 2.0, s + 2.0, top, top + 0.3, 0, 1.6, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, undefined, true);
         for (const sg of [-1.7, 1.7]) wbox(out, w, s + sg - 0.15, s + sg + 0.15, i.frontFloorY, top, 1.3, 1.6, [0.52, 0.5, 0.46], [0.52, 0.5, 0.46]);
       }
       break;
@@ -493,7 +497,7 @@ function gasStation(i: PartsIn): void {
   const ground = i.frontFloorY;
   const top = ground + 4.4;
   const col: Rgb = pickOf([[0.75, 0.75, 0.72], [0.5, 0.1, 0.1], [0.15, 0.3, 0.2]] as readonly Rgb[], b.id, 570);
-  wbox(out, front, s0, s1, top, top + 0.55, 0, depth, scaled(col, 0.9), [0.4, 0.4, 0.4], true);
+  wbox(out, front, s0, s1, top, top + 0.55, 0, depth, scaled(col, 0.9), [0.4, 0.4, 0.4], true, undefined, true);
   wbox(out, front, s0, s1, top + 0.25, top + 0.3, depth, depth + 0.04, [0.95, 0.9, 0.8], [0.95, 0.9, 0.8]);
   const cols = [s0 + 0.6, s1 - 0.6];
   for (const s of cols) for (const d of [depth - 0.4]) wbox(out, front, s - 0.2, s + 0.2, ground - 0.1, top, d - 0.2, d + 0.2, [0.7, 0.7, 0.68], [0.7, 0.7, 0.68]);
@@ -513,7 +517,7 @@ function motelWalk(i: PartsIn): void {
   const { b, out, glass } = i;
   const front = i.refs[i.frontAt] as WallRef;
   const top = i.frontFloorY + 2.7;
-  wbox(out, front, 0, front.length, top, top + 0.25, 0, 1.8, [0.45, 0.4, 0.34], [0.2, 0.2, 0.2], true);
+  wbox(out, front, 0, front.length, top, top + 0.25, 0, 1.8, [0.45, 0.4, 0.34], [0.2, 0.2, 0.2], true, undefined, true);
   for (let s = 0.4; s < front.length; s += 3.4) wbox(out, front, s - 0.06, s + 0.06, i.frontFloorY, top, 1.6, 1.72, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]);
   // The units' doors: numbered, a lit window beside each, every 3.4 m, none where the lobby is.
   const lobby = i.use?.units[0];

@@ -294,7 +294,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
           const corners = [at(p, (i / n) * p.length, t0), at(p, ((i + 1) / n) * p.length, t0), at(p, ((i + 1) / n) * p.length, t1), at(p, (i / n) * p.length, t1)];
           const pts: Vec3[] = corners.map(([x, z]) => [x, Math.max(g.heightAt(x, z) + 0.06, g.deckAt(x, z)), z]);
           const c = corners[0] as P2;
-          solid(c[0], c[1]).poly(pts, [0, 1, 0], DECK);
+          solid(c[0], c[1]).poly(pts, [0, 1, 0], DECK, undefined, { back: { colour: [0.2, 0.19, 0.18] } });
         }
       }
       continue;

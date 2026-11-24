@@ -55,16 +55,17 @@ function dumpster(m: MeshBuilder, pl: Place, b: Bin): void {
   const w = 0.62;
   const wear = 0.1 + rnd(b.seed, 1) * 0.2;
   const sf = (o: Vec3): Surface => metal(o, c, wear);
-  const q = (pts: Vec3[], hint: Vec3): void => m.poly(pts, hint, c, sf(pts[0] as Vec3));
+  const q = (pts: Vec3[], hint: Vec3): void => m.poly(pts, hint, c, sf(pts[0] as Vec3), { back: true });
   q([P(pl, 0.95, 0.2, -w), P(pl, 0.95, 0.2, w), P(pl, 0.95, 1.2, w), P(pl, 0.95, 1.2, -w)], D(pl, 1, 0, 0));
   q([P(pl, -0.95, 0.2, w), P(pl, -0.95, 0.2, -w), P(pl, -0.95, 1.2, -w), P(pl, -0.95, 1.2, w)], D(pl, -1, 0, 0));
   q([P(pl, -0.95, 0.2, w), P(pl, 0.95, 0.2, w), P(pl, 0.95, 1.2, w), P(pl, -0.95, 1.2, w)], D(pl, 0, 0, 1));
   q([P(pl, 0.95, 0.2, -w), P(pl, -0.95, 0.2, -w), P(pl, -0.95, 1.2, -w), P(pl, 0.95, 1.2, -w)], D(pl, 0, 0, -1));
-  // Lids: two slabs, one propped open on some.
+  // Its floor, seen from under it (it stands on feet), and lids: two slabs, one propped open on some.
+  m.poly([P(pl, -0.95, 0.2, -w), P(pl, 0.95, 0.2, -w), P(pl, 0.95, 0.2, w), P(pl, -0.95, 0.2, w)], [0, -1, 0], mixC(c, [0, 0, 0], 0.4));
   const open = rnd(b.seed, 2) < 0.35;
-  m.poly([P(pl, -0.97, 1.2, -w - 0.02), P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.0, 1.26, w + 0.02), P(pl, -0.97, 1.26, w + 0.02)].map((p) => p) as Vec3[], [0, 1, 0], mixC(c, [0.02, 0.02, 0.02], 0.2));
-  if (open) m.poly([P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.1, 1.9, -w - 0.02), P(pl, 0.1, 1.9, w + 0.02), P(pl, 0.0, 1.2, w + 0.02)], D(pl, -0.8, 0.4, 0), c);
-  else m.poly([P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.97, 1.2, -w - 0.02), P(pl, 0.97, 1.26, w + 0.02), P(pl, 0.0, 1.26, w + 0.02)], [0, 1, 0], mixC(c, [0.02, 0.02, 0.02], 0.2));
+  m.poly([P(pl, -0.97, 1.2, -w - 0.02), P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.0, 1.26, w + 0.02), P(pl, -0.97, 1.26, w + 0.02)].map((p) => p) as Vec3[], [0, 1, 0], mixC(c, [0.02, 0.02, 0.02], 0.2), undefined, { back: true });
+  if (open) m.poly([P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.1, 1.9, -w - 0.02), P(pl, 0.1, 1.9, w + 0.02), P(pl, 0.0, 1.2, w + 0.02)], D(pl, -0.8, 0.4, 0), c, undefined, { back: true });
+  else m.poly([P(pl, 0.0, 1.2, -w - 0.02), P(pl, 0.97, 1.2, -w - 0.02), P(pl, 0.97, 1.26, w + 0.02), P(pl, 0.0, 1.26, w + 0.02)], [0, 1, 0], mixC(c, [0.02, 0.02, 0.02], 0.2), undefined, { back: true });
   for (const x of [-0.7, 0.7]) for (const z of [-0.55, 0.55]) lbox(m, pl, x - 0.05, x + 0.05, 0.0, 0.2, z - 0.05, z + 0.05, [0.02, 0.02, 0.02]);
 }
 

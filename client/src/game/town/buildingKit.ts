@@ -41,13 +41,22 @@ export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: 
 }
 
 /**
- * A box on a wall from `off0` to `off1` (off1 the farther out): its face, its top and its two ends, and its bottom when `under` (an
- * awning's soffit, a canopy's underside, which is seen from the street).
+ * A box on a wall from `off0` to `off1` (off1 the farther out): its face, its top and its two ends, and its bottom when `under` (by default when it is a hand deep or more: a trim on the wall has none) (an
+ * awning's soffit, a canopy's underside, a sill's, which are seen from the street; a bulkhead standing on the ground says false).
  */
-export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: number, y1: number, off0: number, off1: number, colour: Rgb, top: Rgb = colour, under = false, surface?: Surface): void {
+export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: number, y1: number, off0: number, off1: number, colour: Rgb, top: Rgb = colour, under?: boolean, surface?: Surface, back = false): void {
   wquad(out, w, s0, y0, s1, y1, off1, colour, surface);
   out.poly([wat(w, s0, y1, off0), wat(w, s1, y1, off0), wat(w, s1, y1, off1), wat(w, s0, y1, off1)], [0, 1, 0], top);
-  if (under) out.poly([wat(w, s0, y0, off0), wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s0, y0, off1)], [0, -1, 0], scaled(colour, 0.6));
+  if (under ?? (off1 - off0 >= 0.1 || off0 > 0.3)) out.poly([wat(w, s0, y0, off0), wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s0, y0, off1)], [0, -1, 0], scaled(colour, 0.6));
+  // Its back, toward the wall: a parapet or a cornice stands over the wall's top, where there is no wall behind it, and is seen from the roof. Asked for with `back` by what stands over a wall's top, and laid by itself under a canopy or a porch deeper than 40 cm and by a post or a column that stands off the wall (a trim or a sill on the wall has none). The back stands 3 cm in from the wall's own plane, so that no sign or plate laid on the wall under it is a face in its plane.
+  if (back || off1 - off0 > 0.4 || off0 > 0.3) {
+    // It stands clear of every face already laid in its plane (`faceLedger.ts`): 3 cm in from the wall's own plane at the least.
+    const o0 = off0 + 0.03;
+    const e = wat(w, s0, y0, o0);
+    const f = wat(w, s1, y0, o0);
+    const o = o0 + standOff(-w.nx, -w.nz, e[0], e[2], f[0], f[2], y0, y1, -1);
+    out.poly([wat(w, s0, y0, o), wat(w, s1, y0, o), wat(w, s1, y1, o), wat(w, s0, y1, o)], [-w.nx, 0, -w.nz], scaled(colour, 0.7));
+  }
   // The box's ends are faces on the ledger too, so what is put beside it later stands clear of them.
   const e0 = wat(w, s0, y0, off0);
   const e0b = wat(w, s0, y0, off1);

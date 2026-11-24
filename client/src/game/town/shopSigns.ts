@@ -164,10 +164,10 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     return off;
   };
   /** A box on the wall: `off0` to `off1` off it, centred `cx`, `ww` wide, from `y0` up `hh`. */
-  const obox = (cx: number, y0: number, ww: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side, topFace = true): void => {
+  const obox = (cx: number, y0: number, ww: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side, topFace = true, under = true): void => {
     const mx = pl.x + pl.rx * cx + pl.nx * ((off0 + off1) / 2);
     const mz = pl.z + pl.rz * cx + pl.nz * ((off0 + off1) / 2);
-    solid.box(mx, mz, y0, pl.rx, pl.rz, ww / 2, (off1 - off0) / 2, hh, side, top, topFace);
+    solid.box(mx, mz, y0, pl.rx, pl.rz, ww / 2, (off1 - off0) / 2, hh, side, top, topFace, under ? undefined : null);
   };
   const halfBay = (cx: number): number => Math.max(-bay / 2 + w / 2, Math.min(bay / 2 - w / 2, cx));
   void halfBay;
@@ -183,7 +183,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       const front = 0.18 + standOff(pl.nx, pl.nz, pl.x - pl.rx * bw + pl.nx * 0.18, pl.z - pl.rz * bw + pl.nz * 0.18, pl.x + pl.rx * bw + pl.nx * 0.18, pl.z + pl.rz * bw + pl.nz * 0.18, y0 - 0.03, y0 + h + 0.07);
       const off = quad(0, y0, w, h, front + 0.03, false, { ww: w + 0.1, hh: h + 0.1, y0: y0 - 0.03, d: 0.03 });
       // The board's top is left open: it would lie within a few centimetres of a portico's or a pilaster's top on the same wall, and no one sees it.
-      obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, off - 0.03, ink, scaled(ink, 1.6), false);
+      obox(0, y0 - 0.03, w + 0.1, h + 0.1, 0, off - 0.03, ink, scaled(ink, 1.6), false, false);
       break;
     }
     case "banner": {
