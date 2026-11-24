@@ -11,6 +11,8 @@
  * too: the research has no building inventories for large ports.
  */
 import { orientedRect, type Vec } from "../geom.js";
+import { buildingClear, footprint, type Line } from "../railKeepOut.js";
+import { mainLineOf } from "../railLine.js";
 import { COMPASS, bearingU, bearingV } from "../bearings.js";
 import { fitRect, lotExtents, type LotDraft, type Want } from "../lots.js";
 import { chance, int, next, pick, range, shuffled, weighted, type Rng } from "../rng.js";
@@ -453,6 +455,8 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     }
   };
 
+  // The railroad's two lines: nothing stands within the clearance of either (`railKeepOut.ts`).
+  const tracks: Line[] = [mainLineOf(site), ...layout.spurs.map((sp) => sp.points)];
   // ---- Walk the lots.
   for (const lot of lots) {
     const draft = drafts[lot.id]!;
@@ -469,12 +473,21 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     const u = next(rng);
     const alleyPlat = layout.plats.find((p) => p.id === block.plat)?.alley ?? null;
     const want = wantFor(kind, W, D, alleyPlat !== null);
-    let fit = fitRect(draft, want);
+    // A rectangle is refused where the building, with the porch and the addition a house grows, comes within the clearance of a track.
+    const front0 = { x: draft.T.x * draft.frontSign, z: draft.T.z * draft.frontSign };
+    const clear = (f: { centre: Vec; halfS: number; halfT: number }): boolean =>
+      buildingClear(tracks, footprint(f.centre, draft.swap ? f.halfT : f.halfS, draft.swap ? f.halfS : f.halfT, m.bearing, front0, kind));
+    let fit = fitRect(draft, want, clear);
     // A landmark's place is held for it: if the building wanted will not fit, a smaller one will.
-    if (!fit && forced) fit = fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 });
+    if (!fit && forced) fit = fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }, clear) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 }, clear);
     if (!fit) {
-      gaps.push({ lot: lot.id, why: "poor corner" });
-      continue;
+      // Where it would have fitted but for the track, the lot is the railroad's (a yard of gravel and weeds), and a landmark keeps its place whatever the track says.
+      const free = fitRect(draft, want) ?? (forced ? fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 }) : null);
+      if (free && forced) fit = free;
+      else {
+        gaps.push({ lot: lot.id, why: free ? "rail" : "poor corner" });
+        continue;
+      }
     }
     const st = stockFor(kind, district, m, role);
     const storeys = storeysFor(kind, st.era, st.material);
@@ -562,9 +575,15 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     const dockSide = spot.kind === "quay" && m !== null && m.d > 0;
     const cannery = history.founding.purpose === "cannery" && dockSide && chance(rng, 0.6);
     const terminalShed = shoreSite === "terminal" && chance(rng, 0.7);
-    const shedLen = (cannery || terminalShed) && spot.length >= 54 ? 24 : 0;
-    const pierLen = spot.length - shedLen;
     const bearing = spot.kind === "quay" ? layout.old.bearing : COMPASS;
+    let shedLen = (cannery || terminalShed) && spot.length >= 54 ? 24 : 0;
+    // A shed on piles that would stand within the clearance of a track is not built: the pier runs out bare.
+    if (shedLen > 0) {
+      const mid = spot.length - shedLen / 2;
+      const shed = footprint({ x: spot.origin.x + spot.dir.x * mid, z: spot.origin.z + spot.dir.z * mid }, Math.max(spot.width + 4, 16) / 2, shedLen / 2, bearing, null, "port terminal shed");
+      if (!buildingClear(tracks, shed)) shedLen = 0;
+    }
+    const pierLen = spot.length - shedLen;
     const mk = (s0: number, s1: number, w: number, kind: BuildingKind, state: BuildingState, material: Material, h: number): Draft => {
       // The rectangle from s0 to s1 metres along the pier's own line, `w` wide.
       const mid = (s0 + s1) / 2;

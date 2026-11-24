@@ -18,6 +18,7 @@
  *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only; every draw is from the `harbour` stream.
  */
+import { lineDist, lineShapeDist, PROP_OFFSET } from "../railKeepOut.js";
 import { bearingU, bearingV } from "../bearings.js";
 import { centroid, contains, orient, orientedRect, overlapDepth, segDist, type Poly } from "../geom.js";
 import { DECK_TOP, FLOAT_TOP, QUAY_APRON } from "../levels.js";
@@ -460,7 +461,7 @@ export function planHarbour(input: HarbourInput, rng: Rng): HarbourOut {
       return poly.every((p) => segDist(p, st.a, st.b) > st.width / 2 + gap) && poly.every((_, i) => segDist({ x: (poly[i]!.x + poly[(i + 1) % poly.length]!.x) / 2, z: (poly[i]!.z + poly[(i + 1) % poly.length]!.z) / 2 }, st.a, st.b) > st.width / 2 + gap);
     });
   const landOk = (poly: Poly, blocks: readonly Poly[]): boolean =>
-    poly.every((p) => blocks.some((b) => contains(b, p, -0.5))) && solidRects.every((r) => overlapDepth(poly, r) <= -0.8) && yardTaken.every((r) => overlapDepth(poly, r) <= -1) && streetOk(poly, 0.5);
+    poly.every((p) => blocks.some((b) => contains(b, p, -0.5))) && solidRects.every((r) => overlapDepth(poly, r) <= -0.8) && yardTaken.every((r) => overlapDepth(poly, r) <= -1) && streetOk(poly, 0.5) && layout.spurs.every((sp) => lineShapeDist(sp.points, poly) >= PROP_OFFSET);
   const yardTaken: Poly[] = [];
   const COMPASS_X = { x: 0, z: 1 };
   const place = (blocks: readonly Poly[], hx: number, hz: number, tries: number): Vec | null => {
@@ -667,8 +668,14 @@ export function planHarbour(input: HarbourInput, rng: Rng): HarbourOut {
   // ---- The lights.
   const lights: Light[] = [];
   const lightSide = chance(rng, 0.5);
-  if (tips.south !== null) lights.push({ kind: lightSide ? "harbour light" : "day beacon", x: tips.south.x + 3, z: tips.south.z, height: lightSide ? 7 : 5.5 });
-  if (tips.north !== null) lights.push({ kind: lightSide ? "day beacon" : "harbour light", x: tips.north.x + 3, z: tips.north.z, height: lightSide ? 5.5 : 7 });
+  // A headland's light stands inland of the tip, and further in where the spur runs there.
+  const inland = (t: Vec): number => {
+    let k = 3;
+    while (k < 15 && layout.spurs.some((sp) => lineDist(sp.points, { x: t.x + k, z: t.z }) < PROP_OFFSET + 1)) k += 3;
+    return t.x + k;
+  };
+  if (tips.south !== null) lights.push({ kind: lightSide ? "harbour light" : "day beacon", x: inland(tips.south), z: tips.south.z, height: lightSide ? 7 : 5.5 });
+  if (tips.north !== null) lights.push({ kind: lightSide ? "day beacon" : "harbour light", x: inland(tips.north), z: tips.north.z, height: lightSide ? 5.5 : 7 });
   const longest = piers.slice().sort((a, b) => b.halfLong - a.halfLong || a.deck.id - b.deck.id)[0];
   if (longest !== undefined) lights.push({ kind: "pier light", x: longest.deck.centre.x + longest.dir.x * (longest.halfLong - 0.7), z: longest.deck.centre.z + longest.dir.z * (longest.halfLong - 0.7), height: 4.5 });
 

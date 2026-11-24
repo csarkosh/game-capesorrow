@@ -8,6 +8,7 @@ import { orient, segCross, segDist, type Poly } from "../../geom.js";
 import { yardShape, type YardShape } from "../../yardShapes.js";
 import { hashSeed, next, type Rng } from "../../rng.js";
 import type { Building, BuildingUse, Lot, StreetEdge, Street, TownPlan, Trade, Vec, Yard } from "../../types.js";
+import { PROP_OFFSET } from "../../railKeepOut.js";
 import { boxAt, Occupancy, type Box } from "./boxes.js";
 import { CLEAR_DRIVE, CLEAR_JUNCTION, CLEAR_END, DRAW, DRAW_DEFAULT, DRAW_KIND } from "./tuning.js";
 
@@ -264,6 +265,17 @@ export function contextOf(plan: BasePlan, seed0: number): Context {
   for (const l of withNeighbours) {
     const w = l.shape.walk;
     if (w !== null) occ.add(boxAt(w.x + w.dx * w.length * 0.5, w.z + w.dz * w.length * 0.5, w.dx, w.dz, w.length, 2 * w.half + 0.4), "keep:walk");
+  }
+  // The railroad's corridor: the bed and the props' clearance each side of the main line and the spur, a box to each of their legs.
+  for (const line of [plan.rail.main, ...plan.rail.spurs.map((sp) => sp.points)]) {
+    for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1] as Vec;
+      const b = line[i] as Vec;
+      const len = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+      if (len < 1e-6) continue;
+      // Grown a little at the ends so that the boxes of a bend overlap, and across so that the clearance holds at the box's corners.
+      occ.add(boxAt((a.x + b.x) / 2, (a.z + b.z) / 2, (b.x - a.x) / len, (b.z - a.z) / len, len + 1, 2 * PROP_OFFSET + 0.3), "keep:rail");
+    }
   }
   const bocc = new Occupancy();
   for (const b of plan.buildings) {

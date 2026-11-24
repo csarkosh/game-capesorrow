@@ -711,7 +711,7 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
   const dw = c.door;
   const vacant = c.vacant;
   const W = c.s1 - c.s0;
-  const standing = (s: number, d: number): boolean => c.feet.some((f) => f.h > 0.2 && s > f.s0 - 0.05 && s < f.s1 + 0.05 && d > f.d0 - 0.05 && d < f.d1 + 0.05);
+  const standing = (s: number, d: number, half = 0): boolean => c.feet.some((f) => f.h > 0.2 && s + half > f.s0 - 0.05 && s - half < f.s1 + 0.05 && d + half > f.d0 - 0.05 && d - half < f.d1 + 0.05);
   if (checker !== null && !vacant) {
     // Black-and-white tile: the dark squares laid 3 cm over the floor, within 7 m of the glass, none where something stands.
     const t = 0.6;
@@ -723,7 +723,8 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
         if ((a + b) % 2 === 0) continue;
         const s = s00 + a * t;
         const d = 0.2 + b * t;
-        if (standing(s + t / 2, d + t / 2)) continue;
+        // A tile's whole square is clear of what stands (its baseboard, laid over the floor beside it, would meet the tile's edge).
+        if (standing(s + t / 2, d + t / 2, t / 2)) continue;
         floorQuad(c, s + 0.01, d + 0.01, s + t - 0.01, d + t - 0.01, 0.11, checker);
         count++;
       }

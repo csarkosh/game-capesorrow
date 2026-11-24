@@ -14,6 +14,8 @@ import { BARRICADE_RED, BARRICADE_WHITE, GRAVEL, TIMBER, PILE } from "./palette.
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { endMarker } from "./signGeometry.js";
 import { ROADWAY_LIFT, STREET_LIFT } from "./streetGeometry.js";
+import { lineDist } from "../../sim/town/railKeepOut.js";
+import { RAIL_BED_HALF } from "../../sim/town/rail.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 
 /** How far the gravel runs beyond the pavement's end, metres. */
@@ -68,7 +70,14 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
       }
       continue;
     }
-    const length = e.kind === "landing" ? 3 : GRAVEL_LENGTH;
+    // The strip (and the bumper or boards past it) stops short of the spur's bed where the track runs by the end: its whole width keeps `RAIL_BED_HALF` and a margin off the track's centre.
+    const spur = g.plan.rail.spurs[0]?.points ?? [];
+    const want = e.kind === "landing" ? 3 : GRAVEL_LENGTH;
+    let length = want;
+    const clear = (len: number): boolean => spur.length < 2 || [-cw, 0, cw].every((t) => lineDist(spur, { x: e.x + ox * (len + 0.4) + nx * t, z: e.z + oz * (len + 0.4) + nz * t }) >= RAIL_BED_HALF + 0.3);
+    while (length > 0.3 && !clear(length)) length -= 0.25;
+    // Where even a short strip would lie on the bed, the street simply ends against the track: no strip, no bumper.
+    if (!clear(length)) continue;
     lay([at(0, -cw), at(length, -cw), at(length, cw), at(0, cw)], GRAVEL);
     const base = (px: number, pz: number): number => g.heightAt(px, pz);
     if (e.kind === "barricade") {
