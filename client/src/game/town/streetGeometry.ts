@@ -346,7 +346,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       }
     }
     // The wear first, so the paint is laid over the cracks and cuts it crosses (a mark laid later is the one on top).
-    roadWear({ g, surf, road, p, plan, intervals: roadIntervals, junctions, key });
+    roadWear({ g, surf, road, p, plan, intervals: roadIntervals, junctions, key, detail });
     streetPaint(p, spans, roadIntervals);
   }
 
