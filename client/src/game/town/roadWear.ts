@@ -25,9 +25,10 @@ import { RANK, type Over } from "./groundSurfaces.js";
 import { GRAVEL, PATCH_ASPHALT as ASPHALT } from "./palette.js";
 import { ROADWAY_LIFT, type PS } from "./streetGeometry.js";
 import type { P2, RoadSet, Surface } from "./surface.js";
-import type { TownGround } from "./townTypes.js";
+import type { Detail, TownGround } from "./townTypes.js";
+import { roadTone } from "./roadTone.js";
 
-export type RoadWearContext = { g: TownGround; surf: Surface; road: RoadSet; p: PS; plan: TownPlan; intervals: readonly [number, number][]; junctions: readonly Junction[]; key: number };
+export type RoadWearContext = { g: TownGround; surf: Surface; road: RoadSet; p: PS; plan: TownPlan; intervals: readonly [number, number][]; junctions: readonly Junction[]; key: number; detail?: Detail };
 
 
 /** The wear's own lifts over the roadway: a cut, its seam, a crack, a pothole. */
@@ -222,6 +223,7 @@ export function roadWear(ctx: RoadWearContext): void {
       drain(surf, at(cs, sg * (p.cw - 0.25)), p.tx, p.tz, key + i * 7);
     }
   }
+  roadTone(ctx);
   void g;
   void plan;
 }
@@ -232,7 +234,7 @@ export function manhole(surf: Surface, c: P2, key: number): void {
   const n = 12;
   const disc = (r: number): P2[] => Array.from({ length: n }, (_, k) => [c[0] + Math.cos((k / n) * Math.PI * 2) * r, c[1] + Math.sin((k / n) * Math.PI * 2) * r] as P2);
   surf.flat(disc(0.37), ROADWAY_LIFT + 0.002, ASPHALT, { rank: RANK.detail, layer: "asphalt_dark", tint: [0.35, 0.35, 0.35] });
-  surf.flat(disc(0.31), ROADWAY_LIFT + 0.0032, ASPHALT, { rank: RANK.top, layer: "rust", tint: [0.36 + 0.1 * hashN(key, 0, 0, 170), 0.3, 0.26], frame: { origin: [c[0], 0, c[1]], u: [1, 0, 0], v: [0, 0, 1] }, dirt: 0.2 });
+  surf.flat(disc(0.31), ROADWAY_LIFT + 0.0032, ASPHALT, { rank: RANK.top, layer: "asphalt_dark", tint: [0.3 + 0.08 * hashN(key, 0, 0, 170), 0.24, 0.21], frame: { origin: [c[0], 0, c[1]], u: [1, 0, 0], v: [0, 0, 1] }, wear: 0.3, wearKind: "rust", dirt: 0.1 });
 }
 
 /** A storm drain's grate: 85 by 32 cm, dark, set along the curb (its long side along (tx, tz)). */
@@ -244,7 +246,7 @@ export function drain(surf: Surface, c: P2, tx: number, tz: number, key: number)
   const nz = tx;
   const q = (a: number, b: number): P2 => [c[0] + tx * a + nx * b, c[1] + tz * a + nz * b];
   surf.flat([q(-hl - 0.05, -hw - 0.05), q(hl + 0.05, -hw - 0.05), q(hl + 0.05, hw + 0.05), q(-hl - 0.05, hw + 0.05)], ROADWAY_LIFT + 0.002, ASPHALT, { rank: RANK.detail, layer: "asphalt_dark", tint: [0.3, 0.3, 0.3] });
-  surf.flat([q(-hl, -hw), q(hl, -hw), q(hl, hw), q(-hl, hw)], ROADWAY_LIFT + 0.0032, ASPHALT, { rank: RANK.top, layer: "rust", tint: [0.16 + 0.05 * hashN(key, 0, 0, 171), 0.14, 0.13], frame: { origin: [c[0], 0, c[1]], u: [tx, 0, tz], v: [nx, 0, nz] }, dirt: 0.35 });
+  surf.flat([q(-hl, -hw), q(hl, -hw), q(hl, hw), q(-hl, hw)], ROADWAY_LIFT + 0.0032, ASPHALT, { rank: RANK.top, layer: "asphalt_dark", tint: [0.2 + 0.05 * hashN(key, 0, 0, 171), 0.17, 0.15], frame: { origin: [c[0], 0, c[1]], u: [tx, 0, tz], v: [nx, 0, nz] }, wear: 0.2, wearKind: "rust", dirt: 0.2 });
 }
 
 /**
@@ -275,6 +277,7 @@ export function junctionWear(g: TownGround, surf: Surface, junctions: readonly W
     }
     if (j.polygon.length < 3) continue;
     manhole(surf, [j.x + 1.2 * hashS(key, 0, 0, 190), j.z + 1.2 * hashS(key, 0, 0, 191)], key);
+    junctionTone(surf, j, key);
     for (const k of j.corners) {
       if (k.shape !== "arc" || k.c === null || !k.curb) continue;
       const arc = arcPoints(k.c, k.ta, k.tb, k.radius);
@@ -289,7 +292,73 @@ export function junctionWear(g: TownGround, surf: Surface, junctions: readonly W
       const cx = mid.x - k.c.x;
       const cz = mid.z - k.c.z;
       const cl = Math.sqrt(cx * cx + cz * cz) || 1;
-      if (hashN(key, k.from, 0, 192) < 0.75) drain(surf, [mid.x + (cx / cl) * 0.22, mid.z + (cz / cl) * 0.22], tx, tz, key + k.from);
+      if (hashN(key, k.from, 0, 192) < 0.75) {
+        drain(surf, [mid.x + (cx / cl) * 0.22, mid.z + (cz / cl) * 0.22], tx, tz, key + k.from);
+        // The water that has not gone down it lies in front of it, in the road.
+        if (hashN(key, k.from, 0, 193) < 0.7) {
+          const px = mid.x + (cx / cl) * -1.3;
+          const pz = mid.z + (cz / cl) * -1.3;
+          const m = 7;
+          const rl = 0.6 + 0.6 * hashN(key, k.from, 0, 194);
+          const rw = 0.25 + 0.25 * hashN(key, k.from, 0, 195);
+          surf.flat(Array.from({ length: m }, (_, q) => [px + tx * Math.cos((q / m) * 6.283) * rl * (0.8 + 0.3 * hashN(key, k.from, q, 196)) + (cx / cl) * -Math.sin((q / m) * 6.283) * rw, pz + tz * Math.cos((q / m) * 6.283) * rl * (0.8 + 0.3 * hashN(key, k.from, q, 196)) + (cz / cl) * -Math.sin((q / m) * 6.283) * rw] as P2), ROADWAY_LIFT + 0.0034, ASPHALT, { rank: RANK.top, layer: "asphalt_dark", tint: [0.42, 0.45, 0.5], dirt: 0 });
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Tone on a junction's pavement: the patches of the crews that dug it up (it is where the mains cross), a dark smear where cars stand to turn, and a
+ * puddle at the foot of each curb return (where the water runs to).
+ */
+function junctionTone(surf: Surface, j: WJunction, key: number): void {
+  /** Whether every point is inside the junction's pavement by at least 30 cm (a patch never crosses a curb). */
+  const within = (pts: readonly P2[], m = 0.3): boolean => {
+    const poly = j.polygon;
+    const ins = (x: number, z: number): boolean => {
+      let c = false;
+      for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
+        const p = poly[a] as { x: number; z: number };
+        const q = poly[b] as { x: number; z: number };
+        if (p.z > z !== q.z > z && x < ((q.x - p.x) * (z - p.z)) / (q.z - p.z) + p.x) c = !c;
+      }
+      return c;
+    };
+    return pts.every(([x, z]) => ins(x, z) && ins(x + m, z) && ins(x - m, z) && ins(x, z + m) && ins(x, z - m));
+  };
+  let reach = Infinity;
+  for (const l of j.legs) reach = Math.min(reach, l.half);
+  if (!(reach > 2.4) || !(reach < 20)) return;
+  const frame = { origin: [j.x, 0, j.z] as const, u: [1, 0, 0] as const, v: [0, 0, 1] as const };
+  const over = (layer: "asphalt" | "asphalt_dark", k: number, rank: number, dirt = 0.05): Over => ({ layer, tint: [k, k, k * 0.99], frame: { origin: [...frame.origin], u: [...frame.u], v: [...frame.v] }, rank, dirt });
+  // Patches: rectangles of a different asphalt, 1 to 4 m on a side, laid along one of the junction's legs (a trench, a square cut), with their corners nudged a
+  // little so no edge is ruled. Each lies wholly inside the pavement (30 cm clear of its edge): none is cut by the curb, so no shard is left.
+  const patches = 2 + Math.floor(hashN(key, 0, 0, 200) * 2.2);
+  for (let i = 0; i < patches; i++) {
+    const leg = j.legs[Math.floor(hashN(key, i, 0, 201) * j.legs.length)];
+    if (leg === undefined) continue;
+    const ax = leg.dx;
+    const az = leg.dz;
+    const bx = -az;
+    const bz = ax;
+    const hl = 0.5 + 1.1 * hashN(key, i, 0, 203);
+    const hw = 0.5 + 0.8 * hashN(key, i, 0, 204);
+    const pale = hashN(key, i, 0, 206) < 0.4;
+    const k = pale ? 1.2 + 0.12 * hashN(key, i, 0, 207) : 0.84 + 0.08 * hashN(key, i, 0, 207);
+    for (let t = 0; t < 6; t++) {
+      const u = (hashS(key, i * 7 + t, 0, 202) * 0.5) * reach;
+      const v = (hashS(key, i * 7 + t, 0, 205) * 0.5) * reach;
+      const cx = j.x + ax * u + bx * v;
+      const cz = j.z + az * u + bz * v;
+      const r = (x: number, z: number): P2 => [cx + ax * x + bx * z, cz + az * x + bz * z];
+      const nudge = (m: number): number => 0.05 * hashS(key, i, m, 208);
+      const corners: P2[] = [r(-hl + nudge(1), -hw + nudge(2)), r(hl + nudge(3), -hw + nudge(4)), r(hl + nudge(5), hw + nudge(6)), r(-hl + nudge(7), hw + nudge(8))];
+      if (!within(corners)) continue;
+      // Dropped if it came out under half a square metre.
+      if (4 * hl * hw < 0.5) break;
+      surf.flat(corners, ROADWAY_LIFT + 0.0016, pale ? ([0.19, 0.19, 0.2] as const) : ASPHALT, over(pale ? "asphalt" : "asphalt_dark", k, RANK.mark));
+      break;
     }
   }
 }
