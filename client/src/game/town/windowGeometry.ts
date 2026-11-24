@@ -13,7 +13,7 @@
  * decade in the owner's own lifetime, drawn from the building's id and the window's.
  */
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { GLASS_CLEAR, GLASS_TINT, TRIM_WHITE, pane, pickOf, reveal, wat, wquad, type WallRef } from "./buildingKit.js";
+import { GLASS_CLEAR, GLASS_TINT, TRIM_WHITE, pane, pickOf, reveal, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { STEP, curtainFolds, patch, paperSheets, slatBlinds, slatColour, verticalBlinds, type Behind } from "./windowDressing.js";
 import type { WindowCover, WindowTreatment } from "../../sim/town/types.js";
 import type { Surface } from "./townSurface.js";
@@ -83,8 +83,8 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
       wquad(out, w, sa - bar, y0 - 0.07, sa, y1, 0.06, c.trim);
       wquad(out, w, sb, y0 - 0.07, sb + bar, y1, 0.06, c.trim);
       if (c.stoneSill !== true) {
-        wquad(out, w, sa - 0.1, y0 - 0.07, sb + 0.1, y0 - 0.0, 0.1, c.trim);
-        out.poly([wat(w, sa - 0.1, y0, 0), wat(w, sb + 0.1, y0, 0), wat(w, sb + 0.1, y0, 0.1), wat(w, sa - 0.1, y0, 0.1)], [0, 1, 0], c.trim);
+        // A closed ledge: its face, top, underside and two ends (seen from below on the street, a sill that is only a face and a top is a gap).
+        wbox(out, w, sa - 0.1, sb + 0.1, y0 - 0.07, y0, 0, 0.1, c.trim, c.trim, true);
       }
     } else {
       wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.06, fr);
@@ -202,6 +202,8 @@ function acUnit(out: MeshBuilder, w: WallRef, s: number, y0: number, wid: number
   const yt = yb + h;
   out.poly([wat(w, a, yb, front), wat(w, b, yb, front), wat(w, b, yt, front), wat(w, a, yt, front)], [w.nx, 0, w.nz], body);
   out.poly([wat(w, a, yt, 0.05), wat(w, b, yt, 0.05), wat(w, b, yt, front), wat(w, a, yt, front)], [0, 1, 0], scaled(body, 1.1));
+  // Its underside, seen from the street below.
+  out.poly([wat(w, a, yb, 0.05), wat(w, b, yb, 0.05), wat(w, b, yb, front), wat(w, a, yb, front)], [0, -1, 0], scaled(body, 0.6));
   out.poly([wat(w, a, yb, 0.05), wat(w, a, yb, front), wat(w, a, yt, front), wat(w, a, yt, 0.05)], [-w.tx, 0, -w.tz], scaled(body, 0.82));
   out.poly([wat(w, b, yb, 0.05), wat(w, b, yb, front), wat(w, b, yt, front), wat(w, b, yt, 0.05)], [w.tx, 0, w.tz], scaled(body, 0.82));
   // The grille, a dark panel on its face proud of it.
