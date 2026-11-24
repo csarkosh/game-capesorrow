@@ -26,29 +26,120 @@ export const PROP_OFFSET = RAIL_BED_HALF + PROP_CLEAR;
 
 export type Line = readonly Vec[];
 
-/** The distance from a point to a polyline. */
-export function lineDist(line: Line, p: Vec): number {
-  let d = Infinity;
-  for (let i = 1; i < line.length; i++) d = Math.min(d, segDist(p, line[i - 1] as Vec, line[i] as Vec));
-  return d;
-}
+/** A distance is exact up to this far (metres); past it a query answers "at least this far". Every clearance in the plan is well under it. */
+const REACH = 12;
+/** The index's cells, metres. */
+const CELL = 32;
 
-/** The distance from a segment to a polyline. */
-export function lineSegDist(line: Line, a: Vec, b: Vec): number {
-  let d = Infinity;
-  for (let i = 1; i < line.length; i++) d = Math.min(d, segSegDist(a, b, line[i - 1] as Vec, line[i] as Vec));
-  return d;
-}
+/** A polyline's segments in a grid of cells, so a query meets only the few near it. */
+type LineIndex = {
+  readonly line: Line;
+  readonly x0: number;
+  readonly z0: number;
+  readonly cols: number;
+  readonly rows: number;
+  /** Cell `c` lists the segments (index of their first point) whose box meets it. */
+  readonly cells: readonly (readonly number[])[];
+  /** The box of the whole line, grown by `REACH`. */
+  readonly bx0: number;
+  readonly bz0: number;
+  readonly bx1: number;
+  readonly bz1: number;
+};
 
-/** The distance from a convex polygon to a polyline (0 where they overlap). */
-export function lineShapeDist(line: Line, poly: Poly): number {
-  let d = Infinity;
+/** The indexes made, by line (a module's own cache: looked up by the line itself, never walked). */
+const INDEXES = new Map<Line, LineIndex>();
+
+function indexOf(line: Line): LineIndex {
+  let hit = INDEXES.get(line);
+  if (hit !== undefined) return hit;
+  if (INDEXES.size > 200) INDEXES.clear();
+  let x0 = Infinity;
+  let z0 = Infinity;
+  let x1 = -Infinity;
+  let z1 = -Infinity;
+  for (const p of line) {
+    x0 = Math.min(x0, p.x);
+    x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z);
+    z1 = Math.max(z1, p.z);
+  }
+  x0 -= REACH;
+  z0 -= REACH;
+  x1 += REACH;
+  z1 += REACH;
+  const cols = line.length < 2 ? 1 : Math.floor((x1 - x0) / CELL) + 1;
+  const rows = line.length < 2 ? 1 : Math.floor((z1 - z0) / CELL) + 1;
+  const cells: number[][] = [];
+  for (let c = 0; c < cols * rows; c++) cells.push([]);
   for (let i = 1; i < line.length; i++) {
-    if (contains(poly, line[i] as Vec)) return 0;
     const a = line[i - 1] as Vec;
     const b = line[i] as Vec;
-    for (let k = 0; k < poly.length; k++) d = Math.min(d, segSegDist(poly[k] as Vec, poly[(k + 1) % poly.length] as Vec, a, b));
+    const c0 = Math.floor((Math.min(a.x, b.x) - x0) / CELL);
+    const c1 = Math.floor((Math.max(a.x, b.x) - x0) / CELL);
+    const r0 = Math.floor((Math.min(a.z, b.z) - z0) / CELL);
+    const r1 = Math.floor((Math.max(a.z, b.z) - z0) / CELL);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) (cells[r * cols + c] as number[]).push(i);
   }
+  hit = { line, x0, z0, cols, rows, cells, bx0: x0, bz0: z0, bx1: x1, bz1: z1 };
+  INDEXES.set(line, hit);
+  return hit;
+}
+
+/** Calls `visit` with the first point's index of each segment that may lie within `REACH` of the box (each once per call of a cell: a segment may repeat, which is harmless to a minimum). */
+function near(ix: LineIndex, qx0: number, qz0: number, qx1: number, qz1: number, visit: (i: number) => void): void {
+  if (qx1 + REACH < ix.bx0 || qx0 - REACH > ix.bx1 || qz1 + REACH < ix.bz0 || qz0 - REACH > ix.bz1) return;
+  const c0 = Math.max(0, Math.floor((qx0 - REACH - ix.x0) / CELL));
+  const c1 = Math.min(ix.cols - 1, Math.floor((qx1 + REACH - ix.x0) / CELL));
+  const r0 = Math.max(0, Math.floor((qz0 - REACH - ix.z0) / CELL));
+  const r1 = Math.min(ix.rows - 1, Math.floor((qz1 + REACH - ix.z0) / CELL));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) for (const i of ix.cells[r * ix.cols + c] as number[]) visit(i);
+}
+
+/** The distance from a point to a polyline (exact up to `REACH`). */
+export function lineDist(line: Line, p: Vec): number {
+  let d = Infinity;
+  if (line.length < 2) return d;
+  near(indexOf(line), p.x, p.z, p.x, p.z, (i) => {
+    d = Math.min(d, segDist(p, line[i - 1] as Vec, line[i] as Vec));
+  });
+  return d;
+}
+
+/** The distance from a segment to a polyline (exact up to `REACH`). */
+export function lineSegDist(line: Line, a: Vec, b: Vec): number {
+  let d = Infinity;
+  if (line.length < 2) return d;
+  near(indexOf(line), Math.min(a.x, b.x), Math.min(a.z, b.z), Math.max(a.x, b.x), Math.max(a.z, b.z), (i) => {
+    d = Math.min(d, segSegDist(a, b, line[i - 1] as Vec, line[i] as Vec));
+  });
+  return d;
+}
+
+/** The distance from a convex polygon to a polyline (0 where they overlap; exact up to `REACH`). */
+export function lineShapeDist(line: Line, poly: Poly): number {
+  let d = Infinity;
+  if (line.length < 2) return d;
+  let x0 = Infinity;
+  let z0 = Infinity;
+  let x1 = -Infinity;
+  let z1 = -Infinity;
+  for (const q of poly) {
+    x0 = Math.min(x0, q.x);
+    x1 = Math.max(x1, q.x);
+    z0 = Math.min(z0, q.z);
+    z1 = Math.max(z1, q.z);
+  }
+  near(indexOf(line), x0, z0, x1, z1, (i) => {
+    if (d === 0) return;
+    const a = line[i - 1] as Vec;
+    const b = line[i] as Vec;
+    if (contains(poly, a) || contains(poly, b)) {
+      d = 0;
+      return;
+    }
+    for (let k = 0; k < poly.length; k++) d = Math.min(d, segSegDist(poly[k] as Vec, poly[(k + 1) % poly.length] as Vec, a, b));
+  });
   return d;
 }
 
