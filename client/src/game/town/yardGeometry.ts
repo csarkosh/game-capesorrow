@@ -15,6 +15,7 @@
  */
 import { lotIdAt } from "../../sim/town/lotIndex.js";
 import { yardShape, type YardRect } from "../../sim/town/yardShapes.js";
+import { pavedGround } from "../../sim/town/pavedGround.js";
 import type { Street, TownPlan, Yard } from "../../sim/town/types.js";
 import { clamp01, hashN, hashS } from "./groundNoise.js";
 import { tally } from "./groundTally.js";
@@ -31,6 +32,9 @@ export const YARD_OVER = 0.04;
 export function yardGeometry(g: TownGround, flat: Sink): void {
   const { plan, anchor } = g;
   const surf = new Surface(g, flat);
+  // A lone business's lot is paved over where a vehicle stands (`pavedGround.ts`).
+  const apronLots = new Set<number>();
+  for (const q of pavedGround(plan)) if (q.kind === "apron") apronLots.add(q.lot);
   for (const yard of plan.yards) {
     if (yard.kind === "paved") continue;
     const lot = plan.lots[yard.lot];
@@ -42,9 +46,12 @@ export function yardGeometry(g: TownGround, flat: Sink): void {
     const at = (r: YardRect, a: number, b: number): P2 => w(r.x + r.dx * a - r.dz * b, r.z + r.dz * a + r.dx * b);
     const frame = (r: YardRect, k: number): UvFrame => ({ origin: [r.x + anchor.x + hashN(key, k, 0, 1) * 4, 0, r.z + anchor.z + hashN(key, k, 0, 2) * 4], u: [r.dx, 0, r.dz], v: [-r.dz, 0, r.dx] });
 
-    if (shape.drive !== null && yard.drive !== null) drive(surf, shape.drive, yard, key, at, frame);
-    if (shape.walk !== null && yard.walk !== null) walk(surf, shape.walk, yard.walk.wear, key, at, frame);
-    patches(surf, plan, yard, shape.drive, key, w);
+    // (A lone business's lot has its apron instead: its walk and any patch would lie a hand's breadth under it.)
+    if (!apronLots.has(yard.lot)) {
+      if (shape.drive !== null && yard.drive !== null) drive(surf, shape.drive, yard, key, at, frame);
+      if (shape.walk !== null && yard.walk !== null) walk(surf, shape.walk, yard.walk.wear, key, at, frame);
+      patches(surf, plan, yard, shape.drive, key, w);
+    }
     verge(surf, plan, yard, shape.front, shape.drive, key, w);
   }
 
@@ -98,7 +105,7 @@ function walk(surf: Surface, r: YardRect, wear: number, key: number, at: (r: Yar
     // Grass over the edge: a blob of moss tinted green, more of them as the walk goes to weeds.
     if (hashN(key, i, 0, 14) < 0.2 + 0.7 * wear) {
       const c = at(r, a + len * hashN(key, i, 0, 15), (hashN(key, i, 0, 16) - 0.5) * r.half * 1.8);
-      blob(surf, c, 0.12 + 0.28 * wear * hashN(key, i, 0, 17), YARD_OVER + 0.004, key + i, "moss", [1.15, 1.4, 0.7]);
+      blob(surf, c, 0.12 + 0.28 * wear * hashN(key, i, 0, 17), YARD_OVER + 0.004, key + i, "moss", [0.9, 1.0, 0.62]);
     }
     a = a1;
     i++;
@@ -141,7 +148,7 @@ function patches(surf: Surface, plan: TownPlan, yard: Yard, drive: YardRect | nu
     put(around(7, reachA + 2, reachA + 5), 2.0 + 1.5 * hashN(key, 7, 0, 44), YARD_OVER + 0.003, key + 7, "gravel", [0.9, 0.85, 0.78], { dirt: 0.25 });
   } else if (yard.kind === "mossy") {
     const count = 3 + Math.floor(hashN(key, 0, 0, 45) * 4);
-    for (let k = 0; k < count; k++) put(around(k + 10, reachA + 0.5, reachA + 9), 1.1 + 2.6 * hashN(key, k, 0, 46), YARD_OVER, key + k + 50, "moss", [1.0, 1.2, 0.62]);
+    for (let k = 0; k < count; k++) put(around(k + 10, reachA + 0.5, reachA + 9), 1.1 + 2.6 * hashN(key, k, 0, 46), YARD_OVER, key + k + 50, "moss", [0.85, 0.95, 0.58]);
   } else if ((yard.kind === "shaggy" || yard.kind === "mown") && hashN(key, 0, 0, 47) < 0.5) {
     const count = 1 + Math.floor(hashN(key, 0, 0, 48) * 2);
     for (let k = 0; k < count; k++) put(around(k + 20, reachA + 0.5, reachA + 5), 0.6 + 1.2 * hashN(key, k, 0, 49), YARD_OVER, key + k + 90, "mud", [0.85, 0.8, 0.72], { dirt: 0.2 });

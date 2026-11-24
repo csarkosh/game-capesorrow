@@ -18,6 +18,9 @@ import "../../src/terrain.js";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { finish } from "@csarkosh/engine/game/syncJobs";
 import { townStart } from "../../src/sim/town/start.js";
+import { pavedGround } from "../../src/sim/town/pavedGround.js";
+import { contains } from "../../src/sim/town/geom.js";
+import { bearingU, bearingV } from "../../src/sim/town/bearings.js";
 import { townGeometry, townGround } from "../../src/game/town/townGeometry.js";
 import { drawnTerrain, type QualityTier } from "./clipTerrain.js";
 import { WORLD_SEEDS } from "./world.js";
@@ -133,3 +136,115 @@ describe("the terrain the engine draws under the town's flat surfaces", () => {
     }
   }
 });
+/**
+ * The paved ground that is not a street (a paved district's block, a lone business's apron: `pavedGround.ts`), against the flat layer and the terrain under it. Every point of
+ * those polygons, outside the buildings and the streets' rights of way, should be under a flat surface (else the terrain shows, and it paints by the engine's own mottle of
+ * grass and leaf litter, which the game cannot change), and the terrain's mesh should be under that surface by more than the engine's depth step allows it to win.
+ */
+describe("the terrain the engine draws under the town's paved ground", () => {
+  for (const seed of [SORROW, WORLD_SEEDS[0] as number]) {
+    it(`seed ${seed}: the paved polygons are covered by a flat surface, and the mesh is under it`, () => {
+      const g = townGround(seed);
+      const plan = g.plan;
+      const polys = pavedGround(plan);
+      const apron = polys.find((q) => q.kind === "apron");
+      expect(apron, "an apron on the plan").toBeDefined();
+      const c = (apron as (typeof polys)[number]).polygon[0] as { x: number; z: number };
+      const cam = { x: c.x + g.anchor.x, z: c.z + g.anchor.z };
+      const batches = finish(townGeometry(g, "full", cam));
+      const tris: { x0: number; x1: number; z0: number; z1: number; p: number[]; y: number[] }[] = [];
+      for (const b of batches) {
+        if (b.layer !== "flat") continue;
+        const p = b.arrays.positions;
+        const ix = b.arrays.indices;
+        for (let k = 0; k < ix.length; k += 3) {
+          const i = [ix[k] as number, ix[k + 1] as number, ix[k + 2] as number];
+          const xs = i.map((q) => p[q * 3] as number);
+          const zs = i.map((q) => p[q * 3 + 2] as number);
+          tris.push({ x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs), p: [xs[0] as number, zs[0] as number, xs[1] as number, zs[1] as number, xs[2] as number, zs[2] as number], y: i.map((q) => p[q * 3 + 1] as number) });
+        }
+      }
+      const CELL = 8;
+      const grid = new Map<string, number[]>();
+      tris.forEach((tr, k) => {
+        for (let ix = Math.floor(tr.x0 / CELL); ix <= Math.floor(tr.x1 / CELL); ix++) {
+          for (let iz = Math.floor(tr.z0 / CELL); iz <= Math.floor(tr.z1 / CELL); iz++) {
+            const key = `${ix},${iz}`;
+            const l = grid.get(key);
+            if (l === undefined) grid.set(key, [k]);
+            else l.push(k);
+          }
+        }
+      });
+      /** The height of the flat surface at a point, or NaN where none lies. */
+      const surfaceAt = (x: number, z: number): number => {
+        for (const k of grid.get(`${Math.floor(x / CELL)},${Math.floor(z / CELL)}`) ?? []) {
+          const tr = tris[k] as (typeof tris)[number];
+          if (x < tr.x0 || x > tr.x1 || z < tr.z0 || z > tr.z1) continue;
+          const [ax, az, bx, bz, cx, cz] = tr.p as [number, number, number, number, number, number];
+          const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+          if (Math.abs(den) < 1e-12) continue;
+          const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / den;
+          const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / den;
+          const l3 = 1 - l1 - l2;
+          if (l1 < -1e-9 || l2 < -1e-9 || l3 < -1e-9) continue;
+          return l1 * (tr.y[0] as number) + l2 * (tr.y[1] as number) + l3 * (tr.y[2] as number);
+        }
+        return NaN;
+      };
+      const feet = plan.buildings
+        .filter((b) => b.lot !== -1)
+        .map((b) => ({ b, u: bearingU(b.bearing), v: bearingV(b.bearing) }));
+      const underBuilding = (x: number, z: number): boolean => feet.some(({ b, u, v }) => Math.abs((x - b.centre.x) * u.x + (z - b.centre.z) * u.z) <= b.halfAlong + 0.5 && Math.abs((x - b.centre.x) * v.x + (z - b.centre.z) * v.z) <= b.halfAcross + 0.5);
+      const onStreet = (x: number, z: number): boolean =>
+        plan.streets.some((s) => {
+          if (s.kind === "highway" || s.kind === "rail" || s.kind === "wharf") return false;
+          const dx = s.b.x - s.a.x;
+          const dz = s.b.z - s.a.z;
+          const l2 = dx * dx + dz * dz;
+          const tt = Math.max(0, Math.min(1, ((x - s.a.x) * dx + (z - s.a.z) * dz) / l2));
+          return Math.hypot(x - s.a.x - dx * tt, z - s.a.z - dz * tt) < s.width / 2;
+        });
+      for (const tier of ["medium", "low"] as const) {
+        const T = drawnTerrain(seed, cam.x, cam.z, tier);
+        for (const kind of ["apron", "block"] as const) {
+          let pts = 0;
+          let bare = 0;
+          let bareGrass = 0;
+          let wins = 0;
+          let all = 0;
+          for (const q of polys) {
+            if (q.kind !== kind) continue;
+            const xs = q.polygon.map((p) => p.x);
+            const zs = q.polygon.map((p) => p.z);
+            // A lattice of 1 m, started a third of a metre in so that no point lies on a polygon's edge, where float32 corners decide by rounding.
+            for (let x = Math.min(...xs) + 0.37; x < Math.max(...xs); x += 1) {
+              for (let z = Math.min(...zs) + 0.37; z < Math.max(...zs); z += 1) {
+                if (!contains(q.polygon, { x, z }, 0) || underBuilding(x, z) || onStreet(x, z)) continue;
+                const wx = x + g.anchor.x;
+                const wz = z + g.anchor.z;
+                if (Number.isNaN(T.heightAt(wx, wz))) continue;
+                pts++;
+                const y = surfaceAt(wx, wz);
+                if (Number.isNaN(y)) {
+                  bare++;
+                  if (T.grassAt(wx, wz) > 0.3) bareGrass++;
+                  continue;
+                }
+                all++;
+                const d = Math.max(1, Math.hypot(wx - cam.x, wz - cam.z));
+                if (T.heightAt(wx, wz) - y > depthStep(d)) wins++;
+              }
+            }
+          }
+          console.log(`seed ${seed} ${tier} ${kind}s: ${pts} points, ${bare} bare of a flat surface (${bareGrass} painted grass), terrain over a surface past the depth step at ${wins} of ${all}`);
+          expect(pts).toBeGreaterThan(kind === "apron" ? 500 : 5000);
+          // What is left bare is the slivers beside buildings and the streets' edges: under 2 percent.
+          expect(bare / pts, `bare ground in the ${kind}s (seed ${seed}, ${tier})`).toBeLessThan(0.02);
+          expect(wins / Math.max(1, all), `terrain over the ${kind}s' surface (seed ${seed}, ${tier})`).toBeLessThan(1e-4);
+        }
+      }
+    }, 600_000);
+  }
+});
+

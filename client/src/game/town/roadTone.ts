@@ -209,7 +209,15 @@ export function roadTone(ctx: RoadWearContext): void {
           const m = vnoise(ek, s0, 14) * (0.4 + 0.9 * shade);
           if (m < 0.55) continue;
           const w = 0.15 + 0.3 * clamp01((m - 0.55) * 2.2);
-          surf.flat([q(s0, p.cw - w), q(s1, p.cw - w * (0.7 + 0.6 * hashN(ek, i, 0, 50))), q(s1, p.cw), q(s0, p.cw)], ROADWAY_LIFT + 0.0028, PATCH_ASPHALT, { layer: "moss", tint: [0.62, 0.78, 0.38], frame: fr(), rank: RANK.detail, dirt: 0.1 });
+          // Moss grows out of the seam against the kerb: laid as wear over the roadway's own surface (its layer, tone and grain), full at the kerb and none `w` out,
+          // so the noise leaves a ragged edge and the asphalt shows through where it is thin. The paint is not a polygon of its own.
+          const here = (s0 + s1) / 2;
+          const ix = Math.max(0, edge.paving.findIndex((r) => here < r.s1));
+          const pv = edge.paving[ix] ?? (edge.paving[edge.paving.length - 1] as (typeof edge.paving)[number]);
+          const { tint, ...rest } = roadwayLook(p, pv, ix, key);
+          const amt = 0.7 + 0.3 * clamp01((m - 0.55) * 2.2);
+          const wearAt = (v: readonly [number, number, number]): number => clamp01(amt * (1 - (p.cw - sg * ((v[0] - p.ax) * p.nx + (v[2] - p.az) * p.nz)) / w));
+          surf.flat([q(s0, p.cw - w), q(s1, p.cw - w * (0.7 + 0.6 * hashN(ek, i, 0, 50))), q(s1, p.cw), q(s0, p.cw)], ROADWAY_LIFT + 0.0028, tint, { ...rest, wear: wearAt, wearKind: "moss", rank: RANK.detail });
         } else {
           const m = vnoise(ek ^ 3, s0, 9);
           if (m < 0.38) continue;

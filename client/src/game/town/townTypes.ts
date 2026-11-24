@@ -48,7 +48,7 @@ export type FillReport = {
   /** Every opening of a unit's front as drawn (the frame's stations and heights over the floor). */
   readonly openings: { unit: number; s0: number; s1: number; sill: number; head: number; cover: string }[];
   /** Every window the builders drew, and what is behind its glass: a unit's room, a shallow box of its own, or a cover (boards, brick, paper). */
-  readonly windows: { pane: boolean; behind: "room" | "box" | "cover" }[];
+  readonly windows: { pane: boolean; behind: "room" | "box" | "cover"; /** What closes the opening: a shop's room, boards, curtains, blinds, or an opaque dark backing. */ closes: "room" | "boards" | "curtain" | "blind" | "dark"; readonly shop: boolean; /** The opening: s0, s1, y0, y1. */ readonly opening: readonly [number, number, number, number]; /** The span of what closes it (a home's window). */ covering?: readonly [number, number, number, number] }[];
   /** Each unit's room: its extent in the frame (s, d, up from the floor), the furnishings the plan gave it, and a fingerprint of its geometry. */
   readonly rooms: { unit: number; trade: string; extent: { s0: number; s1: number; d0: number; d1: number; y0: number; y1: number }; furnishings: number; hash: number }[];
 };
