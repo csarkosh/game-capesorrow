@@ -187,7 +187,7 @@ function ballastTint(st: Stretch, off: number, jitter: number): Rgb {
   const old = st.age;
   const base: Rgb = [mix(0.9, 0.82, old), mix(0.86, 0.74, old), mix(0.8, 0.62, old)];
   let k = mix(1.12, 0.94, old);
-  if (a < 0.95) k *= 0.8 - 0.12 * old;
+  if (a < 0.95) k *= 0.72 - 0.1 * old;
   else if (a > 1.35) k *= 1.1;
   k *= 0.92 + 0.16 * jitter;
   return [base[0] * k, base[1] * k, base[2] * k];
@@ -274,7 +274,7 @@ export function bedGrid(b: MeshBuilder, frames: readonly Frame[], look: Look, lo
         const off = (offs[i] as number[])[j] as number;
         const st = stretches[i] as Stretch;
         const a = Math.abs(off);
-        if (a < 0.95) return [0.3 + 0.35 * st.age, "oil"];
+        if (a < 0.95) return [0.16 + 0.2 * st.age, "oil"];
         return [0.1 + 0.4 * st.age, "grime"];
       },
       wear2: (i, j) => {
