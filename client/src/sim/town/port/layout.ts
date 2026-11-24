@@ -52,6 +52,7 @@ import type { TownSite } from "../site.js";
 import { ALLEY_WIDTH, wayOf } from "../ways.js";
 import { pruneStreets } from "./ends.js";
 import { SIZING } from "./sizing.js";
+import { lineDist } from "../railKeepOut.js";
 import { densify, relaxed, roundedPath, leastRadius, SPUR_MIN_RADIUS } from "./spur.js";
 import { splitAtStairs } from "./stairs.js";
 import { GROW_MAX_SLOPE, GROW_MIN_SHARE, LOT_AREA, blockBudget, eligible, grow, lotBudget, neighbours, type GrowCell } from "./growth.js";
@@ -60,6 +61,8 @@ import type { Block, District, History, Plat, Quay, Seam, Spur, Street, StreetKi
 const FT = 0.3048;
 export const HIGHWAY_WIDTH = 24;
 const RAIL_WIDTH = 8;
+/** A street's end keeps this far from the spur's centre: the bed's half width, the clearance, the end's three metres of gravel strip and its bumper, metres. */
+const SPUR_END_CLEAR = 6.5;
 /** The old plat's quay stands within this far north and south of the anchor (the made ground's footprint is 480 m). */
 const Z_HALF_MAX = 480;
 /** The compass plat is laid over the land this far north and south of the anchor, and the town takes only the blocks the land and the budget allow. */
@@ -1271,7 +1274,28 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     for (let k = 0; k < poly.length; k++) d = Math.min(d, segSegDist(poly[k]!, poly[(k + 1) % poly.length]!, a, b));
     return d;
   };
-  const streetsOut: Street[] = streets.map((st) => {
+  // A street that ends at the spur (a landing laid across the track, or a turnaround on it) is cut back to where its end stands `SPUR_END_CLEAR` clear of the track: the bed,
+  // the clearance and the end's own strip. A street that crosses the track and runs on to the shore loses that stub; a street that ends on another street keeps its end.
+  const cutFromSpur = (st: Street): Street => {
+    const spur = spurs[0];
+    if (spur === undefined || st.kind === "highway" || st.kind === "wharf" || st.kind === "rail" || st.kind === "stair") return st;
+    const joined = (q: Vec): boolean => streets.some((o) => o.id !== st.id && segDist(q, o.a, o.b) < (st.width + o.width) / 2 + 1);
+    const walk = (from: Vec, to: Vec): Vec => {
+      if (lineDist(spur.points, from) >= SPUR_END_CLEAR || joined(from)) return from;
+      const len = dist(from, to);
+      for (let k = 1; k * 0.5 < len; k++) {
+        const q = lerpVec(from, to, (k * 0.5) / len);
+        // Not where another street meets the stub that would go: that street would be cut off.
+        if (lineDist(spur.points, q) >= SPUR_END_CLEAR) return streets.some((o) => o.id !== st.id && segSegDist(q, from, o.a, o.b) < (st.width + o.width) / 2 + 1) ? from : q;
+      }
+      return from;
+    };
+    const a = walk(st.a, st.b);
+    const b = walk(st.b, st.a);
+    return dist(a, b) < LEAST_STREET ? st : { ...st, a, b };
+  };
+  const streetsOut: Street[] = streets.map((st0) => {
+    const st = cutFromSpur(st0);
     if (st.kind !== "street") return st;
     const shops = blocks.some((bl) => SHOPS.includes(bl.district) && edgeDist(bl.polygon, st.a, st.b) <= st.width / 2 + 1);
     return shops ? { ...st, ...wayOf(st.kind, st.width, true) } : st;

@@ -9,6 +9,7 @@
 import { bbox, contains, lerpVec, segCross, segSegDist, type Poly, type Vec } from "./geom.js";
 import { RAIL_OFFSET } from "./rail.js";
 import { wetRuns } from "./port/spur.js";
+import { mainLineOf } from "./railLine.js";
 import { shoreAt } from "./shore.js";
 import { CROSSING_MIN_SIN } from "./railCrossings.js";
 import { cutBlock, type LotDraft } from "./lots.js";
@@ -175,7 +176,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   // What stands beside each street's roadway (sidewalks, curbs, repaving), then the junctions that follow it, then each lot's yard.
   const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges"), uses });
   const junctions = findJunctions({ streets, roads, ends, rail: crossings, blocks, buildings, landmarks, edges, rng: stageRng(seed, "junctions") });
-  const yards = planYards({ blocks, lots, buildings, rng: stageRng(seed, "yards") });
+  const yards = planYards({ blocks, lots, buildings, tracks: [mainLineOf(site), ...spurs.map((sp) => sp.points)], rng: stageRng(seed, "yards") });
   const base: Omit<TownPlan, "props"> = {
     version: TOWN_GEN,
     kind,
@@ -192,7 +193,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     buildings,
     uses,
     landmarks,
-    rail: { crossings, spurs },
+    rail: { crossings, spurs, main: mainLineOf(site) },
     outskirts: edge.outskirts,
     woods: layout.woods,
     spawn,

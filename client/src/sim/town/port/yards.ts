@@ -15,6 +15,7 @@
  * a drawing; the mask (`clearing.ts`) and the ground drawing (`game/town/yardGeometry.ts`) read what this says.
  */
 import { weighted, chance, range, next, type Rng } from "../rng.js";
+import { lineShapeDist, PROP_OFFSET, type Line } from "../railKeepOut.js";
 import type { Block, Building, District, Lot, Yard, YardKind } from "../types.js";
 
 const PAVED: readonly District[] = ["core", "dock", "waterfront", "mill", "industrial", "highway strip"];
@@ -28,6 +29,8 @@ const VACANT_BUILDING: Table = [["tall", 0.35], ["shaggy", 0.3], ["brush", 0.15]
 const OPEN_HOUSE: Table = [["mown", 0.32], ["shaggy", 0.22], ["mossy", 0.14], ["bare", 0.14], ["tall", 0.12], ["brush", 0.06]];
 const OPEN_OLD: Table = [["mown", 0.26], ["shaggy", 0.2], ["mossy", 0.26], ["bare", 0.12], ["tall", 0.1], ["brush", 0.06]];
 const OPEN_OUTLYING: Table = [["mown", 0.2], ["shaggy", 0.2], ["bare", 0.3], ["tall", 0.15], ["mossy", 0.08], ["brush", 0.07]];
+/** A lot the railroad crosses: the corridor's gravel and weeds, nobody's lawn. */
+const RAIL_SIDE: Table = [["bare", 0.45], ["brush", 0.35], ["tall", 0.2]];
 const OPEN_CIVIC: Table = [["mown", 0.75], ["shaggy", 0.15], ["mossy", 0.1]];
 
 /** How kept each kind is, 0 to 1 (the middle of a range the lot's own roll moves). */
@@ -37,11 +40,13 @@ export type YardInput = {
   readonly blocks: readonly Block[];
   readonly lots: readonly Lot[];
   readonly buildings: readonly Building[];
+  /** The railroad's lines (the main line's and the spur's centres). */
+  readonly tracks: readonly Line[];
   readonly rng: Rng;
 };
 
 export function planYards(inp: YardInput): Yard[] {
-  const { blocks, lots, buildings, rng } = inp;
+  const { blocks, lots, buildings, tracks, rng } = inp;
   const onLot: (Building | undefined)[] = lots.map(() => undefined);
   for (const b of buildings) if (b.lot >= 0 && b.kind !== "pier") onLot[b.lot] = b;
   const out: Yard[] = [];
@@ -53,7 +58,9 @@ export function planYards(inp: YardInput): Yard[] {
       continue;
     }
     let table: Table;
-    if (b === undefined) table = VACANT_LOT;
+    const railSide = tracks.some((t) => t.length > 1 && lineShapeDist(t, lot.polygon) < PROP_OFFSET);
+    if (railSide) table = RAIL_SIDE;
+    else if (b === undefined) table = VACANT_LOT;
     else if (b.state === "ruin") table = RUIN;
     else if (b.state === "vacant") table = VACANT_BUILDING;
     else if (district === "civic") table = OPEN_CIVIC;
@@ -64,7 +71,7 @@ export function planYards(inp: YardInput): Yard[] {
     const kept = Math.min(1, Math.max(0, KEPT[kind] + range(rng, -0.12, 0.12)));
     const house = b !== undefined && (b.kind === "house" || b.kind === "boarding house" || b.kind === "apartment") && b.state !== "ruin";
     let drive: Yard["drive"] = null;
-    if (house && chance(rng, kind === "bare" ? 0.9 : 0.5)) {
+    if (house && !railSide && chance(rng, kind === "bare" ? 0.9 : 0.5)) {
       const k = next(rng);
       drive = {
         kind: kind === "bare" ? (k < 0.6 ? "dirt" : "gravel") : k < 0.5 ? "gravel" : k < 0.7 ? "dirt" : "concrete",

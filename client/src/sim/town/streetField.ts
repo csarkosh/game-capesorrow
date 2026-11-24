@@ -32,6 +32,7 @@ import { smootherstepD } from "./fill.js";
 import { hasPavement } from "./junctions.js";
 import { pavementPolygon } from "./junctionShape.js";
 import { pavingAt } from "./port/edges.js";
+import { pavedGround } from "./pavedGround.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
 import type { Junction, JunctionLeg, Street, StreetEdge, TownPlan, Vec } from "./types.js";
@@ -45,6 +46,8 @@ export const HIDDEN_FADE = 1.4;
 /** Under a sidewalk's pours the terrain is cut this much (and fades out over `WALK_FADE` beyond them): a slab lies a centimetre or two over the ground, which the terrain's mesh would poke through. */
 export const HIDDEN_WALK = 0.12;
 export const WALK_FADE = 0.6;
+/** Under the town's other paved ground (a paved district's blocks and a lone business's apron, `pavedGround.ts`) the terrain is cut this much, fading out over `WALK_FADE` beyond it: a patch lies 4.8 cm over a ground that keeps its relief, which the terrain's mesh (an upper envelope) would stand over. */
+export const HIDDEN_PAVED = 0.12;
 /** A seam between two stretches of paving blends over this many metres. */
 export const SEAM = 1.2;
 /** A ditch: its depth, its width and how far beyond the pavement's edge its middle is (the shoulder's width, a metre and a half, and a little). */
@@ -56,7 +59,7 @@ const END_FADE = 0.25;
 const CELL = 16;
 const sqrt = Math.sqrt;
 
-export const STREET_TUNABLES: Readonly<Record<string, number>> = { HIDDEN_WALK, WALK_FADE, CURB_IN, CURB_OUT, HIDDEN, HIDDEN_FADE, SEAM, DITCH_DEPTH, DITCH_WIDTH, DITCH_OFFSET, END_FADE };
+export const STREET_TUNABLES: Readonly<Record<string, number>> = { HIDDEN_PAVED, HIDDEN_WALK, WALK_FADE, CURB_IN, CURB_OUT, HIDDEN, HIDDEN_FADE, SEAM, DITCH_DEPTH, DITCH_WIDTH, DITCH_OFFSET, END_FADE };
 
 /** A value and its partials. */
 type D3 = [number, number, number];
@@ -72,7 +75,7 @@ type Rect = {
   readonly hw: number;
   readonly edge: StreetEdge;
 };
-type Poly = { readonly kind: 1; readonly pts: readonly Vec[]; readonly depth: number; readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number };
+type Poly = { readonly kind: 1; readonly paved?: boolean; readonly pts: readonly Vec[]; readonly depth: number; readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number };
 type Item = Rect | Poly;
 
 type Field = { readonly items: readonly Item[]; readonly x0: number; readonly z0: number; readonly nx: number; readonly nz: number; readonly cells: readonly (readonly number[])[] };
@@ -150,6 +153,21 @@ function fieldOf(plan: TownPlan): Field {
     }
     items.push({ kind: 1, pts, depth: junctionDepth(plan, j), x0, z0, x1, z1 });
     boxes.push([x0 - HIDDEN_FADE - 1, z0 - HIDDEN_FADE - 1, x1 + HIDDEN_FADE + 1, z1 + HIDDEN_FADE + 1]);
+  }
+  // The terrain is cut out of sight under the other paved ground too (no lowering: the patch lies on the ground's own level).
+  for (const g of pavedGround(plan)) {
+    let x0 = Infinity;
+    let z0 = Infinity;
+    let x1 = -Infinity;
+    let z1 = -Infinity;
+    for (const p of g.polygon) {
+      x0 = Math.min(x0, p.x);
+      z0 = Math.min(z0, p.z);
+      x1 = Math.max(x1, p.x);
+      z1 = Math.max(z1, p.z);
+    }
+    items.push({ kind: 1, paved: true, pts: g.polygon, depth: 0, x0, z0, x1, z1 });
+    boxes.push([x0 - WALK_FADE - 1, z0 - WALK_FADE - 1, x1 + WALK_FADE + 1, z1 + WALK_FADE + 1]);
   }
   let x0 = Infinity;
   let z0 = Infinity;
@@ -315,6 +333,13 @@ function polyAt(p: Poly, x: number, z: number, o: Out): void {
   const sd = inside ? d : -d;
   const gx = d > 1e-9 ? ((x - qx) / d) * (inside ? 1 : -1) : 0;
   const gz = d > 1e-9 ? ((z - qz) / d) * (inside ? 1 : -1) : 0;
+  if (p.paved === true) {
+    // Other paved ground: only the terrain's cut, 1 inside the polygon and gone `WALK_FADE` outside it.
+    const wp = smootherstepD(-WALK_FADE, 0, sd);
+    const hp = HIDDEN_PAVED * wp.v;
+    if (hp > o.hide[0]) o.hide = [hp, HIDDEN_PAVED * wp.d * gx, HIDDEN_PAVED * wp.d * gz];
+    return;
+  }
   const w = smootherstepD(-CURB_OUT, CURB_IN, sd);
   if (w.v > o.road) o.road = w.v;
   const L = p.depth * w.v;

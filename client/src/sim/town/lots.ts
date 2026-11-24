@@ -203,7 +203,7 @@ function chordAt(pts: readonly { s: number; t: number }[], t: number): [number, 
  * and set further back); null if even a small one will not fit. The rectangle's two long edges are
  * placed where the lot is wide enough at both: the two cross-sections of a convex lot decide.
  */
-export function fitRect(lot: LotDraft, want: Want): Fit | null {
+export function fitRect(lot: LotDraft, want: Want, ok?: (f: Fit) => boolean): Fit | null {
   const S = lot.S;
   const T = lot.T;
   const pts = lot.polygon.map((p) => ({ s: p.x * S.x + p.z * S.z, t: p.x * T.x + p.z * T.z }));
@@ -232,9 +232,13 @@ export function fitRect(lot: LotDraft, want: Want): Fit | null {
     const lo = Math.max(c0[0], c1[0]) + 0.05;
     const hi = Math.min(c0[1], c1[1]) - 0.05;
     if (hi - lo < w) continue;
-    const sc = lo + w / 2 + (hi - lo - w) * slide;
     const tc = (t0 + t1) / 2;
-    return { centre: { x: sc * S.x + tc * T.x, z: sc * S.z + tc * T.z }, halfS: w / 2, halfT: d / 2 };
+    // Where `ok` refuses the rectangle (it stands on the railroad's corridor), it is slid along the street's side of the lot before it is made smaller.
+    for (const at of ok === undefined ? [slide] : [slide, 0, 1, 0.25, 0.75]) {
+      const sc = lo + w / 2 + (hi - lo - w) * at;
+      const fit = { centre: { x: sc * S.x + tc * T.x, z: sc * S.z + tc * T.z }, halfS: w / 2, halfT: d / 2 };
+      if (ok === undefined || ok(fit)) return fit;
+    }
   }
   return null;
 }

@@ -127,7 +127,7 @@ describe("a lot with no building has a reason", () => {
       const built = plan.buildings.map((b) => b.lot);
       const gap = plan.gaps.map((g) => g.lot);
       for (const g of plan.gaps) {
-        expect(["demolished", "poor corner", "shore"], `seed ${seed}`).toContain(g.why);
+        expect(["demolished", "poor corner", "shore", "rail"], `seed ${seed}`).toContain(g.why);
         expect(built.includes(g.lot), `seed ${seed}: lot ${g.lot} is a gap and has a building`).toBe(false);
       }
       for (const lot of plan.lots) {

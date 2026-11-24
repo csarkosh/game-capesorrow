@@ -81,6 +81,35 @@ describe("a commercial front is drawn from its units", () => {
     }
   }, 240_000);
 
+  it("closes every home's window right behind its glass: no box, the covering spans the whole opening, and few are dark", () => {
+    for (const seed of SEEDS.slice(0, 3)) {
+      const plan = townGround(seed).plan;
+      let kept = 0;
+      let dark = 0;
+      let checked = 0;
+      for (const b of plan.buildings) {
+        if (b.kind === "pier") continue;
+        const built = build(seed, b);
+        for (const w of built.report.windows) {
+          if (w.shop) continue;
+          checked++;
+          expect(w.behind, `seed ${seed} b${b.id}`).not.toBe("box");
+          if (w.closes === "boards") continue;
+          expect(["curtain", "blind", "dark"]).toContain(w.closes);
+          expect(w.covering, `seed ${seed} b${b.id}: a covering`).toBeDefined();
+          expect(w.covering).toEqual(w.opening);
+          if (b.state !== "vacant" && b.state !== "ruin") {
+            kept++;
+            if (w.closes === "dark") dark++;
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(100);
+      console.log(`${seed}: ${checked} home windows, ${dark} of ${kept} lived-in ones dark`);
+      expect(dark / Math.max(1, kept)).toBeLessThan(0.26);
+    }
+  }, 240_000);
+
   it("keeps each room's furnishings inside its building", () => {
     for (const seed of SEEDS.slice(0, 6)) {
       const plan = townGround(seed).plan;
