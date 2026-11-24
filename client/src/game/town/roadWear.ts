@@ -296,11 +296,11 @@ export function junctionWear(g: TownGround, surf: Surface, junctions: readonly W
         drain(surf, [mid.x + (cx / cl) * 0.22, mid.z + (cz / cl) * 0.22], tx, tz, key + k.from);
         // The water that has not gone down it lies in front of it, in the road.
         if (hashN(key, k.from, 0, 193) < 0.7) {
-          const px = mid.x + (cx / cl) * -0.7;
-          const pz = mid.z + (cz / cl) * -0.7;
+          const px = mid.x + (cx / cl) * -1.3;
+          const pz = mid.z + (cz / cl) * -1.3;
           const m = 7;
-          const rl = 0.9 + 1.1 * hashN(key, k.from, 0, 194);
-          const rw = 0.5 + 0.5 * hashN(key, k.from, 0, 195);
+          const rl = 0.6 + 0.6 * hashN(key, k.from, 0, 194);
+          const rw = 0.25 + 0.25 * hashN(key, k.from, 0, 195);
           surf.flat(Array.from({ length: m }, (_, q) => [px + tx * Math.cos((q / m) * 6.283) * rl * (0.8 + 0.3 * hashN(key, k.from, q, 196)) + (cx / cl) * -Math.sin((q / m) * 6.283) * rw, pz + tz * Math.cos((q / m) * 6.283) * rl * (0.8 + 0.3 * hashN(key, k.from, q, 196)) + (cz / cl) * -Math.sin((q / m) * 6.283) * rw] as P2), ROADWAY_LIFT + 0.0034, ASPHALT, { rank: RANK.top, layer: "asphalt_dark", tint: [0.42, 0.45, 0.5], dirt: 0 });
         }
       }
@@ -313,6 +313,20 @@ export function junctionWear(g: TownGround, surf: Surface, junctions: readonly W
  * puddle at the foot of each curb return (where the water runs to).
  */
 function junctionTone(surf: Surface, j: WJunction, key: number): void {
+  /** Whether every point is inside the junction's pavement by at least 30 cm (a patch never crosses a curb). */
+  const within = (pts: readonly P2[], m = 0.3): boolean => {
+    const poly = j.polygon;
+    const ins = (x: number, z: number): boolean => {
+      let c = false;
+      for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
+        const p = poly[a] as { x: number; z: number };
+        const q = poly[b] as { x: number; z: number };
+        if (p.z > z !== q.z > z && x < ((q.x - p.x) * (z - p.z)) / (q.z - p.z) + p.x) c = !c;
+      }
+      return c;
+    };
+    return pts.every(([x, z]) => ins(x, z) && ins(x + m, z) && ins(x - m, z) && ins(x, z + m) && ins(x, z - m));
+  };
   let reach = Infinity;
   for (const l of j.legs) reach = Math.min(reach, l.half);
   if (!(reach > 2.4) || !(reach < 20)) return;
@@ -321,18 +335,20 @@ function junctionTone(surf: Surface, j: WJunction, key: number): void {
   const patches = 2 + Math.floor(hashN(key, 0, 0, 200) * 2.2);
   for (let i = 0; i < patches; i++) {
     const a = hashN(key, i, 0, 201) * 6.283;
-    const d = reach * (0.2 + 0.45 * hashN(key, i, 0, 202));
+    const d = reach * (0.05 + 0.3 * hashN(key, i, 0, 202));
     const cx = j.x + Math.cos(a) * d;
     const cz = j.z + Math.sin(a) * d;
-    const hl = 0.6 + 1.0 * hashN(key, i, 0, 203);
-    const hw = 0.5 + 0.6 * hashN(key, i, 0, 204);
+    const hl = Math.min(0.6 + 1.0 * hashN(key, i, 0, 203), reach * 0.3);
+    const hw = Math.min(0.5 + 0.6 * hashN(key, i, 0, 204), reach * 0.25);
     const ang = hashN(key, i, 0, 205) * 3.1416;
     const c = Math.cos(ang);
     const s = Math.sin(ang);
     const r = (x: number, z: number): P2 => [cx + x * c - z * s, cz + x * s + z * c];
     const pale = hashN(key, i, 0, 206) < 0.45;
     const k = pale ? 1.45 + 0.35 * hashN(key, i, 0, 207) : 0.8 + 0.12 * hashN(key, i, 0, 207);
-    surf.flat([r(-hl, -hw), r(hl, -hw + 0.1 * hashS(key, i, 0, 208)), r(hl + 0.1 * hashS(key, i, 0, 209), hw), r(-hl, hw)], ROADWAY_LIFT + 0.0016, ASPHALT, over(pale ? "asphalt" : "asphalt_dark", k, RANK.mark));
+    const corners: P2[] = [r(-hl, -hw), r(hl, -hw + 0.1 * hashS(key, i, 0, 208)), r(hl + 0.1 * hashS(key, i, 0, 209), hw), r(-hl, hw)];
+    if (!within(corners)) continue;
+    surf.flat(corners, ROADWAY_LIFT + 0.0016, pale ? ([0.19, 0.19, 0.2] as const) : ASPHALT, over(pale ? "asphalt" : "asphalt_dark", k, RANK.mark));
   }
   // The oil where cars wait: a dark smear off the middle.
   const oa = hashN(key, 0, 0, 210) * 6.283;
@@ -340,5 +356,6 @@ function junctionTone(surf: Surface, j: WJunction, key: number): void {
   const ox = j.x + Math.cos(oa) * od;
   const oz = j.z + Math.sin(oa) * od;
   const n = 6;
-  surf.flat(Array.from({ length: n }, (_, k) => [ox + Math.cos((k / n) * 6.283) * (1.2 + 0.5 * hashN(key, k, 0, 211)), oz + Math.sin((k / n) * 6.283) * (0.8 + 0.4 * hashN(key, k, 0, 212))] as P2), ROADWAY_LIFT + 0.0018, ASPHALT, over("asphalt_dark", 0.7, RANK.mark, 0.15));
+  const oil = Array.from({ length: n }, (_, k) => [ox + Math.cos((k / n) * 6.283) * Math.min(1.2 + 0.5 * hashN(key, k, 0, 211), reach * 0.3), oz + Math.sin((k / n) * 6.283) * Math.min(0.8 + 0.4 * hashN(key, k, 0, 212), reach * 0.25)] as P2);
+  if (within(oil)) surf.flat(oil, ROADWAY_LIFT + 0.0018, ASPHALT, over("asphalt_dark", 0.7, RANK.mark, 0.15));
 }

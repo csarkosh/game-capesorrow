@@ -100,13 +100,31 @@ function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: numbe
     const px = -dz;
     const pz = dx;
     const tip: Vec3 = [fx + dx * lean, tipY, fz + dz * lean];
-    // Lit as if the blade faced up and outward, so the sky's light reaches it (its own normal is sideways, and a blade seen from the side would be black).
-    const nl = Math.sqrt(0.36 * 0.36 + 0.9 * 0.9 + 0.36 * 0.36);
-    const lit: [number, number, number] = [(dx * 0.36) / nl, 0.9 / nl, (dz * 0.36) / nl];
     const colour = tuftDry || r(70 + b) < 0.08 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
     const tipColour = LIGHT_TIP(colour);
     const foot = FOOT_COLOUR(colour);
-    m.poly([[fx - px * w, y, fz - pz * w], [fx + px * w, y, fz + pz * w], tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1, normal: lit });
+    const pa: Vec3 = [fx - px * w, y, fz - pz * w];
+    const pb: Vec3 = [fx + px * w, y, fz + pz * w];
+    // The blade's own normal is sideways, so the sky never reaches it: it is lit by that normal turned halfway up (it still faces the way the blade is wound, so the face stays one the renderer draws).
+    const ux = pb[0] - pa[0];
+    const uy = pb[1] - pa[1];
+    const uz = pb[2] - pa[2];
+    const vx = tip[0] - pa[0];
+    const vy = tip[1] - pa[1];
+    const vz = tip[2] - pa[2];
+    let gx = uy * vz - uz * vy;
+    let gy = uz * vx - ux * vz;
+    let gz = ux * vy - uy * vx;
+    const gl = Math.sqrt(gx * gx + gy * gy + gz * gz) || 1;
+    const sgn = (gx * dx + gy * 0.15 + gz * dz) / gl < 0 ? -1 : 1;
+    gx = (sgn * gx) / gl;
+    gy = (sgn * gy) / gl;
+    gz = (sgn * gz) / gl;
+    const lx = gx * 0.7;
+    const ly = gy * 0.7 + 0.7;
+    const lz = gz * 0.7;
+    const ll = Math.sqrt(lx * lx + ly * ly + lz * lz);
+    m.poly([pa, pb, tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1, normal: [lx / ll, ly / ll, lz / ll] });
   }
 }
 

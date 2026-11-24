@@ -16,10 +16,17 @@
 import { clamp01, hashN, vnoise } from "./groundNoise.js";
 import { tally } from "./groundTally.js";
 import { RANK, type Over } from "./groundSurfaces.js";
-import { PATCH_ASPHALT as ASPHALT } from "./palette.js";
+import { PATCH_ASPHALT } from "./palette.js";
+import type { Rgb } from "./meshBuilder.js";
+
+/** The flat colour under a pale mark (its texture is the asphalt lightened): not the road's own, so a plain road colour is still every roadway's. */
+const PALE: Rgb = [0.19, 0.19, 0.2];
 import { PARKING_LANE, ROADWAY_LIFT } from "./streetGeometry.js";
 import type { P2 } from "./surface.js";
 import type { RoadWearContext } from "./roadWear.js";
+
+/** The wheel tracks and the oil lie between the roadway's marks (`RANK.mark`: a gutter's band, a seam, the gravel dragged from an alley) and its cuts (`RANK.detail`), a rank of their own so none of those cuts a track into slivers. */
+const TRACK_RANK = 1.5;
 
 const rot = (x: number, z: number, c: number, s: number): P2 => [x * c - z * s, x * s + z * c];
 
@@ -51,20 +58,28 @@ export function roadTone(ctx: RoadWearContext): void {
   const travel = kind === "main" ? (p.cw - PARKING_LANE) / 2 : p.cw / 2;
   void len;
 
-  /** A rectangle (half sizes `hl` along, `hw` across) at (cs, ct) turned by `ang`, its two long sides bowed a little so no edge is ruled. */
-  const patch = (cs: number, ct: number, hl: number, hw: number, ang: number, over: Over, lift: number, tag: number, bow = 0.07): void => {
+  /** A rectangle (half sizes `hl` along, `hw` across) at (cs, ct) turned by `ang`, cut in cells of 3.8 m by 3.2 m (each laid as one polygon on the ground) with its corners nudged so no edge is ruled. */
+  const patch = (cs: number, ct: number, hl: number, hw: number, ang: number, over: Over, lift: number, tag: number, pale = false): void => {
     const c = Math.cos(ang);
     const s = Math.sin(ang);
-    const r = (x: number, z: number): P2 => {
-      const q = rot(x, z, c, s);
+    const nS = Math.max(1, Math.ceil((2 * hl) / 3.8));
+    const nT = Math.max(1, Math.ceil((2 * hw) / 3.2));
+    const pt = (i: number, j: number): P2 => {
+      const edgeI = i === 0 || i === nS;
+      const edgeJ = j === 0 || j === nT;
+      const jx = (hashN(k2, tag, i * 31 + j, 31) - 0.5) * 0.14;
+      const jz = (hashN(k2, tag, i * 31 + j, 32) - 0.5) * 0.14;
+      const x = -hl + (2 * hl * i) / nS + (edgeI ? 0 : jx);
+      const z = -hw + (2 * hw * j) / nT + (edgeJ ? 0 : jz);
+      const q = rot(x + (edgeI ? jx * 0.5 : 0), z + (edgeJ ? jz * 0.5 : 0), c, s);
       return at(cs + q[0], ct + q[1]);
     };
-    const j = (i: number): number => (hashN(k2, tag, i, 31) - 0.5) * 2 * bow;
-    const pts: P2[] = [r(-hl + j(0), -hw), r(hl + j(1), -hw + j(2) * 0.5), r(hl + j(3), hw), r(-hl + j(2), hw + j(0) * 0.5)];
-    surf.flat(pts, ROADWAY_LIFT + lift, ASPHALT, over);
+    for (let i = 0; i < nS; i++) for (let j = 0; j < nT; j++) surf.flat([pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)], ROADWAY_LIFT + lift, pale ? PALE : PATCH_ASPHALT, over);
   };
   const g = (k: number): [number, number, number] => [k, k, k * 0.99];
 
+  /** The boxes (along, across) the patches lie in: a track or an oil strip is not laid over one (two marks of one rank are cut off each other, and the cut leaves slivers). */
+  const laid: { s0: number; s1: number; t0: number; t1: number }[] = [];
   // ---- Large patches: by what made them.
   const count = Math.floor((total / 20) * (0.55 + 0.75 * (1 - use * 0.3)) + hashN(k2, 0, 0, 1));
   for (let i = 0; i < count; i++) {
@@ -80,8 +95,9 @@ export function roadTone(ctx: RoadWearContext): void {
     if (roll < 0.28) {
       // A lane resurfaced: new black, the lane wide.
       hl = 3 + 7 * hashN(k2, i, 0, 5);
-      hw = travel * (0.7 + 0.25 * hashN(k2, i, 0, 6));
-      ct = side * (travel * 0.95 + (p.cw - travel * 2) * 0.1);
+      const outer = p.cw - 1.1;
+      hw = ((outer - 0.15) / 2) * (0.75 + 0.25 * hashN(k2, i, 0, 6));
+      ct = side * ((outer + 0.15) / 2);
       ang = (hashN(k2, i, 0, 7) - 0.5) * 0.04;
       over = { layer: "asphalt_dark", tint: g(0.45 + 0.2 * hashN(k2, i, 0, 8)), frame: frameOver, rank: RANK.mark, dirt: 0.04 };
     } else if (roll < 0.58) {
@@ -101,22 +117,26 @@ export function roadTone(ctx: RoadWearContext): void {
     } else {
       // A trench across, edge to edge.
       hl = 0.3 + 0.3 * hashN(k2, i, 0, 5);
-      hw = p.cw - 0.7;
+      hw = p.cw - 1.35;
       ct = 0;
       ang = (hashN(k2, i, 0, 7) - 0.5) * 0.4;
       over = { layer: "asphalt_dark", tint: g(0.6 + 0.15 * hashN(k2, i, 0, 8)), frame: frameOver, rank: RANK.mark, dirt: 0.05 };
     }
     const reach = Math.abs(hl * Math.cos(ang)) + Math.abs(hw * Math.sin(ang));
     if (!inside(cs - reach, cs + reach)) continue;
-    patch(cs, ct, hl, hw, ang, over, 0.0015, i);
+    // Not over a seam, and not near the gutter's band (the marks of one rank cut each other, and the cut leaves slivers).
+    const tExt = Math.abs(ct) + Math.abs(hl * Math.sin(ang)) + Math.abs(hw * Math.cos(ang));
+    if (tExt > p.cw - 1.1 || edge.paving.some((q, ix) => ix > 0 && q.s0 > cs - reach - 0.2 && q.s0 < cs + reach + 0.2)) continue;
+    patch(cs, ct, hl, hw, ang, over, 0.0015, i, over.layer === "asphalt");
+    laid.push({ s0: cs - reach - 0.2, s1: cs + reach + 0.2, t0: ct - (Math.abs(hl * Math.sin(ang)) + Math.abs(hw * Math.cos(ang))) - 0.2, t1: ct + (Math.abs(hl * Math.sin(ang)) + Math.abs(hw * Math.cos(ang))) + 0.2 });
     tally.utilityCuts++;
   }
 
   // ---- Wheel tracks and the oil between them.
-  if (kind !== "alley" && kind !== "wharf" && use > 0.25 && !low) {
+  if (kind !== "alley" && kind !== "wharf" && use > 0.4 && !low) {
     const polish = 0.5 + 0.5 * use;
     for (const [a, b] of intervals) {
-      const n = Math.max(1, Math.round((b - a) / 9));
+      const n = Math.max(1, Math.ceil((b - a) / 3.9));
       for (const sg of [1, -1]) {
         const c0 = sg * travel;
         for (let i = 0; i < n; i++) {
@@ -124,19 +144,21 @@ export function roadTone(ctx: RoadWearContext): void {
           const s1 = a + ((b - a) * (i + 1)) / n - 0.05;
           const here = (s0 + s1) / 2;
           // A lane that is driven is worn all along; a quiet street's has gaps.
+          if (edge.paving.some((q, ix) => ix > 0 && q.s0 > s0 - 0.15 && q.s0 < s1 + 0.15)) continue;
+          if (laid.some((q) => q.s0 < s1 && q.s1 > s0 && q.t0 < c0 + 1.1 && q.t1 > c0 - 1.1)) continue;
           const present = hashN(k2, i, sg + 5, 40) < 0.3 + 0.7 * polish;
           const light = (1.15 + 0.22 * vnoise(k2 ^ 0x51, here, 25) + 0.12 * wearAt(here)) * (0.85 + 0.2 * polish);
           if (present) {
             for (const d of [-0.78, 0.78]) {
               const w = 0.12 + 0.05 * hashN(k2, i, sg + d * 3, 41);
-              surf.flat([at(s0, c0 + d - w), at(s1, c0 + d - w * 1.1), at(s1, c0 + d + w * 1.1), at(s0, c0 + d + w)], ROADWAY_LIFT + 0.0012, ASPHALT, { layer: "asphalt", tint: g(light), frame: fr(), rank: RANK.mark, dirt: 0.02 });
+              surf.flat([at(s0, c0 + d - w), at(s1, c0 + d - w * 1.1), at(s1, c0 + d + w * 1.1), at(s0, c0 + d + w)], ROADWAY_LIFT + 0.0012, PALE, { layer: "asphalt", tint: g(light), frame: fr(), rank: TRACK_RANK, dirt: 0.02 });
             }
           }
           // The oil strip: dark, in blobs along the lane's middle.
           if (hashN(k2, i, sg + 5, 42) < 0.2 + 0.4 * polish) {
             const o0 = s0 + (s1 - s0) * 0.1 * hashN(k2, i, sg, 43);
             const o1 = o0 + (s1 - s0) * (0.4 + 0.5 * hashN(k2, i, sg, 44));
-            surf.flat([at(o0, c0 - 0.14), at(o1, c0 - 0.1), at(o1, c0 + 0.1), at(o0, c0 + 0.14)], ROADWAY_LIFT + 0.0014, ASPHALT, { layer: "asphalt_dark", tint: g(0.62), frame: fr(), rank: RANK.mark, dirt: 0.1 });
+            surf.flat([at(o0, c0 - 0.14), at(o1, c0 - 0.1), at(o1, c0 + 0.1), at(o0, c0 + 0.14)], ROADWAY_LIFT + 0.0014, PATCH_ASPHALT, { layer: "asphalt_dark", tint: g(0.62), frame: fr(), rank: TRACK_RANK, dirt: 0.1 });
           }
         }
       }
@@ -151,7 +173,7 @@ export function roadTone(ctx: RoadWearContext): void {
     // The side's outward direction is (sg * n); a side whose lots lie to the south is in the shade of what stands there (z is north).
     const shade = clamp01(0.35 - sg * p.nz * 0.65);
     for (const [a, b] of intervals) {
-      const n = Math.max(1, Math.round((b - a) / (low ? 10 : 4.5)));
+      const n = Math.max(1, Math.round((b - a) / (low ? 10 : 3.9)));
       for (let i = 0; i < n; i++) {
         const s0 = a + ((b - a) * i) / n;
         const s1 = a + ((b - a) * (i + 1)) / n;
@@ -160,12 +182,12 @@ export function roadTone(ctx: RoadWearContext): void {
           const m = vnoise(ek, s0, 14) * (0.4 + 0.9 * shade);
           if (m < 0.55) continue;
           const w = 0.15 + 0.3 * clamp01((m - 0.55) * 2.2);
-          surf.flat([q(s0, p.cw - w), q(s1, p.cw - w * (0.7 + 0.6 * hashN(ek, i, 0, 50))), q(s1, p.cw), q(s0, p.cw)], ROADWAY_LIFT + 0.0028, ASPHALT, { layer: "moss", tint: [0.62, 0.78, 0.38], frame: fr(), rank: RANK.detail, dirt: 0.1 });
+          surf.flat([q(s0, p.cw - w), q(s1, p.cw - w * (0.7 + 0.6 * hashN(ek, i, 0, 50))), q(s1, p.cw), q(s0, p.cw)], ROADWAY_LIFT + 0.0028, PATCH_ASPHALT, { layer: "moss", tint: [0.62, 0.78, 0.38], frame: fr(), rank: RANK.detail, dirt: 0.1 });
         } else {
           const m = vnoise(ek ^ 3, s0, 9);
           if (m < 0.38) continue;
           const w = 0.3 + 0.9 * clamp01((m - 0.38) * 1.8);
-          surf.flat([q(s0, p.cw - w * (0.5 + 0.5 * hashN(ek, i, 1, 51))), q(s1, p.cw - w), q(s1, p.cw - 0.04), q(s0, p.cw - 0.04)], ROADWAY_LIFT + 0.0026, ASPHALT, { layer: "mud", tint: [0.62, 0.55, 0.42], frame: fr(), rank: RANK.detail, dirt: 0.25 });
+          surf.flat([q(s0, p.cw - w * (0.5 + 0.5 * hashN(ek, i, 1, 51))), q(s1, p.cw - w), q(s1, p.cw - 0.04), q(s0, p.cw - 0.04)], ROADWAY_LIFT + 0.0026, PATCH_ASPHALT, { layer: "mud", tint: [0.62, 0.55, 0.42], frame: fr(), rank: RANK.detail, dirt: 0.25 });
         }
       }
     }
@@ -186,6 +208,6 @@ export function roadTone(ctx: RoadWearContext): void {
       const rr = 0.78 + 0.34 * hashN(k2, i, k, 66);
       return at(cs + Math.cos(a) * rl * rr, ct + Math.sin(a) * rw * rr);
     });
-    surf.flat(pts, ROADWAY_LIFT + 0.0034, ASPHALT, { layer: "asphalt_dark", tint: [0.42, 0.45, 0.5], frame: fr(), rank: RANK.top, dirt: 0 });
+    surf.flat(pts, ROADWAY_LIFT + 0.0034, PATCH_ASPHALT, { layer: "asphalt_dark", tint: [0.42, 0.45, 0.5], frame: fr(), rank: RANK.top, dirt: 0 });
   }
 }

@@ -1,15 +1,13 @@
 /**
  * What breaks a roof's outline and its tone as seen from the street, by the building's own record (`levelOf`, its age and keeping):
  *
- * - **A tarp** held down by battens over a leak: one roof in twenty, blue or grey, on the slope the weather comes at.
- * - **A patch of other shingle**, newer (darker) or older (paler), where a part of the slope was redone.
  * - **Moss in broad patches** on the north slopes of the damp and the neglected.
  * - **An antenna** leaning on the ridge of one house in six, and on a few a satellite dish.
  *
- * A decal stands 4 cm off the slope along its normal (more than the 2.45 cm the depth buffer is held to). A roof whose ridge sags (an old wooden house's) gets no
+ * (The tarps and the patches of other shingle are `buildingParts.ts`'s: a repair of the building's own.) A decal stands 8 cm and more off the slope along its normal (more than the 2.45 cm the depth buffer is held to). A roof whose ridge sags (an old wooden house's) gets no
  * decal, since its slope is no plane, but may have an antenna.
  */
-import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { hash01, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { levelOf, exposureOf } from "./buildingWear.js";
 import type { Surface } from "./townSurface.js";
 import type { Building } from "../../sim/town/types.js";
@@ -17,7 +15,6 @@ import type { Building } from "../../sim/town/types.js";
 type Quad = readonly [Vec3, Vec3, Vec3, Vec3];
 
 const LIFT = 0.04;
-const TARP: readonly Rgb[] = [[0.12, 0.26, 0.5], [0.45, 0.47, 0.5], [0.1, 0.22, 0.42], [0.3, 0.38, 0.28]];
 
 /** A point on a slope: `u` along its eave, `v` up toward the ridge, 0 to 1 each. */
 function at(q: Quad, u: number, v: number): Vec3 {
@@ -44,34 +41,6 @@ export function roofSlopeDecals(out: MeshBuilder, b: Building, q: Quad, fr: Surf
   const eaveLen = Math.sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]);
   const slopeLen = Math.sqrt(e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2]);
   if (eaveLen < 3 || slopeLen < 2) return;
-
-  // ---- a tarp on the side the weather comes at: one roof in twenty
-  if (e.weather > 0.2 && hash01(b.id, 6162) < 0.07 + 0.05 * L) {
-    const uw = Math.min(0.85, (2.2 + 2.6 * r(1)) / eaveLen);
-    const vh = Math.min(0.8, (1.8 + 1.4 * r(2)) / slopeLen);
-    const u0 = 0.06 + (0.88 - uw) * r(3);
-    const v0 = 0.12 + (0.8 - vh) * r(4);
-    const col = TARP[Math.floor(r(5) * TARP.length)] as Rgb;
-    rect(u0, v0, u0 + uw, v0 + vh, col, undefined, 1);
-    // The battens: boards across it, a step further out.
-    const bat: Rgb = [0.22, 0.17, 0.12];
-    const nb = Math.max(2, Math.round((uw * eaveLen) / 1.1));
-    for (let i = 0; i <= nb; i++) {
-      const u = u0 + (uw * i) / nb;
-      rect(Math.max(u0, u - 0.035 / eaveLen * 2), v0, Math.min(u0 + uw, u + 0.035 / eaveLen * 2), v0 + vh, bat, undefined, 2);
-    }
-    return;
-  }
-
-  // ---- a patch of newer or older shingle
-  if (r(10) < 0.15 + 0.3 * L && fr.layer === "roof_shingle") {
-    const uw = Math.min(0.5, (1.6 + 2.2 * r(11)) / eaveLen);
-    const vh = Math.min(0.55, (1.2 + 1.4 * r(12)) / slopeLen);
-    const u0 = 0.08 + (0.84 - uw) * r(13);
-    const v0 = 0.15 + (0.75 - vh) * r(14);
-    const newer = r(15) < 0.55;
-    rect(u0, v0, u0 + uw, v0 + vh, scaled(roofColour, newer ? 0.6 : 1.3), { ...fr, wear: 0.03, wear2: 0 }, 1);
-  }
 
   // ---- moss in broad patches on the damp north side
   if (e.shade > 0.4 && r(20) < 0.2 + 0.55 * L) {

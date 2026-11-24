@@ -241,14 +241,14 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   for (let k = 0; k <= 6; k++) frontGround = Math.max(frontGround, g.heightAt(fw.ax + fw.tx * fw.length * (k / 6) + fw.nx * 1.2, fw.az + fw.tz * fw.length * (k / 6) + fw.nz * 1.2));
   planCtx.frontFloorY = onPiles ? floorY : Math.max(baseY + 0.3, Math.min(floorY, frontGround + 0.12));
   let drawSigns = (): void => {};
+  let laterTone = (): void => {};
   if (ruin) {
     for (const w of walls) brokenWall(out, w, baseY, floorY, H, wall, inner, b.id, wallSurface(walls.indexOf(w)));
   } else {
     const plans = planWalls(planCtx);
     const tops = walls.map((w): [number, number] => [w.topA, w.topB]);
     cutWalls(planCtx, plans, tops, baseY);
-    // The wall's tone at the scale of metres: a dark lower third, patches, a ghost sign (`wallTone.ts`).
-    wallTone({ out, b, walls: refs, holes: plans.map((p) => p.holes), tops, baseY, colour: wall, surfaceOf: (w, band) => wallSurface(refs.indexOf(w), band), frontAt, low: detail === "low", paint: style.paint });
+    laterTone = () => wallTone({ out, b, walls: refs, holes: plans.map((p) => p.holes), tops, baseY, colour: wall, surfaceOf: (w, band) => wallSurface(refs.indexOf(w), band), frontAt, low: detail === "low", paint: style.paint });
     // The signs are drawn once the building's parts are (below), so each is put where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`).
     if (extra !== undefined && use !== undefined && xf !== null) {
       const sign = extra.sign(f.cx, f.cz);
@@ -347,6 +347,8 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   }
 
   drawSigns();
+  // The wall's tone at the scale of metres (a dark lower third, patches, a ghost sign; `wallTone.ts`), after everything that hangs on the wall, so it is put clear of those and they of nothing of it.
+  laterTone();
 
   // ---- ruins: rubble inside the walls
   if (ruin) {

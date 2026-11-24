@@ -11,7 +11,8 @@
  */
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { levelOf, agingOf } from "./buildingWear.js";
-import { wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { wat, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { isClear } from "./faceLedger.js";
 import type { Surface } from "./townSurface.js";
 import type { Building } from "../../sim/town/types.js";
 
@@ -40,7 +41,18 @@ export function wallTone(c: WallToneCtx): void {
     const topLow = Math.min((c.tops[i] as readonly [number, number])[0], (c.tops[i] as readonly [number, number])[1]) - baseY;
     if (w.length < 5 || topLow < 3 || w.length * topLow < 36) return;
     const holes = c.holes[i] ?? [];
-    const free = (s0: number, s1: number, y0: number, y1: number): boolean => !holes.some((h) => h.s0 < s1 + 0.25 && h.s1 > s0 - 0.25 && h.y0 < baseY + y1 + 0.25 && h.y1 > baseY + y0 - 0.25);
+    /** The decals already on this wall: none lies over another (a step further out would put it near the pipes and cables hung there), and none under a window where its own sill's streak is. */
+    const placed: { s0: number; s1: number; y0: number; y1: number }[] = [];
+    const free = (s0: number, s1: number, y0: number, y1: number): boolean => {
+      // And no face already on the wall within 2.45 cm of where this one stands (a sill's streak, a plate): it is skipped, not pushed out beside the pipes.
+      const pa = wat(w, s0, baseY + y0, OFF);
+      const pb = wat(w, s1, baseY + y0, OFF);
+      if (!isClear(w.nx, w.nz, pa[0], pa[2], pb[0], pb[2], baseY + y0, baseY + y1)) return false;
+      return freeOf(s0, s1, y0, y1);
+    };
+    const freeOf = (s0: number, s1: number, y0: number, y1: number): boolean =>
+      !holes.some((h) => h.s0 < s1 + 0.3 && h.s1 > s0 - 0.3 && h.y0 < baseY + y1 + 0.3 && h.y1 > baseY + y0 - 1.4) &&
+      !placed.some((q) => q.s0 < s1 + 0.1 && q.s1 > s0 - 0.1 && q.y0 < y1 + 0.1 && q.y1 > y0 - 0.1);
     const base = c.surfaceOf(w, 1);
     const r = (k: number): number => hash01(b.id * 31 + i * 7 + k, 5151);
     /** The wall's own surface and colour, scaled in tone by `k`. */
@@ -50,6 +62,7 @@ export function wallTone(c: WallToneCtx): void {
     });
     const put = (s0: number, y0: number, s1: number, y1: number, t: { colour: Rgb; surface: Surface }): void => {
       wquad(out, w, s0, baseY + y0, s1, baseY + y1, OFF, t.colour, t.surface);
+      placed.push({ s0, s1, y0, y1 });
     };
 
     // ---- the dark lower third, with a ragged top
@@ -72,10 +85,10 @@ export function wallTone(c: WallToneCtx): void {
     const runs = Math.floor((w.length / 7) * (0.5 + 1.2 * L) + r(70));
     for (let j = 0; j < runs; j++) {
       const rw = 0.6 + 1.3 * r(71 + j);
-      const rh = Math.min(topLow - 1.2, 2.8 + 4.5 * r(80 + j) * (0.5 + L));
+      const rh = Math.min(topLow - 2.5, 2.8 + 4.5 * r(80 + j) * (0.5 + L));
       if (rh < 1.5 || w.length < rw + 1) continue;
       const s0 = 0.4 + (w.length - rw - 0.8) * hash01(b.id * 5 + i * 3 + j, 5160);
-      const y1 = topLow - 0.15;
+      const y1 = topLow - 1.3;
       if (!free(s0, s0 + rw, y1 - rh, y1)) continue;
       // Two columns of the stain, the second shorter or longer: a stepped, wandering foot.
       const half = rw * (0.35 + 0.3 * r(90 + j));
@@ -102,7 +115,10 @@ export function wallTone(c: WallToneCtx): void {
         else if (kindRoll < 0.8 || !wood || L < 0.35) put(s0, y0, s0 + pw * 0.6, y0 + ph * 1.5, tone(0.78 - 0.1 * L, { wear: 0.25, wearKind: "grime" }));
         else {
           const pw2 = Math.min(pw, 1.3 + 0.9 * r(50 + p));
-          wquad(out, w, s0, baseY + y0, s0 + pw2, baseY + y0 + Math.min(2.4, ph * 1.5), OFF, [0.42, 0.31, 0.18], { layer: "plywood", frame: base.frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
+          const ph2 = Math.min(2.4, ph * 1.5);
+          if (!free(s0, s0 + pw2, y0, y0 + ph2)) continue;
+          wquad(out, w, s0, baseY + y0, s0 + pw2, baseY + y0 + ph2, OFF, [0.42, 0.31, 0.18], { layer: "plywood", frame: base.frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
+          placed.push({ s0, s1: s0 + pw2, y0, y1: y0 + ph2 });
         }
         break;
       }
@@ -116,20 +132,28 @@ export function wallTone(c: WallToneCtx): void {
         const s0 = 1 + (w.length - gw - 2) * hash01(b.id * 7 + i + t, 5155);
         const y0 = Math.max(2.2, topLow - gh - 0.9 - 1.6 * hash01(b.id * 11 + i + t, 5156));
         if (y0 + gh > topLow - 0.4 || !free(s0, s0 + gw, y0, y0 + gh)) continue;
-        put(s0, y0, s0 + gw, y0 + gh, tone(1.55, { wear: 0.03, wear2: 0 }));
-        // The faded lines of lettering: darker bars, broken, each pushed a step out by the ledger.
+        // The pale rectangle in rows: bare rows between the lines, and in each line the faded letters (darker) and the gaps between them (pale), so no face lies over another.
+        const pale = tone(1.55, { wear: 0.03, wear2: 0 });
+        const ink = tone(1.25, { wear: 0.03, wear2: 0 });
+        const raw = (a: number, ya: number, e: number, yb: number, t: { colour: Rgb; surface: Surface }): void => wquad(out, w, a, baseY + ya, e, baseY + yb, OFF, t.colour, t.surface);
         const lines = 2 + Math.floor(2 * r(63));
+        let y = y0;
         for (let l = 0; l < lines; l++) {
           const ly = y0 + gh * (0.15 + (0.7 * l) / lines);
           const lh = (gh * 0.5) / lines;
-          let x = s0 + gw * 0.08;
-          while (x < s0 + gw * 0.92) {
-            const run = 0.25 + 0.7 * hash01(b.id * 23 + l * 9 + Math.floor(x * 4), 5157);
-            const e = Math.min(s0 + gw * 0.92, x + run);
-            if (hash01(b.id * 29 + l * 9 + Math.floor(x * 4), 5158) < 0.7) put(x, ly, e, ly + lh, tone(1.25, { wear: 0.03, wear2: 0 }));
-            x = e + 0.12 + 0.2 * hash01(b.id * 31 + l * 9 + Math.floor(x * 4), 5159);
+          if (ly > y + 0.02) raw(s0, y, s0 + gw, ly, pale);
+          let x = s0;
+          while (x < s0 + gw - 0.02) {
+            const letter = hash01(b.id * 29 + l * 9 + Math.floor(x * 4), 5158) < 0.6;
+            const run = (letter ? 0.25 : 0.1) + 0.7 * hash01(b.id * 23 + l * 9 + Math.floor(x * 4), 5157);
+            const e = Math.min(s0 + gw, x + run);
+            raw(x, ly, e, ly + lh, letter && x > s0 + gw * 0.06 && e < s0 + gw * 0.94 ? ink : pale);
+            x = e;
           }
+          y = ly + lh;
         }
+        if (y0 + gh > y + 0.02) raw(s0, y, s0 + gw, y0 + gh, pale);
+        placed.push({ s0, s1: s0 + gw, y0, y1: y0 + gh });
         break;
       }
     }
