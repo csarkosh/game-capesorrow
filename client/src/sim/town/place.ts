@@ -9,7 +9,7 @@
  */
 import { COVE_Z, type CoastOverlay } from "@csarkosh/engine/sim/olympic";
 import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
-import { CLEARING_TUNABLES, YARD_LIFT, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
+import { CLEARING_TUNABLES, YARD_LIFT, townClutterStands, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
 import { GROUND_TUNABLES, townGroundD } from "./ground.js";
 import { RAIL_CLEARING_TUNABLES, railFeatureMask } from "./railClearing.js";
 import { RAIL_TUNABLES, railGroundD } from "./railGround.js";
@@ -44,6 +44,8 @@ export const CAPE_PLACE: CoastOverlay = {
   // On a yard the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and trees.
   shoreStrip: { lift: YARD_LIFT, forestFloor: 0, at: townStripWeight },
   clearing: { z: COVE_Z, x: townClearingX },
+  // Round a yard's building the mask is open to the wall, and each piece of ground cover is kept back by where it stands (`clearing.ts`).
+  clutterStands: townClutterStands,
   // Where animals may not be (`wildlifeGround.ts`): the renderer's alone, so no tunable and no part of the level id.
   wildlifeGround: townWildlifeGround,
 };

@@ -18,7 +18,6 @@ import { wat, type WallRef } from "./buildingKit.js";
 import { neglectOf, seamHouses, type HouseSeam } from "./houseSeam.js";
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { hash01, scaled } from "./meshBuilder.js";
-import { bedOf } from "./seamGround.js";
 import type { Sink, TownGround } from "./townTypes.js";
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -48,7 +47,6 @@ export function seamWall(g: TownGround, solid: Sink): void {
     const out = solid(g.anchor.x + b.centre.x, g.anchor.z + b.centre.z);
     const neg = neglectOf(g.plan, b);
     foundation(g, h, out, neg);
-    if (bedOf(g, h) === "planted") shrubs(g, h, out);
     things(g, h, out, neg);
     doorstep(h, out, neg);
   }
@@ -109,42 +107,6 @@ function doorstep(h: HouseSeam, out: MeshBuilder, neg: number): void {
     const c = at(d.s + side * sOff, 0.2);
     out.prism([c[0] + w.nx * 0.28, y + 0.02, c[2] + w.nz * 0.28], [c[0] + w.nx * 0.06, y + 1.25, c[2] + w.nz * 0.06], 0.012, 4, [0.4, 0.3, 0.17], [0.4, 0.3, 0.17]);
     out.prism([c[0] + w.nx * 0.32, y + 0.02, c[2] + w.nz * 0.32], [c[0] + w.nx * 0.26, y + 0.3, c[2] + w.nz * 0.26], 0.05, 5, [0.5, 0.42, 0.2], [0.5, 0.42, 0.2]);
-  }
-}
-
-/** Foundation shrubs in a planted bed along the front wall and one side: rounded, 0.6 to 1.2 m, each its own size and green, and one of them dead. */
-function shrubs(g: TownGround, h: HouseSeam, out: MeshBuilder): void {
-  const b = h.b;
-  const walls = [h.frontAt, (h.frontAt + 1) % h.refs.length];
-  const dead = Math.floor(hash01(b.id, 3600) * 4);
-  let n = 0;
-  for (const k of walls) {
-    const w = h.refs[k] as WallRef;
-    if (h.blocked[k]) continue;
-    for (let s = 0.7 + 0.8 * hash01(b.id * 3 + k, 3601), i = 0; s < w.length - 0.6; s += 1.7 + 1.2 * hash01(b.id * 3 + k, 3610 + i), i++) {
-      if (k === h.frontAt && h.door !== null && Math.abs(s - h.door.s) < h.door.half + 0.8) continue;
-      const r = 0.28 + 0.27 * hash01(b.id * 3 + k, 3620 + i);
-      const off = (h.foundOff[k] as number) + 0.12 + r + 0.1;
-      const p = wat(w, s, 0, off);
-      if (fenceWithin(g, p[0] - g.anchor.x, p[2] - g.anchor.z, r + 0.4)) continue;
-      if (h.occupied.some((o) => o.k === k && s + r + 0.3 > o.s0 && s - r - 0.3 < o.s1)) continue;
-      h.occupied.push({ k, s0: s - r - 0.2, s1: s + r + 0.2 });
-      const y = g.heightAt(p[0], p[2]) - 0.02;
-      const ht = 0.55 + 0.6 * hash01(b.id * 3 + k, 3630 + i);
-      if (n++ === dead) {
-        const brown: Rgb = [0.25, 0.19, 0.11];
-        out.cylinder(p[0], p[2], y, r * 0.6, ht * 0.5, 6, brown, scaled(brown, 0.8), r * 0.3);
-        for (let c = 0; c < 3; c++) {
-          const a = c * 2.1 + hash01(b.id, 3640 + c) * 1.5;
-          out.prism([p[0], y + 0.15, p[2]], [p[0] + Math.cos(a) * r * 0.9, y + ht * 0.8, p[2] + Math.sin(a) * r * 0.9], 0.012, 4, brown, brown);
-        }
-        continue;
-      }
-      const tone = 0.7 + 0.5 * hash01(b.id * 3 + k, 3650 + i);
-      const green: Rgb = [0.1 * tone, 0.2 * tone, 0.07 * tone];
-      out.cylinder(p[0], p[2], y, r, ht * 0.6, 7, green, scaled(green, 0.9), r * 0.85);
-      out.cylinder(p[0], p[2], y + ht * 0.55, r * 0.8, ht * 0.45, 7, scaled(green, 1.1), scaled(green, 1.2), r * 0.3);
-    }
   }
 }
 

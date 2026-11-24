@@ -9,6 +9,10 @@
  *   by its cell's centre and stands up to `TREE_JITTER` from it, so the mask is shut over that much more than the trunk's own clearance, and
  *   rises over `TREE_RAMP` beyond. No grass or ground cover stands on a street or within `CLUTTER_BUILDING_CLEAR` of a
  *   building, nor on a paved block or the apron of a lone business (`pavedGround.ts`: a gas station's forecourt, a motel's lot).
+ * - **A building in a yard.** A house does not stand in a ring of bare ground: where a building's lot is a yard, the mask is shut
+ *   only inside its walls and `WALL_CLEAR` beyond, so the grass (the engine's blades, which read the mask where each stands) grows
+ *   to the wall's foot, and the place's `clutterStands` (`townClutterStands`) keeps each larger piece back by where it stands
+ *   itself: `STAND_CLEAR` of the wall by its class. The ground before the front door, where the steps or the porch stand, stays bare (`STOOP_*`).
  * - **Yards.** On house lots (residential and mill housing blocks), the churchyard, the school's and hospital's grounds
  *   and vacant lots, ground cover grows whole and trees stand at `YARD_TREE` of the forest's density. The engine paints
  *   the ground by its height, so the made flats (2 to 3 m) would be painted as the beach's pebble, and trees and grass
@@ -23,6 +27,7 @@
  */
 import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { UNIT_KEEP } from "@csarkosh/engine/sim/cliffs";
+import { CLUTTER_BUSH, CLUTTER_FERN, CLUTTER_FLOWER, CLUTTER_FUNGUS, CLUTTER_GRASS, CLUTTER_LITTER, CLUTTER_MEADOW, CLUTTER_SHRUB } from "@csarkosh/engine/sim/clutter";
 import type { FeatureMask } from "@csarkosh/engine/sim/features";
 import { bearingU, bearingV } from "./bearings.js";
 import { coverD } from "./cover.js";
@@ -32,7 +37,7 @@ import { isPaved as isPavedDistrict, pavedGround } from "./pavedGround.js";
 import { orient } from "./geom.js";
 import { lotIdAt } from "./lotIndex.js";
 import { walkAt } from "./port/edges.js";
-import { inYardRect, yardShape } from "./yardShapes.js";
+import { inYardRect, yardShape, type YardRect } from "./yardShapes.js";
 import { planFor } from "./planFor.js";
 import { readingSite } from "./reading.js";
 import { siteFor } from "./siteFor.js";
@@ -52,6 +57,26 @@ export const CLUTTER_STREET_CLEAR = 0.5;
 export const CLUTTER_RAMP = 2;
 /** The farthest a piece of ground cover stands from its cell's centre (the engine's jitter of its largest cell on the town), metres: the mask is shut over that much more than the clearance. */
 export const CLUTTER_JITTER = 2;
+/** Round a building whose lot is a yard, the mask is shut to this far from the wall (the blades' own half width and lean), and opens over `WALL_RAMP` more. */
+export const WALL_CLEAR = 0.3;
+export const WALL_RAMP = 0.35;
+/**
+ * How far from such a building's wall a piece of ground cover must stand, by its class, metres: its own half width, so that it does not
+ * stand in the wall. The carpet and the leaf litter lie flat and small; a clump of grass, a flower and a fern are a few decimetres
+ * across; a bush and a shrub are bodies. A class not named keeps `CLUTTER_BUILDING_CLEAR`.
+ */
+export const STAND_CLEAR_CARPET = 0.3;
+export const STAND_CLEAR_CLUMP = 0.45;
+export const STAND_CLEAR_FERN = 0.7;
+export const STAND_CLEAR_BODY = 1.5;
+/**
+ * Before the front door of such a building stand its steps or its porch (`game/town/buildingParts.ts`: a porch is 3.6 m wide and 1.7 m deep,
+ * moved along the wall where the door is near a corner), and the ground there is trodden: no cover within `STOOP_HALF` of the door along the
+ * wall (more by as much as the door is nearer than `STOOP_SHIFT` to the wall's end) and `STOOP_OUT` out of it.
+ */
+export const STOOP_HALF = 1.9;
+export const STOOP_SHIFT = 2;
+export const STOOP_OUT = 2;
 /** A yard's trees, as a share of the forest's density. */
 export const YARD_TREE = 0.22;
 /** A yard's ground cover, as a share of the forest floor's. */
@@ -129,6 +154,15 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   CLUTTER_STREET_CLEAR,
   CLUTTER_RAMP,
   CLUTTER_JITTER,
+  WALL_CLEAR,
+  WALL_RAMP,
+  STAND_CLEAR_CARPET,
+  STAND_CLEAR_CLUMP,
+  STAND_CLEAR_FERN,
+  STAND_CLEAR_BODY,
+  STOOP_HALF,
+  STOOP_SHIFT,
+  STOOP_OUT,
   YARD_TREE,
   YARD_CLUTTER,
   YARD_MEADOW,
@@ -279,7 +313,8 @@ export function townCover(seed: number, x: number, z: number, fill: readonly Fil
 export { isPaved } from "./pavedGround.js";
 
 type Edge = { readonly nx: number; readonly nz: number; readonly c: number };
-type Footprint = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly vx: number; readonly vz: number; readonly hu: number; readonly hv: number };
+/** A building's footprint, whether its lot is a yard (the grass comes to its wall), and the ground before its front door. */
+type Footprint = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly vx: number; readonly vz: number; readonly hu: number; readonly hv: number; readonly yard: boolean; readonly stoop: YardRect | null };
 /** A cleared place: a destination's, and whether its ground cover is cleared too. */
 type Disc = { readonly x: number; readonly z: number; readonly r: number; readonly bare: boolean };
 type Streetway = { readonly ax: number; readonly az: number; readonly bx: number; readonly bz: number; readonly half: number; readonly kind: "grid" | "alley" | "other"; readonly id: number; readonly cw: number };
@@ -345,6 +380,8 @@ function indexOf(plan: TownPlan): Index {
     blocks.push({ edges, paved: s.paved, margin: s.margin });
     blockBox.push({ x0, z0, x1, z1 });
   }
+  const useOf: ((typeof plan.uses)[number] | undefined)[] = plan.buildings.map(() => undefined);
+  for (const us of plan.uses) useOf[us.building] = us;
   const buildings: Footprint[] = [];
   const bldBox: { x0: number; z0: number; x1: number; z1: number }[] = [];
   for (const b of plan.buildings) {
@@ -354,7 +391,16 @@ function indexOf(plan: TownPlan): Index {
     const v = bearingV(b.bearing);
     const r = Math.abs(u.x) * b.halfAlong + Math.abs(v.x) * b.halfAcross;
     const s = Math.abs(u.z) * b.halfAlong + Math.abs(v.z) * b.halfAcross;
-    buildings.push({ cx: b.centre.x, cz: b.centre.z, ux: u.x, uz: u.z, vx: v.x, vz: v.z, hu: b.halfAlong, hv: b.halfAcross });
+    const inYard = standsInYard(plan, b);
+    let stoop: YardRect | null = null;
+    const use = inYard ? useOf[b.id] : undefined;
+    if (use !== undefined && use.frame !== null && use.door !== null) {
+      const fr = use.frame;
+      const end = Math.min(use.door.s, fr.width - use.door.s);
+      const half = STOOP_HALF + Math.max(0, STOOP_SHIFT - end);
+      stoop = { x: fr.origin.x + fr.t.x * use.door.s, z: fr.origin.z + fr.t.z * use.door.s, dx: fr.n.x, dz: fr.n.z, length: STOOP_OUT, half };
+    }
+    buildings.push({ cx: b.centre.x, cz: b.centre.z, ux: u.x, uz: u.z, vx: v.x, vz: v.z, hu: b.halfAlong, hv: b.halfAcross, yard: inYard, stoop });
     bldBox.push({ x0: b.centre.x - r, z0: b.centre.z - s, x1: b.centre.x + r, z1: b.centre.z + s });
   }
   const streets: Streetway[] = [];
@@ -416,6 +462,16 @@ function indexOf(plan: TownPlan): Index {
   const index: Index = { x0: bx0, z0: bz0, nx, nz, blocks, buildings, streets, discs, cellBlocks, cellBuildings, cellStreets, cellDiscs };
   INDEX.set(plan, index);
   return index;
+}
+
+/** Whether a building stands in a yard: its lot's ground is grass (not paved, and not a paved district's block), so the grass comes to its wall. */
+export function standsInYard(plan: TownPlan, b: { readonly lot: number }): boolean {
+  if (b.lot < 0) return false;
+  const lot = plan.lots[b.lot];
+  const kind = plan.yards[b.lot]?.kind;
+  if (lot === undefined || kind === undefined || kind === "paved") return false;
+  const block = plan.blocks.find((bl) => bl.id === lot.block);
+  return block !== undefined && !isPavedDistrict(block.district);
 }
 
 /** A block's window at a point: 1 inside it, falling to 0 `margin` metres outside its edges. */
@@ -604,11 +660,18 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
   }
   const buildings = index.cellBuildings[cell] as readonly number[];
   for (let k = 0; k < buildings.length; k++) {
-    const d = footprintDistance(index.buildings[buildings[k] as number] as Footprint, xf, zr);
+    const f = index.buildings[buildings[k] as number] as Footprint;
+    const d = footprintDistance(f, xf, zr);
     const shut = TREE_BUILDING_CLEAR + TREE_JITTER;
     if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
-    const cshut = CLUTTER_BUILDING_CLEAR + CLUTTER_JITTER;
-    if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+    if (f.yard) {
+      // The grass comes to the wall's foot (each larger piece is kept back by where it stands: `townClutterStands`), but for the step.
+      if (d < WALL_CLEAR + WALL_RAMP) clutter *= smootherstepD(WALL_CLEAR, WALL_CLEAR + WALL_RAMP, d).v;
+      if (f.stoop !== null && inYardRect(f.stoop, xf, zr, 0)) clutter = 0;
+    } else {
+      const cshut = CLUTTER_BUILDING_CLEAR + CLUTTER_JITTER;
+      if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+    }
   }
   if (pavedTree > 0) tree *= 1 - pavedTree;
   if (pavedClutter > 0) {
@@ -632,6 +695,51 @@ export function townFeatureMask(seed: number, x: number, z: number): FeatureMask
   const loose = cover === 0 ? 1 : 1 - cover;
   if (c.tree === 1 && c.clutter === 1 && c.meadow === 0 && loose === 1) return { tree: 1, clutter: 1, meadow: 0, bare: 0 };
   return { tree: c.tree, clutter: c.clutter, meadow: c.meadow, bare: 0, loose };
+}
+
+/** How far from a yard building's wall a piece of ground cover of a class must stand. */
+export function standClear(cls: number): number {
+  if (cls === CLUTTER_MEADOW || cls === CLUTTER_LITTER) return STAND_CLEAR_CARPET;
+  if (cls === CLUTTER_GRASS || cls === CLUTTER_FLOWER || cls === CLUTTER_FUNGUS) return STAND_CLEAR_CLUMP;
+  if (cls === CLUTTER_FERN) return STAND_CLEAR_FERN;
+  if (cls === CLUTTER_BUSH || cls === CLUTTER_SHRUB) return STAND_CLEAR_BODY;
+  return CLUTTER_BUILDING_CLEAR;
+}
+
+/**
+ * The place's `clutterStands` (`CoastOverlay.clutterStands`): whether a piece of ground cover of a class may stand where it does. The
+ * mask is read at the middle of the piece's cell, which may be metres from the piece; round a yard's building the mask is open to the
+ * wall, so here each piece is kept `standClear` of such a wall, off the step at the end of the front walk, and off the lot's drive and walk.
+ */
+export function townClutterStands(seed: number, cls: number, x: number, z: number): boolean {
+  const plan = planFor(seed);
+  const site = siteFor(seed);
+  const xf = x - site.anchor.x;
+  const zr = z - COVE_Z;
+  const index = indexOf(plan);
+  const i = Math.floor((xf - index.x0) / CELL);
+  const j = Math.floor((zr - index.z0) / CELL);
+  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) return true;
+  const buildings = index.cellBuildings[i * index.nz + j] as readonly number[];
+  if (buildings.length === 0) return true;
+  const clear = standClear(cls);
+  let near = false;
+  for (let k = 0; k < buildings.length; k++) {
+    const f = index.buildings[buildings[k] as number] as Footprint;
+    if (!f.yard) continue;
+    if (footprintDistance(f, xf, zr) < clear) return false;
+    if (f.stoop !== null && inYardRect(f.stoop, xf, zr, clear)) return false;
+    near = true;
+  }
+  if (!near) return true;
+  // By a house, the lot's own drive and walk too: the mask shuts them, but only by the middle of the piece's cell.
+  const id = lotIdAt(plan, xf, zr);
+  if (id >= 0 && plan.yards[id] !== undefined && plan.yards[id]?.kind !== "paved") {
+    const shape = yardShape(plan, id);
+    if (shape.drive !== null && inYardRect(shape.drive, xf, zr, clear)) return false;
+    if (shape.walk !== null && inYardRect(shape.walk, xf, zr, clear)) return false;
+  }
+  return true;
 }
 
 /** The place's shore strip (`CoastOverlay.shoreStrip`): a yard's weight, which lifts the height the shore's rules read there by `YARD_LIFT`. */

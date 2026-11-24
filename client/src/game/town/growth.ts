@@ -245,19 +245,6 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
       const doorS = front && h.door !== null ? h.door : null;
       // A downspout stands at one end of the long walls: the water runs there and the growth is rank.
       const spout = (h.roofKind === "gable" || h.roofKind === "hip" || h.roofKind === "shed") && Math.abs(w.length - (h.refs[long] as (typeof h.refs)[number]).length) <= 0.1 ? (roll(b.id * 3 + k, 551) < 0.5 ? 0.15 : w.length - 0.15) : -9;
-      let i = 0;
-      for (let d = 0.12; d < w.length - 0.1; d += 1.4 + 0.8 * roll(b.id * 53 + k, i), i++) {
-        const corner = Math.min(d, w.length - d) < 0.9;
-        const rank = Math.abs(d - spout) < 0.9;
-        // Runs of one to three metres stand thick, with gaps of a metre or two between them (more of the wall is thick the more let go the house is).
-        const run = roll(b.id * 83 + k, Math.floor(d / 1.7));
-        if (!corner && !rank && run > dens * (north ? 1.25 : 1)) continue;
-        if (doorS !== null && Math.abs(d - doorS.s) < doorS.half + 0.4) continue;
-        const off = 0.17 + 0.4 * roll(b.id * 61 + k, i + 200) * roll(b.id * 61 + k, i + 210);
-        const px = w.ax + w.tx * d + w.nx * off;
-        const pz = w.az + w.tz * d + w.nz * off;
-        lay({ x: px, z: pz, n: 1, blades: corner || rank ? 7 : 5, card: (roll(b.id * 29 + k, i + 600) < 0.5 ? -1 : 1) * (0.25 + 0.9 * roll(b.id * 29 + k, i + 610)), wide: 0.02, tall: 0.55 + 0.45 * roll(b.id * 71 + k, i + 400), high: (corner || rank ? 0.35 : 0.14) + 0.22 * neg, dry: 0.15 + 0.5 * neg, ax: w.nx, az: w.nz, seed: b.id * 977 + k * 101 + i });
-      }
       // Something larger every few metres in a run that is thick: a fern on the shaded side, dock, a bramble cane or two.
       for (let d = 0.8 + 1.5 * roll(b.id * 5 + k, 1), j = 0; d < w.length - 0.4; d += 4 + 3 * roll(b.id * 5 + k, 2 + j), j++) {
         const rank = Math.abs(d - spout) < 1.2;
