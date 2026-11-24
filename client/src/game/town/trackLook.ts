@@ -90,11 +90,6 @@ export type SurfaceSpec = {
   readonly streaks2?: boolean;
 };
 
-function unit3(a: Vec3): Vec3 {
-  const l = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
-  return l > 1e-12 ? [a[0] / l, a[1] / l, a[2] / l] : a;
-}
-
 /**
  * The surface of a polygon that has an edge `a` to `b` it runs along and `toward` a point of its plane off the edge: the grain runs from `a`
  * to `b`, and its coordinate along is the point's own along that direction, so neighbouring polygons of one run meet with no seam.
@@ -146,7 +141,7 @@ export function lumps(look: Look, x: number, z: number): number {
   const a = (vnoise(x * 0.9, z * 0.9, s) - 0.5) * 0.034 + (vnoise(x * 2.1, z * 2.1, s + 1) - 0.5) * 0.016;
   const l = vnoise(x * 0.3, z * 0.3, s + 2);
   const low = l > 0.74 ? ((l - 0.74) / 0.26) * 0.03 : 0;
-  return clamp(a - low, -0.022, 0.012);
+  return clamp(a - low, -0.022, 0.008);
 }
 
 /** Whether a place is a low spot where mud has pumped up (the same noise `lumps` lowers by). */
@@ -435,7 +430,7 @@ function plate(b: MeshBuilder, cx: number, cz: number, ux: number, uz: number, a
   const inner = a < 0 ? 1 : -1;
   const top = g + RAIL_FOOT - 0.0005;
   // The plate rests on the tie: its top is the rail foot's underside at its inner edge, falling away outward (a cant, so its top is not a plane parallel to the tie's).
-  if (top - tieTop < 0.004) return;
+  if (top - tieTop < 0.01) return;
   const rust: SurfaceSpec = { layer: "rust", tint: [0.55 + 0.2 * hash01(key, 5), 0.45, 0.38], wear: 0.1, wearKind: "rust" };
   // The plate's two ends along the tie: inner at `a + inner*0.1`, outer at `a - inner*0.1`, the outer lower.
   const lo = a - 0.1;
@@ -497,7 +492,7 @@ export function tieAt(b: MeshBuilder, look: Look, f: Frame, full: boolean): void
   const ux = f.nx * cs - f.nz * sn;
   const uz = f.nz * cs + f.nx * sn;
   // Sunk or proud: more sunk than proud (the plates and the rail's foot stand at the proud side's height).
-  const dy = -0.026 + h(6) * 0.026 + (isNew ? 0.004 : 0);
+  const dy = -0.03 + h(6) * 0.026 + (isNew ? 0.004 : 0);
   const tilt = (h(7) - 0.5) * 0.02;
   const L = TIE_HALF_LENGTH + (h(8) - 0.5) * 0.1;
   const hw = TIE_HALF_WIDTH + (h(9) - 0.5) * 0.012;
@@ -568,8 +563,8 @@ export function jointBars(b: MeshBuilder, f: Frame, along: Vec3, dip: number): v
     const cx = f.x + f.nx * rail;
     const cz = f.z + f.nz * rail;
     for (const side of [rail < 0 ? -1 : 1]) {
-      // A bar against the web, under the head and over the foot's ledge: 0.5 m long, 3.8 cm high, 2.5 cm thick.
-      texBox(b, cx + vx * side * 0.0325, cz + vz * side * 0.0325, f.g + RAIL_FOOT + 0.045 + dip, ax, az, 0.26, 0.0125, 0.038, { layer: "rust", tint: [0.55, 0.36, 0.27], wear: 0.4, wearKind: "rust" }, false, [0.17, 0.1, 0.07], false);
+      // A bar against the web, under the head and over the foot's ledge: 0.5 m long, 3 cm high (a grade of a few percent lifts its ends a centimetre off the rail's line, so it keeps under the head), 2.5 cm thick.
+      texBox(b, cx + vx * side * 0.0325, cz + vz * side * 0.0325, f.g + RAIL_FOOT + 0.04 + dip, ax, az, 0.26, 0.0125, 0.03, { layer: "rust", tint: [0.55, 0.36, 0.27], wear: 0.4, wearKind: "rust" }, false, [0.17, 0.1, 0.07], false);
     }
   }
 }

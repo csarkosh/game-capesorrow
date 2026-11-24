@@ -37,25 +37,16 @@ function runAt(frames: readonly Frame[], i: number): number {
   return runLength(frames.slice(0, i + 1));
 }
 
-/** The index of the frame nearest `d` metres along a run. */
-function nearest(frames: readonly Frame[], d: number): number {
-  let best = 0;
-  let bd = Infinity;
-  for (let i = 0; i < frames.length; i++) {
-    const e = Math.abs(runAt(frames, i) - d);
-    if (e < bd) {
-      bd = e;
-      best = i;
-    }
-  }
-  return best;
-}
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
 /** The highest the flat ground lies over the ground at a place (a sidewalk's heave: `walkGeometry.ts`), and how far over it a ballast's top stands, metres. */
 const FLAT_TOP = 0.03;
 /** The middle of the heights flat ground lies at over the ground. */
 const FLAT_MID = 0.02;
 const BALLAST_OVER = 0.05;
+/** How far over the ballast's top the ties and plates stand (flat ground within this is a face against them), and how far the bed's lumps and crown reach over its nominal top, metres. */
+const TIE_REACH = 0.26;
+const BED_RELIEF = 0.022;
 
 function onTrestleAt(track: SpurTrack, d: number): boolean {
   for (const r of track.trestles) {
@@ -119,8 +110,9 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
     let need = f.g;
     for (const side of [-BALLAST_TOP_HALF, 0, BALLAST_TOP_HALF]) {
       const ground = g.heightAt(f.x + f.nx * side, f.z + f.nz * side);
-      // Flat ground that lies within a few centimetres of the ballast's top is a face against it; ground that is far under it or far over it is not.
-      if (Math.abs(ground + FLAT_MID - (f.g + BALLAST_TOP)) < BALLAST_OVER) need = Math.max(need, ground + FLAT_TOP + BALLAST_OVER - BALLAST_TOP);
+      // Flat ground that lies within a few centimetres of the ballast's top is a face against it, and so is flat ground that lies where the ties and their plates stand (up to `TIE_REACH` over the ballast's top): the track is lifted clear of it. Ground that is far under it is not a pair.
+      const rel = ground + FLAT_MID - (f.g + BALLAST_TOP);
+      if (rel > -BALLAST_OVER && rel < TIE_REACH) need = Math.max(need, ground + FLAT_TOP + BALLAST_OVER + BED_RELIEF - BALLAST_TOP);
     }
     return need > f.g ? { ...f, g: need } : f;
   });
@@ -163,18 +155,22 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
       // The rails: jointed every `JOINT` m, a few millimetres low at some joints, with fish plates at the full tier.
       const railFrames = part;
       const start = Math.round((mid.x + mid.z) * 3);
-      const dips = railFrames.map((_, i) => dipAt(look, runAt(railFrames, i), start));
+      const marks = railFrames.map((_, i) => runAt(railFrames, i));
+      const dips = marks.map((s) => dipAt(look, s, start));
       railPair(b, railFrames, look, low ? 1 : 0, (i) => dips[i] as number);
       if (low) continue;
       const len = runLength(part);
-      const bars = Math.floor(len / JOINT);
-      for (let k = 0; k <= bars; k++) {
-        const d = Math.round((k * JOINT + (start % 5)) * 10) / 10;
-        if (d > len - 0.4 || d < 0.4) continue;
+      // Fish plates at each joint, at the height the rail has there (its dips are laid at the frames, the rail between them straight).
+      for (let k = 1; k * JOINT < len - 0.4; k++) {
+        const d = k * JOINT;
+        let i = 1;
+        while (i < marks.length - 1 && (marks[i] as number) < d) i++;
+        const t = clamp01((d - (marks[i - 1] as number)) / Math.max(1e-9, (marks[i] as number) - (marks[i - 1] as number)));
+        const dip = (dips[i - 1] as number) + ((dips[i] as number) - (dips[i - 1] as number)) * t;
         const f = frameAlong(part, d);
         const g = frameAlong(part, Math.min(len, d + 0.5));
         const h = frameAlong(part, Math.max(0, d - 0.5));
-        jointBars(b, f, [g.x - h.x, 0, g.z - h.z], dipAt(look, runAt(railFrames, nearest(railFrames, d)), start));
+        jointBars(b, f, [g.x - h.x, 0, g.z - h.z], dip);
       }
       const n = Math.floor(len / TIE_PITCH);
       for (let j = 0; j < n; j++) {

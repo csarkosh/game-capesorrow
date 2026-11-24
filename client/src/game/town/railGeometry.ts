@@ -15,7 +15,7 @@
  * section, so the track sits on the ground the simulation made, and a spur's end can meet it: the rails' tops are `RAIL_TOP`
  * over the bench, their gauge `RAIL_GAUGE`.
  */
-import { frameAlong, runLength, BALLAST_SKIRT, BALLAST_TOP, BALLAST_TOP_HALF, RAIL_FOOT, RAIL_TOP, TIE_BOTTOM, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_PITCH, TIE_TOP, pointOf, type Frame, type Profile } from "./railConstants.js";
+import { frameAlong, runLength, BALLAST_SKIRT, BALLAST_TOP, BALLAST_TOP_HALF, RAIL_FOOT, RAIL_TOP, TIE_PITCH, pointOf, type Frame, type Profile } from "./railConstants.js";
 import { MeshBuilder, hash01, scaled, type MeshArrays, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { DECK, PAINT_WHITE, PILE, TIMBER, TIMBER_WEATHERED, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
 import { sliceDue, type Slices } from "@csarkosh/engine/game/syncJobs";
