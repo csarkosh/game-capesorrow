@@ -136,7 +136,8 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
     const spacing = SPACINGS[Math.floor(hashN(key, runIx, 0, 3) * SPACINGS.length)] as number;
     const st = stations(key, runIx, a, b, spacing);
     const tone = pourTint(run.decade);
-    const w = run.wear;
+    // No run is new: a floor of wear (cracks, broken corners, gone slabs and moss come with it).
+    const w = Math.max(run.wear, 0.36);
     // The lot beside the run: a shady yard (trees) heaves the sidewalk and shades it, a vacant one is let go.
     const kind = ctx.yardKindAt((a + b) / 2);
     const shady = kind === "mossy" || kind === "brush" ? 1 : kind === "tall" || kind === "shaggy" ? 0.4 : 0;
@@ -177,11 +178,11 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
       const front = Math.max(inner, f.cw + 0.18);
       const slabWear = (p: Vec3): number => {
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
-        return replaced ? 0.02 + 0.1 * k : clamp01(0.03 + mossK * (0.2 + 0.9 * k * k) * (0.5 + sw));
+        return replaced ? 0.03 + 0.12 * k : clamp01(0.08 + mossK * (0.5 + 1.8 * k * k) * (0.7 + sw));
       };
       const slabDirt = (p: Vec3): number => {
         const k = clamp01((lat(p) - front) / Math.max(0.3, out - front));
-        return replaced ? 0.02 + 0.1 * k : clamp01(0.04 + (0.08 + 0.28 * sw) * (0.2 + 1.0 * k) + 0.14 * neglected * k);
+        return replaced ? 0.03 + 0.1 * k : clamp01(0.12 + (0.2 + 0.5 * sw) * (0.35 + 1.0 * k) + 0.2 * neglected * k);
       };
       const over: Over = { layer: "sidewalk", tint, frame, wear: slabWear, dirt: slabDirt, group: "base" };
       const pt = (s: number, t: number, e: number): P3 => slabPoint(f, sigma, heightAt, s, t, lift(e));
@@ -206,14 +207,14 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         const mossy = 0.45 + 0.8 * shady + 0.5 * sw;
         if (!low && hashN(key, runIx, i, 140) < 0.22 + 0.25 * mossy) {
           const tb = Math.min(T1 - d0, T1 - d1);
-          const wd = 0.17 + 0.12 * hashN(key, runIx, i, 141);
-          const amt = 0.7 + 0.3 * hashN(key, runIx, i, 142);
+          const wd = 0.24 + 0.16 * hashN(key, runIx, i, 141);
+          const amt = 0.9 + 0.1 * hashN(key, runIx, i, 142);
           const wearAt = (q: Vec3): number => clamp01(amt * (1 - clamp01((tb - lat(q)) / wd)));
           surf.poly([pt(ss0, tb - wd, l0), pt(ss1, tb - wd, l1), pt(ss1, tb, l1), pt(ss0, tb, l0)], SIDEWALK, { layer: "sidewalk", tint, frame, wear: wearAt, wearKind: "moss", rank: RANK.mark });
         }
         if (!low && hashN(key, runIx, i, 143) < 0.2 + 0.2 * mossy) {
-          const wd = 0.12 + 0.1 * hashN(key, runIx, i, 144);
-          const amt = 0.6 + 0.4 * hashN(key, runIx, i, 145);
+          const wd = 0.18 + 0.12 * hashN(key, runIx, i, 144);
+          const amt = 0.85 + 0.15 * hashN(key, runIx, i, 145);
           const wearAt = (q: Vec3): number => clamp01(amt * (1 - clamp01((lat(q) - T0) / wd)));
           surf.poly([pt(ss0, T0, l0), pt(ss1, T0, l1), pt(ss1, T0 + wd, l1), pt(ss0, T0 + wd, l0)], SIDEWALK, { layer: "sidewalk", tint, frame, wear: wearAt, wearKind: "moss", rank: RANK.mark });
         }
@@ -245,9 +246,9 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         if (hashN(key, runIx, i, 16) < 0.25 + 0.55 * w) weeds(sj0 - 0.02, sj1 + 0.02, T0 + 0.1, T1 - 0.15, 1, i, 0.5, "sidewalk", tint);
         // Moss in the joint: a strip a hand wide, full along its middle and none at its edges.
         if (!low && hashN(key, runIx, i, 146) < 0.12 + 0.3 * mossK + 0.1 * w) {
-          const hw2 = 0.06 + 0.04 * hashN(key, runIx, i, 147);
+          const hw2 = 0.09 + 0.05 * hashN(key, runIx, i, 147);
           const jc = ss1 + JOINT_WIDTH / 2;
-          const amt = 0.7 + 0.3 * hashN(key, runIx, i, 148);
+          const amt = 0.9 + 0.1 * hashN(key, runIx, i, 148);
           const wearAt = (q: Vec3): number => clamp01(amt * (1 - Math.abs((q[0] - slabX(jc, T0)) * f.tx + (q[2] - slabZ(jc, T0)) * f.tz) / hw2));
           const mp = (s2: number, t: number): P3 => slabPoint(f, sigma, heightAt, s2, t, WALK_TOP + 0.001);
           const mo: Over = { layer: "sidewalk", tint, frame, wear: wearAt, wearKind: "moss", rank: RANK.mark };
@@ -362,7 +363,7 @@ export function walkSide(ctx: WalkContext, free: readonly (readonly [number, num
         // Laid as wear over the slab's own surface: full at the centre, none at the rim, so the material's noise breaks the outline. One triangle a side of the ring, each corner's amount its distance from the middle.
         const mid = slabPoint(f, sigma, heightAt, cs, ct, WALK_TOP + 0.005);
         const reach = r * stretch * 1.1;
-        const wear = (q: Vec3): number => clamp01((1 - Math.hypot(q[0] - mid[0], q[2] - mid[1]) / reach) * 2.4);
+        const wear = (q: Vec3): number => clamp01((1 - Math.hypot(q[0] - mid[0], q[2] - mid[1]) / reach) * 1.5);
         const patchFrame = slabFrame(f, key, runIx, i * 16 + c, sigma);
         for (let k = 0; k < n; k++) {
           surf.poly([mid, ring[k] as P3, ring[(k + 1) % n] as P3], SIDEWALK, { layer: baseLayer, tint: baseTint, frame: patchFrame, wear, wearKind: hue < 0.3 ? "leaf" : "growth", rank: RANK.crack });
