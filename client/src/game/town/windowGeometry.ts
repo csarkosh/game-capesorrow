@@ -1,12 +1,13 @@
 /**
  * A window as a thing with a depth, never a dark rectangle: a hole through the wall with a reveal, the frame and trim of its age (painted
- * wood with trim boards and a sill, or the white vinyl of a replacement), a pane of glass in the blended layer that reflects the sky and
- * shows what is behind it, and behind that a shallow box (a floor, a ceiling, two sides and a back, one metre deep) that lights itself by
- * what the plan says about the window (`WindowTreatment`): curtains drawn (a few colours, plain, in folds or in stripes), blinds part way
- * down, a lit room glimpsed through, a dark room with a curtain half drawn and the sky on the glass, boards over it, or the glass gone
- * with shards left in the frame. A plant or a lamp stands on the sill where the plan puts one.
+ * wood with trim boards and a sill, or the white vinyl of a replacement), and a pane of glass in the blended layer that reflects the sky.
+ * Behind a home's glass there is nothing to see into: the whole opening is closed right behind it by curtains drawn across (a few colours,
+ * plain, in folds or in stripes, some glowing as if a lamp is on), blinds fully down, or a dark window by day (an opaque cool grey, so the
+ * sky on the glass and its grime are what is seen), as the plan's `WindowTreatment` says. A shop's glass shows the unit's room; boards go
+ * over a boarded window; a broken one has shards left in the frame over an opaque dark backing. A plant or a lamp stands on the sill
+ * where the plan puts one, in front of the covering.
  *
- * What is authored: the sizes, the colour tables, the depth of the box, the share of curtained windows with the room lit behind. What
+ * What is authored: the sizes, the colour tables, the share of curtained windows that glow. What
  * the plan causes: the treatment, the sill, and, from the household's habit (`windows.ts`), which windows match. A window is
  * replaced (white vinyl, a different pane) with a chance that grows with the building's age; the cause is the owner's remodel of a
  * decade in the owner's own lifetime, drawn from the building's id and the window's.
@@ -16,6 +17,7 @@ import { GLASS_CLEAR, GLASS_TINT, TRIM_WHITE, pane, pickOf, reveal, wat, wquad, 
 import { STEP, curtainFolds, patch, paperSheets, slatBlinds, slatColour, verticalBlinds, type Behind } from "./windowDressing.js";
 import type { WindowCover, WindowTreatment } from "../../sim/town/types.js";
 import type { Surface } from "./townSurface.js";
+import { standOff } from "./faceLedger.js";
 import { sillStreak } from "./buildingWear.js";
 import type { Detail, FillReport } from "./townTypes.js";
 
@@ -30,8 +32,7 @@ export type WinLook = { readonly lit?: boolean; readonly dirt?: number; readonly
 const CURTAINS: readonly Rgb[] = [
   [0.7, 0.66, 0.55], [0.55, 0.2, 0.18], [0.25, 0.35, 0.5], [0.78, 0.78, 0.74], [0.3, 0.42, 0.3], [0.5, 0.4, 0.55], [0.85, 0.7, 0.35], [0.35, 0.3, 0.27],
 ];
-const ROOM_WARM: Rgb = [0.95, 0.78, 0.48];
-const ROOM_DIM: Rgb = [0.2, 0.22, 0.26];
+const DARK_BACK: Rgb = [0.17, 0.19, 0.23];
 const PLYWOOD: Rgb = [0.6, 0.45, 0.28];
 
 /** The window's frame colour from the building's age (painted wood of the time, or aluminium after 1960); `replaced` is white vinyl. */
@@ -39,31 +40,6 @@ export function frameColour(id: number, era: number, replaced: boolean): Rgb {
   if (replaced) return TRIM_WHITE;
   if (era < 1960) return pickOf([[0.62, 0.6, 0.54], [0.1, 0.2, 0.14], [0.14, 0.1, 0.08], [0.55, 0.5, 0.4]] as readonly Rgb[], id, 400);
   return pickOf([[0.4, 0.42, 0.44], [0.18, 0.14, 0.11], [0.62, 0.62, 0.6]] as readonly Rgb[], id, 401);
-}
-
-/** A window's room: a shallow box behind the glass in `colour`, lit by gradient (the lamp's side brighter when `lit`), with a lamp in it now and then. */
-function shallowBox(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0: number, y1: number, depth: number, colour: Rgb, glow: number, full: boolean, lit: boolean, seed: number): void {
-  // Its sides start where the reveal ends (the reveal's faces lie in the same planes).
-  const r0 = 0.17;
-  const fx = { glow };
-  // The back wall: brighter on the side the lamp is on and toward the top when lit; a dark room's is its colour, a little lighter at the glass (the day).
-  const lampLeft = hash01(seed, 640) < 0.5;
-  const bright = lit ? 1.25 : 1;
-  const l = lampLeft ? bright : 0.8;
-  const r = lampLeft ? 0.8 : bright;
-  out.poly([wat(w, sa, y0, -depth), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [w.nx, 0, w.nz], [scaled(colour, 0.7 * l), scaled(colour, 0.7 * r), scaled(colour, 1.0 * r), scaled(colour, 1.0 * l)], undefined, fx);
-  if (!full) return;
-  out.poly([wat(w, sa, y1, -r0), wat(w, sb, y1, -r0), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], [scaled(colour, 0.9), scaled(colour, 0.9), scaled(colour, 0.65), scaled(colour, 0.65)], undefined, fx);
-  out.poly([wat(w, sa, y0, -r0), wat(w, sa, y0, -depth), wat(w, sa, y1, -depth), wat(w, sa, y1, -r0)], [w.tx, 0, w.tz], [scaled(colour, 0.8), scaled(colour, 0.55), scaled(colour, 0.6), scaled(colour, 0.85)], undefined, fx);
-  out.poly([wat(w, sb, y0, -r0), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sb, y1, -r0)], [-w.tx, 0, -w.tz], [scaled(colour, 0.8), scaled(colour, 0.55), scaled(colour, 0.6), scaled(colour, 0.85)], undefined, fx);
-  // The floor, seen from below the sill only at a low angle: a strip lighter by the glass.
-  out.poly([wat(w, sa, y0, -r0), wat(w, sb, y0, -r0), wat(w, sb, y0, -depth), wat(w, sa, y0, -depth)], [0, 1, 0], [scaled(colour, 0.9), scaled(colour, 0.9), scaled(colour, 0.5), scaled(colour, 0.5)], undefined, fx);
-  // A lamp in the room, lit: a small bright shade at the back on its side, and its pool on the back wall.
-  if (lit && hash01(seed, 641) < 0.35) {
-    const s = lampLeft ? sa + (sb - sa) * 0.22 : sb - (sb - sa) * 0.22;
-    const p = wat(w, s, y0 + 0.5, -depth + 0.25);
-    out.cylinder(p[0], p[2], y0 + 0.4, 0.09, 0.2, 6, [1, 0.85, 0.55], [1, 0.9, 0.6], 0.05);
-  }
 }
 
 /** The treatment of a window's own cover (in the plan: paper, boards) is in the shop's front; this is the window's: see the header. */
@@ -77,7 +53,8 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   const rv = full ? 0.16 : 0.08;
   // The glass's own depth, and every layer in front of or behind it a step (STEP) from the next.
   const gOff = -0.07;
-  if (c.report !== undefined) c.report.windows.push({ pane: state !== "boarded" && cover !== "boarded", behind: state === "boarded" || cover === "boarded" ? "cover" : shop ? "room" : "box" });
+  const entry: FillReport["windows"][number] = { pane: state !== "boarded" && cover !== "boarded", behind: state === "boarded" || cover === "boarded" ? "cover" : shop ? "room" : "cover", closes: state === "boarded" || cover === "boarded" ? "boards" : shop ? "room" : "dark", shop, opening: [sa, sb, y0, y1] };
+  c.report?.windows.push(entry);
   if (state === "boarded" || cover === "boarded") {
     // Plywood over the hole, in sheets, each its own shade.
     const n = Math.max(1, Math.round(width / 1.2));
@@ -114,10 +91,31 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
       wquad(out, w, sa - 0.03, y0 - 0.03, sb + 0.03, y0, 0.06, fr);
     }
   }
-  const behind: Behind = { out, w, detail, seed, glass: gOff, lit: look.lit === true };
+  // A plant or a lamp on the sill stands in front of the covering, so the covering is set well behind them, with a liner closing the opening's sides to it.
+  const shift = !shop && sill !== "none" && state !== "broken" ? 0.3 : 0;
+  const behind: Behind = { out, w, detail, seed, glass: gOff - shift, lit: look.lit === true };
+  // Clear of every face the wall's own builders have noted (`faceLedger.ts`), as the blinds' face is: a room's wall behind a works' window must not lie within 2.45 cm of it.
+  const back0 = behind.glass - STEP * 8.4;
+  const ba = wat(w, sa, 0, back0);
+  const bb = wat(w, sb, 0, back0);
+  const back = back0 - (shop ? 0 : standOff(w.nx, w.nz, ba[0], ba[2], bb[0], bb[2], y0, y1, -1));
+  /** The opaque backing that closes the whole opening behind everything else (and its liner, when it is set back from the reveal). */
+  const backing = (col: Rgb, glow: number): void => {
+    out.poly([wat(w, sa, y0, back), wat(w, sb, y0, back), wat(w, sb, y1, back), wat(w, sa, y1, back)], [w.nx, 0, w.nz], [scaled(col, 0.8), scaled(col, 0.8), col, col], undefined, { glow });
+    if (shift > 0) {
+      const r0 = 0.17;
+      const lc = scaled(col, 0.7);
+      out.poly([wat(w, sa, y1, -r0), wat(w, sb, y1, -r0), wat(w, sb, y1, back), wat(w, sa, y1, back)], [0, -1, 0], lc, undefined, { glow });
+      out.poly([wat(w, sa, y0, -r0), wat(w, sa, y0, back), wat(w, sa, y1, back), wat(w, sa, y1, -r0)], [w.tx, 0, w.tz], lc, undefined, { glow });
+      out.poly([wat(w, sb, y0, -r0), wat(w, sb, y0, back), wat(w, sb, y1, back), wat(w, sb, y1, -r0)], [-w.tx, 0, -w.tz], lc, undefined, { glow });
+      out.poly([wat(w, sa, y0, -r0), wat(w, sb, y0, -r0), wat(w, sb, y0, back), wat(w, sa, y0, back)], [0, 1, 0], lc, undefined, { glow });
+    }
+    entry.covering = [sa, sb, y0, y1];
+  };
   if (state === "broken") {
-    // No glass: a few shards stand in the corners of the frame, and a torn curtain hangs inside. The room is dark.
-    shallowBox(out, w, sa, sb, y0, y1, 0.9, ROOM_DIM, 0.1, full, false, seed);
+    // No glass: a few shards stand in the corners of the frame, and a torn curtain hangs inside. Nothing behind it is a room: an opaque dark backing closes the hole.
+    backing(DARK_BACK, 0.05);
+    entry.closes = "dark";
     for (const [s, y, sg] of [[sa, y1, 1], [sb, y0, -1], [sa, y0, 1]] as const) {
       const k = 0.18 + hash01(seed + sg + y, 403) * 0.25;
       glass.poly([wat(w, s, y, gOff), wat(w, s + sg * k, y, gOff), wat(w, s, y + (y === y1 ? -k * 1.6 : k * 1.6), gOff)], [w.nx, 0, w.nz], [0.5, 0.56, 0.6], undefined, { clear: 0.6 });
@@ -127,9 +125,15 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   }
   // The room behind it: lit, dim; a curtained window sometimes has a lit room behind its curtains.
   const roomLit = state === "lit" || (state === "curtained" && hash01(seed, 405) < 0.22) || (state === "blinds" && hash01(seed, 406) < 0.2);
-  const roomColour = roomLit ? ROOM_WARM : state === "dark" ? ROOM_DIM : ([0.4, 0.36, 0.32] as Rgb);
+  // What closes the opening of a home: curtains drawn right across (most), blinds fully down, or a dark window by day.
+  const closer: "curtain" | "blind" | "dark" = shop ? "dark" : state === "blinds" ? "blind" : state === "dark" ? (look.vacant === true || hash01(seed, 660) < 0.55 ? "dark" : "curtain") : "curtain";
+  const curtainCol = state === "dark" ? scaled(pickOf(CURTAINS, seed, 417), 0.6) : pickOf(CURTAINS, seed, state === "lit" ? 415 : 407);
   const lampOn = roomLit || look.lit === true;
-  if (!shop) shallowBox(out, w, sa, sb, y0, y1, 0.9, roomColour, roomLit ? 1.1 : state === "dark" ? 0.14 : 0.3, full, roomLit, seed);
+  const glowC = roomLit ? 0.7 : state === "dark" ? 0.12 : 0.18;
+  if (!shop) {
+    entry.closes = closer;
+    backing(closer === "dark" ? DARK_BACK : closer === "blind" ? scaled(slatColour(seed), 0.5) : scaled(curtainCol, 0.5), closer === "dark" ? 0.05 : glowC);
+  }
   const dirt = look.dirt ?? Math.min(0.9, 0.2 + 0.25 * Math.min(1, (2026 - c.era) / 120) + hash01(seed, 643) * 0.25);
   const oldness = Math.min(1, (2026 - c.era) / 130);
   // The pane: old glass is wavier, so its reflecting normal turns more.
@@ -145,34 +149,17 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     }
   }
   if (cover === "papered") paperSheets(behind, sa, sb, y0, y1, Math.min(1, 0.2 + (look.dirt ?? 0.5)));
-  // Curtains, blinds or what the plan says is in it.
-  const glowC = roomLit ? 0.7 : 0.18;
+  // Curtains, blinds or what the plan says is in it: the whole opening, edge to edge.
   if (shop) {
     // A shop shows the unit's own room behind its glass.
-  } else if (state === "curtained") {
-    const col = pickOf(CURTAINS, seed, 407);
+  } else if (closer === "curtain") {
     const style = Math.floor(hash01(seed, 408) * 3);
-    const cover1 = 0.26 + hash01(seed, 409) * 0.2;
-    const drawn = hash01(seed, 410) < 0.3;
-    const bottom = y0 + height * (hash01(seed, 411) < 0.5 ? 0.05 : 0.0);
-    if (drawn) curtainFolds(behind, sa, sb, y1 - 0.02, Math.max(y0, bottom), col, style, glowC);
-    else {
-      curtainFolds(behind, sa, sa + width * cover1, y1 - 0.02, bottom, col, style, glowC);
-      curtainFolds(behind, sb - width * cover1, sb, y1 - 0.02, bottom, col, style, glowC);
-    }
-    if (full) out.poly([wat(w, sa, y1 - 0.06, gOff - STEP * 4), wat(w, sb, y1 - 0.06, gOff - STEP * 4), wat(w, sb, y1 - 0.03, gOff - STEP * 4), wat(w, sa, y1 - 0.03, gOff - STEP * 4)], [w.nx, 0, w.nz], [0.25, 0.2, 0.14], undefined, { glow: 0.1 });
-  } else if (state === "blinds") {
+    curtainFolds(behind, sa, sb, y1, y0, curtainCol, style, glowC);
+    if (full) out.poly([wat(w, sa, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.03, behind.glass - STEP * 4), wat(w, sa, y1 - 0.03, behind.glass - STEP * 4)], [w.nx, 0, w.nz], [0.25, 0.2, 0.14], undefined, { glow: 0.1 });
+  } else if (closer === "blind") {
     const col = slatColour(seed);
-    const drop = height * (0.3 + hash01(seed, 412) * 0.65);
-    if (hash01(seed, 644) < 0.18) verticalBlinds(behind, sa, sb, y1 - 0.02, y0 + 0.05, col);
-    else slatBlinds(behind, sa, sb, y1 - 0.02, drop, col);
-  } else if (state === "lit") {
-    const left = hash01(seed, 414) < 0.5;
-    const col = pickOf(CURTAINS, seed, 415);
-    curtainFolds(behind, left ? sa : sb - width * 0.22, left ? sa + width * 0.22 : sb, y1 - 0.02, y0 + 0.1, col, 1, 0.8);
-  } else if (state === "dark") {
-    const left = hash01(seed, 416) < 0.5;
-    curtainFolds(behind, left ? sa : sb - width * 0.35, left ? sa + width * 0.35 : sb, y1 - 0.02, y0 + height * 0.3, scaled(pickOf(CURTAINS, seed, 417), 0.6), 1, 0.12);
+    if (hash01(seed, 644) < 0.18) verticalBlinds(behind, sa, sb, y1, y0, col);
+    else slatBlinds(behind, sa, sb, y1, height, col);
   }
   if (shop) {
     // The shop's own cover (blinds) is drawn by the front: nothing more here.
@@ -180,7 +167,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   // Now and then something else is in the window: a sheet of cardboard or plywood in a broken pane, a window air-conditioner, a box fan.
   if (!shop && full && !replaced) {
     const x = hash01(seed, 645);
-    if (x < 0.05 && (state === "dark" || state === "curtained")) patch(behind, sa + (hash01(seed, 646) < 0.5 ? 0 : width / 2), sa + (hash01(seed, 646) < 0.5 ? width / 2 : width), y0, y0 + height * 0.5, hash01(seed, 647) < 0.6);
+    if (x < 0.05 && (closer === "dark" || closer === "curtain")) patch(behind, sa + (hash01(seed, 646) < 0.5 ? 0 : width / 2), sa + (hash01(seed, 646) < 0.5 ? width / 2 : width), y0, y0 + height * 0.5, hash01(seed, 647) < 0.6);
     else if (x < 0.11 && c.era >= 1950 && width <= 1.2) acUnit(out, w, (sa + sb) / 2, y0, Math.min(0.55, width - 0.15), seed);
     else if (x < 0.14 && lampOn) boxFan(behind, (sa + sb) / 2, y0, Math.min(0.5, width - 0.2), seed);
   }
