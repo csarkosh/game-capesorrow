@@ -32,6 +32,8 @@ export type FieldIn = {
   readonly step: number;
   /** The glow of a lamp in the back room, seen through the doorway at the back (null for none), s along the room. */
   readonly backLamp: number | null;
+  /** The mean the lights are brought to, where the room is darker or brighter than a shop (a bar's is low). */
+  readonly exposure?: number;
 };
 
 export type RoomField = {
@@ -106,7 +108,7 @@ export function roomField(i: FieldIn): RoomField {
     }
   }
   allMean = nodes > 0 ? allMean / nodes : 1;
-  const gain = allMean > 1e-4 ? EXPOSURE_OPEN / allMean : 0;
+  const gain = allMean > 1e-4 ? (i.exposure ?? EXPOSURE_OPEN) / allMean : 0;
   const ambient = i.lit ? AMBIENT_OPEN : i.vacant ? AMBIENT_VACANT : AMBIENT_SHUT;
   const ambC: Rgb = i.lit ? [1, 0.92, 0.78] : [0.8, 0.88, 1];
   let sum = 0;
@@ -129,7 +131,7 @@ export function roomField(i: FieldIn): RoomField {
       }
       day = Math.min(1.1, day);
       // Under the lights the day is a small part; in a shut or vacant room it is nearly all there is.
-      const dayK = i.lit ? 0.4 : 0.5;
+      const dayK = i.lit ? 0.3 : 0.5;
       r += SKY[0] * day * dayK;
       g += SKY[1] * day * dayK;
       bl += SKY[2] * day * dayK;
