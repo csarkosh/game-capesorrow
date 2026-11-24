@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { isPaved } from "../../src/sim/town/clearing.js";
+import { pavedGround } from "../../src/sim/town/pavedGround.js";
 import { contains, orient } from "../../src/sim/town/geom.js";
 import { MeshBuilder } from "../../src/game/town/meshBuilder.js";
 import { groundGeometry, PATCH_LIFT, STALL_CLEAR, STALL_OVER } from "../../src/game/town/groundGeometry.js";
@@ -18,7 +19,8 @@ describe("the paved ground between the buildings", () => {
       groundGeometry(g, () => b);
       const a = b.finish();
       expect(a.positions.length).toBeGreaterThan(3000);
-      const paved = g.plan.blocks.filter((bl) => isPaved(bl.district));
+      // Every paved polygon the town lays (a paved district's block and a lone business's apron: `pavedGround.ts`).
+      const paved = pavedGround(g.plan);
       const yards = g.plan.blocks.filter((bl) => !isPaved(bl.district));
       let onYard = 0;
       for (let v = 0; v < a.positions.length / 3; v++) {
@@ -27,8 +29,8 @@ describe("the paved ground between the buildings", () => {
         const z = a.positions[v * 3 + 2] as number;
         const p = { x: x - g.anchor.x, z: z - g.anchor.z };
         // On a paved block (its edge, within a centimetre, and the vertex's float rounding included).
-        expect(paved.some((bl) => contains(orient(bl.polygon), p, 0.05)), `seed ${seed} vertex ${v}`).toBe(true);
-        if (yards.some((bl) => contains(orient(bl.polygon), p, -0.05))) onYard++;
+        expect(paved.some((bl) => contains(bl.polygon, p, 0.05)), `seed ${seed} vertex ${v}`).toBe(true);
+        if (yards.some((bl) => contains(orient(bl.polygon), p, -0.05)) && !paved.some((q) => contains(q.polygon, p, 0.05))) onYard++;
         const lift = y - g.heightAt(x, z);
         expect(lift).toBeGreaterThan(PATCH_LIFT - 0.002);
         expect(lift).toBeLessThan(PATCH_LIFT + STALL_OVER + 0.002);

@@ -6,9 +6,10 @@ import { townGeometry, townGround } from "../../src/game/town/townGeometry.js";
 import { rampsOf } from "../../src/sim/town/junctionShape.js";
 import { CROSSWALK_WIDTH, UNMARKED_CROSSWALK, hasPavement } from "../../src/sim/town/junctions.js";
 import { walkAt } from "../../src/sim/town/port/edges.js";
-import { CURB_OUT, streetLiftD, streetLowerD } from "../../src/sim/town/streetField.js";
+import { CURB_OUT, WALK_FADE, streetLiftD, streetLowerD } from "../../src/sim/town/streetField.js";
+import { pavedGround } from "../../src/sim/town/pavedGround.js";
 import { WORLD_SEEDS, groundOf, planFor, siteFor, worldFor } from "./world.js";
-import { segDist } from "../../src/sim/town/geom.js";
+import { contains, segDist } from "../../src/sim/town/geom.js";
 import type { StreetEdge } from "../../src/sim/town/types.js";
 
 const SEEDS = [...WORLD_SEEDS, 7, 12];
@@ -74,7 +75,10 @@ describe("the ground under the streets (the roadway lies a curb's height under t
         if (!others) expect(streetLowerD(seed, bx, bz).v, `seed ${seed} street ${st.id} s ${s.toFixed(1)} of ${len.toFixed(0)} cw ${cw}`).toBe(0);
         // The trough under the roadway is as deep as it is cut, and is gone beyond the right of way (the sidewalk's own trough fades out within 0.6 m past it).
         expect(streetLiftD(seed, rx, rz).v).toBeGreaterThan(0.19);
-        expect(streetLiftD(seed, ...at(st.width / 2 + 0.8)).v, `seed ${seed} street ${st.id}`).toBe(0);
+        // (Beside a paved district's block or a lone business's apron the terrain is cut out of sight too, by `HIDDEN_PAVED`: `pavedGround.ts`.)
+        const [lx, lz] = at(st.width / 2 + 0.8);
+        const beside = pavedGround(plan).some((q) => contains(q.polygon, { x: lx - anchor.x, z: lz - anchor.z }, WALK_FADE + 0.1));
+        if (!beside) expect(streetLiftD(seed, lx, lz).v, `seed ${seed} street ${st.id}`).toBe(0);
         checked++;
         if (checked > 400) return;
       }

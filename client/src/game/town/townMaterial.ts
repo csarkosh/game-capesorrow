@@ -105,6 +105,15 @@ export function townDefinitions(low: boolean): string {
     // The overlay layer and the grade of each wear kind: moss, rust, peel, algae, grime (xyz the colour's multiplier, w how much of it is laid).
     `var<private> townOver:array<i32,9>=array<i32,9>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
     `var<private> townGrade:array<vec4<f32>,9>=array<vec4<f32>,9>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? Math.round(c * LOW_MOSS * 10) / 10 : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(0.9,1.55,0.8,0.8),vec4<f32>(0.5,0.46,0.4,0.9),vec4<f32>(0.03,0.03,0.04,1.0),vec4<f32>(1.1,2.4,0.55,1.0),vec4<f32>(1.5,1.0,0.35,1.0),vec4<f32>(0.78,0.8,0.82,0.9));`,
+    // The colour of moss and growth at a place: olive, grey-green or brown by a slow noise, and now and then near black (a damp patch).
+    "fn townMossGrade(p:vec3<f32>,k:i32)->vec3<f32>{",
+    "let v=townValue(p*0.23+vec3<f32>(3.0,9.0,5.0));",
+    "var c=mix(vec3<f32>(1.15,1.0,0.72),vec3<f32>(0.95,1.18,0.68),smoothstep(0.25,0.55,v));",
+    "c=mix(c,vec3<f32>(0.9,1.04,0.92),smoothstep(0.55,0.8,v));",
+    "let d=townValue(p*0.11+vec3<f32>(21.0,2.0,14.0));",
+    "c=c*mix(1.0,0.5,smoothstep(0.7,0.9,d));",
+    "if(k==6){c=c*vec3<f32>(1.0,1.08,0.9);}",
+    "return c;}",
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
     "var<private> townGlassC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
@@ -151,7 +160,9 @@ function wearSlot(amountExpr: string, kindExpr: string, low: boolean, n: string)
     `let tsUvO${n}=input.uv*tsScale${n};let tsDxO${n}=tsDx*tsScale${n};let tsDyO${n}=tsDy*tsScale${n};`,
     `let tsOc${n}=textureSampleGrad(townColor,townSmp,tsUvO${n},tsOver${n},tsDxO${n},tsDyO${n}).rgb;`,
     `let tsOd${n}=textureSampleGrad(townData,townSmp,tsUvO${n},tsOver${n},tsDxO${n},tsDyO${n});`,
-    `tsRgb=mix(tsRgb,tsOc${n}*townGrade[tsK${n}].xyz,tsW${n});`,
+    // Moss and growth are not paint: their colour is olive, grey-green or brown (by a slow noise) and never brighter than the surface they lie on (its own luminance, times 0.8, caps it),
+    // and where they are thin (the wear's soft edge) they tint and darken the surface, which keeps a share of itself everywhere (at most 0.85 laid), so its grain reads through.
+    `if(tsK${n}==0||tsK${n}==6){let tsMc${n}=tsOc${n}*townMossGrade(input.worldPos,tsK${n});let tsLb${n}=dot(tsRgb,vec3<f32>(0.2126,0.7152,0.0722));let tsLm${n}=max(dot(tsMc${n},vec3<f32>(0.2126,0.7152,0.0722)),0.0001);tsRgb=mix(tsRgb,tsMc${n}*min(1.0,tsLb${n}*0.8/tsLm${n}),tsW${n}*(0.4+0.45*tsW${n}));}else{tsRgb=mix(tsRgb,tsOc${n}*townGrade[tsK${n}].xyz,tsW${n});}`,
     overData,
     "}",
     "}",
