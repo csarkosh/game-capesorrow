@@ -136,10 +136,10 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
 
   const batches: TownBatch[] = [];
   for (const c of cells.values()) {
-    if (c.flat.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "flat", arrays: c.flat.finish() });
-    if (c.solid.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "solid", arrays: c.solid.finish() });
-    if (c.glass.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "glass", arrays: c.glass.finish() });
-    if (c.sign.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "sign", arrays: c.sign.finish() });
+    if (c.flat.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "flat", arrays: c.flat.take() });
+    if (c.solid.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "solid", arrays: c.solid.take() });
+    if (c.glass.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "glass", arrays: c.glass.take() });
+    if (c.sign.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "sign", arrays: c.sign.take() });
   }
   const distance = (b: TownBatch): number => {
     const dx = (b.cx + 0.5) * CELL - from.x;

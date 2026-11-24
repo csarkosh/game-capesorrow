@@ -16,6 +16,8 @@
  *   their release.
  * - **Counts.** `railStats()` gives what stands: cells, meshes, vertices and triangles.
  */
+import { leanMesh } from "./leanMesh.js";
+import { packSurface } from "./surfacePack.js";
 import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, setMeshVisible, type EngineContext, type Mesh, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import type { RenderHost } from "@csarkosh/engine/game/lite/renderGame";
@@ -37,7 +39,7 @@ export const MAX_PENDING = 4;
 /** What stands of the railroad. */
 export type RailStats = { cells: number; meshes: number; vertices: number; triangles: number; pending: number; byLod: [number, number, number] };
 
-type Piece = { mesh: Mesh; x: number; y: number; z: number; radius: number; shown: boolean };
+type Piece = { mesh: Mesh; x: number; y: number; z: number; radius: number; shown: boolean; lean: boolean };
 type Cell = { k: number; lod: RailLod; pieces: Piece[]; building: Piece[]; vertices: number; triangles: number; owner: object | null; want: RailLod; x: number; z: number };
 
 export type RailStream = {
@@ -116,13 +118,13 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
       yield* host.uploads.hold(bytes);
       if (disposed || cells.get(cell.k) !== cell) return;
       const mesh = createMeshFromData(draw.engine, `rail_${layer}_${cell.k}_${lod}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
-      if (draw.textured) mesh.pluginVertexData = a.surface;
+      if (draw.textured) mesh.pluginVertexData = packSurface(a.surface);
       mesh.material = draw.materials[layer];
       mesh.renderOrder = draw.orders[layer];
       addToScene(draw.scene, mesh);
       host.uploads.stream("geometry", bytes, 4);
       host.uploads.made();
-      pieces.push({ mesh, ...boundsOf(a.positions), shown: true });
+      pieces.push({ mesh, ...boundsOf(a.positions), shown: true, lean: false });
       vertices += a.positions.length / 3;
       triangles += a.indices.length / 3;
       yield;
@@ -189,6 +191,8 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
       stream(host.pose.x, host.pose.z, MAX_PENDING);
       for (const cell of cells.values()) {
         for (const p of cell.pieces) {
+          // Its arrays are let go once the GPU has them (`leanMesh.ts`).
+          if (!p.lean) p.lean = leanMesh(p.mesh);
           const want = inView(planes, p);
           if (want !== p.shown) {
             p.shown = want;

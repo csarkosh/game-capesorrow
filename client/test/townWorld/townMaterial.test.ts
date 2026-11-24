@@ -30,12 +30,12 @@ describe("the town's material plugin", () => {
     expect(townSurfaceCode(false)).toContain("vTownTint");
   });
 
-  it("declares its vertex data as the builder lays it out: twelve floats, the surface, the tint, then the second wear", () => {
+  it("declares its vertex data as the builder lays it out, packed: twelve 16-bit floats, the surface, the tint, then the second wear", () => {
     expect(TOWN_VERTEX_FLOATS).toBe(SURFACE_FLOATS);
     const ready = emptyTownReady();
     const plugin = townSurfacePlugin({ color: {} as never, data: {} as never }, ready, false);
     const attributes = plugin.getVertexAttributes?.() ?? [];
-    expect(attributes.map((a) => [a.name, a.offset, a.stride])).toEqual([[TOWN_ATTRIBUTE, 0, 48], [TOWN_TINT_ATTRIBUTE, 16, 48], [TOWN_WEAR_ATTRIBUTE, 32, 48]]);
+    expect(attributes.map((a) => [a.name, a.offset, a.stride, a.format])).toEqual([[TOWN_ATTRIBUTE, 0, 24, "float16x4"], [TOWN_TINT_ATTRIBUTE, 8, 24, "float16x4"], [TOWN_WEAR_ATTRIBUTE, 16, 24, "float16x4"]]);
     expect(plugin.priority).toBe(200);
     expect(plugin.getSamplers?.().map((s) => s.texture)).toEqual(["townColor", "townData"]);
     const out: { texture: unknown; sampler?: false }[] = [];
