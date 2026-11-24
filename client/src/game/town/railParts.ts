@@ -17,6 +17,7 @@
  * - **Counts.** `railStats()` gives what stands: cells, meshes, vertices and triangles.
  */
 import { leanMesh } from "./leanMesh.js";
+import { packSurface } from "./surfacePack.js";
 import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, setMeshVisible, type EngineContext, type Mesh, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import type { RenderHost } from "@csarkosh/engine/game/lite/renderGame";
@@ -117,7 +118,7 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
       yield* host.uploads.hold(bytes);
       if (disposed || cells.get(cell.k) !== cell) return;
       const mesh = createMeshFromData(draw.engine, `rail_${layer}_${cell.k}_${lod}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
-      if (draw.textured) mesh.pluginVertexData = a.surface;
+      if (draw.textured) mesh.pluginVertexData = packSurface(a.surface);
       mesh.material = draw.materials[layer];
       mesh.renderOrder = draw.orders[layer];
       addToScene(draw.scene, mesh);

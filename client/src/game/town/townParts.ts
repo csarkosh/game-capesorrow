@@ -24,6 +24,7 @@ import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engin
 import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLeaner } from "./leanMesh.js";
+import { packSurface } from "./surfacePack.js";
 import type { RenderGame, RenderHost, RenderPlayer, RenderSide, RenderState } from "@csarkosh/engine/game/lite/renderGame";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import { PROP_ROUGHNESS } from "@csarkosh/engine/game/propBoxes";
@@ -205,7 +206,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             continue;
           }
           const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
-          if (wearsTextures) mesh.pluginVertexData = a.surface;
+          if (wearsTextures) mesh.pluginVertexData = packSurface(a.surface);
           if (batch.layer === "glass" || batch.layer === "sign") {
             // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
             const set = seeThrough as NonNullable<typeof seeThrough>;
