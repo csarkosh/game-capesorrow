@@ -46,6 +46,12 @@ export type Fx = {
   /** For the flat ground: the depth rank, 0 for a base surface and more for what lies on one (`townMaterial.ts`, `RANK_UNITS`). Rides in the float a tilt's second number uses, which flat ground has no use for. */ readonly rank?: number;
   /** The normal the renderer lights the polygon by (a unit vector), where it is not the polygon's own: a blade of grass is a thin upright triangle lit as if it faced up and out, so the sky lights it. */
   readonly normal?: readonly [number, number, number];
+  /**
+   * Also lay the polygon's back: the same corners wound the other way, facing the other way (the town's materials cull back faces, so
+   * a single sheet is not there from behind). `true` gives a plain back (the colour darker and greyer, no texture, no glow); an object
+   * gives it a look of its own (a sign's back is bare board, an awning's underside dirty cloth). Lettering never shows on a back.
+   */
+  readonly back?: true | { readonly colour?: readonly [number, number, number]; readonly surface?: Surface };
 };
 
 /** Where a texture lies on a polygon: a point of its plane, and the directions of the texture's across (u) and up (v). */

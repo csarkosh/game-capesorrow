@@ -174,7 +174,7 @@ function backDoor(c: PlanCtx, w: WallRef, p: WallPlan, seed: number, floorY: num
   p.draws.push(() => {
     reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.12, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
     wquad(out, w, hole.s0 + 0.02, hole.y0, hole.s1 - 0.02, hole.y1, -0.1, c.vacant ? [0.42, 0.31, 0.18] : col);
-    wbox(out, w, hole.s0 - 0.1, hole.s1 + 0.1, hole.y0 - 0.12, hole.y0, 0, 0.5, [0.4, 0.4, 0.38], [0.44, 0.44, 0.42]);
+    wbox(out, w, hole.s0 - 0.1, hole.s1 + 0.1, hole.y0 - 0.12, hole.y0, 0, 0.5, [0.4, 0.4, 0.38], [0.44, 0.44, 0.42], false);
     // The light over it: a cage lamp, lit while the building is kept.
     wbox(out, w, s - 0.1, s + 0.1, hole.y1 + 0.2, hole.y1 + 0.4, 0, 0.18, [0.2, 0.2, 0.2], [0.9, 0.85, 0.7]);
   });

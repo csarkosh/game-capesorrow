@@ -112,10 +112,10 @@ export function millGeometry(g: TownGround, sink: Sink): void {
         const s1 = (len * (i + 1)) / n;
         const m = sink((x0 + x1) / 2, (z0 + z1) / 2);
         const q = (s: number, t: number, y: number): Vec3 => [x0 + tx * s + nx * t, y, z0 + tz * s + nz * t];
-        m.poly([q(s0, -hw, hAt(s0)), q(s1, -hw, hAt(s1)), q(s1, hw, hAt(s1)), q(s0, hw, hAt(s0))], [0, 1, 0], TIMBER);
+        m.poly([q(s0, -hw, hAt(s0)), q(s1, -hw, hAt(s1)), q(s1, hw, hAt(s1)), q(s0, hw, hAt(s0))], [0, 1, 0], TIMBER, undefined, { back: { colour: [0.2, 0.17, 0.13] } });
         for (const sgn of [-1, 1]) {
-          m.poly([q(s0, sgn * hw, hAt(s0)), q(s1, sgn * hw, hAt(s1)), q(s1, sgn * hw, hAt(s1) + 0.7), q(s0, sgn * hw, hAt(s0) + 0.7)], [nx * sgn, 0, nz * sgn], TIMBER_WEATHERED);
-          m.poly([q(s0, sgn * hw, hAt(s0) - 0.35), q(s1, sgn * hw, hAt(s1) - 0.35), q(s1, sgn * hw, hAt(s1)), q(s0, sgn * hw, hAt(s0))], [nx * sgn, 0, nz * sgn], TIMBER);
+          m.poly([q(s0, sgn * hw, hAt(s0)), q(s1, sgn * hw, hAt(s1)), q(s1, sgn * hw, hAt(s1) + 0.7), q(s0, sgn * hw, hAt(s0) + 0.7)], [nx * sgn, 0, nz * sgn], TIMBER_WEATHERED, undefined, { back: true });
+          m.poly([q(s0, sgn * hw, hAt(s0) - 0.35), q(s1, sgn * hw, hAt(s1) - 0.35), q(s1, sgn * hw, hAt(s1)), q(s0, sgn * hw, hAt(s0))], [nx * sgn, 0, nz * sgn], TIMBER, undefined, { back: true });
         }
         // Legs at the middle of each 3 m, down to the ground or the floor.
         const sm = (s0 + s1) / 2;
@@ -257,6 +257,7 @@ function bargeGeometry(g: TownGround, sink: Sink, barge: Barge): void {
     quad([p(x1, z0, y0), p(x1, z1, y0), p(x1, z1, y1), p(x1, z0, y1)], [hx, 0, hz], c);
     quad([p(x0, z0, y0), p(x0, z1, y0), p(x0, z1, y1), p(x0, z0, y1)], [-hx, 0, -hz], c);
     quad([p(x0, z0, y1), p(x1, z0, y1), p(x1, z1, y1), p(x0, z1, y1)], [0, 1, 0], scaled(c, 1.1));
+    quad([p(x0, z0, y0), p(x0, z1, y0), p(x1, z1, y0), p(x1, z0, y0)], [0, -1, 0], scaled(c, 0.6));
   };
   switch (barge.cargo) {
     case "logs":
@@ -327,7 +328,7 @@ export function lightGeometry(g: TownGround, sink: Sink): void {
       // The white slat is a little taller than the red, so that their tops and bottoms are not faces in one plane where they cross.
       box3(m, x, z, y + l.height - 0.44, 0.08, 0.9, 1.58, WHITE, WHITE);
     } else {
-      m.prism([x, y, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL);
+      m.prism([x, y + 0.03, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL);
       box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, GLASS, [0.2, 0.2, 0.22]);
     }
   }

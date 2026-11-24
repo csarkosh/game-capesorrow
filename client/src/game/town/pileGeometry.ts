@@ -9,7 +9,7 @@
  * - **The quay** is `quayGeometry.ts`.
  * - **Rails** (`TownGround.rails`): a timber bull rail along every edge the simulation holds a walker back from.
  */
-import { type Vec3 } from "./meshBuilder.js";
+import { type Rgb, type Vec3 } from "./meshBuilder.js";
 import { DECK, PILE } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 import type { Deck, Street } from "../../sim/town/types.js";
@@ -26,6 +26,9 @@ export const PILE_STEP = 4;
 export const FACE_DEPTH = 1.6;
 
 const UP: Vec3 = [0, 1, 0];
+const DOWN: Vec3 = [0, -1, 0];
+/** The underside of a deck: dark, grey with dirt. */
+const UNDERSIDE: Rgb = [0.2, 0.19, 0.18];
 
 function pile(sink: Sink, g: TownGround, x: number, z: number, top: number): void {
   const bottom = Math.min(g.heightAt(x, z), SEA - FACE_DEPTH) - 0.2;
@@ -60,11 +63,13 @@ export function deckGeometry(g: TownGround, solid: Sink, d: Deck): void {
     const mid = at((a + b) / 2, 0);
     const s = solid(mid[0], mid[1]);
     s.poly(q, UP, DECK);
+    // Its underside, between the skirts: dark boards, grey with dirt and cobweb (seen from a boat or the beach).
+    s.poly(q.map((p): Vec3 => [p[0], p[1] - SKIRT, p[2]]), DOWN, UNDERSIDE);
     // The skirt down both long edges of the tile.
     for (const sgn of [-1, 1]) {
       const p0 = q[sgn < 0 ? 0 : 3] as Vec3;
       const p1 = q[sgn < 0 ? 1 : 2] as Vec3;
-      s.poly([[p0[0], p0[1] - SKIRT, p0[2]], [p1[0], p1[1] - SKIRT, p1[2]], [p1[0], p1[1], p1[2]], [p0[0], p0[1], p0[2]]], [vx * sgn, 0, vz * sgn], PILE);
+      s.poly([[p0[0], p0[1] - SKIRT, p0[2]], [p1[0], p1[1] - SKIRT, p1[2]], [p1[0], p1[1], p1[2]], [p0[0], p0[1], p0[2]]], [vx * sgn, 0, vz * sgn], PILE, undefined, { back: true });
     }
   }
   // The end skirts.

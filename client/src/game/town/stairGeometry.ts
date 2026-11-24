@@ -79,7 +79,7 @@ export function stairGeometry(g: TownGround, sink: Sink): void {
         if (prev !== null) {
           // The rail: a thin board from post to post, tilted with the flight (a poly through the two tops).
           const t = RAIL_THICK;
-          sink(x, z).quad([prev.x + side.x * t, prev.y, prev.z + side.z * t], [x + side.x * t, y, z + side.z * t], [x - side.x * t, y, z - side.z * t], [prev.x - side.x * t, prev.y, prev.z - side.z * t], [0, 1, 0], FLAG_POLE);
+          sink(x, z).quad([prev.x + side.x * t, prev.y, prev.z + side.z * t], [x + side.x * t, y, z + side.z * t], [x - side.x * t, y, z - side.z * t], [prev.x - side.x * t, prev.y, prev.z - side.z * t], [0, 1, 0], FLAG_POLE, undefined, { back: true });
         }
         prev = { x, z, y };
       }

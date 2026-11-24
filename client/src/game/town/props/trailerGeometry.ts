@@ -44,10 +44,12 @@ function hull(m: MeshBuilder, gl: MeshBuilder, pl: Place, t: BoatTrailer, y0: nu
   }
   const tint: Rgb = alu ? [3.2, 3.2, 3.3] : paintTint(white);
   const colour: Rgb = alu ? [0.36, 0.37, 0.38] : white;
-  // Each side its own sheet, so that every quad of it faces away from the centre line.
+  const inner: Rgb = alu ? [0.14, 0.15, 0.16] : [0.3, 0.3, 0.28];
+  // Each side its own sheet, so that every quad of it faces away from the centre line; its back is the hull's inside, dark.
   for (const half of [0, 1]) {
     m.grid(rows.map((r) => (half === 0 ? r.slice(0, 4) : r.slice(3))), insides, {
       colour,
+      back: inner,
       layer: alu ? "roof_metal" : "roof_bitumen",
       tint,
       uv: (i, j) => [(T[i] as number) * Lb, j * 0.5],
@@ -56,22 +58,15 @@ function hull(m: MeshBuilder, gl: MeshBuilder, pl: Place, t: BoatTrailer, y0: nu
     });
   }
   // The transom, and inside: a floor and the bench, dark.
-  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour);
-  const inner: Rgb = alu ? [0.14, 0.15, 0.16] : [0.3, 0.3, 0.28];
+  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), colour, undefined, { back: { colour: inner } });
   const fl = (x: number, c: number): Vec3 => P(pl, x, y0 + 0.17, c);
   m.poly([fl(x0 + 0.1, -B * 0.4), fl(x0 + Lb * 0.78, -B * 0.28), fl(x0 + Lb * 0.78, B * 0.28), fl(x0 + 0.1, B * 0.4)], [0, 1, 0], inner);
-  // The stern and the sides' insides, so the hull is not seen through from above.
-  for (let i = 0; i < T.length - 1; i++) {
-    const a = rows[i] as Vec3[];
-    const b = rows[i + 1] as Vec3[];
-    for (const [j0, j1, face] of [[0, 1, 1], [6, 5, -1]] as const) m.poly([a[j0] as Vec3, b[j0] as Vec3, b[j1] as Vec3, a[j1] as Vec3], D(pl, 0, 0.3, face), inner);
-  }
   if (detail === "low") return;
   // A bench, a console and an outboard.
   lbox(m, pl, x0 + Lb * 0.45, x0 + Lb * 0.5, y0 + 0.17, y0 + 0.42, -B * 0.4, B * 0.4, alu ? GALV : white);
   lbox(m, pl, x0 + Lb * 0.62, x0 + Lb * 0.7, y0 + 0.17, y0 + 0.55, -B * 0.34, B * 0.34, alu ? GALV : white);
   const motor: Rgb = [0.05, 0.05, 0.06];
-  lbox(m, pl, x0 - 0.22, x0 + 0.02, y0 + H * 0.5, y0 + H * 0.5 + 0.3, -0.12, 0.12, mixC(motor, paint, 0.3));
+  lbox(m, pl, x0 - 0.22, x0 - 0.03, y0 + H * 0.5, y0 + H * 0.5 + 0.3, -0.12, 0.12, mixC(motor, paint, 0.3));
   lbox(m, pl, x0 - 0.2, x0 - 0.12, y0 - 0.25, y0 + H * 0.5, -0.04, 0.04, motor);
   lbox(m, pl, x0 - 0.3, x0 - 0.1, y0 - 0.32, y0 - 0.22, -0.1, 0.1, motor);
   if (!alu) {
@@ -98,9 +93,9 @@ function tarp(m: MeshBuilder, pl: Place, t: BoatTrailer, y0: number, detail: Det
     rows.push([P(pl, x, y0 + 0.25, -w * 1.05), P(pl, x, y0 + H * 0.8, -w * 1.08), P(pl, x, y0 + crest - 0.06, -w * 0.5), P(pl, x, y0 + crest, 0), P(pl, x, y0 + crest - 0.06, w * 0.5), P(pl, x, y0 + H * 0.8, w * 1.08), P(pl, x, y0 + 0.25, w * 1.05)]);
     ins.push(P(pl, x, y0 + 0.2, 0));
   }
-  m.grid(rows, ins, { colour });
-  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), mixC(colour, [0, 0, 0], 0.3));
-  m.poly(rows[N] as Vec3[], D(pl, 1, 0, 0), mixC(colour, [0, 0, 0], 0.3));
+  m.grid(rows, ins, { colour, back: true });
+  m.poly(rows[0] as Vec3[], D(pl, -1, 0, 0), mixC(colour, [0, 0, 0], 0.3), undefined, { back: true });
+  m.poly(rows[N] as Vec3[], D(pl, 1, 0, 0), mixC(colour, [0, 0, 0], 0.3), undefined, { back: true });
   // The lashings: rope round the hull in three places.
   for (const u of detail === "low" ? [] : [0.25, 0.5, 0.75]) {
     const x = x0 + u * Lb;
@@ -161,7 +156,7 @@ export function trailerGeometry(g: TownGround, sinks: VehicleSinks, t: BoatTrail
   }
   lbox(m, pl, ax - 0.05, ax + 0.05, r - 0.04, r + 0.04, -0.9, 0.9, FRAME);
   lbox(m, pl, rear - 0.03, rear + 0.04, railTop - 0.2, railTop - 0.1, -0.5, 0.5, [0.06, 0.06, 0.06]);
-  for (const sg of [1, -1]) lbox(m, pl, rear - 0.05, rear + 0.02, railTop - 0.2, railTop - 0.13, sg * 0.37, sg * 0.47, TAIL);
+  for (const sg of [1, -1]) lbox(m, pl, rear - 0.05, rear + 0.02, railTop - 0.2, railTop - 0.13, sg * 0.37, sg * 0.47, TAIL, TAIL, false);
   // Bunks, carpeted, and the boat.
   if (t.boat !== "none") {
     for (const z of [-0.45, 0.45]) lbox(m, pl, rear + 0.5, front - 1.7, railTop, railTop + 0.08, z - 0.06, z + 0.06, [0.08, 0.1, 0.09]);

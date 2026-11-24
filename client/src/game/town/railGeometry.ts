@@ -165,7 +165,7 @@ export function sweep(sink: MeshBuilder, frames: readonly Frame[], profile: Prof
       const mid = (f0.nx + f1.nx) / 2;
       const midZ = (f0.nz + f1.nz) / 2;
       const hint: Vec3 = [mid * hu, hy, midZ * hu];
-      sink.quad(pointOf(f0, centre + p[0], p[1]), pointOf(f1, centre + p[0], p[1]), pointOf(f1, centre + q[0], q[1]), pointOf(f0, centre + q[0], q[1]), hint, hy > 0.5 * Math.abs(hu) ? topColour : colour);
+      sink.quad(pointOf(f0, centre + p[0], p[1]), pointOf(f1, centre + p[0], p[1]), pointOf(f1, centre + q[0], q[1]), pointOf(f0, centre + q[0], q[1]), hint, hy > 0.5 * Math.abs(hu) ? topColour : colour, undefined, closed ? undefined : { back: true });
     }
   }
 }
@@ -349,7 +349,7 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
     const n = Math.floor(length / TIE_PITCH);
     for (let j = 0; j < n; j++) {
       const f = frameAlong(frames, (j + 0.5) * TIE_PITCH);
-      b.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25));
+      b.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25), true, null);
     }
   }
   // The bents: three piles under a cap beam, down to the ground, and the posts of the guard rails.
@@ -367,7 +367,7 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
       for (const side of [-1, 1]) {
         const x = f.x + f.nx * side * (TRESTLE_HALF - 0.06);
         const z = f.z + f.nz * side * (TRESTLE_HALF - 0.06);
-        b.box(x, z, f.g + 0.08, 1, 0, 0.06, 0.06, 1.05, TIMBER, TIMBER);
+        b.box(x, z, f.g + 0.08, 1, 0, 0.06, 0.06, 1.05, TIMBER, TIMBER, true, null);
       }
     }
   }

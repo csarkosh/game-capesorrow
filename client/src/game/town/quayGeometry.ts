@@ -140,7 +140,7 @@ export function quayGeometry(g: TownGround, solid: Sink, flat: Sink): void {
         }
         // The cap along the top: a beam from just inboard of the edge to the face, flush with the deck.
         const cc = at(sm, faceOff - 0.3);
-        s.box(cc[0], cc[1], y - CAP_HEIGHT, tx, tz, half, 0.3, CAP_HEIGHT + 0.02, capColour, capColour);
+        s.box(cc[0], cc[1], y - CAP_HEIGHT, tx, tz, half, 0.3, CAP_HEIGHT + 0.02, capColour, capColour, true, null);
       }
       // Fender piles down the face, from the cap to well under the water, proud of the face by their own radius.
       for (let s = p0 + FENDER_STEP / 2; s < p1 - 1; s += FENDER_STEP) {

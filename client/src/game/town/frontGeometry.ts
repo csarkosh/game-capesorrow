@@ -306,8 +306,8 @@ function awning(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: 
     const a = sa + ((sb - sa) * k) / n;
     const c = sa + ((sb - sa) * (k + 1)) / n;
     const tone: Rgb = k % 2 === 0 ? face : scaled(faded ? [0.7, 0.68, 0.62] : [0.85, 0.82, 0.74], faded ? 1 : 0.85);
-    out.poly([wat(w, a, top, 0.02), wat(w, c, top, 0.02), wat(w, c, eave, proj), wat(w, a, eave, proj)], [w.nx * 0.4, 1, w.nz * 0.4], tone);
-    out.poly([wat(w, a, eave, proj), wat(w, c, eave, proj), wat(w, c, eave - 0.22, proj), wat(w, a, eave - 0.22, proj)], [w.nx, 0, w.nz], scaled(tone, 0.9));
+    out.poly([wat(w, a, top, 0.02), wat(w, c, top, 0.02), wat(w, c, eave, proj), wat(w, a, eave, proj)], [w.nx * 0.4, 1, w.nz * 0.4], tone, undefined, { back: { colour: scaled(tone, 0.5) } });
+    out.poly([wat(w, a, eave, proj), wat(w, c, eave, proj), wat(w, c, eave - 0.22, proj), wat(w, a, eave - 0.22, proj)], [w.nx, 0, w.nz], scaled(tone, 0.9), undefined, { back: { colour: scaled(tone, 0.5) } });
   }
 }
 
