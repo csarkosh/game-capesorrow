@@ -134,7 +134,8 @@ export class MeshBuilder {
       const gain = surface?.tint ?? ONE;
       const tint: Rgb = per && surface !== undefined ? [colourHere[0] * gain[0], colourHere[1] * gain[1], colourHere[2] * gain[2]] : tint0;
       this.pos.push(p[0], p[1], p[2]);
-      this.nor.push(nx, ny, nz);
+      if (fx?.normal === undefined) this.nor.push(nx, ny, nz);
+      else this.nor.push(fx.normal[0], fx.normal[1], fx.normal[2]);
       this.col.push(colourHere[0], colourHere[1], colourHere[2], 1);
       if (basis === null || surface === undefined) {
         const cuv = fx?.uvs?.[pointIndex];

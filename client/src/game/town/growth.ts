@@ -64,14 +64,14 @@ export function plant(x: number, z: number, n: number, tall: number, dry: number
 
 // Dark and olive greens (the standing layer lights them, and the overcast takes a good deal of it); a tuft in six is dead straw.
 const GREENS: readonly Rgb[] = [
-  [0.9, 1.2, 0.26],
-  [1.1, 1.3, 0.38],
-  [0.75, 1.05, 0.22],
-  [1.15, 1.2, 0.42],
+  [0.42, 0.62, 0.16],
+  [0.5, 0.66, 0.2],
+  [0.36, 0.56, 0.13],
+  [0.52, 0.6, 0.22],
 ];
-const STRAW: Rgb = [1.3, 1.05, 0.58];
-const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.5, c[1] * 0.55, c[2] * 0.55];
-const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.3, c[1] * 1.25, c[2] * 1.15];
+const STRAW: Rgb = [0.62, 0.5, 0.28];
+const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.7, c[1] * 0.75, c[2] * 0.6];
+const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.25, c[1] * 1.2, c[2] * 1.0];
 
 /** The blades of one tuft rooted at (x, y, z), into `m`: five to nine, narrow (1 to 3 cm at the foot), 8 to 30 cm tall, leaning different ways, a few bent over. */
 function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: number, blades: number, dry: number, small: boolean): void {
@@ -103,7 +103,28 @@ function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: numbe
     const colour = tuftDry || r(70 + b) < 0.08 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
     const tipColour = LIGHT_TIP(colour);
     const foot = FOOT_COLOUR(colour);
-    m.poly([[fx - px * w, y, fz - pz * w], [fx + px * w, y, fz + pz * w], tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1 });
+    const pa: Vec3 = [fx - px * w, y, fz - pz * w];
+    const pb: Vec3 = [fx + px * w, y, fz + pz * w];
+    // The blade's own normal is sideways, so the sky never reaches it: it is lit by that normal turned halfway up (it still faces the way the blade is wound, so the face stays one the renderer draws).
+    const ux = pb[0] - pa[0];
+    const uy = pb[1] - pa[1];
+    const uz = pb[2] - pa[2];
+    const vx = tip[0] - pa[0];
+    const vy = tip[1] - pa[1];
+    const vz = tip[2] - pa[2];
+    let gx = uy * vz - uz * vy;
+    let gy = uz * vx - ux * vz;
+    let gz = ux * vy - uy * vx;
+    const gl = Math.sqrt(gx * gx + gy * gy + gz * gz) || 1;
+    const sgn = (gx * dx + gy * 0.15 + gz * dz) / gl < 0 ? -1 : 1;
+    gx = (sgn * gx) / gl;
+    gy = (sgn * gy) / gl;
+    gz = (sgn * gz) / gl;
+    const lx = gx * 0.7;
+    const ly = gy * 0.7 + 0.7;
+    const lz = gz * 0.7;
+    const ll = Math.sqrt(lx * lx + ly * ly + lz * lz);
+    m.poly([pa, pb, tip], [dx, 0.15, dz], [foot, foot, tipColour], undefined, { glow: 0.1, normal: [lx / ll, ly / ll, lz / ll] });
   }
 }
 
@@ -121,10 +142,16 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     if (count === 0) return;
     if (low && hash01(s.seed, 778) > 0.06) return;
     const m = solid(s.x, s.z);
-    const spread = 0.07;
+    const spread = s.wide ?? 0.07;
     for (let k = 0; k < count; k++) {
-      const ox = (hash01(s.seed * 7 + k, 91) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
-      const oz = (hash01(s.seed * 7 + k, 92) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
+      let ox = (hash01(s.seed * 7 + k, 91) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
+      let oz = (hash01(s.seed * 7 + k, 92) - 0.5) * spread * 2 * (k === 0 ? 0 : 1);
+      // Against a wall a clump spreads along it and outward, never in toward it.
+      const inward = ox * s.ax + oz * s.az;
+      if ((s.ax !== 0 || s.az !== 0) && inward < 0) {
+        ox -= 2 * inward * s.ax;
+        oz -= 2 * inward * s.az;
+      }
       const x = s.x + ox;
       const z = s.z + oz;
       const y = g.heightAt(x, z) + 0.02;
@@ -175,13 +202,15 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
     const tz = (z1 - z0) / len;
     // The foot grows in runs with gaps: a stretch of about three metres is green or bare by the building's own weathering, and in a green one the clumps stand close.
     const level = levelOf(b);
-    for (let d = 0.3, i = 0; d < len - 0.3; d += 0.6 + 0.7 * roll(b.id * 53 + tag, i), i++) {
-      if (roll(b.id * 83 + tag, Math.floor(d / 3)) > 0.42 + 0.55 * level) continue;
+    // The foot is a ragged fringe: clumps of three to six tufts a couple of metres apart, with gaps (and the run gating above: green or bare by the building's own weathering).
+    for (let d = 0.3, i = 0; d < len - 0.3; d += 1.6 + 2.4 * roll(b.id * 53 + tag, i), i++) {
+      if (roll(b.id * 83 + tag, Math.floor(d / 3)) > 0.65 + 0.35 * level) continue;
       if (roll(b.id * 59 + tag, i + 100) > density) continue;
       const off = 0.14 + 0.16 * roll(b.id * 61 + tag, i + 200);
       const x = x0 + tx * d + awayX * off;
       const z = z0 + tz * d + awayZ * off;
-      lay({ x: x + ax, z: z + az, n: 1, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
+      const count = 3 + Math.floor(roll(b.id * 67 + tag, i + 300) * 2.99);
+      lay({ x: x + ax, z: z + az, n: count, wide: 0.2, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
     }
   };
   for (const b of plan.buildings) {
