@@ -103,8 +103,8 @@ export function townDefinitions(low: boolean): string {
     `const TOWN_MOSS:i32=${layerIndex(WEAR_OVERLAY.moss)};`,
     `const TOWN_RUST:i32=${layerIndex(WEAR_OVERLAY.rust)};`,
     // The overlay layer and the grade of each wear kind: moss, rust, peel, algae, grime (xyz the colour's multiplier, w how much of it is laid).
-    `var<private> townOver:array<i32,5>=array<i32,5>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
-    `var<private> townGrade:array<vec4<f32>,5>=array<vec4<f32>,5>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(1.05,1.3,0.9,0.4),vec4<f32>(0.8,0.74,0.66,0.7));`,
+    `var<private> townOver:array<i32,8>=array<i32,8>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.moss)});`,
+    `var<private> townGrade:array<vec4<f32>,8>=array<vec4<f32>,8>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? c * LOW_MOSS : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(0.75,1.5,0.7,0.8),vec4<f32>(0.42,0.38,0.34,1.0),vec4<f32>(0.03,0.03,0.04,1.0),vec4<f32>(1.1,2.4,0.55,1.0),vec4<f32>(1.5,1.0,0.35,1.0));`,
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
     "var<private> townGlassC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
@@ -135,7 +135,7 @@ function wearSlot(amountExpr: string, kindExpr: string, low: boolean, n: string)
   return [
     `let tsA${n}=${amountExpr};`,
     `if(tsA${n}>0.001){`,
-    `let tsKf${n}=${kindExpr}+0.01;let tsK${n}=clamp(i32(floor(tsKf${n})),0,4);`,
+    `let tsKf${n}=${kindExpr}+0.01;let tsK${n}=clamp(i32(floor(tsKf${n})),0,7);`,
     `var tsWp${n}=input.worldPos;`,
     `if(fract(tsKf${n})>0.25){tsWp${n}=vec3<f32>(tsWp${n}.x*2.6,tsWp${n}.y*0.32,tsWp${n}.z*2.6);}`,
     `let tsW${n}=townWear(tsWp${n},tsA${n})*townGrade[tsK${n}].w;`,

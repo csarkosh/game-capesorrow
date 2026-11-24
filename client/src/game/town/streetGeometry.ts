@@ -335,6 +335,8 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
               side,
               yardKindAt: (s) => yardKindAt(p, sg, s),
               plan,
+              use: p.edge.use,
+              low: detail === "low",
             },
             free,
             (x, z) => g.heightAt(x, z),

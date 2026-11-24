@@ -29,6 +29,7 @@ import { stairGeometry } from "./stairGeometry.js";
 import { streetGeometry } from "./streetGeometry.js";
 import { SignAtlas } from "./signAtlas.js";
 import { groundStains } from "./groundStains.js";
+import { growthGeometry, resetGrowth } from "./growth.js";
 import { forgetMarks } from "./surface.js";
 import { resetLedger } from "./faceLedger.js";
 import type { Detail, TownGround } from "./townTypes.js";
@@ -87,6 +88,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
 
   forgetMarks(g);
   resetLedger();
+  resetGrowth();
   streetGeometry(g, sinks.flat, sinks.solid, detail);
   stairGeometry(g, sinks.solid);
   endsGeometry(g, sinks.flat, sinks.solid);
@@ -112,6 +114,9 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   yield;
   // The marks on the street: oil, scuffs, puddles, drifts (`groundStains.ts`).
   if (detail !== "low") groundStains(g, sinks.flat);
+  yield;
+  // The tufts that grow in the street's seams and at the feet of walls and posts (`growth.ts`).
+  growthGeometry(g, sinks.solid, detail);
   yield;
 
   const roles = new Map<number, LandmarkRole>();

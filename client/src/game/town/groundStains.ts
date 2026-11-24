@@ -12,6 +12,7 @@
  * Full tier only: the low tier has none.
  */
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
+import { groundFrame, type Surface, type WearKind } from "./townSurface.js";
 import { hash01 } from "./meshBuilder.js";
 import type { TownGround } from "./townTypes.js";
 import type { Vehicle } from "../../sim/town/types.js";
@@ -21,6 +22,8 @@ type Sink = (x: number, z: number) => MeshBuilder;
 /** Lies this much over the ground (the roadway's own height is the ground's, the street's trough included). */
 const LIFT = 0.012;
 const MARGIN = 14;
+/** A wear mark lies this much over the ground (centimetres: the road's own profile bends under a flat polygon). */
+const LIFT_MARK = 0.03;
 
 type Ring = { readonly x: number; readonly z: number; readonly ux: number; readonly uz: number };
 
@@ -41,7 +44,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
     return true;
   };
   /** A soft blob at (x, z) (plan frame), `ux`,`uz` its long axis, half lengths `a` and `b`, seven to nine points, each swung by `seed`. */
-  const blob = (x: number, z: number, ux: number, uz: number, a: number, b: number, colour: Rgb, rank: number, seed: number): void => {
+  const blob = (x: number, z: number, ux: number, uz: number, a: number, b: number, colour: Rgb, rank: number, seed: number, mark?: { readonly kind: WearKind; readonly layer: "asphalt" | "sidewalk"; readonly amount: number }): void => {
     if (!free(rank, x, z, Math.max(a, b) * 1.25)) return;
     const n = 8;
     const pts: Vec3[] = [];
@@ -58,9 +61,19 @@ export function groundStains(g: TownGround, flat: Sink): void {
       const lz = Math.sin(ang) * b * r;
       const px = x + ux * lx - uz * lz;
       const pz = z + uz * lx + ux * lz;
-      pts.push([ax + px, hc + gu * lx + gv * lz + LIFT, az + pz]);
+      // A wear mark takes the ground's own height at each corner (a gutter's profile is not a plane) and lies higher, so no corner is under the roadway.
+      pts.push([ax + px, mark === undefined ? hc + gu * lx + gv * lz + LIFT : g.heightAt(ax + px, az + pz) + LIFT_MARK, az + pz]);
     }
-    flat(ax + x, az + z).poly(pts, [0, 1, 0], colour, undefined, { rank });
+    if (mark === undefined) {
+      flat(ax + x, az + z).poly(pts, [0, 1, 0], colour, undefined, { rank });
+      return;
+    }
+    // Laid as wear over the ground's own material: full at the middle, none at the rim, so the material's noise breaks the outline (`townMaterial.ts`). The middle is the fan's first corner; the ring's first closes it.
+    const mid: Vec3 = [ax + x, hc + LIFT_MARK, az + z];
+    const reach = Math.max(a, b) * 1.05;
+    const wear = (q: Vec3): number => Math.max(0, Math.min(1, (1 - Math.hypot(q[0] - mid[0], q[2] - mid[2]) / reach) * 2.6)) * mark.amount;
+    const surface: Surface = { layer: mark.layer, frame: groundFrame(g.anchor), tint: mark.layer === "asphalt" ? [1, 1, 1] : [0.7, 0.7, 0.66], wear, wearKind: mark.kind };
+    flat(ax + x, az + z).poly([mid, ...pts, pts[0] as Vec3], [0, 1, 0], colour, surface, { rank });
   };
 
   const OIL: Rgb = [0.006, 0.006, 0.008];
@@ -87,24 +100,50 @@ export function groundStains(g: TownGround, flat: Sink): void {
     }
     return false;
   };
-  for (const v of vehicles) {
+  // Every vehicle's soaked patch first (pass 0), then the drips from its front end (pass 1): a drip never takes the place of a neighbour's patch.
+  for (const pass of [0, 1] as const) for (const v of vehicles) {
     const seed = v.seed;
     // The engine is at the front end of the body (a few of the old pickups and the vans, rear: not told apart here).
     const hl = v.length / 2;
-    const oil = 0.25 + 0.6 * v.age + 0.3 * v.idle;
-    if (roll(seed, 100) > oil) continue;
+    const oilRaw = 0.4 + 0.7 * v.age + 0.3 * v.idle;
+    if (roll(seed, 100) > oilRaw) continue;
+    const oil = Math.min(1, oilRaw);
     const ex = v.x + v.hx * hl * 0.45;
     const ez = v.z + v.hz * hl * 0.45;
     const ux = v.hx;
     const uz = v.hz;
     // The soaked patch under the engine, and its drips beside it; both sit under the body, with the trail beyond the bumper in view.
-    blob(ex, ez, ux, uz, 0.32 + 0.2 * oil, 0.22 + 0.12 * oil, OIL, 8, seed * 3 + 1);
-    for (let k = 0; k < 3; k++) {
-      // Beyond the bumper, where it has been pulling in: drips spaced down the line it took.
-      const d = hl + 0.35 + k * (0.45 + 0.3 * roll(seed, 110 + k));
-      const lat = (roll(seed, 120 + k) - 0.5) * 0.5;
-      blob(v.x + ux * d - uz * lat, v.z + uz * d + ux * lat, ux, uz, 0.05 + 0.04 * roll(seed, 130 + k), 0.04 + 0.03 * roll(seed, 140 + k), OIL, 8, seed * 5 + k);
+    const ROAD = { kind: "oil", layer: "asphalt", amount: 1 } as const;
+    // One broad soaked patch under the engine that runs out from under the sill on the side of the street (the side the vehicle's centre looks at the nearest street from), and not only under the body.
+    let sx = 0;
+    let sz = 0;
+    let best = Infinity;
+    if (pass === 1) {
+      for (let k = 0; k < 3; k++) {
+        const d = hl + 0.35 + k * (0.45 + 0.3 * roll(seed, 110 + k));
+        const lat = (roll(seed, 120 + k) - 0.5) * 0.5;
+        blob(v.x + v.hx * d - v.hz * lat, v.z + v.hz * d + v.hx * lat, v.hx, v.hz, 0.09 + 0.06 * roll(seed, 130 + k), 0.07 + 0.04 * roll(seed, 140 + k), OIL, 8, seed * 5 + k, ROAD);
+      }
+      continue;
     }
+    for (const st of plan.streets) {
+      if (st.kind !== "street" && st.kind !== "main" && st.kind !== "avenue") continue;
+      const dx = st.b.x - st.a.x;
+      const dz = st.b.z - st.a.z;
+      const len2 = dx * dx + dz * dz;
+      const t = Math.max(0, Math.min(1, ((ex - st.a.x) * dx + (ez - st.a.z) * dz) / len2));
+      const qx = st.a.x + dx * t - ex;
+      const qz = st.a.z + dz * t - ez;
+      const d2 = qx * qx + qz * qz;
+      if (d2 < best) {
+        best = d2;
+        sx = qx;
+        sz = qz;
+      }
+    }
+    // Which of the two sides (the vehicle's left or right) points at the street.
+    const side = sx * -uz + sz * ux >= 0 ? 1 : -1;
+    blob(ex - uz * side * (v.width / 2 + 0.2), ez + ux * side * (v.width / 2 + 0.2), ux, uz, 0.6 + 0.2 * oil, 0.7 + 0.2 * oil, OIL, 8, seed * 3 + 1, ROAD);
   }
 
   // ---- along each curbed side of the town's streets
@@ -140,7 +179,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
             const n = 2 + Math.floor(roll(seed, 81) * 3);
             for (let k = 0; k < n; k++) {
               const [qx, qz] = at(s + (k - 1) * 0.5 + (roll(seed, 82 + k) - 0.5) * 0.4, tb - 0.2 * roll(seed, 90 + k));
-              blob(qx, qz, tx, tz, 0.12 + 0.2 * roll(seed, 100 + k), 0.06 + 0.07 * roll(seed, 110 + k), roll(seed, 120 + k) < 0.5 ? [0.1, 0.06, 0.025] : [0.08, 0.07, 0.025], 6, seed * 13 + k);
+              blob(qx, qz, tx, tz, 0.12 + 0.2 * roll(seed, 100 + k), 0.06 + 0.07 * roll(seed, 110 + k), roll(seed, 120 + k) < 0.5 ? [0.1, 0.06, 0.025] : [0.08, 0.07, 0.025], 6, seed * 13 + k, { kind: "leaf", layer: "sidewalk", amount: 1 });
             }
           }
         }
@@ -172,7 +211,7 @@ export function groundStains(g: TownGround, flat: Sink): void {
           {
             const b = 0.25 + 0.25 * roll(seed, 11);
             const [qx, qz] = at(sj, hw - 0.1 - b * 1.2);
-            blob(qx, qz, tx, tz, 0.9 + 1.2 * roll(seed, 9), b, [0.012, 0.015, 0.02], 9, seed);
+            blob(qx, qz, tx, tz, 0.9 + 1.2 * roll(seed, 9), b, [0.012, 0.015, 0.02], 9, seed, { kind: "oil", layer: "asphalt", amount: 0.85 });
           }
         } else if (faceSea > 0.3 && roll(seed, 12) < 0.55) {
           // Sand drifted against the kerb that faces the water: pale, long and low.
@@ -186,13 +225,13 @@ export function groundStains(g: TownGround, flat: Sink): void {
           const n = 2 + Math.floor(roll(seed, 16) * 2);
           for (let k = 0; k < n; k++) {
             const [qx, qz] = at(sj + (k - 1) * 0.9 + (roll(seed, 20 + k) - 0.5) * 0.4, hw - 0.3 - 0.1 * roll(seed, 30 + k));
-            blob(qx, qz, tx, tz, 0.3 + 0.35 * roll(seed, 40 + k), 0.08 + 0.1 * roll(seed, 50 + k), roll(seed, 60 + k) < 0.5 ? [0.1, 0.06, 0.025] : [0.07, 0.065, 0.025], 6, seed * 11 + k);
+            blob(qx, qz, tx, tz, 0.3 + 0.35 * roll(seed, 40 + k), 0.08 + 0.1 * roll(seed, 50 + k), roll(seed, 60 + k) < 0.5 ? [0.1, 0.06, 0.025] : [0.07, 0.065, 0.025], 6, seed * 11 + k, { kind: "leaf", layer: "asphalt", amount: 1 });
           }
         } else if (roll(seed, 70) < 0.3 + 0.2 * e.use) {
           // An empty kerb stall's old oil: pale and wide, with a few drips.
           const [qx, qz] = at(sj, hw - 1.3);
-          blob(qx, qz, tx, tz, 0.35, 0.25, OLD_OIL, 8, seed + 3);
-          blob(qx + tx * 0.7, qz + tz * 0.7, tx, tz, 0.07, 0.05, OLD_OIL, 8, seed + 4);
+          blob(qx, qz, tx, tz, 0.5, 0.35, OLD_OIL, 8, seed + 3, { kind: "oil", layer: "asphalt", amount: 0.8 });
+          blob(qx + tx * 0.7, qz + tz * 0.7, tx, tz, 0.1, 0.07, OLD_OIL, 8, seed + 4, { kind: "oil", layer: "asphalt", amount: 0.8 });
         }
       }
     }
