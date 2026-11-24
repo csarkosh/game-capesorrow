@@ -53,6 +53,8 @@ export type RailDraw = {
   scene: SceneContext;
   materials: { flat: PbrMaterialProps; solid: PbrMaterialProps };
   orders: { flat: number; solid: number };
+  /** The materials read the town's texture layers: the meshes carry their surface data. */
+  textured: boolean;
 };
 
 /** The level a cell at distance `d` wants, with `held` its present level giving it room. */
@@ -110,10 +112,11 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
     for (const layer of ["flat", "solid"] as const) {
       const a = arrays[layer];
       if (a === null) continue;
-      const bytes = a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.indices.byteLength;
+      const bytes = a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength;
       yield* host.uploads.hold(bytes);
       if (disposed || cells.get(cell.k) !== cell) return;
-      const mesh = createMeshFromData(draw.engine, `rail_${layer}_${cell.k}_${lod}`, a.positions, a.normals, a.indices, undefined, undefined, undefined, a.colors);
+      const mesh = createMeshFromData(draw.engine, `rail_${layer}_${cell.k}_${lod}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
+      if (draw.textured) mesh.pluginVertexData = a.surface;
       mesh.material = draw.materials[layer];
       mesh.renderOrder = draw.orders[layer];
       addToScene(draw.scene, mesh);

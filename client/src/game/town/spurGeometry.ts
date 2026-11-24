@@ -12,10 +12,11 @@
  *   piece of it is in the batch of the place it stands.
  */
 import { CELL } from "./townGeometry.js";
-import { BALLAST_TOP_HALF, BALLAST_TOP, RAIL_PLAIN, RAIL_PROFILE, TIE_BOTTOM, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_PITCH, TIE_TOP, frameAlong, runLength, sweep, trestleOver, type Frame, type Profile } from "./railGeometry.js";
+import { BALLAST_TOP, BALLAST_TOP_HALF, TIE_PITCH, frameAlong, resample, runLength, type Frame } from "./railConstants.js";
+import { railPair, trestleOver } from "./railGeometry.js";
+import { dipAt, JOINT, bedGrid, jointBars, spill, tieAt, weedsAt, type Look } from "./trackLook.js";
 import { MeshBuilder, scaled, type Rgb } from "./meshBuilder.js";
-import { BALLAST, RAIL, TIE, TIMBER_WEATHERED } from "./palette.js";
-import { RAIL_BED_HALF, RAIL_GAUGE } from "../../sim/town/rail.js";
+import { RAIL, TIMBER_WEATHERED } from "./palette.js";
 import { spurOf, type SpurTrack } from "../../sim/town/railSpur.js";
 import type { Detail, Sink, TownGround } from "./townTypes.js";
 
@@ -28,15 +29,27 @@ export const SWITCH_BESIDE = 2.4;
 /** How deep the spur's ballast skirt goes under its bed, metres. */
 export const SPUR_SKIRT = 1.6;
 
-/** The spur's ballast: the main line's section with a deeper skirt. */
-const SPUR_BALLAST: Profile = [
-  [-RAIL_BED_HALF, -SPUR_SKIRT],
-  [-RAIL_BED_HALF, 0],
-  [-BALLAST_TOP_HALF, BALLAST_TOP],
-  [BALLAST_TOP_HALF, BALLAST_TOP],
-  [RAIL_BED_HALF, 0],
-  [RAIL_BED_HALF, -SPUR_SKIRT],
-];
+/** The cut of the spur's bed grid at the full tier, metres. */
+const BED_STEP_SPUR = 1.6;
+
+/** How far along a run's frames the frame `i` is, metres. */
+function runAt(frames: readonly Frame[], i: number): number {
+  return runLength(frames.slice(0, i + 1));
+}
+
+/** The index of the frame nearest `d` metres along a run. */
+function nearest(frames: readonly Frame[], d: number): number {
+  let best = 0;
+  let bd = Infinity;
+  for (let i = 0; i < frames.length; i++) {
+    const e = Math.abs(runAt(frames, i) - d);
+    if (e < bd) {
+      bd = e;
+      best = i;
+    }
+  }
+  return best;
+}
 
 /** The highest the flat ground lies over the ground at a place (a sidewalk's heave: `walkGeometry.ts`), and how far over it a ballast's top stands, metres. */
 const FLAT_TOP = 0.03;
@@ -137,21 +150,38 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
   }
   if (run.length > 1) (isWet ? wet : land).push(run);
 
+  const look: Look = { seed: g.seed, spur: true };
+  const low = detail === "low";
   for (const r of land) {
     for (const part of byCell(r)) {
       if (part.length < 2) continue;
       const mid = frameAlong(part, runLength(part) / 2);
       const b = solid(mid.x, mid.z);
-      sweep(b, part, SPUR_BALLAST, 0, BALLAST, false, scaled(BALLAST, 1.12));
-      const rails = detail === "low" ? RAIL_PLAIN : RAIL_PROFILE;
-      sweep(b, part, rails, -RAIL_GAUGE / 2, RAIL, true);
-      sweep(b, part, rails, RAIL_GAUGE / 2, RAIL, true);
-      if (detail === "low") continue;
+      // The bed, one crowned grid: displaced at the full tier, coarse (the same outline and tone) at the low.
+      const dense = resample(part, low ? STEP : BED_STEP_SPUR);
+      bedGrid(b, dense, look, low ? 1 : 0, SPUR_SKIRT);
+      // The rails: jointed every `JOINT` m, a few millimetres low at some joints, with fish plates at the full tier.
+      const railFrames = part;
+      const start = Math.round((mid.x + mid.z) * 3);
+      const dips = railFrames.map((_, i) => dipAt(look, runAt(railFrames, i), start));
+      railPair(b, railFrames, look, low ? 1 : 0, (i) => dips[i] as number);
+      if (low) continue;
       const len = runLength(part);
+      const bars = Math.floor(len / JOINT);
+      for (let k = 0; k <= bars; k++) {
+        const d = Math.round((k * JOINT + (start % 5)) * 10) / 10;
+        if (d > len - 0.4 || d < 0.4) continue;
+        const f = frameAlong(part, d);
+        const g = frameAlong(part, Math.min(len, d + 0.5));
+        const h = frameAlong(part, Math.max(0, d - 0.5));
+        jointBars(b, f, [g.x - h.x, 0, g.z - h.z], dipAt(look, runAt(railFrames, nearest(railFrames, d)), start));
+      }
       const n = Math.floor(len / TIE_PITCH);
       for (let j = 0; j < n; j++) {
         const f = frameAlong(part, (j + 0.5) * TIE_PITCH);
-        b.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25));
+        tieAt(b, look, f, true);
+        weedsAt(b, look, f, j, true);
+        if (j % 8 === 0) spill(b, look, f, j, g.heightAt);
       }
     }
   }
@@ -160,11 +190,9 @@ export function spurGeometry(g: TownGround, solid: Sink, detail: Detail): void {
       if (part.length < 2) return;
       const mid = frameAlong(part, runLength(part) / 2);
       const b = solid(mid.x, mid.z);
-      const rails = detail === "low" ? RAIL_PLAIN : RAIL_PROFILE;
-      sweep(b, part, rails, -RAIL_GAUGE / 2, RAIL, true);
-      sweep(b, part, rails, RAIL_GAUGE / 2, RAIL, true);
+      railPair(b, part, look, low ? 1 : 0);
       // A part's first frame is the last of the one before: its bent is drawn once.
-      trestleOver(g.heightAt, b, part, detail === "low" ? 1 : 0, at === 0 ? 0 : 1);
+      trestleOver(g.heightAt, b, part, low ? 1 : 0, at === 0 ? 0 : 1, look);
     });
   }
   turnout(frames, solid);

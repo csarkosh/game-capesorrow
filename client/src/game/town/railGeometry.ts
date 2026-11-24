@@ -15,9 +15,12 @@
  * section, so the track sits on the ground the simulation made, and a spur's end can meet it: the rails' tops are `RAIL_TOP`
  * over the bench, their gauge `RAIL_GAUGE`.
  */
+import { frameAlong, runLength, BALLAST_SKIRT, BALLAST_TOP, BALLAST_TOP_HALF, RAIL_FOOT, RAIL_TOP, TIE_BOTTOM, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_PITCH, TIE_TOP, pointOf, type Frame, type Profile } from "./railConstants.js";
 import { MeshBuilder, hash01, scaled, type MeshArrays, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { BALLAST, DECK, PAINT_WHITE, PILE, RAIL, TIE, TIMBER, TIMBER_WEATHERED, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
+import { DECK, PAINT_WHITE, PILE, TIMBER, TIMBER_WEATHERED, YARD_ASPHALT, YARD_GRAVEL } from "./palette.js";
 import { sliceDue, type Slices } from "@csarkosh/engine/game/syncJobs";
+import { alongSurface, bedGrid, railSpecs, spill, stretchAt, texBox, tieAt, weedsAt, type Look, type SurfaceSpec } from "./trackLook.js";
+import { groundFrame, type Surface, type WearKind } from "./townSurface.js";
 import { RAIL_BED_HALF, RAIL_GAUGE } from "../../sim/town/rail.js";
 import { RAIL_BENCH_HALF } from "../../sim/town/railGround.js";
 import type { RailCrossing } from "../../sim/town/railCrossings.js";
@@ -30,21 +33,11 @@ import { POLE_HEIGHT, poleAt, type Pole } from "../../sim/town/powerLine.js";
 export const RAIL_CELL = 128;
 export type RailLod = 0 | 1 | 2;
 
-/** Heights over the bench, metres: the ballast's top, a tie's bottom and top, the rails' foot and top. */
-export const BALLAST_TOP = 0.16;
-export const TIE_BOTTOM = 0.08;
-export const TIE_TOP = 0.24;
-export const RAIL_FOOT = 0.235;
-export const RAIL_TOP = 0.36;
-/** The ballast's top half width and its half width at the bench, metres (`RAIL_BED_HALF` is the toe). */
-export const BALLAST_TOP_HALF = 1.55;
-export const BALLAST_SKIRT = 0.8;
-/** A tie: its half length across the track and its half width along it, and the distance between them, metres. */
-export const TIE_HALF_LENGTH = 1.3;
-export const TIE_HALF_WIDTH = 0.11;
-export const TIE_PITCH = 0.55;
+export * from "./railConstants.js";
 /** The cut of the path at each level of detail, metres. */
 export const LOD_STEP: Readonly<Record<RailLod, number>> = { 0: 4, 1: 16, 2: 32 };
+/** The cut of the bed's grid at each level, metres: the near level's is fine enough for its lumps. */
+export const BED_STEP: Readonly<Record<RailLod, number>> = { 0: 1, 1: 16, 2: 32 };
 
 /** The distance between a trestle's bents, metres. Its deck's width and ends are the simulation's (`railDeck.ts`). */
 export const TRESTLE_BENT = 3;
@@ -72,7 +65,7 @@ const WIRE: Rgb = [0.03, 0.03, 0.035];
 const INSULATOR: Rgb = [0.12, 0.2, 0.17];
 const STONE: Rgb = [0.3, 0.3, 0.29];
 const WHITE_SIGN: Rgb = [0.62, 0.62, 0.6];
-const BALLAST_FAR: Rgb = [0.19, 0.18, 0.17];
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
 /** What a cell is built from: the world's own answers, as plain functions. */
 export type RailWorld = {
@@ -91,21 +84,12 @@ export type RailWorld = {
   poles(z0: number, z1: number): readonly Pole[];
 };
 
-export type Frame = { x: number; z: number; g: number; nx: number; nz: number };
-
 /** The line's frame at a z: its centre, the grade there, and the unit normal across it (toward +x). */
 function frameAt(w: RailWorld, z: number): Frame {
   const slope = w.centreX(z + 0.5) - w.centreX(z - 0.5);
   const len = Math.sqrt(1 + slope * slope);
   return { x: w.centreX(z), z, g: w.gradeAt(z), nx: 1 / len, nz: -slope / len };
 }
-
-export function pointOf(f: Frame, off: number, dy: number): Vec3 {
-  return [f.x + f.nx * off, f.g + dy, f.z + f.nz * off];
-}
-
-/** A cross-section: points as (offset across, height over the bench), in clockwise order seen from along +z with +x to the right. */
-export type Profile = readonly (readonly [number, number])[];
 
 export const BALLAST_FULL: Profile = [
   [-RAIL_BED_HALF, -BALLAST_SKIRT],
@@ -144,16 +128,28 @@ export const RAIL_PLAIN: Profile = [
   [0.05, RAIL_FOOT],
 ];
 
+/** What a swept profile is made of: a surface for its upward faces (`topEdges`: just these edges of the profile, when given) and for the rest, and how far each frame lifts it. */
+export type SweepLook = {
+  readonly top?: SurfaceSpec;
+  readonly side?: SurfaceSpec;
+  /** The profile's edges that are the "top" (indices); by default every edge that faces up. */
+  readonly topEdges?: readonly number[];
+  readonly lift?: (i: number) => number;
+};
+
 /**
  * A profile swept along the frames: a quad for each edge of the profile and each pair of frames, facing out of the section
- * (`closed`: the last point joins the first). `centre` shifts the profile across the track.
+ * (`closed`: the last point joins the first). `centre` shifts the profile across the track. With a `look`, each quad wears a surface whose grain
+ * runs along the track.
  */
-export function sweep(sink: MeshBuilder, frames: readonly Frame[], profile: Profile, centre: number, colour: Rgb, closed: boolean, topColour: Rgb = colour): void {
+export function sweep(sink: MeshBuilder, frames: readonly Frame[], profile: Profile, centre: number, colour: Rgb, closed: boolean, topColour: Rgb = colour, look?: SweepLook): void {
   const n = profile.length;
   const edges = closed ? n : n - 1;
   for (let i = 0; i + 1 < frames.length; i++) {
     const f0 = frames[i] as Frame;
     const f1 = frames[i + 1] as Frame;
+    const l0 = look?.lift?.(i) ?? 0;
+    const l1 = look?.lift?.(i + 1) ?? 0;
     for (let e = 0; e < edges; e++) {
       const p = profile[e] as readonly [number, number];
       const q = profile[(e + 1) % n] as readonly [number, number];
@@ -165,9 +161,39 @@ export function sweep(sink: MeshBuilder, frames: readonly Frame[], profile: Prof
       const mid = (f0.nx + f1.nx) / 2;
       const midZ = (f0.nz + f1.nz) / 2;
       const hint: Vec3 = [mid * hu, hy, midZ * hu];
-      sink.quad(pointOf(f0, centre + p[0], p[1]), pointOf(f1, centre + p[0], p[1]), pointOf(f1, centre + q[0], q[1]), pointOf(f0, centre + q[0], q[1]), hint, hy > 0.5 * Math.abs(hu) ? topColour : colour, undefined, closed ? undefined : { back: true });
+      const isTop = look?.topEdges !== undefined ? look.topEdges.includes(e) : hy > 0.5 * Math.abs(hu);
+      const a = pointOf(f0, centre + p[0], p[1] + l0);
+      const b = pointOf(f1, centre + p[0], p[1] + l1);
+      const c = pointOf(f1, centre + q[0], q[1] + l1);
+      const d = pointOf(f0, centre + q[0], q[1] + l0);
+      const spec = look === undefined ? undefined : isTop ? (look.top ?? look.side) : look.side;
+      const surface = spec === undefined ? undefined : alongSurface(spec, a, b, d);
+      sink.quad(a, b, c, d, hint, hy > 0.5 * Math.abs(hu) ? topColour : colour, surface, closed ? undefined : { back: true });
     }
   }
+}
+
+/** The flat gravel on the bench beside the bed: the gravel layer on the world's frame, grimy, with growth where the stretch is old. */
+export function shoulderSurface(look: Look, f: Frame): Surface {
+  const st = stretchAt(look, f.x, f.z);
+  return {
+    layer: "gravel",
+    frame: groundFrame({ x: 0, z: 0 }),
+    tint: [0.5 - 0.1 * st.age, 0.46 - 0.12 * st.age, 0.41 - 0.16 * st.age],
+    wear: 0.25 + 0.3 * st.age,
+    wearKind: "grime",
+    wear2: 0.15 + 0.7 * st.weeds * st.age,
+    wearKind2: "growth",
+  };
+}
+
+/** The two rails over a run of frames at a gauge: the head-web-foot section near (`lod` 0), plain beyond, in aged metal with a bright worn head on a used line. */
+export function railPair(sink: MeshBuilder, frames: readonly Frame[], look: Look, lod: RailLod, lift?: (i: number) => number): void {
+  const mid = frames[Math.floor(frames.length / 2)] as Frame;
+  const spec = railSpecs(look, mid.x, mid.z);
+  const rails = lod === 0 ? RAIL_PROFILE : RAIL_PLAIN;
+  const topEdges = lod === 0 ? [5] : [1];
+  for (const side of [-1, 1]) sweep(sink, frames, rails, (side * RAIL_GAUGE) / 2, spec.flatSide, true, spec.flatTop, { top: spec.top, side: spec.side, topEdges, ...(lift === undefined ? {} : { lift }) });
 }
 
 /** Frames along z from `za` to `zb` every `step` metres, with the ends exact. */
@@ -211,8 +237,9 @@ export function* railCell(w: RailWorld, k: number, lod: RailLod): Slices<RailCel
   const spans = w.spans(z0 - 40, z1 + 40);
   const step = LOD_STEP[lod];
 
-  // The bed, in runs between the trestles, cut every `step` metres.
-  const frames = framesOf(w, z0, z1, step);
+  // The bed, in runs between the trestles, cut every `BED_STEP` metres: one crowned grid (displaced at the near level), the rails over it.
+  const look: Look = { seed: w.seed, spur: false };
+  const frames = framesOf(w, z0, z1, BED_STEP[lod]);
   const bed: Frame[][] = [];
   let run: Frame[] = [];
   for (let i = 0; i < frames.length; i++) {
@@ -226,21 +253,23 @@ export function* railCell(w: RailWorld, k: number, lod: RailLod): Slices<RailCel
   }
   if (run.length > 1) bed.push(run);
   for (const r of bed) {
-    sweep(solid, r, lod === 2 ? BALLAST_STRIP : BALLAST_FULL, 0, lod === 2 ? BALLAST_FAR : BALLAST, false, lod === 2 ? BALLAST_FAR : scaled(BALLAST, 1.12));
+    bedGrid(solid, r, look, lod, lod === 2 ? 0 : BALLAST_SKIRT);
     if (lod === 2) continue;
-    const rails = lod === 0 ? RAIL_PROFILE : RAIL_PLAIN;
-    sweep(solid, r, rails, -RAIL_GAUGE / 2, RAIL, true);
-    sweep(solid, r, rails, RAIL_GAUGE / 2, RAIL, true);
+    // The rails, every 2 m at the near level.
+    const rf = lod === 0 ? r.filter((_, i) => i % 2 === 0 || i === r.length - 1) : r;
+    railPair(solid, rf, look, lod);
     // The shoulders: gravel on the bench either side of the ballast, flat.
     for (const side of [-1, 1]) {
-      for (let i = 0; i + 1 < r.length; i++) {
+      const stepN = lod === 0 ? 4 : 1;
+      for (let i = 0; i + stepN < r.length + stepN - 1 && i < r.length - 1; i += stepN) {
         const a = r[i] as Frame;
-        const b = r[i + 1] as Frame;
+        const b = r[Math.min(r.length - 1, i + stepN)] as Frame;
         const o0 = side * RAIL_BED_HALF;
         const o1 = side * RAIL_BENCH_HALF;
-        flat.quad(pointOf(a, o0, 0.012), pointOf(b, o0, 0.012), pointOf(b, o1, 0.012), pointOf(a, o1, 0.012), [0, 1, 0], YARD_GRAVEL);
+        flat.quad(pointOf(a, o0, 0.012), pointOf(b, o0, 0.012), pointOf(b, o1, 0.012), pointOf(a, o1, 0.012), [0, 1, 0], YARD_GRAVEL, shoulderSurface(look, a));
       }
     }
+    if (lod === 0) for (let i = 0; i < r.length; i += 4) spill(solid, look, r[i] as Frame, i, w.heightAt);
   }
   yield;
 
@@ -251,11 +280,7 @@ export function* railCell(w: RailWorld, k: number, lod: RailLod): Slices<RailCel
     const b = Math.min(z1, s.b + TRESTLE_END);
     if (!(b > a)) continue;
     const tf = framesOf(w, a, b, Math.min(step, 4));
-    if (lod !== 2) {
-      const rails = lod === 0 ? RAIL_PROFILE : RAIL_PLAIN;
-      sweep(solid, tf, rails, -RAIL_GAUGE / 2, RAIL, true);
-      sweep(solid, tf, rails, RAIL_GAUGE / 2, RAIL, true);
-    }
+    if (lod !== 2) railPair(solid, tf, look, lod);
     trestle(w, solid, tf, lod);
   }
   yield;
@@ -268,7 +293,8 @@ export function* railCell(w: RailWorld, k: number, lod: RailLod): Slices<RailCel
       const z = j * TIE_PITCH;
       if (inPanel(w, z, 0)) continue;
       const f = frameAt(w, z);
-      solid.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25));
+      tieAt(solid, look, f, true);
+      weedsAt(solid, look, f, j, true);
       if (sliceDue()) yield;
     }
   }
@@ -296,72 +322,46 @@ export function* railCell(w: RailWorld, k: number, lod: RailLod): Slices<RailCel
   return { flat: fl, solid: sol, lod, k };
 }
 
-/** The frame `d` metres along a run of frames (by the distance between them), interpolated. */
-export function frameAlong(frames: readonly Frame[], d: number): Frame {
-  let at = 0;
-  for (let i = 1; i < frames.length; i++) {
-    const a = frames[i - 1] as Frame;
-    const b = frames[i] as Frame;
-    const len = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
-    if (d <= at + len || i === frames.length - 1) {
-      const t = len > 1e-9 ? Math.max(0, Math.min(1, (d - at) / len)) : 0;
-      const nx = a.nx + (b.nx - a.nx) * t;
-      const nz = a.nz + (b.nz - a.nz) * t;
-      const nl = Math.sqrt(nx * nx + nz * nz);
-      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, g: a.g + (b.g - a.g) * t, nx: nx / nl, nz: nz / nl };
-    }
-    at += len;
-  }
-  return frames[frames.length - 1] as Frame;
-}
-
-/** The length of a run of frames. */
-export function runLength(frames: readonly Frame[]): number {
-  let at = 0;
-  for (let i = 1; i < frames.length; i++) {
-    const a = frames[i - 1] as Frame;
-    const b = frames[i] as Frame;
-    at += Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
-  }
-  return at;
-}
-
 /**
  * A trestle over a run of frames (the main line's, or the spur's): its bents of piles every `TRESTLE_BENT` m, the planked deck, the stringers,
  * its ties and its guard rails. `heightAt` is the ground the piles stand on.
  */
-export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshBuilder, frames: readonly Frame[], lod: RailLod, firstBent = 0): void {
+export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshBuilder, frames: readonly Frame[], lod: RailLod, firstBent = 0, look: Look = { seed: 0, spur: false }): void {
   if (frames.length < 2) return;
-  // The planked deck and the stringers under it, swept along the frames.
-  sweep(b, frames, [[-TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.08]], 0, DECK, false, DECK);
-  sweep(b, frames, [[-TRESTLE_HALF, 0.04], [-TRESTLE_HALF, 0.08]], 0, TIMBER, false);
-  sweep(b, frames, [[TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.04]], 0, TIMBER, false);
-  for (const off of [-0.8, 0.8]) sweep(b, frames, [[off - 0.15, -0.3], [off - 0.15, 0.04], [off + 0.15, 0.04], [off + 0.15, -0.3]], 0, TIMBER_WEATHERED, true);
+  const timber = (tint: Rgb, wear: number | ((p: Vec3) => number), kind: WearKind = "grime", streaks = false): SurfaceSpec => ({ layer: "planks_weathered", tint, wear, wearKind: kind, streaks, wear2: 0.12, wearKind2: "moss" });
+  // The planked deck and the stringers under it, swept along the frames: boards that run along the deck, worn grey in the wheel-less middle and dark at the edges.
+  sweep(b, frames, [[-TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.08]], 0, DECK, false, DECK, { top: timber([1.25, 1.12, 1.0], 0.3), side: timber([1.1, 1.0, 0.9], 0.3) });
+  sweep(b, frames, [[-TRESTLE_HALF, 0.04], [-TRESTLE_HALF, 0.08]], 0, TIMBER, false, TIMBER, { side: timber([1.0, 0.9, 0.8], 0.4) });
+  sweep(b, frames, [[TRESTLE_HALF, 0.08], [TRESTLE_HALF, 0.04]], 0, TIMBER, false, TIMBER, { side: timber([1.0, 0.9, 0.8], 0.4) });
+  for (const off of [-0.8, 0.8]) sweep(b, frames, [[off - 0.15, -0.3], [off - 0.15, 0.04], [off + 0.15, 0.04], [off + 0.15, -0.3]], 0, TIMBER_WEATHERED, true, TIMBER_WEATHERED, { top: timber([0.9, 0.82, 0.74], 0.45, "grime", true), side: timber([0.9, 0.82, 0.74], 0.45, "grime", true) });
   // The guard rails: a top rail and a mid rail on posts every bent.
   for (const side of [-1, 1]) {
     const off = side * (TRESTLE_HALF - 0.06);
-    sweep(b, frames, [[off - 0.05, 1.0], [off - 0.05, 1.1], [off + 0.05, 1.1], [off + 0.05, 1.0]], 0, TIMBER, true);
-    sweep(b, frames, [[off - 0.04, 0.55], [off - 0.04, 0.62], [off + 0.04, 0.62], [off + 0.04, 0.55]], 0, TIMBER, true);
+    sweep(b, frames, [[off - 0.05, 1.0], [off - 0.05, 1.1], [off + 0.05, 1.1], [off + 0.05, 1.0]], 0, TIMBER, true, TIMBER, { top: timber([1.1, 1.0, 0.9], 0.3), side: timber([1.1, 1.0, 0.9], 0.3) });
+    sweep(b, frames, [[off - 0.04, 0.55], [off - 0.04, 0.62], [off + 0.04, 0.62], [off + 0.04, 0.55]], 0, TIMBER, true, TIMBER, { top: timber([1.1, 1.0, 0.9], 0.3), side: timber([1.1, 1.0, 0.9], 0.3) });
   }
   const length = runLength(frames);
-  // Ties on the deck, as on the bed.
+  // Ties on the deck, as on the bed: individuals.
   if (lod === 0) {
     const n = Math.floor(length / TIE_PITCH);
     for (let j = 0; j < n; j++) {
       const f = frameAlong(frames, (j + 0.5) * TIE_PITCH);
-      b.box(f.x, f.z, f.g + TIE_BOTTOM, f.nx, f.nz, TIE_HALF_LENGTH, TIE_HALF_WIDTH, TIE_TOP - TIE_BOTTOM, TIE, scaled(TIE, 1.25), true, null);
+      tieAt(b, look, f, true);
     }
   }
-  // The bents: three piles under a cap beam, down to the ground, and the posts of the guard rails.
+  // The bents: three piles under a cap beam, down to the ground, and the posts of the guard rails. Each pile is stained dark below the joint
+  // where it meets the cap, and the cap below the deck it carries.
   const nb = Math.max(1, Math.floor(length / TRESTLE_BENT));
   for (let i = firstBent; i <= nb; i++) {
     const f = frameAlong(frames, (length * i) / nb);
-    b.box(f.x, f.z, f.g - 0.55, f.nx, f.nz, 1.55, 0.14, 0.25, TIMBER, TIMBER);
+    const capBottom = f.g - 0.55;
+    const stain = (p: Vec3): number => 0.2 + 0.7 * clamp01(1 - (capBottom - p[1]) / 0.6) + (p[1] > capBottom ? 0.2 : 0);
+    texBox(b, f.x, f.z, capBottom, f.nx, f.nz, 1.55, 0.14, 0.25, timber([0.95, 0.85, 0.75], 0.45, "grime", true), false, PILE, true);
     for (const off of [-1.15, 0, 1.15]) {
       const x = f.x + f.nx * off;
       const z = f.z + f.nz * off;
       const bottom = Math.min(heightAt(x, z), f.g - 1) - 0.4;
-      b.box(x, z, bottom, 1, 0, 0.16, 0.16, f.g - 0.55 - bottom, PILE, PILE);
+      texBox(b, x, z, bottom, 1, 0, 0.16, 0.16, capBottom - bottom, timber([0.75, 0.66, 0.58], stain, "grime", true), true, PILE, true);
     }
     if (lod < 2) {
       for (const side of [-1, 1]) {
@@ -374,7 +374,7 @@ export function trestleOver(heightAt: (x: number, z: number) => number, b: MeshB
 }
 
 function trestle(w: RailWorld, b: MeshBuilder, frames: readonly Frame[], lod: RailLod): void {
-  trestleOver(w.heightAt, b, frames, lod);
+  trestleOver(w.heightAt, b, frames, lod, 0, { seed: w.seed, spur: false });
 }
 
 /** A crossing: the roadway carried over the rails on a panel flush with their heads, crossbucks on posts each side, and a stop line on the highway side. */
@@ -396,14 +396,32 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
   const rises = [PANEL_FOOT, PANEL_TOP, PANEL_TOP, PANEL_FOOT];
   const colour = c.paved ? YARD_ASPHALT : TIMBER_WEATHERED;
   const plank: Rgb = c.paved ? scaled(YARD_ASPHALT, 1.4) : scaled(TIMBER_WEATHERED, 0.8);
-  for (let i = 0; i < 3; i++) {
-    const a = at(-hw, rails[i] as number);
-    const bb = at(hw, rails[i] as number);
-    const cc = at(hw, rails[i + 1] as number);
-    const d = at(-hw, rails[i + 1] as number);
-    const y = (p: [number, number], rise: number): Vec3 => [p[0], w.gradeAt(p[1]) + rise, p[1]];
-    solid.quad(y(a, rises[i] as number), y(bb, rises[i] as number), y(cc, rises[i + 1] as number), y(d, rises[i + 1] as number), [0, 1, 0], i === 1 ? plank : colour);
-  }
+  const along: Vec3 = [-f.nz, 0, f.nx];
+  const worn = (p: Vec3): number => {
+    // Wear at the street's edges, where the wheels do not run, and on the ramps where the traffic pounds.
+    const lat = Math.abs((p[0] - c.x) * L[0] + (p[2] - c.z) * L[1]);
+    return clamp01((lat - (hw - 0.6)) / 0.6) * 0.6 + 0.12;
+  };
+  const spec: SurfaceSpec = c.paved
+    ? { layer: "asphalt", tint: [1.1, 1.08, 1.05], wear: worn, wearKind: "grime", wear2: 0.18, wearKind2: "damp" }
+    : { layer: "planks_weathered", tint: [1.05, 0.95, 0.85], wear: worn, wearKind: "grime", wear2: 0.12, wearKind2: "moss" };
+  // The panel: a grid of the roadway's width in five columns and four rows (the ramps, the flat, the ramps), so the wear can be said at its edges.
+  const lats = [-hw, -hw * 0.6, 0, hw * 0.6, hw];
+  const grid: Vec3[][] = rails.map((n, i) => lats.map((lat): Vec3 => {
+    const p = at(lat, n);
+    return [p[0], w.gradeAt(p[1]) + (rises[i] as number), p[1]];
+  }));
+  solid.grid(grid, [c.x, f.g - 3, c.z], {
+    colour: (_i, j) => (j === 0 || j === 4 ? scaled(plank, 0.8) : plank),
+    layer: spec.layer,
+    tint: () => spec.tint as Rgb,
+    uv: (i, j) => {
+      const p = (grid[i] as Vec3[])[j] as Vec3;
+      return [p[0] * along[0] + p[2] * along[2], p[0] * f.nx + p[2] * f.nz];
+    },
+    wear: (i, j) => [worn((grid[i] as Vec3[])[j] as Vec3) + (i === 0 || i === 3 ? 0.1 : 0), "grime"],
+    wear2: () => [spec.wear2 as number, spec.wearKind2 as WearKind],
+  });
   // The panel's two edges: a skirt down to the bench, so no light shows under a ramp.
   for (const lat of [-hw, hw]) {
     const a = at(lat, -PANEL_RAMP);
@@ -417,7 +435,8 @@ function crossing(w: RailWorld, solid: MeshBuilder, flat: MeshBuilder, c: RailCr
       const q = pts[i + 1] as [number, number];
       const gp = w.gradeAt(p[1]);
       const gq = w.gradeAt(q[1]);
-      solid.poly([[p[0], gp - 0.05, p[1]], [q[0], gq - 0.05, q[1]], [q[0], gq + (hs[i + 1] as number), q[1]], [p[0], gp + (hs[i] as number), p[1]]], [L[0] * Math.sign(lat), 0, L[1] * Math.sign(lat)], colour);
+      const corners: Vec3[] = [[p[0], gp - 0.05, p[1]], [q[0], gq - 0.05, q[1]], [q[0], gq + (hs[i + 1] as number), q[1]], [p[0], gp + (hs[i] as number), p[1]]];
+      solid.poly(corners, [L[0] * Math.sign(lat), 0, L[1] * Math.sign(lat)], colour, alongSurface({ layer: c.paved ? "asphalt" : "planks_weathered", tint: [0.8, 0.78, 0.74], wear: 0.3, wearKind: "grime" }, corners[0] as Vec3, corners[1] as Vec3, corners[3] as Vec3));
     }
   }
   if (lod === 2) return;
