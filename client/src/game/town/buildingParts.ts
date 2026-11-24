@@ -23,6 +23,7 @@ import { attachmentsGeometry } from "./buildingAttach.js";
 import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
 import type { Detail, TownGround } from "./townTypes.js";
+import { noteHouse, type HouseSeam } from "./houseSeam.js";
 
 export type PartsIn = {
   readonly g: TownGround;
@@ -84,17 +85,25 @@ function housePart(i: PartsIn, full: boolean): void {
   const { age, neglect } = agingOf(b);
   const front = refs[frontAt] as WallRef;
   // The foundation: a concrete skirt round the base, from under the ground to a hand over the floor.
-  eachWall(i, (w) => wquad(out, w, 0, baseY, w.length, i.frontFloorY + 0.15, 0.11, CONCRETE, undefined));
+  // How far out of each wall's face the foundation stands (0.11, or a step more where a face already stands there: `faceLedger.ts`): the dressing of its face (`seamWall.ts`) stands off from that.
+  const foundOff: number[] = refs.map(() => 0.11);
+  eachWall(i, (w) => {
+    foundOff[refs.indexOf(w)] = wquad(out, w, 0, baseY, w.length, i.frontFloorY + 0.15, 0.11, CONCRETE, undefined);
+  });
   if (full) {
     // Corner boards: painted boards up each corner, proud of the siding.
     const trim = b.material === "wood" ? scaled(TRIM, 0.95 + 0.1 * hash01(b.id, 500)) : scaled(i.wall, 1.15);
-    i.refs.forEach((w) => {
-      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim);
+    // One corner board was replaced in another paint, on a house in two (a roll of its id): a tan board among the white ones.
+    const odd = hash01(b.id, 530) < 0.5 ? Math.floor(hash01(b.id, 531) * i.refs.length) : -1;
+    const oddTrim: Rgb = [trim[0] * 0.78, trim[1] * 0.72, trim[2] * 0.6];
+    i.refs.forEach((w, wk) => {
+      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim);
       wbox(out, w, w.length - 0.1, w.length + 0.07, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim);
     });
   }
   // Steps and a porch at the front door.
   const door = i.use?.door ?? null;
+  let seamDoor: { s: number; floorY: number; half: number; out: number; porch: { s0: number; s1: number } | null } | null = null;
   if (i.xf !== null && door !== null) {
     const sw = stationOf(front, i.xf, door.s);
     const porch = b.era >= 1900 && b.era < 1950 && hash01(b.id, 501) < 0.6;
@@ -105,6 +114,7 @@ function housePart(i: PartsIn, full: boolean): void {
       const pd = 1.7;
       const s0 = Math.max(0.2, sw - pw / 2);
       const s1 = Math.min(front.length - 0.2, s0 + pw);
+      seamDoor = { s: (s0 + s1) / 2, floorY: i.frontFloorY + 0.05, half: (s1 - s0) / 2, out: pd, porch: { s0, s1 } };
       const closed = hash01(b.id, 502) < 0.17;
       const floor = i.frontFloorY;
       wbox(out, front, s0, s1, Math.max(baseY, floor - 0.9), floor + 0.05, 0, pd, CONCRETE, [0.34, 0.26, 0.18]);
@@ -118,17 +128,24 @@ function housePart(i: PartsIn, full: boolean): void {
         for (const s of [s0 + 0.1, s1 - 0.1]) wbox(out, front, s - 0.07, s + 0.07, floor + 0.05, top, pd - 0.2, pd - 0.06, TRIM, TRIM);
         if (full) wbox(out, front, s0, s1, floor + 0.7, floor + 0.78, pd - 0.08, pd, TRIM, TRIM);
       }
-      out.poly([wat(front, s0 - 0.15, top, 0), wat(front, s1 + 0.15, top, 0), wat(front, s1 + 0.15, top - 0.35, pd + 0.2), wat(front, s0 - 0.15, top - 0.35, pd + 0.2)], [front.nx * 0.5, 1, front.nz * 0.5], i.vacant ? [0.12, 0.11, 0.1] : [0.13, 0.12, 0.12], undefined, { back: { colour: i.vacant ? [0.32, 0.3, 0.27] : [0.5, 0.47, 0.42] } });
+      // The roof of an old porch sags a few centimetres at one end, where the post has settled (a roll of the house's id).
+      const sag = (hash01(b.id, 532) < 0.7 ? 0.02 + 0.04 * hash01(b.id, 533) : 0) * (b.era < 1920 ? 1.4 : 1);
+      out.poly([wat(front, s0 - 0.15, top, 0), wat(front, s1 + 0.15, top - sag * 0.4, 0), wat(front, s1 + 0.15, top - 0.35 - sag, pd + 0.2), wat(front, s0 - 0.15, top - 0.35, pd + 0.2)], [front.nx * 0.5, 1, front.nz * 0.5], i.vacant ? [0.12, 0.11, 0.1] : [0.13, 0.12, 0.12], undefined, { back: { colour: i.vacant ? [0.32, 0.3, 0.27] : [0.5, 0.47, 0.42] } });
       out.poly([wat(front, s0 - 0.15, top, 0), wat(front, s0 - 0.15, top - 0.35, pd + 0.2), wat(front, s0 - 0.15, top - 0.35, 0)], [-front.tx, 0, -front.tz], scaled(i.wall, 0.8));
     } else {
       // Steps: as many as the ground needs, in concrete or timber, with a stoop at the top.
       const n = Math.max(1, Math.min(6, Math.round((rise + 0.1) / 0.18)));
       const timber = hash01(b.id, 504) < 0.4;
+      seamDoor = { s: sw, floorY: i.frontFloorY, half: 0.6, out: 0.3 * n + 0.1, porch: null };
       for (let k = 0; k < n; k++) wbox(out, front, sw - 0.6, sw + 0.6, k === 0 ? i.frontFloorY - n * (rise / n) - 0.02 : i.frontFloorY - (n - k) * (rise / n), i.frontFloorY - (n - k - 1) * (rise / n), 0, 0.3 * (n - k) + 0.1, timber ? [0.34, 0.25, 0.16] : CONCRETE, timber ? [0.4, 0.3, 0.2] : [0.45, 0.45, 0.43]);
     }
   }
+  const seam: HouseSeam = { b, roofKind: i.roofKind, occupied: [], added: null, foundOff, refs, blocked: i.blocked, frontAt, baseY, foundTop: i.frontFloorY + 0.15, door: seamDoor };
+  noteHouse(seam);
   // What the years added or mended, before the machines that stand against the walls: an addition's walls are faces they are then put clear of.
   addition(i);
+  const added = additionPlan(i);
+  seam.added = added;
   repairs(i, age, neglect);
   // A chimney, on a pitched roof of a house built before 1980 (a flue: a stove, a furnace): brick, off the ridge's middle.
   if (i.roofKind !== "flat" && i.roofKind !== "shed" && b.era < 1980 && hash01(b.id, 505) < 0.7) {
@@ -154,11 +171,13 @@ function housePart(i: PartsIn, full: boolean): void {
           return isClear(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y0 + 0.75) && isClear(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y0 + 0.75) && isClear(w.nx, w.nz, e0b[0], e0b[2], e1b[0], e1b[2], y0, y0 + 0.75);
         };
         for (let tries = 0; tries < 12 && !clear(s); tries++) s += 0.1;
+        seam.occupied.push({ k: side, s0: s - 0.7, s1: s + 0.7 });
         const p = wat(w, s, 0, 0.5);
         i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
         i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
       } else if (hash01(b.id, 511) < 0.3) {
         const s = w.length * (0.2 + 0.6 * hash01(b.id, 512));
+        seam.occupied.push({ k: side, s0: s - 1.2, s1: s + 1.2 });
         const p = wat(w, s, 0, 1.2);
         const y = i.g.heightAt(p[0], p[2]);
         i.out.prism([p[0] - w.tx * 0.9, y + 0.5, p[2] - w.tz * 0.9], [p[0] + w.tx * 0.9, y + 0.5, p[2] + w.tz * 0.9], 0.4, 6, [0.85, 0.85, 0.82], [0.8, 0.8, 0.78]);

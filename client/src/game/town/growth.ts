@@ -16,11 +16,12 @@ import { hash01 } from "./meshBuilder.js";
 import type { TownGround, Detail } from "./townTypes.js";
 import type { Building } from "../../sim/town/types.js";
 import { levelOf } from "./buildingWear.js";
+import { neglectOf, seamHouses } from "./houseSeam.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
 
 /** A place where something grows: world x and z, how many tufts (a fraction is a chance), how tall (0 low, 1 tall), how dead (0 green, 1 straw), and the way the wall is (`ax`, `az`: unit, away from it; 0, 0 for none). */
-export type Site = { readonly blades?: number; readonly wide?: number; readonly x: number; readonly z: number; readonly n: number; readonly tall: number; readonly dry: number; readonly ax: number; readonly az: number; readonly seed: number };
+export type Site = { readonly card?: number; readonly big?: "fern" | "dock" | "bramble"; readonly thick?: number; readonly fern?: boolean; readonly high?: number; readonly blades?: number; readonly wide?: number; readonly x: number; readonly z: number; readonly n: number; readonly tall: number; readonly dry: number; readonly ax: number; readonly az: number; readonly seed: number };
 
 let sites: Site[] = [];
 /** The directions the blades already stand in, by cell of 0.4 m: two blades near each other never look one way (the finder holds faces that do, and lie within 2.45 cm, apart). */
@@ -69,6 +70,8 @@ const GREENS: readonly Rgb[] = [
   [0.36, 0.56, 0.13],
   [0.52, 0.6, 0.22],
 ];
+const FERN_GREENS: readonly Rgb[] = [[0.2, 0.42, 0.14], [0.26, 0.46, 0.16], [0.17, 0.36, 0.12]];
+const CANES: readonly Rgb[] = [[0.34, 0.26, 0.12], [0.4, 0.28, 0.14], [0.26, 0.3, 0.12]];
 const STRAW: Rgb = [0.62, 0.5, 0.28];
 const FOOT_COLOUR = (c: Rgb): Rgb => [c[0] * 0.7, c[1] * 0.75, c[2] * 0.6];
 const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.25, c[1] * 1.2, c[2] * 1.0];
@@ -77,30 +80,40 @@ const LIGHT_TIP = (c: Rgb): Rgb => [c[0] * 1.25, c[1] * 1.2, c[2] * 1.0];
 function tuft(m: MeshBuilder, x: number, y: number, z: number, s: Site, k: number, blades: number, dry: number, small: boolean): void {
   const r = (i: number): number => hash01(s.seed * 131 + k * 17 + i, 4242);
   const base = r(0) * Math.PI * 2;
-  const hMax = Math.min(0.3, (small ? 0.12 : 0.17) + (small ? 0.06 : 0.12) * s.tall * (0.5 + 0.5 * r(1)) + 0.04 * r(2));
-  const tuftDry = r(3) < dry * 0.4;
+  const big = s.big;
+  const hMax = big !== undefined ? (big === "bramble" ? 0.8 + 0.4 * r(1) : 0.55 + 0.45 * r(1)) : Math.min(s.high === undefined ? 0.3 : 0.62, (small ? 0.12 : 0.17) + (small ? 0.06 : 0.12) * s.tall * (0.5 + 0.5 * r(1)) + 0.04 * r(2) + (s.high ?? 0) * (0.4 + 0.6 * r(5)));
+  const fern = s.fern === true || big === "fern";
+  const wm = s.thick ?? 1;
+  const pitch = 0.13 + 0.04 * r(7);
+  const tuftDry = !fern && r(3) < dry * (s.card !== undefined ? 0.1 : 0.4);
   const walled = s.ax !== 0 || s.az !== 0;
   for (let b = 0; b < blades; b++) {
     // Round a free root the blades fan over the whole circle; against a wall, over the half that leans away from it (no two of a tuft look the same way).
     const ang = walled
       ? Math.atan2(s.az, s.ax) + ((b + 0.5) / blades - 0.5) * Math.PI * 0.94 + 0.1 * (r(10 + b) - 0.5)
       : base + ((b + 0.25 * (r(10 + b) - 0.5)) / blades) * Math.PI * 2;
-    const ang2 = claim(x, z, ang);
+    // A card: the blades stand side by side in one plane facing outward and turned by `card` radians, each 3.5 cm further out than the last (no two faces within 2.45 cm), so they close into a leafy screen.
+    const cardAng = s.card === undefined ? 0 : Math.atan2(s.az, s.ax) + s.card;
+    const ang2 = s.card === undefined ? claim(x, z, ang) : cardAng + 0.12 * (r(10 + b) - 0.5);
     const dx = Math.cos(ang2);
     const dz = Math.sin(ang2);
-    const h = hMax * (0.4 + 0.6 * r(20 + b));
+    const h = hMax * (s.card !== undefined ? 0.3 + 0.8 * r(20 + b) * r(21 + b) + 0.35 * r(22 + b) : 0.4 + 0.6 * r(20 + b));
     // One blade in five is bent over: its tip lies far out and low.
-    const bent = r(25 + b) < 0.2;
+    const bent = r(25 + b) < (fern ? 0.7 : big === "bramble" ? 0.8 : big === "dock" ? 0.45 : 0.2);
     const lean = h * (bent ? 0.55 + 0.35 * r(30 + b) : 0.1 + 0.4 * r(30 + b));
     const tipY = bent ? y + h * (0.55 + 0.2 * r(35 + b)) : y + h;
-    const w = 0.005 + 0.01 * r(40 + b);
+    const w = s.card !== undefined ? pitch * 0.62 * (0.9 + 0.3 * r(40 + b)) : (big === "fern" || s.fern === true ? 0.03 + 0.03 * r(40 + b) : big === "dock" ? 0.045 + 0.035 * r(40 + b) : big === "bramble" ? 0.008 + 0.006 * r(40 + b) : 0.005 + 0.01 * r(40 + b)) * wm;
     // The foot is a few cm off the root, so the blades fan.
-    const fx = x + dx * 0.03 * r(50 + b);
-    const fz = z + dz * 0.03 * r(60 + b);
     const px = -dz;
     const pz = dx;
+    const along = s.card === undefined ? 0 : (b - (blades - 1) / 2) * pitch;
+    const out = s.card === undefined ? 0.03 * r(50 + b) : 0.035 * ((b * 2) % blades) * 1;
+    const fx = x + dx * out + px * along;
+    const fz = z + dz * out + pz * along;
     const tip: Vec3 = [fx + dx * lean, tipY, fz + dz * lean];
-    const colour = tuftDry || r(70 + b) < 0.08 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
+    const colour0 = big === "bramble" ? CANES[Math.floor(r(80 + b) * CANES.length)] as Rgb : fern ? FERN_GREENS[Math.floor(r(80 + b) * FERN_GREENS.length)] as Rgb : tuftDry || r(70 + b) < 0.08 ? STRAW : (GREENS[Math.floor(r(80 + b) * GREENS.length)] as Rgb);
+    // The weeds at a wall are a dark, dull green (the tufts of the street's seams are the pale ones).
+    const colour: Rgb = s.high !== undefined || big !== undefined ? [colour0[0] * 0.5, colour0[1] * 0.58, colour0[2] * 0.5] : colour0;
     const tipColour = LIGHT_TIP(colour);
     const foot = FOOT_COLOUR(colour);
     const pa: Vec3 = [fx - px * w, y, fz - pz * w];
@@ -213,8 +226,51 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
       lay({ x: x + ax, z: z + az, n: count, wide: 0.2, tall: 0.35 + 0.65 * roll(b.id * 71 + tag, i + 400), dry: 0.2 + 0.4 * (b.state === "open" ? 0 : 1), ax: awayX, az: awayZ, seed: b.id * 977 + tag * 101 + i });
     }
   };
+  // A house's seam, by its own record: the weeds stand up to every wall of a house nobody keeps, and a kept one keeps a clean edge on the street side only; ferns on the north side; round the steps and the porch posts.
+  const seamed = new Set<number>();
+  for (const h of seamHouses()) {
+    const b = h.b;
+    if (b.kind !== "house" && b.kind !== "boarding house") continue;
+    seamed.add(b.id);
+    const neg = neglectOf(plan, b);
+    const kept = neg < 0.3;
+    const long = h.refs.reduce((m, w, k) => (w.length > (h.refs[m] as (typeof h.refs)[number]).length ? k : m), 0);
+    h.refs.forEach((w, k) => {
+      if (h.blocked[k]) return;
+      const front = k === h.frontAt;
+      // The street front of a kept house is trimmed to the wall; the front of a tired one is let go a little; the other walls are the mower's last stretch.
+      const dens = front ? (kept ? 0 : 0.15 + 0.7 * neg) : kept ? 0.22 : 0.45 + 0.55 * neg;
+      if (dens <= 0.02) return;
+      const north = w.nz > 0.5;
+      const doorS = front && h.door !== null ? h.door : null;
+      // A downspout stands at one end of the long walls: the water runs there and the growth is rank.
+      const spout = (h.roofKind === "gable" || h.roofKind === "hip" || h.roofKind === "shed") && Math.abs(w.length - (h.refs[long] as (typeof h.refs)[number]).length) <= 0.1 ? (roll(b.id * 3 + k, 551) < 0.5 ? 0.15 : w.length - 0.15) : -9;
+      // Something larger every few metres in a run that is thick: a fern on the shaded side, dock, a bramble cane or two.
+      for (let d = 0.8 + 1.5 * roll(b.id * 5 + k, 1), j = 0; d < w.length - 0.4; d += 4 + 3 * roll(b.id * 5 + k, 2 + j), j++) {
+        const rank = Math.abs(d - spout) < 1.2;
+        if (!rank && roll(b.id * 83 + k, Math.floor(d / 1.7)) > dens * (north ? 1.25 : 1)) continue;
+        if (doorS !== null && Math.abs(d - doorS.s) < doorS.half + 0.7) continue;
+        const rr = roll(b.id * 7 + k, 30 + j);
+        const big = north && rr < 0.6 ? "fern" : rr < 0.55 ? "dock" : rr < 0.8 ? "fern" : "bramble";
+        const off = 0.28 + 0.3 * roll(b.id * 7 + k, 40 + j);
+        lay({ x: w.ax + w.tx * d + w.nx * off, z: w.az + w.tz * d + w.nz * off, n: 1, blades: big === "bramble" ? 3 : 5, big, wide: 0.1, tall: 1, dry: 0.1, ax: w.nx, az: w.nz, seed: b.id * 977 + k * 101 + 500 + j });
+      }
+    });
+    // Round the steps and the porch's posts: weeds stand where the mower and the broom do not reach.
+    if (h.door !== null && neg > 0.3) {
+      const w = h.refs[h.frontAt] as (typeof h.refs)[number];
+      const spots: [number, number][] = [[h.door.s - h.door.half - 0.35, 0.3], [h.door.s + h.door.half + 0.35, 0.3]];
+      if (h.door.porch !== null) spots.push([h.door.porch.s0 + 0.1, h.door.out - 0.1], [h.door.porch.s1 - 0.1, h.door.out - 0.1]);
+      spots.forEach(([s, out], i) => {
+        if (roll(b.id * 13, i + 700) > 0.3 + 0.7 * neg) return;
+        const side = i % 2 === 0 ? -1 : 1;
+        lay({ x: w.ax + w.tx * (s + side * 0.18) + w.nx * (out + 0.1), z: w.az + w.tz * (s + side * 0.18) + w.nz * (out + 0.1), n: 2, wide: 0.12, tall: 0.5, high: 0.1 + 0.2 * neg, dry: 0.3, ax: 0, az: 0, seed: b.id * 977 + 800 + i });
+      });
+    }
+  }
   for (const b of plan.buildings) {
     if (b.kind === "pier") continue;
+    if (seamed.has(b.id)) continue;
     const fx = b.front?.x ?? 0;
     const fz = b.front?.z ?? 1;
     const ux = -fz;

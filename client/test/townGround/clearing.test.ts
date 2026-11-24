@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import "../../src/terrain.js";
 import { generateChunk } from "@csarkosh/engine/sim/chunk";
 import { CHUNK_SIZE } from "@csarkosh/engine/sim/forestConstants";
-import { CLUTTER_BUSH, CLUTTER_DRIFTWOOD, CLUTTER_GRASS, CLUTTER_ROCK, CLUTTER_SHRUB, clutterInRect, groundCover } from "@csarkosh/engine/sim/clutter";
+import { CLUTTER_BUSH, CLUTTER_DRIFTWOOD, CLUTTER_FERN, CLUTTER_FLOWER, CLUTTER_GRASS, CLUTTER_MEADOW, CLUTTER_ROCK, CLUTTER_SHRUB, clutterInRect, groundCover } from "@csarkosh/engine/sim/clutter";
 import { CLUTTER_CLASS_COUNT } from "@csarkosh/engine/sim/clutter";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { CLIFF_MATERIAL } from "@csarkosh/engine/sim/passes/cliffs";
 import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { shoreStrip } from "@csarkosh/engine/sim/terrain";
 import { bearingU, bearingV } from "../../src/sim/town/bearings.js";
-import { CLUTTER_BUILDING_CLEAR, CLUTTER_STREET_CLEAR, TREE_BUILDING_CLEAR, TREE_STREET_CLEAR, YARD_LIFT, YARD_TREE, clearAt, isPaved, townCover, townFeatureMask, townKeepD, townYardWeight } from "../../src/sim/town/clearing.js";
+import { CLUTTER_BUILDING_CLEAR, CLUTTER_STREET_CLEAR, STOOP_OUT, TREE_BUILDING_CLEAR, TREE_STREET_CLEAR, WALL_CLEAR, WALL_RAMP, YARD_LIFT, YARD_MASK, YARD_TREE, clearAt, isPaved, standClear, standsInYard, townCover, townFeatureMask, townKeepD, townYardWeight } from "../../src/sim/town/clearing.js";
 import { TOWN_INLAND, TOWN_Z_HALF } from "../../src/sim/town/ground.js";
 import { contains, segDist } from "../../src/sim/town/geom.js";
 import { planFor } from "../../src/sim/town/planFor.js";
@@ -125,7 +125,7 @@ describe("the forest by the lot", () => {
     }
   });
 
-  it("keeps the ground cover and the scrub off every street, off every building and a few metres round it, and off paved blocks; no loose rock or driftwood on the town", () => {
+  it("keeps the ground cover and the scrub off every street, off every building (a few metres round one on pavement, its own half width from a wall in a yard), and off paved blocks; no loose rock or driftwood on the town", () => {
     const rows: string[] = [];
     for (const seed of SEEDS) {
       const site = siteFor(seed);
@@ -143,7 +143,7 @@ describe("the forest by the lot", () => {
             }
             found[key]++;
             if (toPavement(plan, p.x, p.z) < CLUTTER_STREET_CLEAR) found.onStreet++;
-            for (const b of plan.buildings) if (b.lot !== -1 && toFootprint(plan, b.id, p.x, p.z) < CLUTTER_BUILDING_CLEAR) found.nearBuilding++;
+            for (const b of plan.buildings) if (b.lot !== -1 && toFootprint(plan, b.id, p.x, p.z) < (standsInYard(plan, b) ? standClear(cls) : CLUTTER_BUILDING_CLEAR)) found.nearBuilding++;
             const block = plan.blocks.find((bl) => contains(bl.polygon, p, 0));
             if (block !== undefined) {
               if (isPaved(block.district)) found.paved++;
@@ -192,6 +192,47 @@ describe("the forest by the lot", () => {
       }
     }
     expect(found).toBeGreaterThan(0);
+  });
+
+  it("brings the grass to the wall of a building in a yard, and keeps each piece of cover its own half width off it and off the ground before the front door", () => {
+    const CLASSES = [CLUTTER_GRASS, CLUTTER_MEADOW, CLUTTER_FLOWER, CLUTTER_FERN, CLUTTER_BUSH, CLUTTER_SHRUB];
+    for (const seed of SEEDS) {
+      const site = siteFor(seed);
+      const plan = planFor(seed);
+      const houses = plan.buildings.filter((b) => standsInYard(plan, b));
+      expect(houses.length, `seed ${seed} buildings in yards`).toBeGreaterThan(30);
+      let atWall = 0;
+      let shutAtWall = 0;
+      let openBehind = 0;
+      for (const b of houses.slice(0, 40)) {
+        const r = Math.sqrt(b.halfAlong * b.halfAlong + b.halfAcross * b.halfAcross) + 2;
+        for (const cls of CLASSES) {
+          for (const c of clutterInRect(seed, cls, site.anchor.x + b.centre.x - r, site.anchor.z + b.centre.z - r, site.anchor.x + b.centre.x + r, site.anchor.z + b.centre.z + r)) {
+            const d = toFootprint(plan, b.id, c.x - site.anchor.x, c.z - site.anchor.z);
+            expect(d, `seed ${seed} building ${b.id} class ${cls} at ${d.toFixed(2)} m`).toBeGreaterThanOrEqual(standClear(cls));
+            if (d < CLUTTER_BUILDING_CLEAR && (cls === CLUTTER_GRASS || cls === CLUTTER_MEADOW)) atWall++;
+          }
+        }
+        // By the mask: shut at the wall's foot all the way round; behind the house, a metre out, the yard's own grass (where no other building, drive or walk is).
+        const f = b.front ?? { x: 0, z: 1 };
+        const u = bearingU(b.bearing);
+        const reach = Math.abs(u.x * f.x + u.z * f.z) > 0.5 ? b.halfAlong : b.halfAcross;
+        const at = (d: number) => townFeatureMask(seed, site.anchor.x + b.centre.x - f.x * (reach + d), site.anchor.z + b.centre.z - f.z * (reach + d));
+        if (at(WALL_CLEAR * 0.5).clutter === 0) shutAtWall++;
+        const kind = plan.yards[b.lot]?.kind;
+        if (kind !== undefined && kind !== "paved" && Math.abs(at(WALL_CLEAR + WALL_RAMP + 0.3).clutter - YARD_MASK[kind].clutter) < 1e-9) openBehind++;
+        // Before the front door nothing grows: the steps or the porch stand there.
+        const use = plan.uses.find((us) => us.building === b.id);
+        if (use !== undefined && use.frame !== null && use.door !== null) {
+          const fr = use.frame;
+          for (const out of [0.2, STOOP_OUT * 0.5, STOOP_OUT - 0.05]) expect(townFeatureMask(seed, site.anchor.x + fr.origin.x + fr.t.x * use.door.s + fr.n.x * out, site.anchor.z + fr.origin.z + fr.t.z * use.door.s + fr.n.z * out).clutter).toBe(0);
+        }
+      }
+      process.stderr.write(`seed ${seed}: ${atWall} clumps and carpet pieces within ${CLUTTER_BUILDING_CLEAR} m of 40 yard buildings' walls; the mask shut at the wall of ${shutAtWall}, the yard's own a metre behind ${openBehind}\n`);
+      expect(atWall, `seed ${seed} grass at the walls`).toBeGreaterThan(200);
+      expect(shutAtWall).toBe(40);
+      expect(openBehind, `seed ${seed} yards open behind the house`).toBeGreaterThan(25);
+    }
   });
 
   it("says by the mask: shut on the street, on a paved block and beside a building, grass and a share of trees in a yard, the forest whole beyond the blocks", () => {

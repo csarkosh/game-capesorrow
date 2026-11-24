@@ -130,7 +130,9 @@ export function wallTone(c: WallToneCtx): void {
         // The pale rectangle in rows: bare rows between the lines, and in each line the faded letters (darker) and the gaps between them (pale), so no face lies over another.
         const pale = tone(1.55, { wear: 0.03, wear2: 0 });
         const ink = tone(1.25, { wear: 0.03, wear2: 0 });
-        const raw = (a: number, ya: number, e: number, yb: number, t: { colour: Rgb; surface: Surface }): void => wquad(out, w, a, baseY + ya, e, baseY + yb, OFF, t.colour, t.surface);
+        const raw = (a: number, ya: number, e: number, yb: number, t: { colour: Rgb; surface: Surface }): void => {
+          wquad(out, w, a, baseY + ya, e, baseY + yb, OFF, t.colour, t.surface);
+        };
         const lines = 2 + Math.floor(2 * r(63));
         let y = y0;
         for (let l = 0; l < lines; l++) {
