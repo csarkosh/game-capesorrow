@@ -11,7 +11,7 @@
  * spacings, how much each state stains.
  */
 import { withMat } from "./materials.js";
-import { hash01, scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINTS, pickOf } from "./buildingKit.js";
 import { BAKED, fbox, shade, wallPoint, xd, xp, type Ctx, type Xf } from "./roomKit.js";
 import { VEIL_FROM, VEIL_TO } from "./roomLight.js";
@@ -22,6 +22,8 @@ import type { Detail } from "./townTypes.js";
 
 /** What `roomGeometry` is handed about the unit besides its room. */
 export type RoomIn = {
+  /** Where the room's haze goes (`roomHaze.ts`): a blended layer drawn before the glass. A room given none has no haze, only its veil and its sheet. */
+  readonly haze?: MeshBuilder;
   readonly xf: Xf;
   readonly floorY: number;
   readonly s0: number;

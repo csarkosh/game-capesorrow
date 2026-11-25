@@ -14,7 +14,8 @@
  *
  * **What is looked at.** The whole town as the game builds it (`townGeometry`: every building and ruin, the props, the signs, the
  * sidewalks, the harbour; all the cells together, so a front against the next building's, a canopy over a neighbour's wall and a
- * prop against a wall are pairs too), in every layer (flat on the ground, standing, the glass, the lettering's sign layer), on three
+ * prop against a wall are pairs too), in every layer (flat on the ground, standing, the glass, the lettering's sign layer; not the rooms'
+ * haze, which is air and not a face: `townFaces.ts` says why), on three
  * seeds on the full tier and one on the low. Faces that look opposite ways are not a pair: the town's materials cull back faces (none
  * is `doubleSided`), so the back of a thin board is never drawn. Two faces that show the same thing where they lie over
  * each other are not counted either, since they cannot be told apart by eye, whichever is drawn: the same layer, colour, tint and wear, and

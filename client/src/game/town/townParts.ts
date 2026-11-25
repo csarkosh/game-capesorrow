@@ -59,6 +59,8 @@ type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: nu
  */
 export const FLAT_AHEAD_UNITS = 120;
 export const FLAT_AHEAD_SLOPE = 0;
+/** Where among the see-through draws a room's haze stands: after the cars' shadows and before the lettering and the glass, which are laid over it. */
+export const HAZE_ORDER = SEE_THROUGH_ORDER.lettering - 1;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -221,17 +223,18 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
-          if ((batch.layer === "glass" && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null))) {
+          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null))) {
             left--;
             continue;
           }
           const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
           if (wearsTextures) mesh.pluginVertexData = packSurface(a.surface);
-          if (batch.layer === "glass" || batch.layer === "sign") {
+          if (batch.layer === "glass" || batch.layer === "sign" || batch.layer === "haze") {
             // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
             const set = seeThrough as NonNullable<typeof seeThrough>;
-            mesh.material = batch.layer === "glass" ? set.glass : (set.sign as PbrMaterialProps);
-            mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : SEE_THROUGH_ORDER.lettering;
+            // A room's haze is the glass's material (its sheets say what they are), drawn before the lettering and the glass, which are laid over it.
+            mesh.material = batch.layer === "sign" ? (set.sign as PbrMaterialProps) : set.glass;
+            mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : batch.layer === "sign" ? SEE_THROUGH_ORDER.lettering : HAZE_ORDER;
           } else {
             mesh.material = town[batch.layer];
             mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;

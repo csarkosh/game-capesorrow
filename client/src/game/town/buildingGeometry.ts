@@ -187,6 +187,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const { f, onPiles, baseY, floorY, frontAt, fr, sides, corner, xf, frontFloorY } = buildingLevels(g, b);
   const out = sink(f.cx, f.cz);
   const glass = extra === undefined ? out : extra.glass(f.cx, f.cz);
+  const haze = extra?.haze?.(f.cx, f.cz);
   const ruin = b.state === "ruin";
   const vacant = b.state === "vacant";
   const walls: Wall[] = [];
@@ -269,7 +270,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const refs: WallRef[] = walls.map((w) => wallRef(w.ax, w.az, w.bx, w.bz, w.nx, w.nz));
   const use = g.plan.uses[b.id];
   const planCtx: PlanCtx = {
-    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }),
+    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }), ...(haze === undefined ? {} : { haze }),
     surfaceOf: (r, band) => wallSurface(refs.indexOf(r), band), bandY: baseY + FOOT,
   };
   let drawSigns = (): void => {};
