@@ -8,7 +8,7 @@ import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, fcyl, shade, xd, xp, type Ctx } from "./roomKit.js";
-import { H, NEAR, chair, free, up } from "./roomFill.js";
+import { H, NEAR, free, highTableSeats, up, windowBarSeats } from "./roomFill.js";
 import type { Furnishing, Opening } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
@@ -29,11 +29,9 @@ export function windowBar(c: Ctx, f: Furnishing, i: number): void {
   if (c.detail === "low") return;
   const seat: Rgb = c.style.chrome ? [0.62, 0.1, 0.08] : pickOf([[0.2, 0.3, 0.35], [0.6, 0.15, 0.1], [0.3, 0.2, 0.12]] as readonly Rgb[], c.seed + i, 1101);
   const n = Math.max(1, Math.floor(f.sx / 0.75));
-  for (let k = 0; k < n; k++) {
+  for (const { k, s: ss, d: sd } of windowBarSeats(c, f, i)) {
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
-    if (H(c, i * 9 + k, 102) < 0.12) continue;
-    stool(c, f.s + u, f.d + f.sd / 2 - 0.3, 0.68, seat, c.style.metal);
-    c.chairs.push([f.s + u, f.d + f.sd / 2 - 0.3]);
+    stool(c, ss, sd, 0.68, seat, c.style.metal);
     // Something on the counter in front of it.
     const r = H(c, i * 7 + k, 103);
     const ty = 1.04;
@@ -50,10 +48,7 @@ export function highTable(c: Ctx, f: Furnishing, i: number): void {
   fbox(c, f.s, f.d, 0, 1.0, 0.04, 0.04, AX, [0.15, 0.15, 0.16], [0.15, 0.15, 0.16], BAKED, false);
   if (c.detail === "low") return;
   const seat: Rgb = pickOf([[0.2, 0.3, 0.35], [0.6, 0.15, 0.1], [0.3, 0.2, 0.12], [0.15, 0.15, 0.17]] as readonly Rgb[], c.seed + i, 1104);
-  for (const sg of [-1, 1]) {
-    const s = f.s + sg * (f.sx / 2 + 0.3);
-    if (free(c, s, f.d + 0.05, 0.2, i)) { stool(c, s, f.d + 0.05, 0.68, seat, c.style.metal); c.chairs.push([s, f.d + 0.05]); }
-  }
+  for (const q of highTableSeats(c, f, i)) stool(c, q.s, q.d, 0.68, seat, c.style.metal);
   const col = pickOf([[0.15, 0.4, 0.2], [0.5, 0.25, 0.1], [0.75, 0.75, 0.7]] as readonly Rgb[], c.seed + i, 1105);
   fcyl(c, f.s - 0.1, f.d, 1.05, 0.04, 0.3, 5, col, [0.7, 0.7, 0.66], 0.02);
   fcyl(c, f.s + 0.1, f.d, 1.05, 0.05, 0.08, 5, [0.8, 0.75, 0.6], [1, 0.8, 0.4]);
@@ -153,7 +148,6 @@ export function tallThings(c: Ctx, seed: number): void {
     }
     void hash01;
     void NEAR;
-    void chair;
   });
 }
 

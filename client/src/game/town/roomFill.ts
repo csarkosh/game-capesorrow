@@ -16,7 +16,26 @@ import type { Furnishing } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
 export const NEAR = 9;
-export const H = (c: Ctx, k: number, salt = 0): number => hash01(c.seed * 131 + k, 900 + salt);
+export const H = (c: Pick<Ctx, "seed">, k: number, salt = 0): number => hash01(c.seed * 131 + k, 900 + salt);
+
+/** What the places people sit are worked out from: a room's own numbers, nothing of the drawing. `chairs` is what has been stood so far, in the order the furnishings are drawn. */
+export type SeatCtx = Pick<Ctx, "seed" | "style" | "feet" | "door" | "s0" | "s1" | "d1" | "chairs" | "detail" | "trade">;
+
+/**
+ * A place a person can sit, as the room is drawn: its centre in the room's (s, d), the height of its top over the floor, the unit vector (in
+ * (s, d)) a sitter faces, and which family of clips fits it (`chair`: a seat 0.46 m up; `stool`: 0.75 m). `furnishing` is the index of the
+ * furnishing it belongs to (the table, the desk, the row of stools). Every seat a room is drawn with is here, and the drawing calls the same
+ * functions, so a sitter is on a seat that stands.
+ */
+export type Seat = {
+  readonly furnishing: number;
+  readonly s: number;
+  readonly d: number;
+  readonly top: number;
+  readonly fs: number;
+  readonly fd: number;
+  readonly family: "chair" | "stool";
+};
 const dirOf = (f: Furnishing): { x: number; z: number } => ({ x: f.dir.x, z: f.dir.z });
 export const up = (v: Rgb, k: number): Rgb => [Math.min(1, v[0] * k), Math.min(1, v[1] * k), Math.min(1, v[2] * k)];
 
@@ -50,8 +69,17 @@ export function styleOf(seed: number, trade: string | null, era: number, opened:
   return { chrome, mismatched, modern, seat, top, top2: pickOf(WOODS, seed + 5, 1016), metal: [0.66, 0.67, 0.7] };
 }
 
+/** The footprints of a room's furnishings (an axis-aligned box about each one), in their order. */
+export function feetOf(furnishings: readonly Furnishing[]): Foot[] {
+  return furnishings.map((f, i) => {
+    const ex = (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
+    const ez = (Math.abs(f.dir.z) * f.sx + Math.abs(f.dir.x) * f.sd) / 2;
+    return { i, s0: f.s - ex, s1: f.s + ex, d0: f.d - ez, d1: f.d + ez, h: f.h };
+  });
+}
+
 /** True when a spot is clear of the furnishings (except `skip`), of the chairs already stood, of the walls and of the door's way. */
-export function free(c: Ctx, s: number, d: number, r: number, skip: number): boolean {
+export function free(c: SeatCtx, s: number, d: number, r: number, skip: number): boolean {
   if (d < 0.6 || d > c.d1 - 0.45 || s < c.s0 + 0.3 || s > c.s1 - 0.3) return false;
   if (Math.abs(s - c.door.s) < c.door.w / 2 + 0.45 + r && d < 2.4) return false;
   for (const f of c.feet) if (f.i !== skip && s > f.s0 - r && s < f.s1 + r && d > f.d0 - r && d < f.d1 + r) return false;
@@ -59,25 +87,28 @@ export function free(c: Ctx, s: number, d: number, r: number, skip: number): boo
   return true;
 }
 
-/** One chair at (s, d) facing the unit vector (fs, fd): a seat and a back, a few centimetres each way from true. */
-export function chair(c: Ctx, s: number, d: number, fs: number, fd: number, col: Rgb, kind: number, yb = 0): void {
-  c.chairs.push([s, d]);
+/** The top of a chair's seat over the floor: a diner's chrome chair (`kind` 1) is a little higher. */
+export const chairTop = (kind: number): number => (kind === 1 ? 0.48 : 0.45);
+
+/** One chair at (s, d) facing the unit vector (fs, fd), drawn: a seat and a back, a few centimetres each way from true. */
+export function drawChair(c: Ctx, s: number, d: number, fs: number, fd: number, col: Rgb, kind: number, yb = 0): void {
   const dir = { x: -fd, z: fs };
-  const seatTop = kind === 1 ? 0.48 : 0.45;
+  const seatTop = chairTop(kind);
   const seat = kind === 1 ? [0.62, 0.1, 0.08] as Rgb : col;
   fbox(c, s, d, yb + 0.04, seatTop - 0.04, 0.2, 0.2, dir, kind === 1 ? c.style.metal : col, up(seat, 1.15), BAKED, false);
   fbox(c, s - fs * 0.18, d - fd * 0.18, yb + seatTop, kind === 1 ? 0.5 : 0.52, 0.19, 0.025, dir, kind === 1 ? c.style.metal : scaled(col, 0.92), kind === 1 ? seat : col, BAKED, false);
 }
 
 /** The colour and kind of the k-th chair of furnishing i. */
-function chairLook(c: Ctx, i: number, k: number): { col: Rgb; kind: number } {
+function chairLook(c: SeatCtx, i: number, k: number): { col: Rgb; kind: number } {
   const st = c.style;
   return { col: st.seat[(st.mismatched ? Math.floor(H(c, i * 7 + k, 1) * st.seat.length) : 0) % st.seat.length] as Rgb, kind: st.chrome ? 1 : 0 };
 }
 
-/** Chairs round a table (a round or a rectangular top) by its size and a roll of its own; some pulled out and turned. */
-function chairsAround(c: Ctx, f: Furnishing, i: number): void {
-  if (c.detail === "low") return;
+/** The chairs round a table (a round or a rectangular top) by its size and a roll of its own; some pulled out and turned. They are stood: the spots are taken in `c.chairs`. */
+function chairSeats(c: SeatCtx, f: Furnishing, i: number): (Seat & { col: Rgb; kind: number })[] {
+  const found: (Seat & { col: Rgb; kind: number })[] = [];
+  if (c.detail === "low") return found;
   const dir = dirOf(f);
   const px = -dir.z;
   const pd = dir.x;
@@ -117,13 +148,32 @@ function chairsAround(c: Ctx, f: Furnishing, i: number): void {
     const rd = fs * sa + fd * ca;
     if (!free(c, cs, cd, 0.27, i)) continue;
     const { col, kind } = chairLook(c, i, k);
-    chair(c, cs, cd, rs, rd, col, kind);
+    c.chairs.push([cs, cd]);
+    found.push({ furnishing: i, s: cs, d: cd, top: chairTop(kind), fs: rs, fd: rd, family: "chair", col, kind });
   }
+  return found;
+}
+
+/**
+ * Where two chairs are stacked on a table top, if they are: the first thing left on a near table is now and then that. Never sat on, but
+ * the spot is taken from the floor's chairs (`c.chairs`) as the drawing's own are.
+ */
+function tableStack(c: SeatCtx, f: Furnishing, i: number, span: number): { s: number; d: number; fs: number; fd: number } | null {
+  if (f.d > NEAR + 1 || c.detail === "low") return null;
+  const n = H(c, i, 5) < 0.12 ? 0 : span < 0.75 ? 1 + (H(c, i, 6) < 0.5 ? 1 : 0) : 2 + (H(c, i, 6) < 0.35 ? 1 : 0);
+  if (n < 1 || Math.floor(H(c, i * 3, 7) * 8) !== 6 || !(H(c, i, 10) < 0.5)) return null;
+  const px = -f.dir.z;
+  const pd = f.dir.x;
+  const order = H(c, i, 8) < 0.5 ? [0, 1, -1] : [1, -1, 0];
+  const u = (order[0] as number) * 0.17;
+  const v = (H(c, i, 9) - 0.5) * 0.1;
+  return { s: f.s + f.dir.x * u + px * v, d: f.d + f.dir.z * u + pd * v, fs: -pd, fd: px };
 }
 
 /** Things left on a table top at (s, d), the top at `ty`: napkins, a caddy, a plate and a mug, a menu stand, bottles, a flower in a vase, now and then two chairs stacked; several reach 1.0 to 1.2 m, so that they show over a sill. */
 function onTable(c: Ctx, f: Furnishing, i: number, ty: number, span: number): void {
   if (f.d > NEAR + 1 || c.detail === "low") return;
+  const stack = tableStack(c, f, i, span);
   const dir = dirOf(f);
   const px = -dir.z;
   const pd = dir.x;
@@ -143,12 +193,10 @@ function onTable(c: Ctx, f: Furnishing, i: number, ty: number, span: number): vo
     else if (kind === 3) { fcyl(c, s, d, ty, 0.035, 0.16, 5, [0.5, 0.65, 0.6], [0.14, 0.4, 0.16], 0.025); fcyl(c, s, d, ty + 0.16, 0.07, 0.22, 5, [0.2, 0.45, 0.18], [0.85, 0.3, 0.4], 0.02); }
     else if (kind === 4) { fbox(c, s, d, ty, 0.3, 0.07, 0.012, dir, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1], BAKED, false); fbox(c, s, d, ty + 0.05, 0.2, 0.035, 0.045, dir, [0.9, 0.88, 0.8], [0.9, 0.88, 0.8], BAKED, false); }
     else if (kind === 5) { fcyl(c, s, d, ty, 0.04, 0.3, 5, col, [0.7, 0.7, 0.66], 0.02); fcyl(c, s + 0.1, d, ty, 0.035, 0.26, 5, scaled(col, 0.7), [0.7, 0.7, 0.66], 0.02); }
-    else if (kind === 6 && k === 0 && H(c, i, 10) < 0.5) {
+    else if (stack !== null && k === 0) {
       // Two chairs stacked on the table, the upper one a hand forward and aside so that no face of one lies on a face of the other.
-      const fs = -pd;
-      const fd = px;
-      chair(c, s, d, fs, fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty);
-      chair(c, s + px * 0.04 - fs * 0.0 + dir.x * 0.04, d + pd * 0.04 + dir.z * 0.04, fs, fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty + 0.14);
+      drawChair(c, stack.s, stack.d, stack.fs, stack.fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty);
+      drawChair(c, stack.s + px * 0.04 + dir.x * 0.04, stack.d + pd * 0.04 + dir.z * 0.04, stack.fs, stack.fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty + 0.14);
     } else fcyl(c, s, d, ty, 0.05, 0.4, 6, [0.5, 0.15, 0.1], [0.4, 0.1, 0.08], 0.03);
   }
 }
@@ -178,9 +226,20 @@ export function tableSet(c: Ctx, f: Furnishing, i: number): void {
   if (c.detail === "low") return;
   if (c.trade !== null && RACKS.includes(c.trade)) folded(c, f, i, ty);
   else if (hgt > 0.6) {
+    const seats = tableSeats(c, f, i);
     onTable(c, f, i, ty, Math.min(f.sx, f.sd));
-    chairsAround(c, f, i);
+    for (const q of seats) drawChair(c, q.s, q.d, q.fs, q.fd, q.col, q.kind);
   }
+}
+/** The chairs of a table, stood (the stack on it first, as drawn): none at a low table or a clothing shop's, where it holds folded stock. */
+function tableSeats(c: SeatCtx, f: Furnishing, i: number): (Seat & { col: Rgb; kind: number })[] {
+  if (c.detail === "low" || f.h <= 0.6 || (c.trade !== null && RACKS.includes(c.trade))) return [];
+  const stack = tableStack(c, f, i, Math.min(f.sx, f.sd));
+  if (stack !== null) {
+    c.chairs.push([stack.s, stack.d]);
+    c.chairs.push([stack.s + -f.dir.z * 0.04 + f.dir.x * 0.04, stack.d + f.dir.x * 0.04 + f.dir.z * 0.04]);
+  }
+  return chairSeats(c, f, i);
 }
 const RACKS = ["clothing", "thrift store", "sporting goods", "game shop", "variety store", "video store"];
 
@@ -214,17 +273,41 @@ export function booth(c: Ctx, f: Furnishing, i: number): void {
   onTable(c, { ...f, sx: f.sx - 0.2, sd: 0.64 }, i, ty, 0.8);
 }
 
-/** Stools at a counter: chrome with a red seat in an old diner, plain wood otherwise; one turned out. */
-export function stools(c: Ctx, f: Furnishing, i: number): void {
-  const dir = dirOf(f);
+/** A booth's seats: two on each bench (the benches are 0.45 m up, a sitter faces the table between). */
+function boothSeats(f: Furnishing, i: number): Seat[] {
+  const px = -f.dir.z;
+  const pd = f.dir.x;
+  const out: Seat[] = [];
+  for (const sg of [-1, 1]) {
+    const mid = (f.sd / 2 - 0.25) * sg;
+    for (const u of [-f.sx * 0.25, f.sx * 0.25]) {
+      out.push({ furnishing: i, s: f.s + f.dir.x * u + px * mid, d: f.d + f.dir.z * u + pd * mid, top: 0.45, fs: -px * sg, fd: -pd * sg, family: "chair" });
+    }
+  }
+  return out;
+}
+
+/** The stools of a row, where they stand (one in sixteen or so is missing, each a hair off line): their centres. */
+function stoolSpots(c: SeatCtx, f: Furnishing, i: number): { s: number; d: number }[] {
   const n = Math.max(1, Math.floor(f.sx / 0.64));
-  const seat: Rgb = c.style.chrome ? [0.62, 0.1, 0.08] : pickOf(VINYL, c.seed, 1023);
-  const post: Rgb = c.style.chrome ? c.style.metal : [0.3, 0.2, 0.12];
+  const out: { s: number; d: number }[] = [];
   for (let k = 0; k < n; k++) {
     if (H(c, i * 17 + k, 13) < 0.06) continue;
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
-    const s = f.s + dir.x * u + (H(c, k, 14) - 0.5) * 0.06;
-    const d = f.d + dir.z * u;
+    out.push({ s: f.s + f.dir.x * u + (H(c, k, 14) - 0.5) * 0.06, d: f.d + f.dir.z * u });
+  }
+  return out;
+}
+
+/** The top of a stool at a counter. */
+export const STOOL_TOP = 0.67;
+
+/** Stools at a counter: chrome with a red seat in an old diner, plain wood otherwise; one turned out. */
+export function stools(c: Ctx, f: Furnishing, i: number): void {
+  const dir = dirOf(f);
+  const seat: Rgb = c.style.chrome ? [0.62, 0.1, 0.08] : pickOf(VINYL, c.seed, 1023);
+  const post: Rgb = c.style.chrome ? c.style.metal : [0.3, 0.2, 0.12];
+  for (const { s, d } of stoolSpots(c, f, i)) {
     fbox(c, s, d, 0, 0.6, 0.03, 0.03, dir, post, post, BAKED, false);
     fbox(c, s, d, 0.6, 0.07, 0.17, 0.17, dir, seat, up(seat, 1.2), BAKED, false);
   }
@@ -351,11 +434,43 @@ export function deskSet(c: Ctx, f: Furnishing, i: number): void {
     }
   }
   // The staff's chair behind it (on the side away from the street), turned.
+  const seat = deskSeat(c, f, i);
+  if (seat !== null) drawChair(c, seat.s, seat.d, seat.fs, seat.fd, pickOf([[0.1, 0.12, 0.2], [0.2, 0.2, 0.22], [0.3, 0.14, 0.12]] as readonly Rgb[], c.seed + i, 314), 0);
+}
+
+/** The chair behind a desk (on the side away from the street), turned a little to face it; none where it would not stand clear. Taken from the floor's chairs. */
+function deskSeat(c: SeatCtx, f: Furnishing, i: number): Seat | null {
+  if (c.detail === "low") return null;
+  const px = -f.dir.z;
+  const pd = f.dir.x;
   const sg = pd >= 0 ? 1 : -1;
   const cs = f.s + px * sg * (f.sd / 2 + 0.36);
   const cd = f.d + pd * sg * (f.sd / 2 + 0.36);
   const a = (H(c, i, 18) - 0.5) * 0.9;
-  if (free(c, cs, cd, 0.27, i)) chair(c, cs, cd, -px * sg * Math.cos(a) - -pd * sg * Math.sin(a), -px * sg * Math.sin(a) + -pd * sg * Math.cos(a), pickOf([[0.1, 0.12, 0.2], [0.2, 0.2, 0.22], [0.3, 0.14, 0.12]] as readonly Rgb[], c.seed + i, 314), 0);
+  if (!free(c, cs, cd, 0.27, i)) return null;
+  c.chairs.push([cs, cd]);
+  return { furnishing: i, s: cs, d: cd, top: chairTop(0), fs: -px * sg * Math.cos(a) - -pd * sg * Math.sin(a), fd: -px * sg * Math.sin(a) + -pd * sg * Math.cos(a), family: "chair" };
+}
+
+/** Which side of a bench or couch its back is on (+1 or -1 along its normal): toward the nearer side wall for one along a side, larger d for one along the front. */
+function backSide(c: SeatCtx, f: Furnishing): number {
+  let sg = f.dir.x >= 0 ? 1 : -1;
+  if (Math.abs(f.dir.z) > 0.7) sg = f.s - c.s0 < c.s1 - f.s ? -1 : 1;
+  return sg;
+}
+
+/** The seats along a bench or a couch: one to a 0.7 m of its length, a sitter facing away from the back. `rise` is the top of its cushion over the floor, `lean` how far from the front edge the hips sit. */
+function sofaSeats(c: SeatCtx, f: Furnishing, i: number, top: number, hips: number): Seat[] {
+  const px = -f.dir.z;
+  const pd = f.dir.x;
+  const sg = backSide(c, f);
+  const n = Math.max(1, Math.floor(f.sx / 0.7));
+  const out: Seat[] = [];
+  for (let k = 0; k < n; k++) {
+    const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
+    out.push({ furnishing: i, s: f.s + f.dir.x * u + px * sg * hips, d: f.d + f.dir.z * u + pd * sg * hips, top, fs: -px * sg, fd: -pd * sg, family: "chair" });
+  }
+  return out;
 }
 
 /** A bench by a window or the wall, with cushions and a back; a high chair beside one in a cafe. */
@@ -366,8 +481,7 @@ export function benchSet(c: Ctx, f: Furnishing, i: number): void {
   if (c.detail === "low") return;
   const px = -dir.z;
   const pd = dir.x;
-  let sg = pd >= 0 ? 1 : -1;
-  if (Math.abs(dir.z) > 0.7) sg = f.s - c.s0 < c.s1 - f.s ? -1 : 1;
+  const sg = backSide(c, f);
   fbox(c, f.s + px * sg * (f.sd / 2 - 0.02), f.d + pd * sg * (f.sd / 2 - 0.02), f.h, 0.55, f.sx / 2, 0.02, dir, scaled(wood, 0.9), wood, BAKED, false);
   // Cushions, each its own colour, one leaning.
   const n = Math.max(2, Math.floor(f.sx / 0.6));
@@ -521,9 +635,8 @@ export function couch(c: Ctx, f: Furnishing, i: number): void {
   const px = -dir.z;
   const pd = dir.x;
   const col = pickOf([[0.45, 0.2, 0.15], [0.25, 0.35, 0.4], [0.5, 0.45, 0.3], [0.3, 0.38, 0.24], [0.4, 0.3, 0.35]] as readonly Rgb[], c.seed + i, 1052);
-  // The back toward the wall behind it (a bench's rule): the nearer side wall for one along a side, larger d for one along the front.
-  let sg = pd >= 0 ? 1 : -1;
-  if (Math.abs(dir.z) > 0.7) sg = f.s - c.s0 < c.s1 - f.s ? -1 : 1;
+  // The back toward the wall behind it (a bench's rule).
+  const sg = backSide(c, f);
   fbox(c, f.s, f.d, 0.08, 0.36, f.sx / 2, f.sd / 2, dir, col, up(col, 1.15));
   fbox(c, f.s + px * sg * (f.sd / 2 - 0.09), f.d + pd * sg * (f.sd / 2 - 0.09), 0.44, 0.38, f.sx / 2, 0.09, dir, scaled(col, 0.9), col);
   for (const k of [-1, 1]) fbox(c, f.s + dir.x * k * (f.sx / 2 - 0.08), f.d + dir.z * k * (f.sx / 2 - 0.08), 0.44, 0.15, 0.08, f.sd / 2 - 0.18, dir, scaled(col, 0.85), scaled(col, 1.05), BAKED, false);
@@ -773,4 +886,80 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
     const hole: [number, number][] = [[hs0 - 0.3, hd - 0.3], [hs0 + 0.3, hd - 0.3], [hs0 + 0.3, hd + 0.3], [hs0 - 0.3, hd + 0.3]];
     withMat("plaster", () => c.out.poly(hole.map(([s, d]) => xp(c.xf, s, d, c.floorY + c.ceiling - 0.03)), [0, -1, 0], [0.04, 0.04, 0.045], undefined, { glow: 1 }));
   }
+}
+
+// ---- where people sit: the seats a room is drawn with, from the same arithmetic as the drawing
+
+/** The top of the stools of a window bar and a high table over the floor. */
+export const HIGH_STOOL_TOP = 0.74;
+
+/** The stools of a window bar, by their slot `k` along it (a slot is now and then empty); their spots are taken in `c.chairs`. */
+export function windowBarSeats(c: SeatCtx, f: Furnishing, i: number): (Seat & { k: number })[] {
+  const out: (Seat & { k: number })[] = [];
+  if (c.detail === "low") return out;
+  const n = Math.max(1, Math.floor(f.sx / 0.75));
+  for (let k = 0; k < n; k++) {
+    const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
+    if (H(c, i * 9 + k, 102) < 0.12) continue;
+    const s = f.s + u;
+    const d = f.d + f.sd / 2 - 0.3;
+    c.chairs.push([s, d]);
+    out.push({ k, furnishing: i, s, d, top: HIGH_STOOL_TOP, fs: 0, fd: -1, family: "stool" });
+  }
+  return out;
+}
+
+/** The (up to two) stools of a high table, where they stand clear; their spots are taken in `c.chairs`. */
+export function highTableSeats(c: SeatCtx, f: Furnishing, i: number): Seat[] {
+  const out: Seat[] = [];
+  if (c.detail === "low") return out;
+  for (const sg of [-1, 1]) {
+    const s = f.s + sg * (f.sx / 2 + 0.3);
+    if (!free(c, s, f.d + 0.05, 0.2, i)) continue;
+    c.chairs.push([s, f.d + 0.05]);
+    out.push({ furnishing: i, s, d: f.d + 0.05, top: HIGH_STOOL_TOP, fs: -sg, fd: 0, family: "stool" });
+  }
+  return out;
+}
+
+/**
+ * The seats of one furnishing, as it is drawn, and the spots they and what stands with them take from the floor (`c.chairs`): so a room's
+ * furnishings must be asked in the order they are drawn, each once (`roomSeats`). A table's chairs, a booth's benches, a row of stools
+ * (a sitter faces the nearest counter's line, from `all`), a desk's chair, a couch and a bench, a window bar's stools and a high table's.
+ */
+export function seatsOf(c: SeatCtx, f: Furnishing, i: number, all: readonly Furnishing[]): Seat[] {
+  switch (f.kind) {
+    case "table": return tableSeats(c, f, i);
+    case "booth": return boothSeats(f, i);
+    case "stool row": {
+      // Facing the counter the row runs beside: the side of the row on which the nearest parallel counter lies.
+      const px = -f.dir.z;
+      const pd = f.dir.x;
+      let best = Infinity;
+      let sg = 1;
+      for (const o of all) {
+        if (o.kind !== "counter" || Math.abs(o.dir.x * f.dir.x + o.dir.z * f.dir.z) < 0.99) continue;
+        const across = (o.s - f.s) * px + (o.d - f.d) * pd;
+        if (Math.abs(across) < best) {
+          best = Math.abs(across);
+          sg = across >= 0 ? 1 : -1;
+        }
+      }
+      return stoolSpots(c, f, i).map((p) => ({ furnishing: i, s: p.s, d: p.d, top: STOOL_TOP, fs: px * sg, fd: pd * sg, family: "stool" as const }));
+    }
+    case "desk": {
+      const seat = deskSeat(c, f, i);
+      return seat === null ? [] : [seat];
+    }
+    case "couch": return sofaSeats(c, f, i, 0.44, 0.0);
+    case "bench": return c.detail === "low" ? [] : sofaSeats(c, f, i, f.h, 0.0);
+    case "windowbar": return windowBarSeats(c, f, i);
+    case "hightable": return highTableSeats(c, f, i);
+    default: return [];
+  }
+}
+
+/** Every seat of a room, by furnishing (in the plan's order, which is the order they are drawn), as the full tier draws it. */
+export function roomSeats(c: SeatCtx, furnishings: readonly Furnishing[]): Seat[][] {
+  return furnishings.map((f, i) => seatsOf(c, f, i, furnishings));
 }

@@ -29,6 +29,10 @@ export const PEOPLE_STEP = 0.25;
  * How much the base colour is darkened: the models' textures were lit for the open sky, and these people stand in a room.
  * The look is still to be tuned from pictures.
  */
+/** The height of the seat the sitting clips were made for (m): a chair's, and a bar stool's. */
+export const CHAIR_CLIP_SEAT = 0.46;
+export const STOOL_CLIP_SEAT = 0.75;
+
 export const INDOOR_DARKEN = 0.6;
 
 export type PeoplePartsHost = {
@@ -72,10 +76,12 @@ function bytesOf(id: string): number {
 export function createPeopleParts(host: PeoplePartsHost, placed: readonly PlacedPerson[]): PeopleParts {
   const batches = new Map<PersonModel, Batch>();
   for (const id of PERSON_MODELS) {
-    const people = placed.filter((p) => p.person.model === id);
+    // A chair is not drawn on the low tier, so nobody sits there.
+    const people = placed.filter((p) => p.person.model === id && !(host.low && p.person.seat !== null));
     if (people.length > 0) batches.set(id, { id, people, model: null, shown: [] });
   }
   const loads = new AbortController();
+  const missing = new Set<string>();
   const orders = createDrawOrders(DRAW_ORDER.bodies);
   const reach = host.low ? PEOPLE_REACH_LOW : PEOPLE_REACH;
   let pending = 0;
@@ -165,12 +171,23 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         }
         const same = next.length === batch.shown.length && next.every((v, k) => v === batch.shown[k]);
         if (same && !refold) continue;
-        const clip = model.clips.get("idle");
-        if (clip === undefined) continue;
+        const idle = model.clips.get("idle");
+        if (idle === undefined) continue;
         batch.shown = next;
         for (const [k, i] of next.entries()) {
           const { person, at } = batch.people[i] as PlacedPerson;
-          writeBodyMatrix(model.matrices, k, at.x, at.y, at.z, at.yaw, person.scale);
+          // The clip they play: their activity's, or idle (said once) where this model lacks it.
+          let clip = model.clips.get(person.activity);
+          if (clip === undefined) {
+            if (!missing.has(`${batch.id}:${person.activity}`)) {
+              missing.add(`${batch.id}:${person.activity}`);
+              console.warn(`the person model ${batch.id} has no ${person.activity} clip; its people do that standing idle`);
+            }
+            clip = idle;
+          }
+          // A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for.
+          const y = at.y + (person.seat === null || clip === idle ? 0 : person.seat.top - (person.seat.family === "stool" ? STOOL_CLIP_SEAT : CHAIR_CLIP_SEAT));
+          writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
           // A fold of the clock writes every body's floats again. Where in the clip a body is now is worked out from the clock's whole run, so a
           // body that was already shown goes on from where it was when the set changes, and does not start again.
           model.clipParams[k * 8] = -1;
