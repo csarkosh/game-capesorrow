@@ -45,13 +45,18 @@ import { createTownTextures, type TownTextures } from "./townTextures.js";
 type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean; /** The model this car stands in for, until the model's meshes are made. */ model?: string };
 
 /**
- * How far toward the eye the flat layer is drawn, so that it lies over the terrain it is laid on: steps of a 24-bit depth buffer, and the
- * share of a pixel's own depth slope (the engine's `ahead`). Both are positive: the renderer's depth runs from 1 at the near plane to 0 far
- * away, so toward the eye is up. With either negative the layer is drawn behind the terrain instead, and a surface with no cut under it (a
- * yard's drive, a walk, a patch) is seen only from a few metres (`depthLead.test.ts`).
+ * How far toward the eye the flat layer is drawn, so that it lies over the terrain it is laid on: steps of a 24-bit depth buffer (the
+ * engine's `ahead`). Positive: the renderer's depth runs from 1 at the near plane to 0 far away, so toward the eye is up. With it negative
+ * the layer is drawn behind the terrain instead, and a surface with no cut under it (a yard's drive, a walk, a patch) is seen only from a
+ * few metres (`depthLead.test.ts`).
+ *
+ * The slope's share of the engine's offset is not used (0). It is worked out at each vertex and drawn as the triangle's own run between
+ * them, so two flat surfaces at one place get different shares of it wherever their triangles differ, by far more than a rank's step: a
+ * patch of large triangles on a roadway of small ones was eaten by the roadway in a wedge that moved with the eye, and the ground was drawn
+ * over the foot of a wall or a step near by. The steps alone are the same at every point of every surface, so the ranks hold.
  */
 export const FLAT_AHEAD_UNITS = 120;
-export const FLAT_AHEAD_SLOPE = 1;
+export const FLAT_AHEAD_SLOPE = 0;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
