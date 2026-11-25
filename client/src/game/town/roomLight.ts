@@ -11,10 +11,11 @@
  * mean, so a room with few lights is a dim room with a bright pool in it and not a room evenly half lit. No two lamps are equally
  * bright (a tube yellows and dims with age).
  *
- * And a room is a stage at its window. The few metres behind the glass are what the street sees, so they are the bright part: the light
- * is a little over itself at the glass, whole to `FRONT_FULL` metres in, and falls away to a tenth by `FADE_TO` (`depthLight`); the lamps
- * past `FRONT_LIGHTS` are off; and what stands back there loses its own colour and contrast into one murk as well (`depthHaze`, which
- * `roomKit.ts`'s `shade` lays on every albedo), so the back of a room reads as dim shapes and not as an empty lit hall.
+ * And a room is a stage at its window. The two metres behind the glass are what the street sees, and they are seen as they are, a
+ * little brighter at the glass (`depthLight`). Behind them the room is veiled: from `VEIL_FROM` to `VEIL_TO` everything runs to one bright,
+ * even tone, the room's own light with nothing in it (`veil`, the field's `veil` colour, laid on every lit colour by `roomKit.ts`'s `shade`).
+ * That is what a steamed or dusty pane does to a lit room: the lights are on and the room is bright, and what stands in it past the front
+ * is a faint shape or nothing. It is there so that a room need be furnished only at its front; the lights stay on to the back wall.
  *
  * What the plan causes: which lights are on, whether the unit is open, shut or vacant, where the openings are and what covers each
  * (a papered or blinded opening lets in less day). What is authored: the strengths and the colours of each kind of light, the day's
@@ -56,6 +57,8 @@ export type RoomField = {
   readonly dead: readonly boolean[];
   /** The mean light on the floor, for tests and for looking at. */
   readonly mean: number;
+  /** What everything behind the front of the room runs to (`veil`): the room's own light as one even tone. */
+  readonly veil: Rgb;
 };
 
 const SKY: Rgb = [0.62, 0.68, 0.76];
@@ -89,33 +92,34 @@ const AMBIENT_OPEN = 0.022;
 const AMBIENT_SHUT = 0.014;
 const AMBIENT_VACANT = 0.02;
 /** How much darker a room is in a corner, along a wall's foot, up at the ceiling's edge and on the floor against a wall, and over what distance (m) each lifts. */
-/** How deep from the glass the room is fully lit, and by where it has fallen to `BACK_LIGHT` of itself, metres. */
-export const FRONT_FULL = 2.2;
-export const FADE_TO = 6.0;
-const BACK_LIGHT = 0.1;
+/** Where behind the glass the veil begins and where it is whole, metres: the front of the room is seen, the rest is not. */
+export const VEIL_FROM = 1.1;
+export const VEIL_TO = 2.2;
+/** How far behind the glass the room as drawn ends at its painted sheet (`roomBackdrop.ts`), metres: just past where the veil is whole. */
+export const BACKDROP_AT = 2.4;
+/** A room no deeper than the sheet and this has none: there is no back to paint. */
+export const BACKDROP_MIN_BEHIND = 1.2;
+/** How much of a thing is gone into the veil where it is whole: the rest is the faint shape that says the room is not bare. */
+export const VEIL_FULL = 0.93;
+/** How bright the veil of a lit room is (linear), and of a shut or vacant one as a share of its own mean light. */
+const VEIL_LIT = 0.4;
+const VEIL_UNLIT = 0.6;
 /** How much brighter than itself the room is right at the glass. */
-const FRONT_BOOST = 0.5;
-/** A lamp deeper than this is off: the back of a room is not lit for the street. */
-export const FRONT_LIGHTS = 4.5;
-/** How much of its own colour a thing at the back of the room has lost into the murk. */
-const BACK_HAZE = 0.8;
-/** The murk: what a thing's colour runs to with depth (an albedo, linear). */
-export const MURK: Rgb = [0.2, 0.19, 0.18];
+const FRONT_BOOST = 0.25;
 
 const ease = (t: number): number => {
   const u = Math.min(1, Math.max(0, t));
   return u * u * (3 - 2 * u);
 };
 
-/** How much of the room's light reaches a place `d` metres behind the glass: a little over 1 at the glass, 1 to `FRONT_FULL`, down to `BACK_LIGHT` by `FADE_TO`. */
+/** How much of the room's light reaches a place `d` metres behind the glass: a little over 1 at the glass, 1 from `VEIL_TO` to the back wall. */
 export function depthLight(d: number): number {
-  if (d <= FRONT_FULL) return 1 + FRONT_BOOST * (1 - Math.max(0, d) / FRONT_FULL);
-  return 1 - (1 - BACK_LIGHT) * ease((d - FRONT_FULL) / (FADE_TO - FRONT_FULL));
+  return 1 + FRONT_BOOST * (1 - Math.min(1, Math.max(0, d) / VEIL_TO));
 }
 
-/** How far a thing `d` metres behind the glass has run to the murk, 0 (itself) to `BACK_HAZE`. */
-export function depthHaze(d: number): number {
-  return BACK_HAZE * ease((d - FRONT_FULL) / (FADE_TO - FRONT_FULL));
+/** How far a thing `d` metres behind the glass has run to the veil: 0 (itself) to `VEIL_FROM`, `VEIL_FULL` from `VEIL_TO`. */
+export function veil(d: number): number {
+  return VEIL_FULL * ease((d - VEIL_FROM) / (VEIL_TO - VEIL_FROM));
 }
 const CORNER_DARK = 0.45;
 const CORNER_REACH = 0.9;
@@ -129,10 +133,8 @@ export function roomField(i: FieldIn): RoomField {
   const cs = w / (nS - 1);
   const cd = i.depth / (nD - 1);
   const cell = new Float32Array(nS * nD * 3);
-  // A tube that has failed, and every lamp deeper than `FRONT_LIGHTS` where the room has a lamp nearer the glass than that: the front of a shop is lit
-  // for the street, and the back is not lit at all.
-  const front = i.lights.some((l) => l.on && l.d <= FRONT_LIGHTS);
-  const dead: boolean[] = i.lights.map((l, k) => l.on && ((l.kind === "tube" && hash01(i.seed + k * 13, 701) < i.wear) || (front && l.kind !== "neon" && l.d > FRONT_LIGHTS)));
+  // A tube that has failed.
+  const dead: boolean[] = i.lights.map((l, k) => l.on && l.kind === "tube" && hash01(i.seed + k * 13, 701) < i.wear);
   const working = i.lights.map((l, k) => l.on && !dead[k]);
   const sources = i.lights.map((l, k) => ({ l, ...lightColour(l, i.seed, k) }));
   const ky = 1.3;
@@ -169,6 +171,7 @@ export function roomField(i: FieldIn): RoomField {
   const ambient = i.lit ? AMBIENT_OPEN : i.vacant ? AMBIENT_VACANT : AMBIENT_SHUT;
   const ambC: Rgb = i.lit ? [1, 0.92, 0.78] : [0.8, 0.88, 1];
   let sum = 0;
+  const sumC: [number, number, number] = [0, 0, 0];
   for (let b = 0; b < nD; b++) {
     for (let a = 0; a < nS; a++) {
       const s = i.s0 + a * cs;
@@ -200,7 +203,7 @@ export function roomField(i: FieldIn): RoomField {
         g += WARM[1] * k2;
         bl += WARM[2] * k2;
       }
-      // The room is its window's stage: everything falls away with depth from the glass.
+      // The room is its window's stage: a little brighter at the glass.
       const fade = depthLight(d);
       r *= fade;
       g *= fade;
@@ -210,6 +213,9 @@ export function roomField(i: FieldIn): RoomField {
       cell[o + 1] = g;
       cell[o + 2] = bl;
       sum += (r + g + bl) / 3;
+      sumC[0] += r;
+      sumC[1] += g;
+      sumC[2] += bl;
     }
   }
   // The furnishings' footprints (those big enough to throw a shadow on the floor), in the frame.
@@ -236,8 +242,14 @@ export function roomField(i: FieldIn): RoomField {
       out[c] = top * (1 - fv) + bot * fv;
     }
   };
+  // The veil: the colour of the room's own light. A lit room's is brought to one brightness (less in a room kept dim, a bar), so that the
+  // room behind the front reads as lit; a shut or vacant room's is its own dim mean.
+  const lum = (sumC[0] + sumC[1] + sumC[2]) / 3;
+  const veilK = lum <= 1e-6 ? 0 : i.lit ? (VEIL_LIT * (i.exposure ?? EXPOSURE_WAS)) / EXPOSURE_WAS / lum : VEIL_UNLIT / (nS * nD);
+  const veilC: Rgb = [sumC[0] * veilK, sumC[1] * veilK, sumC[2] * veilK];
   return {
     dead,
+    veil: veilC,
     mean: nodes > 0 ? sum / (nS * nD) : 0,
     at(s, d, y, up) {
       sample(s, d);

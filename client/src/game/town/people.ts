@@ -20,6 +20,7 @@
 import { hashN } from "./groundNoise.js";
 import { buildingLevels } from "./buildingGeometry.js";
 import { feetOf, roomSeats, styleOf, type Seat, type SeatCtx } from "./roomFill.js";
+import { BACKDROP_AT } from "./roomLight.js";
 import { xd, xp } from "./roomKit.js";
 import type { Xf } from "./roomKit.js";
 import type { TownGround } from "./townTypes.js";
@@ -62,8 +63,8 @@ export type Person = {
   readonly target: number | null;
 };
 
-/** How far from the glass people are placed, metres (`d`): the front of the room, which the street sees lit. */
-export const FRONT_ZONE = 4.0;
+/** How far from the glass people are placed, metres (`d`): in front of the room's painted sheet (`roomBackdrop.ts`), which is the part of the room that is drawn. */
+export const FRONT_ZONE = BACKDROP_AT - 0.35;
 /** How close to a wall (and the back partition) a standing person stands, metres. */
 export const WALL_MARGIN = 0.35;
 /** How far a person stands from any furnishing's footprint, at least. */
