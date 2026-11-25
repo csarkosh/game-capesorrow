@@ -10,12 +10,14 @@
  * slices: what it does to a place is by how far behind the glass the place is, whatever stands there.
  *
  * The sheets go in a layer of their own that is drawn before the glass (`townParts.ts`, `HAZE_ORDER`), the furthest first, since each is
- * blended over what is already drawn; the glass is then laid over all of it. They are told from a pane by a dirt of -1, and carry their
+ * blended over what is already drawn; the glass is then laid over all of it. They are told from a pane by a seed of 2 (a pane's own is 0 to 1), and carry their
  * colour in the floats a pane's size and tilt use (`townMaterial.ts`).
  */
 import type { MeshBuilder, Rgb } from "./meshBuilder.js";
 import { xd, xp, type Xf } from "./roomKit.js";
 
+/** What marks a sheet of haze in the float a pane keeps its seed in (`townMaterial.ts` reads it). */
+export const HAZE_SEED = 2;
 /** How many sheets, on the full tier and the low. */
 export const SHEETS = 9;
 export const SHEETS_LOW = 4;
@@ -54,6 +56,6 @@ export function roomHaze(haze: MeshBuilder, xf: Xf, floorY: number, s0: number, 
   for (let k = n - 1; k >= 0; k--) {
     const d = sheetDepth(k, cut, n);
     const pts = [xp(xf, s0, d, floorY), xp(xf, s1, d, floorY), xp(xf, s1, d, floorY + ceiling), xp(xf, s0, d, floorY + ceiling)];
-    haze.poly(pts, facing, colour, undefined, { clear: 1 - sheetTakes(k, n), dirt: -1, size: [colour[0], colour[1]], tilt: [colour[2], 0] });
+    haze.poly(pts, facing, colour, undefined, { clear: 1 - sheetTakes(k, n), seed: HAZE_SEED, size: [colour[0], colour[1]], tilt: [colour[2], 0] });
   }
 }
