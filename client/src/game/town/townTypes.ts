@@ -41,7 +41,14 @@ export type Detail = "low" | "full";
 export const SEA = 0;
 
 /** Where a building's see-through parts and its lettering go, beside its solid ones: the blended glass layer and the signs' layer (each by cell), and the atlas the signs are lettered on. */
-export type BuildingExtras = { readonly glass: Sink; readonly sign: Sink; readonly atlas: SignAtlasLike; readonly report?: FillReport };
+export type BuildingExtras = {
+  readonly glass: Sink;
+  readonly sign: Sink;
+  readonly atlas: SignAtlasLike;
+  readonly report?: FillReport;
+  /** The haze in a shop's room (`roomHaze.ts`): blended sheets drawn before the glass, so that the glass is laid over them. Without it a room has none. */
+  readonly haze?: Sink;
+};
 
 /** What a building's fronts record of what they drew, for a test to hold them to the plan: filled in by the builders when a report is given. */
 export type FillReport = {

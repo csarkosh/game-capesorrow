@@ -16,6 +16,7 @@ import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, shade as lightShade, xd, xp, type Ctx } from "./roomKit.js";
 import { BACKDROP_AT, BACKDROP_MIN_BEHIND, roomField, type DayOpening } from "./roomLight.js";
 import { backdrop } from "./roomBackdrop.js";
+import { roomHaze } from "./roomHaze.js";
 import { finishOf, roomShell, type RoomIn } from "./roomShell.js";
 import { dressRoom, goodsOf } from "./roomDressing.js";
 import { PLAIN_FROM, benchSet, bin, feetOf, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
@@ -390,6 +391,7 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
     anchors.d.push(f.d - ez - 0.05, f.d + ez + 0.05);
   }
   roomShell(c, r, fin, anchors, dw);
+  if (c.cut !== undefined && r.haze !== undefined) roomHaze(r.haze, xf, floorY, r.s0, r.s1, interior.ceiling, c.cut, field.veil, !full);
   if (c.cut !== undefined) backdrop(c, c.cut, interior.furnishings, interior.lights, field.dead, fin.floor.paint, fin.wall.paint, fin.ceiling.paint);
   for (const { f, i } of list) {
     // What stands wholly behind the sheet is on the sheet, painted, and not drawn.

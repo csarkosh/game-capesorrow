@@ -281,6 +281,8 @@ export function townAlphaCode(low = false): string {
     `let tsClear=input.${TOWN_TINT_VARYING}.w;`,
     "if(tsClear>0.001){",
     `let tsSeed=input.${TOWN_VARYING}.z;let tsDirt=input.${TOWN_VARYING}.y;`,
+    // A sheet of a room's haze (`roomHaze.ts`, marked by a seed of 2, where a pane's is 0 to 1): one colour, carried in the floats a pane's size and tilt use, and no reflection.
+    `if(tsSeed>1.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
     "let tsVe=normalize(scene.vEyePosition.xyz-input.worldPos);",
     "var tsGn=N;",
     "let tsTg=normalize(vec3<f32>(-tsGn.z,0.0,tsGn.x));",
@@ -302,6 +304,7 @@ export function townAlphaCode(low = false): string {
     `townGlassC=(tsRc*tsRk+vec3<f32>(${GLASS_FILM.map((c) => c.toFixed(3)).join(",")})*tsAb+tsDirtC*tsGk*(1.0-tsRk))/max(tsAt,0.001);`,
     "townGlassA=1.0;",
     "alpha=tsAt;",
+    "}",
     "}",
   ].join("");
 }

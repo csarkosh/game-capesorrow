@@ -27,7 +27,7 @@ const CELL = 0.3;
 const EYE = 1.55;
 const STAND = 4.5;
 /** How much of the picture is the veil at its middle (the rest is the room painted), and over what distance from its edges it becomes all veil. */
-const SHEET_VEIL = 0.28;
+const SHEET_VEIL = 0.12;
 const EDGE = 0.45;
 /** The albedo that the veil's light makes the veil of: the picture's surfaces are lit by the veil over this. */
 const VEIL_ALBEDO = 0.55;
