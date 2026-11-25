@@ -17,7 +17,7 @@
  *   (`Detail`); the geometry is otherwise the same on all three.
  */
 import {
-  addToScene, createMeshFromData, createPbrMaterial, createTexture2DArray, disposeMeshGpu, uploadImageToArrayLayer, markMaterialUboDirty, removeFromScene, setMeshVisible,
+  addToScene, createMeshFromData, createPbrMaterial, createTexture2DArray, disposeMeshGpu, updateTexture2DArrayFromPixels, markMaterialUboDirty, removeFromScene, setMeshVisible,
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
 import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
@@ -198,14 +198,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             paintRequest(surface, atlas.requests[k] as (typeof atlas.requests)[number]);
             if (k % 24 === 23) yield;
           }
-          // The canvas itself is the source: no copy of its 32 MB is read back into the page, and none is sent through the browser's
-          // write memory, which it keeps at the size of the largest write it has seen. Rows as they are (the top row first, as a read
-          // of the canvas gives them), alpha not premultiplied.
-          uploadImageToArrayLayer(engine, atlasTexture, 0, surface.ctx.canvas, { invertY: false, premultiplyAlpha: false });
-          host.uploads.count("textures", atlas.width * atlas.height * 4, 4);
-          // The canvas is let go at once: its pixels are the GPU's now.
-          surface.ctx.canvas.width = 0;
-          surface.ctx.canvas.height = 0;
+          const px = surface.ctx.getImageData(0, 0, atlas.width, atlas.height);
+          updateTexture2DArrayFromPixels(engine, atlasTexture, new Uint8Array(px.data.buffer));
+          host.uploads.count("textures", px.data.byteLength, 4);
         }
         left = batches.length;
         for (const batch of batches) {
