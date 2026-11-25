@@ -17,7 +17,7 @@ import { BAKED, fbox, shade as lightShade, xd, xp, type Ctx } from "./roomKit.js
 import { roomField, type DayOpening } from "./roomLight.js";
 import { finishOf, roomShell, type RoomIn } from "./roomShell.js";
 import { dressRoom, goodsOf } from "./roomDressing.js";
-import { benchSet, bin, feetOf, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
+import { PLAIN_FROM, benchSet, bin, feetOf, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
 import { carpetRoll, chairStack, highTable, leaner, stand, windowBar } from "./roomWindow.js";
 import type { Furnishing, RoomLight } from "../../sim/town/types.js";
 
@@ -29,11 +29,35 @@ const dirOf = (f: Furnishing): { x: number; z: number } => ({ x: f.dir.x, z: f.d
 const pickGoods = (c: Ctx, k: number): Rgb => goodsOf(c.trade, c.seed + k * 7);
 const shade = (v: Rgb, k: number): Rgb => scaled(v, k);
 
+/** A deep shelf run's stock as a few bands of colour on each long face that shows: one quad a tier, the goods blended, no single item. */
+function plainBands(c: Ctx, f: Furnishing, i: number, dir: { x: number; z: number }): void {
+  const px = -dir.z;
+  const pd = dir.x;
+  const tiers = Math.max(2, Math.min(3, Math.floor(f.h / 0.7)));
+  for (const sg of [1, -1]) {
+    // A face that points away from the street shows only at a slant; one against a party wall is never seen.
+    if (sg * pd > 0.35) continue;
+    const fsx = f.s + px * sg * (f.sd / 2 + 0.03);
+    if (fsx < c.s0 + 0.05 || fsx > c.s1 - 0.05) continue;
+    const hint = xd(c.xf, px * sg, pd * sg);
+    const at = (u: number, yy: number): Vec3 => xp(c.xf, f.s + dir.x * u + px * sg * (f.sd / 2 + 0.03), f.d + dir.z * u + pd * sg * (f.sd / 2 + 0.03), c.floorY + yy);
+    for (let t = 0; t < tiers; t++) {
+      const y = 0.2 + (t * (f.h - 0.35)) / tiers;
+      const ih = (f.h - 0.35) / tiers - 0.08;
+      const col = pickGoods(c, i * 97 + t * 13 + sg * 7);
+      const lo = lightShade(c, scaled(col, 0.75), fsx, f.d, y, 0);
+      const hi = lightShade(c, col, fsx, f.d, y + ih, 0);
+      c.out.poly([at(-f.sx / 2 + 0.03, y), at(f.sx / 2 - 0.03, y), at(f.sx / 2 - 0.03, y + ih), at(-f.sx / 2 + 0.03, y + ih)], hint, [lo, lo, hi, hi], undefined, { glow: 1 });
+    }
+  }
+}
+
 function shelfRun(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
   const frame: Rgb = [0.5, 0.5, 0.5];
   const body: Rgb = [0.3, 0.26, 0.22];
   fbox(c, f.s, f.d, 0, f.h, f.sx / 2, f.sd / 2, dir, body, frame);
+  if (c.plain === true) return plainBands(c, f, i, dir);
   if (c.detail === "low") return;
   // Goods on the long faces that look toward the room: a plank at each tier and a row of packages on it, drawn on the face 3 and 5.5 cm proud of it (each layer its own depth).
   const tiers = Math.max(2, Math.min(5, Math.floor(f.h / 0.45)));
@@ -180,11 +204,11 @@ function rack(c: Ctx, f: Furnishing, i: number): void {
 
 function crates(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
-  const n = 1 + Math.floor(hash01(c.seed + i, 319) * 3);
+  const n = c.plain === true ? 1 : 1 + Math.floor(hash01(c.seed + i, 319) * 3);
   for (let k = 0; k < n; k++) {
     const col: Rgb = hash01(c.seed + i * 5 + k, 320) < 0.5 ? [0.45, 0.32, 0.18] : [0.2, 0.3, 0.45];
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
-    const stack = 1 + Math.floor(hash01(c.seed + i * 7 + k, 321) * 3);
+    const stack = c.plain === true ? 2 : 1 + Math.floor(hash01(c.seed + i * 7 + k, 321) * 3);
     for (let t = 0; t < stack; t++) fbox(c, f.s + dir.x * u, f.d + dir.z * u, t * 0.31, 0.3, Math.min(0.3, f.sx / n / 2), f.sd / 2, dir, col, shade(col, 1.15));
   }
 }
@@ -201,7 +225,7 @@ function ladder(c: Ctx, f: Furnishing): void {
 
 function paintCans(c: Ctx, f: Furnishing, i: number): void {
   const cols: Rgb[] = [[0.85, 0.85, 0.8], [0.6, 0.55, 0.4], [0.7, 0.3, 0.2], [0.8, 0.8, 0.75]];
-  const n = 3 + Math.floor(hash01(c.seed + i, 322) * 3);
+  const n = c.plain === true ? 1 : 3 + Math.floor(hash01(c.seed + i, 322) * 3);
   // The cans stand on a grid (none overlaps another), a few places left empty.
   for (let k = 0; k < n; k++) {
     const gx = (k % 3) - 1;
@@ -363,7 +387,8 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
     anchors.d.push(f.d - ez - 0.05, f.d + ez + 0.05);
   }
   roomShell(c, r, fin, anchors, dw);
-  for (const { f, i } of list) furnishing({ ...c, n: i }, f, i);
+  // Past `PLAIN_FROM` a room is a tenth as bright and runs to one murk: a furnishing there is its big shape (the silhouette that gives the murk depth), not its small parts.
+  for (const { f, i } of list) furnishing(full && f.d > PLAIN_FROM && f.kind !== "partition" ? { ...c, n: i, detail: "low", plain: true } : { ...c, n: i }, f, i);
   floorThings(c, fin.checker);
   dressRoom(c, r, fin, dw);
   ceilingThings(c, interior.furnishings, interior.lights.map((l) => l.s));

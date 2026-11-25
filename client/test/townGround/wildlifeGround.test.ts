@@ -42,7 +42,9 @@ describe("the town's wildlife ground", () => {
     expect(CAPE_PLACE.wildlifeGround).toBe(townWildlifeGround);
     expect(Object.keys(CAPE_PLACE.tunables).filter((k) => /wildlife|animal|rabbit|deer|elk/i.test(k))).toEqual([]);
     expect(Object.keys(CAPE_PLACE.tunables).length).toBeGreaterThan(0);
-    expect(TOWN_GEN).toBe(20);
+    // The generator's version as `test/town/determinism.test.ts` pins it: the wildlife ground raised it by nothing, and this follows that pin
+    // when the plan itself changes (21: the front of each shop's room).
+    expect(TOWN_GEN).toBe(21);
   });
 
   for (const seed of SEEDS) {

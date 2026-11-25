@@ -6,7 +6,9 @@
  * half wall of the back partition, and what hangs from the ceiling. The plan (`interiors.ts`) places the anchors only.
  *
  * Detail is where it is seen: a thing on a table is drawn within about 8 m of the glass, a chair on both tiers' near rows, and nothing
- * behind the partition. Every small thing stands ON what carries it with its own faces 3 cm or more clear of any parallel face.
+ * behind the partition. The first four metres (`BAND`) are what the street sees through the glass, so what stands round and on the furnishings
+ * there is denser and less tidy: a coat over a chair's back, a newspaper and cups on a table, clutter at a counter's street end, boxes, a broom, a bucket
+ * and a hand-written sign on the floor. Past `PLAIN_FROM` a furnishing is its big shape only. Every small thing stands ON what carries it with its own faces 3 cm or more clear of any parallel face.
  */
 import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
@@ -16,6 +18,16 @@ import type { Furnishing } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
 export const NEAR = 9;
+/**
+ * A furnishing whose centre is deeper than this (metres behind the glass) is drawn plainly: its big shape and no small parts, no chairs, nothing
+ * on it. The room is a tenth as bright there and runs to one murk (`roomLight.ts`, `FADE_TO`), so the parts are not seen, but the anchors'
+ * silhouettes are what gives the murk depth. A stool row keeps the stools that can be sat on (within `SEAT_DEEPEST`).
+ */
+export const PLAIN_FROM = 6.5;
+/** The deepest a stool of a plain row is still drawn and sat on: past the front zone, with a margin. */
+export const SEAT_DEEPEST = 5;
+/** The band behind the glass that the street sees (`FRONT_ZONE` in `people.ts`): what is drawn round furnishings is denser here. */
+export const BAND = 4;
 export const H = (c: Pick<Ctx, "seed">, k: number, salt = 0): number => hash01(c.seed * 131 + k, 900 + salt);
 
 /** What the places people sit are worked out from: a room's own numbers, nothing of the drawing. `chairs` is what has been stood so far, in the order the furnishings are drawn. */
@@ -91,12 +103,14 @@ export function free(c: SeatCtx, s: number, d: number, r: number, skip: number):
 export const chairTop = (kind: number): number => (kind === 1 ? 0.48 : 0.45);
 
 /** One chair at (s, d) facing the unit vector (fs, fd), drawn: a seat and a back, a few centimetres each way from true. */
-export function drawChair(c: Ctx, s: number, d: number, fs: number, fd: number, col: Rgb, kind: number, yb = 0): void {
+export function drawChair(c: Ctx, s: number, d: number, fs: number, fd: number, col: Rgb, kind: number, yb = 0, coat: Rgb | null = null): void {
   const dir = { x: -fd, z: fs };
   const seatTop = chairTop(kind);
   const seat = kind === 1 ? [0.62, 0.1, 0.08] as Rgb : col;
   fbox(c, s, d, yb + 0.04, seatTop - 0.04, 0.2, 0.2, dir, kind === 1 ? c.style.metal : col, up(seat, 1.15), BAKED, false);
   fbox(c, s - fs * 0.18, d - fd * 0.18, yb + seatTop, kind === 1 ? 0.5 : 0.52, 0.19, 0.025, dir, kind === 1 ? c.style.metal : scaled(col, 0.92), kind === 1 ? seat : col, BAKED, false);
+  // A coat hung over the back, its own thickness 3 cm clear of the back's faces: the back is 5 cm thick, so the coat stands 6 cm behind its middle.
+  if (coat !== null) fbox(c, s - fs * 0.255, d - fd * 0.255, yb + seatTop - 0.16, 0.5, 0.15, 0.02, dir, coat, up(coat, 1.12), BAKED, false);
 }
 
 /** The colour and kind of the k-th chair of furnishing i. */
@@ -199,6 +213,26 @@ function onTable(c: Ctx, f: Furnishing, i: number, ty: number, span: number): vo
       drawChair(c, stack.s + px * 0.04 + dir.x * 0.04, stack.d + pd * 0.04 + dir.z * 0.04, stack.fs, stack.fd, c.style.seat[0] as Rgb, c.style.chrome ? 1 : 0, ty + 0.14);
     } else fcyl(c, s, d, ty, 0.05, 0.4, 6, [0.5, 0.15, 0.1], [0.4, 0.1, 0.08], 0.03);
   }
+  // A table the street sees is never bare: off to one side of its middle, a folded newspaper, two cups or a sugar jar and a menu.
+  if (f.d < BAND + 0.4 && span >= 0.7 && H(c, i, 28) < 0.78) {
+    const v = (H(c, i, 29) < 0.5 ? -1 : 1) * (span / 2 - 0.15);
+    const [es, ed] = at((H(c, i, 30) - 0.5) * 0.3, v);
+    const r = H(c, i, 31);
+    if (r < 0.4) {
+      const paper = pickOf([[0.82, 0.8, 0.74], [0.75, 0.74, 0.68], [0.86, 0.84, 0.8]] as readonly Rgb[], c.seed + i, 1025);
+      // The paper is 3 cm thick (a folded one) so that its top is 2 cm or more over the table's, and the dark headline 3 cm over that.
+      fbox(c, es, ed, ty, 0.03, 0.15, 0.1, dir, paper, up(paper, 1.05), BAKED, false);
+      fbox(c, es + dir.x * 0.02, ed + dir.z * 0.02, ty + 0.03, 0.03, 0.1, 0.05, dir, [0.25, 0.25, 0.27], [0.3, 0.3, 0.32], BAKED, false);
+    } else if (r < 0.75) {
+      for (const q of [-0.07, 0.07]) {
+        const [cs, cd] = [es + dir.x * q, ed + dir.z * q];
+        fcyl(c, cs, cd, ty, 0.04, 0.09, 5, pickOf([[0.88, 0.88, 0.84], [0.2, 0.35, 0.4], [0.7, 0.25, 0.2]] as readonly Rgb[], c.seed + i + (q > 0 ? 1 : 0), 1026), [0.18, 0.12, 0.08]);
+      }
+    } else {
+      fcyl(c, es, ed, ty, 0.04, 0.1, 6, [0.78, 0.8, 0.8], [0.6, 0.6, 0.6]);
+      fbox(c, es + dir.x * 0.1, ed + dir.z * 0.1, ty, 0.2, 0.05, 0.012, dir, [0.8, 0.45, 0.15], [0.85, 0.5, 0.2], BAKED, false);
+    }
+  }
 }
 
 function folded(c: Ctx, f: Furnishing, i: number, ty: number): void {
@@ -224,16 +258,17 @@ export function tableSet(c: Ctx, f: Furnishing, i: number): void {
   else fbox(c, f.s, f.d, ty - 0.04, 0.04, f.sx / 2, f.sd / 2, dir, scaled(top, 0.8), top);
   fbox(c, f.s, f.d, 0, ty - 0.04, 0.04, 0.04, dir, [0.15, 0.15, 0.16], [0.15, 0.15, 0.16], BAKED, false);
   if (c.detail === "low") return;
-  if (c.trade !== null && RACKS.includes(c.trade)) folded(c, f, i, ty);
+  if (foldsStock(c.trade)) folded(c, f, i, ty);
   else if (hgt > 0.6) {
     const seats = tableSeats(c, f, i);
     onTable(c, f, i, ty, Math.min(f.sx, f.sd));
-    for (const q of seats) drawChair(c, q.s, q.d, q.fs, q.fd, q.col, q.kind);
+    const coats: readonly Rgb[] = [[0.2, 0.25, 0.35], [0.45, 0.2, 0.15], [0.3, 0.32, 0.25], [0.55, 0.45, 0.2], [0.15, 0.2, 0.18]];
+    for (const [k, q] of seats.entries()) drawChair(c, q.s, q.d, q.fs, q.fd, q.col, q.kind, 0, q.d < BAND + 0.4 && H(c, i * 13 + k, 27) < 0.16 ? pickOf(coats, c.seed + i + k, 1024) : null);
   }
 }
 /** The chairs of a table, stood (the stack on it first, as drawn): none at a low table or a clothing shop's, where it holds folded stock. */
 function tableSeats(c: SeatCtx, f: Furnishing, i: number): (Seat & { col: Rgb; kind: number })[] {
-  if (c.detail === "low" || f.h <= 0.6 || (c.trade !== null && RACKS.includes(c.trade))) return [];
+  if (c.detail === "low" || f.h <= 0.6 || foldsStock(c.trade)) return [];
   const stack = tableStack(c, f, i, Math.min(f.sx, f.sd));
   if (stack !== null) {
     c.chairs.push([stack.s, stack.d]);
@@ -242,6 +277,8 @@ function tableSeats(c: SeatCtx, f: Furnishing, i: number): (Seat & { col: Rgb; k
   return chairSeats(c, f, i);
 }
 const RACKS = ["clothing", "thrift store", "sporting goods", "game shop", "variety store", "video store"];
+/** A table in these shops holds folded stock (clothes, laundry), not a diner's chairs and plates. */
+const foldsStock = (trade: string | null): boolean => trade !== null && (RACKS.includes(trade) || trade === "laundromat");
 
 /**
  * A booth: a bench on each long side with a tall back of slats (gaps between them to see through), a table between with upright things on it.
@@ -294,6 +331,8 @@ function stoolSpots(c: SeatCtx, f: Furnishing, i: number): { s: number; d: numbe
   for (let k = 0; k < n; k++) {
     if (H(c, i * 17 + k, 13) < 0.06) continue;
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
+    // A row whose centre is deep keeps only the stools a person can sit on; the rest are murk.
+    if (f.d > PLAIN_FROM && f.d + f.dir.z * u > SEAT_DEEPEST) continue;
     out.push({ s: f.s + f.dir.x * u + (H(c, k, 14) - 0.5) * 0.06, d: f.d + f.dir.z * u });
   }
   return out;
@@ -333,6 +372,26 @@ export function counterTop(c: Ctx, f: Furnishing, i: number): void {
   const food = tr !== null && FOOD.includes(tr);
   const room = L - 0.7;
   if (room < 0.4) return;
+  // The counter's street end, which the glass shows: a stack of papers, a jar, a little rack of this and that, left where the hand put them. They stand
+  // along the counter's edge (its middle line carries the till and the role's own things, which are never wider than 0.15 either side), at the end
+  // that has the lower `d` or the left, so that no footprint meets another and no two faces lie over each other.
+  if (f.sd >= 0.6 && L >= 1.2 && !c.vacant && f.d + dir.z * (-(L / 2 - 0.25)) < BAND + 0.2 && dir.z >= 0) {
+    const edge = f.sd / 2 - 0.1;
+    const n = 1 + (H(c, i, 33) < 0.6 ? 1 : 0);
+    const lone = H(c, i, 34) < 0.5 ? -1 : 1;
+    for (let k = 0; k < n; k++) {
+      const [s, d] = at(-(L / 2 - 0.25) + k * 0.3, (k === 0 ? lone : -lone) * edge);
+      const r = H(c, i * 3 + k, 35);
+      if (r < 0.34) {
+        const paper = pickOf([[0.85, 0.84, 0.8], [0.8, 0.76, 0.6], [0.7, 0.74, 0.78]] as readonly Rgb[], c.seed + i + k, 1035);
+        fbox(c, s, d, ct, 0.04 + H(c, i + k, 36) * 0.05, 0.07, 0.04, dir, paper, up(paper, 1.08), BAKED, false);
+      } else if (r < 0.67) {
+        fcyl(c, s, d, ct, 0.04, 0.13, 6, [0.78, 0.82, 0.82], pickOf([[0.2, 0.5, 0.2], [0.7, 0.2, 0.15], [0.85, 0.7, 0.2]] as readonly Rgb[], c.seed + i + k, 1036));
+      } else {
+        for (let q = 0; q < 3; q++) fbox(c, s, d, ct + q * 0.09, 0.07, 0.06, 0.04, dir, pickOf([[0.8, 0.2, 0.15], [0.2, 0.4, 0.7], [0.9, 0.8, 0.3], [0.3, 0.6, 0.35]] as readonly Rgb[], c.seed + q + k, 1037), [0.9, 0.9, 0.9], BAKED, false);
+      }
+    }
+  }
   if (c.type === "bar") {
     // Taps on a tower, pint glasses, a tip jar, a drip mat.
     const [ts, td] = at(L * 0.18, 0);
@@ -496,7 +555,7 @@ export function benchSet(c: Ctx, f: Furnishing, i: number): void {
 export function cabinets(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
   const col = pickOf([[0.5, 0.52, 0.5], [0.3, 0.38, 0.34], [0.6, 0.56, 0.45], [0.22, 0.24, 0.28]] as readonly Rgb[], c.seed + i, 1041);
-  const n = Math.max(1, Math.floor(f.sx / 0.5));
+  const n = c.plain === true ? 1 : Math.max(1, Math.floor(f.sx / 0.5));
   for (let k = 0; k < n; k++) {
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
     const hgt = f.h - (k % 3 === 2 ? 0.45 : 0);
@@ -602,6 +661,10 @@ export function cart(c: Ctx, f: Furnishing, i: number): void {
   const dir = dirOf(f);
   const t = c.trade;
   const metal: Rgb = [0.62, 0.64, 0.66];
+  if (c.plain === true) {
+    fbox(c, f.s, f.d, 0.05, 0.9, f.sx / 2, f.sd / 2, dir, metal, [0.7, 0.72, 0.74], BAKED, false);
+    return;
+  }
   if (t === "grocery" || t === "convenience store") {
     const n = 2 + Math.floor(H(c, i, 24) * 3);
     // The carts are nested: each stands a step along from the one before, and all but the last show only the step of basket the next has not
@@ -867,6 +930,7 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
     const d = 1.2 + H(c, 6, 43) * 1.0;
     if (free(c, s, d, 0.2, -1)) withMat("plastic", () => fcyl(c, s, d, 0.08, 0.13, 0.55, 5, [0.92, 0.75, 0.08], [0.95, 0.8, 0.1], 0.03));
   }
+  if (!vacant) frontLitter(c);
   if (vacant) {
     // The post that came through the door and nobody picked up; a ceiling tile that came down.
     for (let k = 0; k < 4; k++) {
@@ -885,6 +949,69 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
     const hd = 1.8 + H(c, 11, 51) * Math.max(0.2, c.d1 - 3.6);
     const hole: [number, number][] = [[hs0 - 0.3, hd - 0.3], [hs0 + 0.3, hd - 0.3], [hs0 + 0.3, hd + 0.3], [hs0 - 0.3, hd + 0.3]];
     withMat("plaster", () => c.out.poly(hole.map(([s, d]) => xp(c.xf, s, d, c.floorY + c.ceiling - 0.03)), [0, -1, 0], [0.04, 0.04, 0.045], undefined, { glow: 1 }));
+  }
+}
+
+/**
+ * What is left about the front of a working shop, by the unit's own rolls: boxes of stock on the floor by a tall shelf, a broom at a side wall,
+ * a bucket (some with a mop), and a hand-written sign on a stand by the door. Each stands only on clear floor in the band, so no unit has them all.
+ */
+function frontLitter(c: Ctx): void {
+  const dw = c.door;
+  const wall = (side: number): number => (side < 0 ? c.s0 + 0.16 : c.s1 - 0.16);
+  const side = H(c, 70, 70) < 0.5 ? -1 : 1;
+  const tall = c.feet.filter((f) => f.h >= 1.5 && f.d0 < BAND && f.d1 > 0.8);
+  if (tall.length > 0 && H(c, 71, 71) < 0.55) {
+    const f = tall[Math.floor(H(c, 72, 72) * tall.length)] as Foot;
+    const n = 1 + (H(c, 73, 73) < 0.5 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      // At the street end of the shelf, or at its foot on the side that has the room.
+      const s = k === 0 ? (f.s0 + f.s1) / 2 + (H(c, 74, 74) - 0.5) * 0.3 : (H(c, 75, 75) < 0.5 ? f.s0 - 0.36 : f.s1 + 0.36);
+      const d = k === 0 ? f.d0 - 0.4 : f.d0 + 0.5 + H(c, 76, 76) * 0.6;
+      if (d < 0.7 || !free(c, s, d, 0.3, -1)) continue;
+      c.chairs.push([s, d]);
+      const col = pickOf([[0.58, 0.45, 0.28], [0.5, 0.4, 0.26], [0.66, 0.55, 0.36]] as readonly Rgb[], c.seed + k, 1072);
+      withMat("boards", () => {
+        fbox(c, s, d, 0, 0.26 + H(c, 77 + k, 77) * 0.08, 0.16, 0.13, AX, col, up(col, 1.12), BAKED, false);
+        if (k === 0 && H(c, 78, 78) < 0.7) fbox(c, s + 0.03, d, 0.3, 0.2, 0.12, 0.1, { x: 0.8, z: 0.6 }, scaled(col, 0.92), up(col, 1.05), BAKED, false);
+      });
+    }
+  }
+  if (H(c, 80, 80) < 0.32) {
+    const s = wall(side);
+    const d = 1.7 + H(c, 81, 81) * 1.8;
+    if (free(c, s, d, 0.2, -1)) {
+      c.chairs.push([s, d]);
+      withMat("wood", () => fcyl(c, s, d, 0, 0.013, 1.3, 4, [0.45, 0.3, 0.16], [0.5, 0.35, 0.2]));
+      withMat("plastic", () => fbox(c, s + side * 0.06, d, 0, 0.22, 0.05, 0.03, AX, [0.55, 0.5, 0.3], [0.6, 0.55, 0.34], BAKED, false));
+    }
+  }
+  if (H(c, 82, 82) < 0.34) {
+    const s = H(c, 83, 83) < 0.5 ? wall(-side) + -side * -0.45 : wall(side) - side * 0.45;
+    const d = 1.1 + H(c, 84, 84) * 2.4;
+    if (free(c, s, d, 0.25, -1)) {
+      c.chairs.push([s, d]);
+      const col = pickOf([[0.5, 0.55, 0.6], [0.7, 0.2, 0.15], [0.85, 0.7, 0.15], [0.25, 0.4, 0.6]] as readonly Rgb[], c.seed, 1073);
+      withMat("plastic", () => fcyl(c, s, d, 0, 0.13, 0.3, 7, col, scaled(col, 0.6), 0.16));
+      if (H(c, 85, 85) < 0.5) withMat("wood", () => fcyl(c, s + 0.1, d, 0.28, 0.012, 1.1, 4, [0.45, 0.3, 0.16], [0.5, 0.35, 0.2]));
+    }
+  }
+  if (H(c, 86, 86) < 0.3) {
+    const sg = H(c, 87, 87) < 0.5 ? -1 : 1;
+    const s = dw.s + sg * (dw.w / 2 + 0.85);
+    const d = 1.0 + H(c, 88, 88) * 1.2;
+    if (s > c.s0 + 0.4 && s < c.s1 - 0.4 && free(c, s, d, 0.3, -1)) {
+      c.chairs.push([s, d]);
+      const board: Rgb = [0.1, 0.12, 0.11];
+      withMat("boards", () => {
+        fbox(c, s, d, 0.02, 0.8, 0.22, 0.015, AX, board, board);
+        fbox(c, s, d, 0, 0.03, 0.17, 0.11, AX, [0.3, 0.2, 0.12], [0.35, 0.24, 0.15], BAKED, false);
+      });
+      // The chalk: two lines of lettering and an underline, laid 3 cm off the board's face toward the street.
+      withMat("cloth", () => {
+        for (let q = 0; q < 3; q++) fbox(c, s - 0.02 * q, d - 0.05, 0.3 + q * 0.14, 0.035, 0.13 - q * 0.03, 0.004, AX, [0.82, 0.84, 0.8], [0.82, 0.84, 0.8], BAKED, false);
+      });
+    }
   }
 }
 
@@ -928,6 +1055,8 @@ export function highTableSeats(c: SeatCtx, f: Furnishing, i: number): Seat[] {
  * (a sitter faces the nearest counter's line, from `all`), a desk's chair, a couch and a bench, a window bar's stools and a high table's.
  */
 export function seatsOf(c: SeatCtx, f: Furnishing, i: number, all: readonly Furnishing[]): Seat[] {
+  // A plain furnishing (deeper than `PLAIN_FROM`) is drawn without chairs, benches or stools but those a person can sit on: no seat there.
+  if (f.d > PLAIN_FROM && f.kind !== "stool row") return [];
   switch (f.kind) {
     case "table": return tableSeats(c, f, i);
     case "booth": return boothSeats(f, i);

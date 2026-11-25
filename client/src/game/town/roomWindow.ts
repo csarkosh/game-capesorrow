@@ -72,6 +72,8 @@ export function stand(c: Ctx, f: Furnishing, i: number): void {
     for (let k = 0; k < n; k++) {
       if (H(c, i * 17 + t * 5 + k, 107) < 0.12) continue;
       const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
+      // Nothing is stood where a leg is: a leg's faces and an item's would lie a few millimetres apart.
+      if (Math.abs(u) + (f.sx / n) * 0.36 > f.sx / 2 - 0.07) continue;
       const col = pickOf(palette, c.seed + i * 13 + t * 7 + k, 1107);
       fbox(c, f.s + u, f.d + (t * 0.1 - 0.15), y + 0.04, 0.07 + H(c, i + t + k, 108) * (food ? 0.04 : 0.12), (f.sx / n) * 0.36, depth * 0.55, dir, col, up(col, 1.2), BAKED, false);
     }
@@ -165,6 +167,26 @@ export function sillThings(c: Ctx, openings: readonly Opening[]): void {
       if (hi - lo < 0.9) continue;
       const r = (n: number): number => hash01(c.seed * 7 + k * 31 + n, 1130);
       const sill = o.sill;
+      // Hours or a flyer in the glass at the door's end, above the sill's things: a sheet of paper a hand's breadth behind the signs the glass wears (so that none lies over it) and the lines of its lettering 3 cm in front of it.
+      if (o.cover !== "display" && c.lit && r(12) < 0.45) {
+        const y0 = sill + 0.78 + r(13) * 0.12;
+        const w = 0.2 + r(14) * 0.08;
+        const h = 0.26 + r(15) * 0.1;
+        if (y0 + h < o.head - 0.3) {
+          const toDoor = (lo + hi) / 2 > c.door.s ? -1 : 1;
+          const s0 = toDoor < 0 ? lo + 0.2 : hi - 0.2 - w;
+          const paper = pickOf([[0.9, 0.9, 0.85], [0.95, 0.85, 0.3], [0.85, 0.35, 0.3], [0.5, 0.7, 0.85]] as readonly Rgb[], c.seed + k * 5, 1135);
+          const quad = (a0: number, a1: number, b0: number, b1: number, d: number, col: Rgb): void => {
+            const pts: [number, number, number][] = [[a0, d, b0], [a1, d, b0], [a1, d, b1], [a0, d, b1]];
+            c.out.poly(pts.map(([s, dd, y]) => xp(c.xf, s, dd, c.floorY + y)), xd(c.xf, 0, -1), pts.map(([s, dd, y]) => shade(c, col, s, dd, y, 0)), undefined, { glow: 1 });
+          };
+          withMat("cloth", () => {
+            quad(s0, s0 + w, y0, y0 + h, 0.34, paper);
+            const lines = 3 + Math.floor(r(16) * 3);
+            for (let q = 0; q < lines; q++) quad(s0 + 0.03, s0 + w - 0.03 - (q % 2) * 0.04, y0 + h - 0.06 - q * ((h - 0.1) / lines), y0 + h - 0.06 - q * ((h - 0.1) / lines) - 0.018, 0.31, [0.12, 0.12, 0.14]);
+          });
+        }
+      }
       // A row of jars or bottles along the sill, or a cat's bed, or nothing.
       if (o.cover !== "display" && r(1) < 0.4) {
         const n = 3 + Math.floor(r(2) * 4);

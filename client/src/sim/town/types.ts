@@ -797,6 +797,8 @@ export type Interior = {
   readonly ceiling: number;
   readonly furnishings: readonly Furnishing[];
   readonly lights: readonly RoomLight[];
+  /** True for a room deliberately left thin at the front (an old or failing shop): the plan puts little in the band behind its glass. */
+  readonly thin: boolean;
 };
 
 export type Tenant = { readonly trade: Trade; readonly name: string; /** The decade it opened (never before the building's era). */ readonly opened: number };

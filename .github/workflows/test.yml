@@ -76,7 +76,9 @@ jobs:
   # runs whole on one runner, with no shards.
   client:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The suite takes about 14 minutes on a usual runner and has taken 20 on a slow one, where a limit of 20 cancelled it with
+    # nothing failed. This is the job's clock only: no test's own time limit is changed.
+    timeout-minutes: 30
     env:
       # Every test time limit, and vitest's defaults, times three: the engine's time-limit helper
       # (`@csarkosh/engine/vite/timeLimit`, read by client/vite.config.ts) multiplies each by this.
