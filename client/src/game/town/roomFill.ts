@@ -490,9 +490,14 @@ export function cart(c: Ctx, f: Furnishing, i: number): void {
   const metal: Rgb = [0.62, 0.64, 0.66];
   if (t === "grocery" || t === "convenience store") {
     const n = 2 + Math.floor(H(c, i, 24) * 3);
+    // The carts are nested: each stands a step along from the one before, and all but the last show only the step of basket the next has not
+    // slid over. Each basket is drawn as that part alone, so no two tops lie over each other a centimetre apart.
+    const step = Math.max(0.2, (f.sx - 0.6) / Math.max(1, n - 1)) * 0.9;
     for (let k = 0; k < n; k++) {
-      const u = -f.sx / 2 + 0.3 + k * Math.max(0.2, (f.sx - 0.6) / Math.max(1, n - 1)) * 0.9;
-      fbox(c, f.s + dir.x * u, f.d + dir.z * u, 0.5, 0.35 + k * 0.01, 0.2, f.sd / 2 - 0.05, dir, metal, [0.7, 0.72, 0.74], BAKED, false);
+      const u = -f.sx / 2 + 0.3 + k * step;
+      const half = k < n - 1 ? Math.min(0.2, step / 2) : 0.2;
+      const bu = k < n - 1 ? u - 0.2 + half : u;
+      fbox(c, f.s + dir.x * bu, f.d + dir.z * bu, 0.5, 0.35 + k * 0.01, half, f.sd / 2 - 0.05, dir, metal, [0.7, 0.72, 0.74], BAKED, false);
       fbox(c, f.s + dir.x * u, f.d + dir.z * u, 0.05, 0.43, 0.02, f.sd / 2 - 0.1, dir, [0.3, 0.3, 0.32], [0.3, 0.3, 0.32], BAKED, false);
       fbox(c, f.s + dir.x * (u - 0.2), f.d + dir.z * (u - 0.2), 0.93, 0.03, 0.02, f.sd / 2 - 0.1, dir, [0.75, 0.15, 0.1], [0.85, 0.2, 0.15], BAKED, false);
     }
