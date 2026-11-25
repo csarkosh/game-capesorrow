@@ -12,17 +12,21 @@ const NAMES = ['nathan', 'eric', 'sophia', 'carla', 'claudia'];
 const fetched = readFileSync(`${OUT}/person.nathan.glb`).toString('latin1', 0, 4) === 'glTF';
 
 describe('client/assets/models/people.json', () => {
-  it('lists the five files, each with a credit id, a height and a size within the budget: 3 MB a person, 14 MB in all', () => {
+  it('lists the five files, each with a credit id, a height and a size within the budget: 3.2 MB a person, 15 MB in all', () => {
     expect(manifest.people.map((p) => p.id)).toEqual(NAMES.map((n) => `person.${n}`));
     for (const p of manifest.people) {
       expect(p.file).toBe(`${p.id}.glb`);
       expect(p.credit).toBe(p.id);
       expect(p.height, p.id).toBeGreaterThan(1.6);
       expect(p.height, p.id).toBeLessThan(1.9);
-      expect(p.bytes, p.id).toBeLessThanOrEqual(3_000_000);
+      expect(p.bytes, p.id).toBeLessThanOrEqual(3_200_000);
     }
     expect(manifest.total_bytes).toBe(manifest.people.reduce((n, p) => n + p.bytes, 0));
-    expect(manifest.total_bytes).toBeLessThanOrEqual(14_000_000);
+    expect(manifest.total_bytes).toBeLessThanOrEqual(15_000_000);
+  });
+
+  it('lists the twelve clips every file carries', () => {
+    expect(manifest.clips).toEqual(['idle', 'browse', 'till', 'phone', 'talk', 'drink', 'wipe', 'fold', 'sit_table', 'sit_eat', 'sit_type', 'sit_stool']);
   });
 
   it.skipIf(!fetched)('has files whose sizes and hashes are the manifest\'s', () => {
@@ -31,6 +35,8 @@ describe('client/assets/models/people.json', () => {
       expect(bytes.length, p.file).toBe(p.bytes);
       expect(createHash('sha256').update(bytes).digest('hex'), p.file).toBe(p.sha256);
       expect(bytes.toString('latin1', 0, 4), p.file).toBe('glTF');
+      const json = JSON.parse(bytes.toString('utf8', 20, 20 + bytes.readUInt32LE(12)));
+      expect(json.animations.map((a) => a.name), p.file).toEqual(manifest.clips);
     }
   });
 
