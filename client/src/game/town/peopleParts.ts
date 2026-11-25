@@ -17,6 +17,7 @@ import { loadSkinnedModel, type SkinClock, type SkinnedModel } from "@csarkosh/e
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams } from "@csarkosh/engine/game/skinInstances";
 import manifest from "../../../assets/models/people.json" with { type: "json" };
+import { isOpen } from "./hours.js";
 import { PERSON_MODELS, type Person, type PersonModel, type PersonWorld } from "./people.js";
 
 /** How far from the eye a person is drawn (m), and on the low tier. */
@@ -54,6 +55,8 @@ export type PeopleParts = {
   begin(): void;
   /** One frame: `dt` seconds on. Works out who is near on each quarter second and writes them; sends the clock on a frame that shows anyone. */
   step(dt: number): void;
+  /** The hour of day, 0 to 24: who is shown is worked out again at once when it moves. */
+  setHour(hour: number): void;
   /** Models landed, and the people shown now. */
   stats(): { models: number; shown: number };
   /** Resolves once every model has landed (or failed). */
@@ -90,6 +93,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   let began = false;
   let disposed = false;
   let since = PEOPLE_STEP;
+  // The hour of day: nobody is shown in a unit that is shut at it.
+  let hour = 12;
   // The clock's folds when the first model lands (it is not read before then).
   let folds = -1;
   let resolveSettled: () => void = () => undefined;
@@ -168,7 +173,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         for (const [i, p] of batch.people.entries()) {
           const dx = p.at.x - eye.x;
           const dz = p.at.z - eye.z;
-          if (dx * dx + dz * dz <= reach2) next.push(i);
+          if (dx * dx + dz * dz <= reach2 && (p.person.hours === null || isOpen(p.person.hours, hour))) next.push(i);
         }
         const same = next.length === batch.shown.length && next.every((v, k) => v === batch.shown[k]);
         if (same && !refold) continue;
@@ -206,6 +211,11 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   return {
     begin,
     step,
+    setHour(next) {
+      if (next === hour) return;
+      hour = next;
+      since = PEOPLE_STEP;
+    },
     stats() {
       let shown = 0;
       for (const b of batches.values()) shown += b.shown.length;

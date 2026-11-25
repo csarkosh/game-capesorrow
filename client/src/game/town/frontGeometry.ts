@@ -15,6 +15,7 @@
 import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { doorIn, glazed, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { unitHours } from "./hours.js";
 import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
 import { drawWindow, frameColour, type WinCtx } from "./windowGeometry.js";
 import { slatBlinds, slatColour, verticalBlinds } from "./windowDressing.js";
@@ -192,7 +193,7 @@ export function planFront(i: FrontIn): FrontPlan {
     if (!boardedUnit && u.interior.type !== undefined) {
       drawers.push(() => {
         const from = out.vertices;
-        roomGeometry(out, { ...(i.haze === undefined ? {} : { haze: i.haze }), ...(i.through === true ? { through: true } : {}), xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, opened: u.tenant?.opened ?? 0, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width } });
+        roomGeometry(out, { ...(i.haze === undefined ? {} : { haze: i.haze }), ...(i.through === true ? { through: true } : {}), xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, hours: unitHours(b, u), trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, opened: u.tenant?.opened ?? 0, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width } });
         if (i.report !== undefined) {
           const ext = { s0: Infinity, s1: -Infinity, d0: Infinity, d1: -Infinity, y0: Infinity, y1: -Infinity };
           out.forEachPosition(from, (x, y, z) => {

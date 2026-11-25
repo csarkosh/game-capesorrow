@@ -10,6 +10,7 @@
  * heights, the number of tiers and items. What the plan causes: which furnishings stand where, which lights are on, whether the unit is
  * open, shut or vacant (the light's, in `roomLight.ts`).
  */
+import { hoursCode } from "./hours.js";
 import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
@@ -351,6 +352,10 @@ export function doorwayOf(seed: number, s0: number, s1: number, blocked: readonl
 
 /** The room of one unit: between `r.s0` and `r.s1` across, from the face (`d` 0) to `interior.depth`, from the floor to the ceiling. */
 export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
+  out.withHours(hoursCode(r.hours ?? null), () => room(out, r));
+}
+
+function room(out: MeshBuilder, r: RoomIn): void {
   const { xf, floorY, interior, detail } = r;
   const full = detail === "full";
   const vacant = r.state === "vacant for lease" || r.state === "vacant boarded";

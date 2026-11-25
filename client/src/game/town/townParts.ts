@@ -41,7 +41,7 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { emptyTownReady, townSurfacePlugin } from "./townMaterial.js";
+import { emptyTownReady, townSurfacePlugin, type TownReady } from "./townMaterial.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
@@ -64,6 +64,9 @@ export const FLAT_AHEAD_SLOPE = 0;
 export const HAZE_ORDER = SEE_THROUGH_ORDER.lettering - 1;
 /** Where the lettering stands on a tier whose glass writes its whole pixel (`townBlur.ts`): after the glass. */
 export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
+
+/** How far the hour moves before the materials are written again (a hundredth of an hour). */
+const HOUR_STEP = 0.01;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -115,11 +118,30 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let vehicles: VehicleParts | null = null;
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
   let people: PeopleParts | null = null;
+  // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
+  let shownHour = 12;
+  let ready: TownReady | null = null;
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
     // The shops' glass reads the frame the opaque draws left, to show each room out of focus (`townBlur.ts`): the medium tier keeps it too.
     keepsFrame: true,
+
+    // The renderer hands the hour of day with the view each frame (the console's `time`): the town's shaders and its people follow it.
+    wildlife: {
+      ...base.side.wildlife,
+      look(state, x, y, z, yaw, pitch, fov, aspect, hour, mist) {
+        base.side.wildlife.look(state, x, y, z, yaw, pitch, fov, aspect, hour, mist);
+        if (Math.abs(hour - shownHour) > HOUR_STEP) {
+          shownHour = hour;
+          if (ready !== null) {
+            ready.townHour[0] = hour;
+            for (const m of textured) markMaterialUboDirty(m);
+          }
+          people?.setHour(hour);
+        }
+      },
+    },
 
     early({ engine, scene }) {
       // Lite builds the PBR pipelines of a scene's meshes by the build made when the scene is registered, and that build knows
@@ -143,11 +165,13 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const wet = wetAt(WET_CAP.prop);
       const orders = createDrawOrders(DRAW_ORDER.scenery);
       const low = host.tier === "low";
-      const ready = emptyTownReady();
+      ready = emptyTownReady();
+      ready.townHour[0] = shownHour;
+      const readied = ready;
       try {
         textures = createTownTextures(engine, low, loading.signal, (filled) => {
           if (!filled || disposed) return;
-          ready.townReady[0] = 1;
+          readied.townReady[0] = 1;
           for (const m of textured) markMaterialUboDirty(m);
         });
       } catch (error) {
@@ -159,7 +183,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         // The vertex colours carry the colour (or the paint the textures are multiplied by): the material's own is white.
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
         m.plugins = [
-          baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, ready, low, undefined, flat)] : []),
+          baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, flat)] : []),
           surfaceWetPlugin(wet, shared), ...(flat ? [ahead(FLAT_AHEAD_UNITS, FLAT_AHEAD_SLOPE)] : []), air(),
         ];
         orders.take(m);
@@ -175,7 +199,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const glassMaterial = (): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
         // Where the frame behind the glass is kept, a shop's pane reads its room from it, out of focus (`townBlur.ts`).
-        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, ready, low)] : []), ...(through && behind !== undefined ? [townBlurPlugin(behind, shared)] : []), air()];
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, readied, low)] : []), ...(through && behind !== undefined ? [townBlurPlugin(behind, shared)] : []), air()];
         if (textures !== null) textured.push(m);
         return m;
       };
@@ -189,7 +213,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
       const signMaterial = (tex: NonNullable<typeof atlasTexture>): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.7, alphaBlend: true, usePhysicalLightFalloff: true });
-        m.plugins = [baseColourPlugin(), townSurfacePlugin(textures as NonNullable<typeof textures>, ready, low, tex), air()];
+        m.plugins = [baseColourPlugin(), townSurfacePlugin(textures as NonNullable<typeof textures>, readied, low, tex), air()];
         textured.push(m);
         return m;
       };
@@ -211,6 +235,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
         peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person) })),
       );
+      people.setHour(shownHour);
 
       function* build(): Slices {
         const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas, through);

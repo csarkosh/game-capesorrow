@@ -151,6 +151,19 @@ export class MeshBuilder {
   private uv = new Floats();
   private srf = new Floats();
   private idx = new Ints();
+  /** The hours code (`hours.ts`) every layered polygon laid now carries in its float 10 (0: none). Set by `withHours`. */
+  private hoursCode = 0;
+
+  /** Runs `fn` with `code` as the hours every layered polygon it lays carries (a room's, `roomGeometry.ts`), and puts back the one before. */
+  withHours<T>(code: number, fn: () => T): T {
+    const before = this.hoursCode;
+    this.hoursCode = code;
+    try {
+      return fn();
+    } finally {
+      this.hoursCode = before;
+    }
+  }
 
   get vertices(): number {
     return this.pos.length / 3;
@@ -245,7 +258,7 @@ export class MeshBuilder {
         this.uv.push2(u, v);
         const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
         const w2 = surface.wear2 === undefined ? 0 : typeof surface.wear2 === "number" ? surface.wear2 : surface.wear2(p);
-        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, 0, fx?.rank ?? 0);
+        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, this.hoursCode, fx?.rank ?? 0);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
@@ -352,7 +365,7 @@ export class MeshBuilder {
           const [u, v] = uvAt(basis, p);
           this.uv.push2(u, v);
           const g = surface?.tint ?? ONE;
-          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, 0, 0);
+          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, this.hoursCode, 0);
         }
       }
     }
@@ -561,7 +574,7 @@ export class MeshBuilder {
           // follows the body round), from a place of the body's own.
           this.uv.push2((autoU[i * nc + j] as number) / auto.tile[0], (autoV[i * nc + j] as number) / auto.tile[1]);
           const t = auto.tint(c);
-          this.srf.push12(autoLayer, auto.wear, autoKind, 0, t[0], t[1], t[2], 0, 0, 0, 0, 0);
+          this.srf.push12(autoLayer, auto.wear, autoKind, 0, t[0], t[1], t[2], 0, 0, 0, this.hoursCode, 0);
         } else if (layer === NO_LAYER) {
           this.uv.push2(0, 0);
           this.srf.push12(NO_LAYER, 0, 0, 0, 1, 1, 1, v.clear ?? 0, 0, 0, v.wire === undefined ? 0 : -Math.max(1, Math.round(v.wire * 1000)), 0);
@@ -573,7 +586,7 @@ export class MeshBuilder {
           const w2 = v.wear2 === undefined ? ([0, "moss"] as const) : v.wear2(i, j);
           const k1 = (WEAR_KIND_NUMBER[w1[1]] ?? 0) + (v.streaks === true ? 0.5 : 0);
           const k2 = (WEAR_KIND_NUMBER[w2[1]] ?? 0) + (v.streaks2 === true ? 0.5 : 0);
-          this.srf.push12(layer, Math.min(1, Math.max(0, w1[0])), k1, 0, t[0], t[1], t[2], v.clear ?? 0, Math.min(1, Math.max(0, w2[0])), k2, 0, 0);
+          this.srf.push12(layer, Math.min(1, Math.max(0, w1[0])), k1, 0, t[0], t[1], t[2], v.clear ?? 0, Math.min(1, Math.max(0, w2[0])), k2, this.hoursCode, 0);
         }
       }
     }

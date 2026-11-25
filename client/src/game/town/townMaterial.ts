@@ -59,9 +59,11 @@
  * **Tiers.** The low tier's arrays are 256 x 256 (a quarter of the memory and of the upload), its overlay takes only the
  * overlay's colour and roughness (no second normal), and its wear noise has two octaves.
  */
+import { ALWAYS_CODE, CODE_BASE, CODE_STRIDE, FADE_HOURS, HOURS_PER_DAY } from "./hours.js";
 import { SURFACE_PACKED_BYTES } from "./surfacePack.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
+import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
 import { PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY, layerIndex } from "./townLayers.js";
 
 /** The attribute and varying names. */
@@ -196,6 +198,28 @@ const WIRE_PX = 0.00094 * 1.4;
 export const WIRE_VERTEX = `if(townWear.z<-0.5){let wp0=(finalWorld*vec4<f32>(position,1.0)).xyz;let wd=length(wp0-scene.vEyePosition.xyz);let wr=-townWear.z*0.001;let wx=max(0.0,${WIRE_PX.toExponential(4)}*wd-wr);finalWorld[3]=vec4<f32>(finalWorld[3].xyz+normalize(normal)*wx,finalWorld[3].w);}`;
 const WIRE_CODE = `if(tsLayer<0&&tsWearV.z<-0.5){let wr=-tsWearV.z*0.001;let wd=length(scene.vEyePosition.xyz-input.worldPos);let wk=wr/max(wr,${WIRE_PX.toExponential(4)}*wd);baseColor=mix(vec3<f32>(0.2,0.22,0.25),baseColor,wk);}`;
 
+/**
+ * What a shut room is lit by: not its own lamps but the day, or the night, outside. A room's baked colour is its own light (a glow), which
+ * the hour of the sky does not touch, so a shut room dimmed to a share of its glow would stand as bright at midnight as at noon, and brighter
+ * to the eye, which the frame's exposure follows into the dark. So a shut room's colour is handed back to the scene's light, this share of it
+ * (a little blue: what comes in at the glass): dim by day, and at night as dark as the street's own shadows.
+ */
+export const SHUT_LIGHT: readonly [number, number, number] = [0.42, 0.45, 0.52];
+
+/**
+ * A room's hours (`hours.ts`): a layered vertex whose spare float 10 is over a half carries its unit's hours code. The glow is kept by how
+ * open the unit is at the hour, and the rest of it is lit by the scene (`SHUT_LIGHT`) (`material.townHour`): the arithmetic of `openShare`, written from `hours.ts`'s own constants (the distance to the
+ * nearer edge of the hours, which side of it the hour is on, a ramp over `FADE_HOURS` either side). Code `ALWAYS_CODE` is never shut.
+ */
+export const HOURS_CODE = [
+  `if(tsLayer>=0&&tsWearV.z>0.5){var hsh=1.0;if(tsWearV.z<${f(ALWAYS_CODE - 0.5)}){`,
+  `let hk=tsWearV.z-${f(CODE_BASE)};let ho=floor(hk/${f(CODE_STRIDE)});let hz=hk-ho*${f(CODE_STRIDE)};let hh=material.townHour;`,
+  "let hin=select((hh>=ho)||(hh<hz),(hh>=ho)&&(hh<hz),ho<hz);",
+  `let h1=abs(hh-ho);let h2=abs(hh-hz);let hd=min(min(h1,${f(HOURS_PER_DAY)}-h1),min(h2,${f(HOURS_PER_DAY)}-h2));`,
+  `hsh=clamp(0.5+select(-hd,hd,hin)/${f(2 * FADE_HOURS)},0.0,1.0);}`,
+  `let hown=townGlowC;townGlowC=hown*hsh;baseColor=baseColor+hown*vec3<f32>(${SHUT_LIGHT.map(f).join(",")})*(1.0-hsh);}`,
+].join("");
+
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
 export function townSurfaceCode(low: boolean): string {
   return [
@@ -225,7 +249,7 @@ export function townSurfaceCode(low: boolean): string {
     `if(tsLayer==${layerIndex("metal_aged")}||tsLayer==${layerIndex("metal_painted")}||tsLayer==${layerIndex("roof_metal")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`,
     "}",
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
-    "if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));}",
+    `if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));${HOURS_CODE}}`,
     BLIND_CODE,
     WIRE_CODE,
   ].join("");
@@ -258,6 +282,9 @@ export const GLASS_FILM: readonly [number, number, number] = [0.032, 0.038, 0.04
  * The result is the glass's colour and its alpha, which the blend lays over the room: `townGlassC` is the colour as it is (not premultiplied),
  * `townGlassA` how much of the picture it covers. The low tier skips the street's variation and the grime's streaks.
  */
+/** The mean of the air's far colour at an overcast noon, which the pane's reflected sky was authored at: the reflection is the sky's brightness over this. */
+export const NOON_SKY = 0.5;
+
 export function townAlphaCode(low = false): string {
   const street = low
     ? "let tsSt=vec3<f32>(0.075,0.078,0.082);"
@@ -294,14 +321,17 @@ export function townAlphaCode(low = false): string {
     "let tsUp=smoothstep(0.0,0.12,tsR.y);",
     "let tsSky=mix(vec3<f32>(0.46,0.5,0.52),vec3<f32>(0.3,0.35,0.41),clamp(tsR.y*1.6,0.0,1.0));",
     street,
-    "let tsRc=mix(tsSt,tsSky,tsUp);",
+    // What a pane reflects and the film on it are lit by the sky, whose colours here are a noon's: they follow the sky's own brightness at the
+    // hour (the air's far colour, in the frame's block), or at night every pane would hold a noon sky.
+    `let tsDay=dot(${FRAME_BLOCK}.atmFarColour,vec3<f32>(0.3333))/${f(NOON_SKY)};`,
+    "let tsRc=mix(tsSt,tsSky,tsUp)*tsDay;",
     "let tsRk=clamp(mix(0.04,0.12,tsUp)+(tsFr-0.04),0.0,0.97);",
     grime,
-    "let tsDirtC=vec3<f32>(0.2,0.18,0.15);",
+    "let tsDirtC=vec3<f32>(0.2,0.18,0.15)*tsDay;",
     "let tsAb=(1.0-tsClear)*(1.0-tsRk);",
     "let tsAt=clamp(tsAb+tsRk+tsGk*(1.0-tsRk),0.0,0.985);",
     // What the glass keeps back of the room is not black: it is the film on the pane in daylight (`GLASS_FILM`), pale over what stands behind it.
-    `townGlassC=(tsRc*tsRk+vec3<f32>(${GLASS_FILM.map((c) => c.toFixed(3)).join(",")})*tsAb+tsDirtC*tsGk*(1.0-tsRk))/max(tsAt,0.001);`,
+    `townGlassC=(tsRc*tsRk+vec3<f32>(${GLASS_FILM.map((c) => c.toFixed(3)).join(",")})*tsDay*tsAb+tsDirtC*tsGk*(1.0-tsRk))/max(tsAt,0.001);`,
     "townGlassA=1.0;",
     "alpha=tsAt;",
     "}",
@@ -315,11 +345,11 @@ export const TOWN_COMPOSE_CODE = "if(townGlassA>0.5){color=townGlassC;}color=col
 /** What the plugin draws with: the two arrays (the colour's read as sRGB, the data as data), filled in place when the images land. */
 export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Texture2DArray };
 
-/** The plugin's one uniform, 0 until the arrays are filled, then 1 (`markMaterialUboDirty` after changing it). */
-export type TownReady = { townReady: number[] };
+/** The plugin's uniforms: `townReady`, 0 until the arrays are filled, then 1; `townHour`, the hour of day 0 to 24 (12 until a frame says otherwise). `markMaterialUboDirty` after changing either. */
+export type TownReady = { townReady: number[]; townHour: number[] };
 
 export function emptyTownReady(): TownReady {
-  return { townReady: [0] };
+  return { townReady: [0], townHour: [12] };
 }
 
 const READY_FIELDS: readonly UniformField[] = uniformFields(emptyTownReady());

@@ -6,8 +6,9 @@ import {
   ACTIVITIES, DOOR_DEEP, DOOR_SIDE, FRONT_ZONE, FURNITURE_CLEAR, PEOPLE_APART, SEATED_APART, WALL_MARGIN, WINDOW_DEPTH, distanceToFootprint, facesGlass, peopleFor, personWorld, unitSeats, type Person,
 } from "../../src/game/town/people.js";
 import manifest from "../../assets/models/people.json" with { type: "json" };
+import { isOpen, unitHours } from "../../src/game/town/hours.js";
 import { townGround } from "../../src/game/town/townGeometry.js";
-import type { Unit } from "../../src/sim/town/types.js";
+import type { Building, Unit } from "../../src/sim/town/types.js";
 import { WORLD_SEEDS } from "./world.js";
 
 function unitOf(plan: ReturnType<typeof townGround>["plan"], p: Person): Unit {
@@ -154,6 +155,22 @@ describe("the people in the shops", () => {
         // The floor is within a few metres of the ground at the spot (a room is raised only a little, or cut into a slope).
         expect(Math.abs(w.y - ground.heightAt(w.x, w.z))).toBeLessThan(2.5);
       }
+    });
+
+    it(`seed ${seed}: at 3:00 nobody is shown but in the units that are open then`, () => {
+      const b = new Map(plan.buildings.map((x) => [x.id, x]));
+      let shown = 0;
+      for (const p of people) {
+        const unit = unitOf(plan, p);
+        expect(p.hours).toEqual(unitHours(b.get(p.building) as Building, unit));
+        const open = p.hours === null || isOpen(p.hours, 3);
+        if (open) {
+          shown++;
+          // What is open at 3:00 keeps the night: a motel, a gas station, a bail bonds, a self storage, or a tavern or store by its late hours.
+          expect(p.hours === null || p.hours === "always" || p.hours.open > p.hours.close, `${unit.tenant?.trade}`).toBe(true);
+        }
+      }
+      expect(shown).toBeLessThan(people.length);
     });
   }
 });
