@@ -56,7 +56,7 @@ describe('tools/models/build.py', () => {
   });
 
   it('lists a file a vehicle, every one on disk and none besides', () => {
-    const files = readdirSync(OUT).filter((f) => f.endsWith('.glb')).sort();
+    const files = readdirSync(OUT).filter((f) => f.startsWith('vehicle.') && f.endsWith('.glb')).sort();
     expect(files).toEqual(manifest.vehicles.map((v) => v.file).sort());
     for (const v of manifest.vehicles) expect(v.file).toBe(`${v.id}.glb`);
   });

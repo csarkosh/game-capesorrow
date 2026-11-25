@@ -22,12 +22,12 @@ const keyOf = (e: CreditEntry): string => JSON.stringify([e.source, e.author, e.
 describe("the game's own CREDITS.md", () => {
   const own = creditsModel(OWN_FILE);
 
-  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets (CC0) and the vehicle models", () => {
+  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets (CC0) and the vehicle models and the people", () => {
     expect(OWN_FILE.startsWith("# Credits\n")).toBe(true);
     expect(OWN_FILE).toMatch(/engine/);
     expect(OWN_FILE).toMatch(/Credits screen/);
-    // 33 works: the 22 layers of the town's textures, less the shingles the build script makes (21), and the 12 vehicle models.
-    expect(own.length).toBe(33);
+    // 38 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 12 vehicle models and the 5 people.
+    expect(own.length).toBe(38);
     const textures = own.filter((e) => e.id.startsWith("town."));
     expect(textures.length).toBe(21);
     for (const e of textures) {
@@ -45,7 +45,14 @@ describe("the game's own CREDITS.md", () => {
       expect(e.url, e.id).toMatch(/^https:\/\//);
       expect(e.modified, e.id).toBe(true);
     }
-    expect(own.length).toBe(textures.length + models.length);
+    const people = own.filter((e) => e.id.startsWith("person."));
+    expect(people.length).toBe(5);
+    for (const e of people) {
+      expect(e.license, e.id).toBe("CC-BY-4.0");
+      expect(e.author, e.id).toBe("Renderpeople");
+      expect(e.modified, e.id).toBe(true);
+    }
+    expect(own.length).toBe(textures.length + models.length + people.length);
     expect(new Set(own.map((e) => e.id)).size).toBe(own.length);
   });
 
