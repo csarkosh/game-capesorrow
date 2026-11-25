@@ -17,6 +17,7 @@
  * is at something in the window); a person with no clear spot among those tried is not there. What the hash draws: who, which model, which
  * way a standing person faces (a little off square), how tall, how fast and where in the clip they start, so that no two move in step.
  */
+import { unitHours, type Hours } from "./hours.js";
 import { hashN } from "./groundNoise.js";
 import { buildingLevels } from "./buildingGeometry.js";
 import { feetOf, roomSeats, styleOf, type Seat, type SeatCtx } from "./roomFill.js";
@@ -54,6 +55,8 @@ export type Person = {
   readonly offset: number;
   /** How fast the clip runs for them, 0.85 to 1.1. */
   readonly rate: number;
+  /** Their unit's opening hours (`hours.ts`): they are shown only while it is open. Null where the unit has none (it is always shown). */
+  readonly hours: Hours | null;
   readonly role: PersonRole;
   /** The clip they play. */
   readonly activity: Activity;
@@ -478,7 +481,7 @@ function unitPeople(b: Building, unit: Unit): Person[] {
     scale: 0.95 + roll(id, uid, p.index, 12) * 0.09,
     offset: roll(id, uid, p.index, 13) * 60,
     rate: 0.85 + roll(id, uid, p.index, 14) * 0.25,
-    role: p.role, activity: p.activity,
+    hours: unitHours(b, unit), role: p.role, activity: p.activity,
     seat: p.seat === null ? null : { furnishing: p.seat.furnishing, top: p.seat.top, family: p.seat.family },
     target: p.target,
   }));

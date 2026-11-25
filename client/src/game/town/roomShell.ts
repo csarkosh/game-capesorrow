@@ -10,6 +10,7 @@
  * (a laundromat's pale blue and white, a bar's dark wood, an office's grey and carpet). What is authored: every colour, the heights and
  * spacings, how much each state stains.
  */
+import { type Hours } from "./hours.js";
 import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINTS, pickOf } from "./buildingKit.js";
@@ -33,6 +34,8 @@ export type RoomIn = {
   readonly interior: Interior;
   readonly state: UnitState;
   readonly lit: boolean;
+  /** The unit's opening hours (`hours.ts`), which every layered vertex of its room carries; null for none (a unit shut for the day). */
+  readonly hours?: Hours | null;
   readonly trade: Trade | null;
   readonly id: number;
   readonly era: number;
