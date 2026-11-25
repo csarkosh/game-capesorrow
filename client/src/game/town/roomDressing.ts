@@ -594,7 +594,12 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
           const s = u(k, n);
           const cc = col(k);
           if (t === "jeweler") { fbox(c, s, 0.5, y0, 0.16 + (k % 3) * 0.06, 0.07, 0.07, AX, [0.07, 0.06, 0.08], [0.1, 0.09, 0.12]); fbox(c, s, 0.5, y0 + 0.2 + (k % 3) * 0.06, 0.03, 0.05, 0.05, AX, [0.9, 0.78, 0.35], [1, 0.9, 0.5]); }
-          else if (t === "gallery") { fbox(c, s, 0.52, y0, 0.45 + (k % 2) * 0.12, 0.17, 0.02, AX, [0.15, 0.12, 0.1], cc); fbox(c, s, 0.45, y0 + 0.05, 0.3, 0.13, 0.015, AX, cc, scaled(cc, 1.1), BAKED, false); }
+          else if (t === "gallery") {
+            // A frame and its canvas, no wider than the window's share of each: in a narrow window two stood in one plane, over each other.
+            const half = Math.min(0.17, width / n / 2 - 0.015);
+            fbox(c, s, 0.52, y0, 0.45 + (k % 2) * 0.12, half, 0.02, AX, [0.15, 0.12, 0.1], cc);
+            fbox(c, s, 0.45, y0 + 0.05, 0.3, Math.max(0.02, half - 0.04), 0.015, AX, cc, scaled(cc, 1.1), BAKED, false);
+          }
           else { fcyl(c, s, 0.5, y0, 0.09, 0.2 + hash01(seed + k, 795) * 0.2, 6, cc, scaled(cc, 1.2), 0.06); }
         }
         break;
