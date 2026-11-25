@@ -5,6 +5,12 @@
  * dim patch, the day fades with depth from the glass, a shut shop is dim with one night light and a vacant one is grey and bare. The
  * furnishings darken the floor beneath them (`under`).
  *
+ * The light is not even. A lamp lights what is under it and little else: its light falls off fast with distance (`FALL`), so a room is
+ * pools of light with dimmer floor between them and dark in its corners, at the foot of its walls and up at the ceiling's edge (`corner`,
+ * `edge`), and what bounces about the room (the ambient) is small. The room is brought to an exposure by its brightest place, not its
+ * mean, so a room with few lights is a dim room with a bright pool in it and not a room evenly half lit. No two lamps are equally
+ * bright (a tube yellows and dims with age).
+ *
  * What the plan causes: which lights are on, whether the unit is open, shut or vacant, where the openings are and what covers each
  * (a papered or blinded opening lets in less day). What is authored: the strengths and the colours of each kind of light, the day's
  * colour (an overcast sky's, cool and grey) and its reach, how often a tube has failed (more in an old unit with many tenants behind it),
@@ -52,20 +58,38 @@ const TUBE: Rgb = [1.0, 0.95, 0.84];
 const WARM: Rgb = [1.0, 0.8, 0.52];
 const NEON: readonly Rgb[] = [[1, 0.2, 0.15], [0.25, 0.55, 1], [1, 0.5, 0.15], [0.3, 1, 0.45]];
 
+/**
+ * A light's colour, its strength and the distance (m) at which it has fallen to a share of itself (`FALL`). The reaches are short: a tube
+ * lights the two or three metres under it, a pendant its table, a lamp its desk. Each light's strength is its kind's times an age of its own
+ * (0.55 to 1.25: a tube dims and yellows, a bulb is whatever was in the drawer).
+ */
 const lightColour = (l: RoomLight, seed: number, i: number): { c: Rgb; p: number; r0: number } => {
+  const age = 0.55 + 0.7 * hash01(seed + i * 29, 913);
   switch (l.kind) {
-    case "tube": return { c: TUBE, p: 1, r0: 1.9 };
-    case "pendant": return { c: WARM, p: 0.85, r0: 1.9 };
-    case "lamp": return { c: WARM, p: 0.5, r0: 1.3 };
-    case "neon": return { c: NEON[Math.floor(hash01(seed + i, 326) * NEON.length) % NEON.length] as Rgb, p: 0.3, r0: 1.4 };
+    case "tube": return { c: [TUBE[0], TUBE[1] * (0.96 + 0.04 * age), TUBE[2] * (0.8 + 0.2 * age)], p: 1 * age, r0: 1.45 };
+    case "pendant": return { c: WARM, p: 0.85 * age, r0: 1.15 };
+    case "lamp": return { c: WARM, p: 0.5 * age, r0: 0.9 };
+    case "neon": return { c: NEON[Math.floor(hash01(seed + i, 326) * NEON.length) % NEON.length] as Rgb, p: 0.3, r0: 1.1 };
   }
 };
 
-/** The mean the room's lights are brought to (their sum on a floor, linear), by whether it is open. */
-const EXPOSURE_OPEN = 0.7;
-const AMBIENT_OPEN = 0.09;
-const AMBIENT_SHUT = 0.04;
-const AMBIENT_VACANT = 0.05;
+/** How fast a light falls off: its share at a distance q (in its own reach, squared) is 1 / (1 + q)^FALL. At 1 it is a soft glow that fills a room; at 2.2 a pool. */
+const FALL = 2.2;
+/** What the brightest place on the room's floor is brought to with every lit light working (linear), by whether it is open: the rest of the room falls from it. */
+const EXPOSURE_OPEN = 0.85;
+/** What a room's exposure was stated as before it was its brightest place (a mean of 0.7): a caller's own (`FieldIn.exposure`, a bar's 0.42) is scaled by the same. */
+const EXPOSURE_WAS = 0.7;
+/** What bounces about the room and reaches everything: a little. */
+const AMBIENT_OPEN = 0.022;
+const AMBIENT_SHUT = 0.014;
+const AMBIENT_VACANT = 0.02;
+/** How much darker a room is in a corner, along a wall's foot, up at the ceiling's edge and on the floor against a wall, and over what distance (m) each lifts. */
+/** The share of a room's lights past the middle of its depth that are off. */
+const BACK_OFF = 0.4;
+const CORNER_DARK = 0.45;
+const CORNER_REACH = 0.9;
+const EDGE_DARK = 0.3;
+const EDGE_REACH = 0.45;
 
 export function roomField(i: FieldIn): RoomField {
   const w = i.s1 - i.s0;
@@ -74,7 +98,10 @@ export function roomField(i: FieldIn): RoomField {
   const cs = w / (nS - 1);
   const cd = i.depth / (nD - 1);
   const cell = new Float32Array(nS * nD * 3);
-  const dead: boolean[] = i.lights.map((l, k) => l.on && l.kind === "tube" && hash01(i.seed + k * 13, 701) < i.wear);
+  // A tube that has failed, and a light toward the back of the room that nobody has switched on (`BACK_OFF` of those past the middle of its depth, where
+  // there are four lights or more: the front of a shop is lit for the street, the back for whoever goes there).
+  const many = i.lights.filter((l) => l.on).length >= 4;
+  const dead: boolean[] = i.lights.map((l, k) => l.on && ((l.kind === "tube" && hash01(i.seed + k * 13, 701) < i.wear) || (many && l.kind !== "neon" && l.d > i.depth * 0.5 && hash01(i.seed + k * 17, 733) < BACK_OFF)));
   const working = i.lights.map((l, k) => l.on && !dead[k]);
   const sources = i.lights.map((l, k) => ({ l, ...lightColour(l, i.seed, k) }));
   const ky = 1.3;
@@ -90,25 +117,24 @@ export function roomField(i: FieldIn): RoomField {
       const dz = d - src.l.d;
       const dy = Math.max(0, src.l.h - ky);
       const q = (dx * dx + dz * dz + dy * dy) / (src.r0 * src.r0);
-      const k2 = src.p / (1 + q);
+      const k2 = src.p / Math.pow(1 + q, FALL);
       out[0] += src.c[0] * k2;
       out[1] += src.c[1] * k2;
       out[2] += src.c[2] * k2;
     }
   };
   const tmp: [number, number, number] = [0, 0, 0];
-  // The exposure: the mean of the sum with every lit light working.
-  let allMean = 0;
+  // The exposure: the brightest place on the floor with every lit light working is brought to it, and the rest of the room falls from there.
+  let allPeak = 0;
   let nodes = 0;
-  for (let b = 0; b < nD; b += 2) {
-    for (let a = 0; a < nS; a += 2) {
+  for (let b = 0; b < nD; b++) {
+    for (let a = 0; a < nS; a++) {
       sumAt(i.s0 + a * cs, b * cd, (k) => (i.lights[k] as RoomLight).on, tmp);
-      allMean += (tmp[0] + tmp[1] + tmp[2]) / 3;
+      allPeak = Math.max(allPeak, (tmp[0] + tmp[1] + tmp[2]) / 3);
       nodes++;
     }
   }
-  allMean = nodes > 0 ? allMean / nodes : 1;
-  const gain = allMean > 1e-4 ? (i.exposure ?? EXPOSURE_OPEN) / allMean : 0;
+  const gain = allPeak > 1e-4 ? (EXPOSURE_OPEN * (i.exposure ?? EXPOSURE_WAS)) / EXPOSURE_WAS / allPeak : 0;
   const ambient = i.lit ? AMBIENT_OPEN : i.vacant ? AMBIENT_VACANT : AMBIENT_SHUT;
   const ambC: Rgb = i.lit ? [1, 0.92, 0.78] : [0.8, 0.88, 1];
   let sum = 0;
@@ -180,7 +206,16 @@ export function roomField(i: FieldIn): RoomField {
     at(s, d, y, up) {
       sample(s, d);
       // A floor is lit square on, a wall less, and more nearer the lights at its top; a ceiling takes what bounces up.
-      const k = up > 0.5 ? 1 : up < -0.5 ? 0.4 : 0.55 + 0.45 * Math.min(1, Math.max(0, y / i.ceiling));
+      let k = up > 0.5 ? 1 : up < -0.5 ? 0.3 : 0.42 + 0.4 * Math.min(1, Math.max(0, y / i.ceiling));
+      // Less light reaches where two walls meet, and where a wall meets the floor or the ceiling: the distance to the nearest wall across the
+      // room (`e`), to the nearest corner in plan (`c`), and up or down a wall to its foot and its head.
+      const eS = Math.min(s - i.s0, i.s1 - s);
+      const eD = Math.min(d, i.depth - d);
+      const e = Math.max(0, Math.min(eS, eD));
+      const c = Math.sqrt(Math.max(0, eS) * Math.max(0, eS) + Math.max(0, eD) * Math.max(0, eD));
+      k *= 1 - CORNER_DARK * Math.exp(-c / CORNER_REACH);
+      if (up > 0.5 || up < -0.5) k *= 1 - EDGE_DARK * Math.exp(-e / EDGE_REACH);
+      else k *= (1 - EDGE_DARK * Math.exp(-Math.max(0, y) / EDGE_REACH)) * (1 - EDGE_DARK * Math.exp(-Math.max(0, i.ceiling - y) / EDGE_REACH));
       scratch[0] = out[0] * k;
       scratch[1] = out[1] * k;
       scratch[2] = out[2] * k;
