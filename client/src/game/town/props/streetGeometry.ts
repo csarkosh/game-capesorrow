@@ -21,6 +21,16 @@ const WOOD: readonly Rgb[] = [[0.2, 0.14, 0.09], [0.16, 0.12, 0.09], [0.24, 0.2,
 const IRON: Rgb = [0.05, 0.05, 0.055];
 const POLE: Rgb = [0.32, 0.33, 0.34];
 
+/**
+ * Which way across its place a bench looks: +1 toward the place's left (its heading turned a quarter turn, `placeOn`), -1 toward its right. A bench looks
+ * at the street its lot fronts (`Lot.front`), so that whoever sits on it has the buildings behind them; one with no lot looks left.
+ */
+export function benchSide(g: TownGround, f: Furniture): 1 | -1 {
+  const lot = g.plan.lots[f.lot];
+  if (lot === undefined) return 1;
+  return -f.hz * lot.front.x + f.hx * lot.front.z >= 0 ? 1 : -1;
+}
+
 export function furnitureGeometry(g: TownGround, sink: Sink, f: Furniture, detail: Detail): void {
   const low = detail === "low";
   // The low tier keeps what is big and plain: the cans, the benches, the hydrants.
@@ -29,7 +39,11 @@ export function furnitureGeometry(g: TownGround, sink: Sink, f: Furniture, detai
   if (low) {
     // One plain solid each: a drum, a seat on a back, a post.
     const pl = placeOn(g, f.x, f.z, f.hx, f.hz, 0.6, 0.6);
-    if (f.kind === "bench") withMat("wood", () => lbox(m, pl, -0.3, 0.24, 0.0, 0.9, -0.85, 0.85, WOOD[f.colour % WOOD.length] as Rgb));
+    if (f.kind === "bench") {
+      // Along the kerb, its back to the lot (`benchSide`).
+      const side = benchSide(g, f);
+      withMat("wood", () => lbox(m, pl, -0.85, 0.85, 0.0, 0.9, side > 0 ? -0.3 : -0.24, side > 0 ? 0.24 : 0.3, WOOD[f.colour % WOOD.length] as Rgb));
+    }
     else withMat("steel", () => lcylY(m, pl, 0, 0, 0.0, f.kind === "hydrant" ? 0.7 : 0.85, f.kind === "hydrant" ? 0.12 : 0.25, f.kind === "hydrant" ? 0.12 : 0.25, 5, (f.kind === "hydrant" ? HYDRANT : CAN)[f.colour % 6] as Rgb, null));
     return;
   }
@@ -77,16 +91,21 @@ export function furnitureGeometry(g: TownGround, sink: Sink, f: Furniture, detai
     case "bench": {
       const pl = placeOn(g, f.x, f.z, f.hx, f.hz, 1.7, 0.6);
       const w = WOOD[col % WOOD.length] as Rgb;
+      // The bench lies along the kerb (its 1.7 m along the place's heading, which is the street's, as the plan's own footprint of it is) and looks at the
+      // street: its back is on the lot's side (`benchSide`). `b0`, `b1` are the back's two faces across the place.
+      const side = benchSide(g, f);
+      const b0 = side > 0 ? -0.34 : 0.3;
+      const b1 = side > 0 ? -0.3 : 0.34;
       withMat("steel", () => {
-        for (const z of [-0.72, 0.72]) lbox(m, pl, -0.2, 0.2, 0.0, 0.4, z - 0.035, z + 0.035, IRON);
+        for (const a of [-0.72, 0.72]) lbox(m, pl, a - 0.035, a + 0.035, 0.0, 0.4, -0.2, 0.2, IRON);
       });
       // The seat and the back: a plank each, the back set behind the seat's edge, with two iron uprights between.
       withMat("wood", () => {
-        lbox(m, pl, -0.24, 0.24, 0.4, 0.45, -0.85, 0.85, w);
-        lbox(m, pl, -0.34, -0.3, 0.55, 0.85, -0.85, 0.85, mixC(w, [0, 0, 0], 0.15));
+        lbox(m, pl, -0.85, 0.85, 0.4, 0.45, -0.24, 0.24, w);
+        lbox(m, pl, -0.85, 0.85, 0.55, 0.85, b0, b1, mixC(w, [0, 0, 0], 0.15));
       });
       withMat("steel", () => {
-        for (const z of [-0.72, 0.72]) lbox(m, pl, -0.34, -0.3, 0.45, 0.55, z - 0.035, z + 0.035, IRON);
+        for (const a of [-0.72, 0.72]) lbox(m, pl, a - 0.035, a + 0.035, 0.45, 0.55, b0, b1, IRON);
       });
       return;
     }
