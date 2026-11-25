@@ -21,7 +21,7 @@
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only.
  */
 import { roadGradeAt } from "@csarkosh/engine/sim/olympic";
-import { corridorD } from "@csarkosh/engine/sim/road";
+import { CORRIDOR, corridorInto } from "@csarkosh/engine/sim/road";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { RAIL_BED_HALF, RAIL_OFFSET } from "./rail.js";
 import { RAIL_BANK_EXTRA, RAIL_BANK_MIN, RAIL_BANK_SLOPE, RAIL_BENCH_HALF, RAIL_SHOULDER, bankWidthD } from "./railBank.js";
@@ -44,32 +44,100 @@ export const RAIL_TUNABLES: Readonly<Record<string, number>> = {
   ...SPAN_TUNABLES,
 };
 
+/** Where `benchWeightInto` leaves its answer. Read at once, before any other call. */
+const BENCH = { v: 0, dx: 0, dz: 0 };
+
+/**
+ * The bed's weight at a point of offset `u` from the highway's centre (the line stands `RAIL_OFFSET` seaward of it), 1 on the
+ * bench and 0 beyond the bank, with its partials in x and z, left in `BENCH`. `m` is the grade line's height over the land there (with its
+ * partials), `twV` and `twDz` the trestle's weight at z and its slope.
+ */
+function benchWeightInto(u: number, uDz: number, m: number, mDx: number, mDz: number, twV: number, twDz: number): void {
+  const off = u + RAIL_OFFSET;
+  const a = off < 0 ? -off : off;
+  if (a <= RAIL_BENCH_HALF) {
+    if (twV === 0) {
+      BENCH.v = 1;
+      BENCH.dx = 0;
+      BENCH.dz = 0;
+      return;
+    }
+    BENCH.v = 1 - twV;
+    BENCH.dx = 0;
+    BENCH.dz = -twDz;
+    return;
+  }
+  const B = bankWidthD(m);
+  const t = (a - RAIL_BENCH_HALF) / B.v;
+  if (t >= 1) {
+    BENCH.v = 0;
+    BENCH.dx = 0;
+    BENCH.dz = 0;
+    return;
+  }
+  // A cubic ease (its steepest slope is 1.5 of the mean, where the quintic's is 1.875): a bank is no steeper in the middle than it need be.
+  const ssV = t * t * (3 - 2 * t);
+  const ssD = 6 * t * (1 - t);
+  const sign = off < 0 ? -1 : 1;
+  // t = (a - H) / B(m): its partials.
+  const tDx = (sign - t * B.dm * mDx) / B.v;
+  const tDz = (sign * uDz - t * B.dm * mDz) / B.v;
+  const k = 1 - ssV;
+  const kDx = -ssD * tDx;
+  const kDz = -ssD * tDz;
+  if (twV === 0) {
+    BENCH.v = k;
+    BENCH.dx = kDx;
+    BENCH.dz = kDz;
+    return;
+  }
+  BENCH.v = k * (1 - twV);
+  BENCH.dx = kDx * (1 - twV);
+  BENCH.dz = kDz * (1 - twV) - k * twDz;
+}
+
 /**
  * The bed's weight at a point of offset `u` from the highway's centre (the line stands `RAIL_OFFSET` seaward of it), 1 on the
  * bench and 0 beyond the bank, with its partials in x and z. `m` is the grade line's height over the land there (with its
  * partials), `tw` the trestle's weight at z.
  */
 export function benchWeightD(u: number, uDz: number, m: number, mDx: number, mDz: number, tw: { v: number; dz: number }): { v: number; dx: number; dz: number } {
+  benchWeightInto(u, uDz, m, mDx, mDz, tw.v, tw.dz);
+  return { v: BENCH.v, dx: BENCH.dx, dz: BENCH.dz };
+}
+
+/** Where `railGroundInto` leaves the ground with the bed laid over it. Read at once, before any other call. */
+export const RAIL_GROUND = { h: 0, dx: 0, dz: 0 };
+
+
+/**
+ * The place's ground with the railroad's bed laid over it: `sh`, `sdx`, `sdz` are the town's ground over the coast's (height and slopes) at a point whose
+ * offset from the highway is `u` (slope `uDz`), the answer the highway's corridor is then laid over. Leaves the result in `RAIL_GROUND` and answers true;
+ * answers false, and writes nothing, where the staged ground stands: beyond `RAIL_REACH` of the line, or where the bed is not there.
+ */
+export function railGroundInto(seed: number, z: number, u: number, uDz: number, sh: number, sdx: number, sdz: number): boolean {
   const off = u + RAIL_OFFSET;
-  const a = off < 0 ? -off : off;
-  if (a <= RAIL_BENCH_HALF) {
-    if (tw.v === 0) return { v: 1, dx: 0, dz: 0 };
-    return { v: 1 - tw.v, dx: 0, dz: -tw.dz };
-  }
-  const B = bankWidthD(m);
-  const t = (a - RAIL_BENCH_HALF) / B.v;
-  if (t >= 1) return { v: 0, dx: 0, dz: 0 };
-  // A cubic ease (its steepest slope is 1.5 of the mean, where the quintic's is 1.875): a bank is no steeper in the middle than it need be.
-  const ss = { v: t * t * (3 - 2 * t), d: 6 * t * (1 - t) };
-  const sign = off < 0 ? -1 : 1;
-  // t = (a - H) / B(m): its partials.
-  const tDx = (sign - t * B.dm * mDx) / B.v;
-  const tDz = (sign * uDz - t * B.dm * mDz) / B.v;
-  const k = 1 - ss.v;
-  const kDx = -ss.d * tDx;
-  const kDz = -ss.d * tDz;
-  if (tw.v === 0) return { v: k, dx: kDx, dz: kDz };
-  return { v: k * (1 - tw.v), dx: kDx * (1 - tw.v), dz: kDz * (1 - tw.v) - k * tw.dz };
+  if ((off < 0 ? -off : off) >= RAIL_REACH) return false;
+  const tw = trestleWeightAt(seed, z);
+  if (tw.v >= 1) return false;
+  const grade = roadGradeAt(seed, z);
+  // The ground the engine will leave here with no railroad: and how far the grade line stands from it.
+  // The staged ground with the highway's corridor cut through it (the engine's, in numbers): where the corridor does not reach, the staged ground itself.
+  const cut = corridorInto(u, uDz, grade.h, grade.dz, sh, sdx, sdz);
+  const nH = cut ? CORRIDOR.h : sh;
+  const nDx = cut ? CORRIDOR.dx : sdx;
+  const nDz = cut ? CORRIDOR.dz : sdz;
+  const m = grade.h - nH;
+  benchWeightInto(u, uDz, m, -nDx, grade.dz - nDz, tw.v, tw.dz);
+  const kV = BENCH.v;
+  const kDx = BENCH.dx;
+  const kDz = BENCH.dz;
+  if (kV === 0) return false;
+  const gap = grade.h - sh;
+  RAIL_GROUND.h = sh + kV * gap;
+  RAIL_GROUND.dx = sdx + kDx * gap - kV * sdx;
+  RAIL_GROUND.dz = sdz + kDz * gap + kV * (grade.dz - sdz);
+  return true;
 }
 
 /**
@@ -78,20 +146,6 @@ export function benchWeightD(u: number, uDz: number, m: number, mDx: number, mDz
  * (the same object) beyond `RAIL_REACH` of the line.
  */
 export function railGroundD(seed: number, z: number, u: number, uDz: number, staged: TerrainSample): TerrainSample {
-  const off = u + RAIL_OFFSET;
-  if ((off < 0 ? -off : off) >= RAIL_REACH) return staged;
-  const tw = trestleWeightAt(seed, z);
-  if (tw.v >= 1) return staged;
-  const grade = roadGradeAt(seed, z);
-  // The ground the engine will leave here with no railroad: and how far the grade line stands from it.
-  const n = corridorD(u, uDz, grade, staged);
-  const m = grade.h - n.h;
-  const k = benchWeightD(u, uDz, m, -n.dx, grade.dz - n.dz, tw);
-  if (k.v === 0) return staged;
-  const gap = grade.h - staged.h;
-  return {
-    h: staged.h + k.v * gap,
-    dx: staged.dx + k.dx * gap - k.v * staged.dx,
-    dz: staged.dz + k.dz * gap + k.v * (grade.dz - staged.dz),
-  };
+  if (!railGroundInto(seed, z, u, uDz, staged.h, staged.dx, staged.dz)) return staged;
+  return { h: RAIL_GROUND.h, dx: RAIL_GROUND.dx, dz: RAIL_GROUND.dz };
 }

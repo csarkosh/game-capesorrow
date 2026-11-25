@@ -30,9 +30,8 @@ import { UNIT_KEEP } from "@csarkosh/engine/sim/cliffs";
 import { CLUTTER_BUSH, CLUTTER_FERN, CLUTTER_FLOWER, CLUTTER_FUNGUS, CLUTTER_GRASS, CLUTTER_LITTER, CLUTTER_MEADOW, CLUTTER_SHRUB } from "@csarkosh/engine/sim/clutter";
 import type { FeatureMask } from "@csarkosh/engine/sim/features";
 import { bearingU, bearingV } from "./bearings.js";
-import { coverD } from "./cover.js";
-import { smootherstepD } from "./ground.js";
-import { QUAY_BANK, fillWindowD, type FillArea } from "./fill.js";
+import { COVER, coverInto } from "./cover.js";
+import { FILL, QUAY_BANK, STEP, fillWindowInto, smootherstepInto, type FillArea } from "./fill.js";
 import { isPaved as isPavedDistrict, pavedGround } from "./pavedGround.js";
 import { orient } from "./geom.js";
 import { lotIdAt } from "./lotIndex.js";
@@ -193,31 +192,52 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
  */
 export function townKeepD(u: number, uDz: number, z: number, seed: number): { v: number; dx: number; dz: number } {
   if (readingSite()) {
-    const wi = smootherstepD(READ_KEEP_INLAND, READ_KEEP_INLAND + READ_KEEP_EDGE, u);
-    if (wi.v === 1) return UNIT_KEEP;
+    smootherstepInto(READ_KEEP_INLAND, READ_KEEP_INLAND + READ_KEEP_EDGE, u);
+    const wiV = STEP.v;
+    const wiD = STEP.d;
+    if (wiV === 1) return UNIT_KEEP;
     const az = z - COVE_Z < 0 ? COVE_Z - z : z - COVE_Z;
-    const wz = smootherstepD(READ_KEEP_Z, READ_KEEP_Z + READ_KEEP_EDGE, az);
-    if (wz.v === 1) return UNIT_KEEP;
-    const iv = 1 - wi.v;
-    const zv = 1 - wz.v;
+    smootherstepInto(READ_KEEP_Z, READ_KEEP_Z + READ_KEEP_EDGE, az);
+    const wzV = STEP.v;
+    const wzD = STEP.d;
+    if (wzV === 1) return UNIT_KEEP;
+    const iv = 1 - wiV;
+    const zv = 1 - wzV;
     const sz = z - COVE_Z < 0 ? -1 : 1;
-    return { v: 1 - iv * zv, dx: zv * wi.d, dz: zv * wi.d * uDz + iv * wz.d * sz };
+    return { v: 1 - iv * zv, dx: zv * wiD, dz: zv * wiD * uDz + iv * wzD * sz };
   }
   const plan = planFor(seed);
   const site = siteFor(seed);
   const xf = roadCenterX(seed, z) + u - site.anchor.x;
   const zr = z - COVE_Z;
-  const cov = coverD(plan, xf, zr);
+  coverInto(plan, xf, zr);
+  const covV = COVER.v;
+  const covDx = COVER.dx;
+  const covDz = COVER.dz;
   const box = fillBoxOf(plan);
-  const rd = roadWeightD(plan, xf, zr);
-  if (cov.v === 0 && rd.v === 0 && (xf < box.x0 || xf > box.x1 || zr < box.z0 || zr > box.z1)) return UNIT_KEEP;
-  const f = xf < box.x0 || xf > box.x1 || zr < box.z0 || zr > box.z1 ? NO_WEIGHT : fillWindowD(plan.fill, xf, zr);
+  roadWeightInto(plan, xf, zr);
+  const rdV = ROAD.v;
+  const rdDx = ROAD.dx;
+  const rdDz = ROAD.dz;
+  const outside = xf < box.x0 || xf > box.x1 || zr < box.z0 || zr > box.z1;
+  if (covV === 0 && rdV === 0 && outside) return UNIT_KEEP;
+  let fV = 0;
+  let fDx = 0;
+  let fDz = 0;
+  if (!outside) {
+    fillWindowInto(plan.fill, xf, zr);
+    fV = FILL.v;
+    fDx = FILL.dx;
+    fDz = FILL.dz;
+  }
   // The cover united with the fill's window: the town covers a point if either does.
-  const town = { v: 1 - (1 - cov.v) * (1 - f.v), dx: (1 - f.v) * cov.dx + (1 - cov.v) * f.dx, dz: (1 - f.v) * cov.dz + (1 - cov.v) * f.dz };
+  const townV = 1 - (1 - covV) * (1 - fV);
+  const townDx = (1 - fV) * covDx + (1 - covV) * fDx;
+  const townDz = (1 - fV) * covDz + (1 - covV) * fDz;
   // And the corridors of the roads out: the bands are kept off a road's own width.
-  const c = 1 - (1 - town.v) * (1 - rd.v);
+  const c = 1 - (1 - townV) * (1 - rdV);
   if (c === 0) return UNIT_KEEP;
-  return { v: 1 - c, dx: -((1 - rd.v) * town.dx + (1 - town.v) * rd.dx), dz: -((1 - rd.v) * town.dz + (1 - town.v) * rd.dz) };
+  return { v: 1 - c, dx: -((1 - rdV) * townDx + (1 - townV) * rdDx), dz: -((1 - rdV) * townDz + (1 - townV) * rdDz) };
 }
 
 type RoadBox = { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number; readonly segs: readonly (readonly [number, number, number, number])[] };
@@ -249,14 +269,20 @@ function roadBoxesOf(plan: TownPlan): readonly RoadBox[] {
   return boxes;
 }
 
-/** How much the roads out of town hold a place, 0 to 1 with its gradient: 1 within `ROAD_KEEP_HALF` of a road's line, falling to 0 over `ROAD_KEEP_RAMP`. */
-function roadWeightD(plan: TownPlan, x: number, z: number): { v: number; dx: number; dz: number } {
+/** Where `roadWeightInto` leaves its answer. Read at once, before any other call. */
+const ROAD = { v: 0, dx: 0, dz: 0 };
+
+/** How much the roads out of town hold a place, 0 to 1 with its gradient, left in `ROAD`: 1 within `ROAD_KEEP_HALF` of a road's line, falling to 0 over `ROAD_KEEP_RAMP`. */
+function roadWeightInto(plan: TownPlan, x: number, z: number): void {
   let rest = 1;
   let restDx = 0;
   let restDz = 0;
-  for (const box of roadBoxesOf(plan)) {
+  const boxes = roadBoxesOf(plan);
+  for (let bi = 0; bi < boxes.length; bi++) {
+    const box = boxes[bi] as RoadBox;
     if (x < box.x0 || x > box.x1 || z < box.z0 || z > box.z1) continue;
-    for (const seg of box.segs) {
+    for (let si = 0; si < box.segs.length; si++) {
+      const seg = box.segs[si] as readonly [number, number, number, number];
       const abx = seg[2] - seg[0];
       const abz = seg[3] - seg[1];
       const l2 = abx * abx + abz * abz;
@@ -270,21 +296,27 @@ function roadWeightD(plan: TownPlan, x: number, z: number): { v: number; dx: num
       let wdx = 0;
       let wdz = 0;
       if (d > ROAD_KEEP_HALF) {
-        const sm = smootherstepD(ROAD_KEEP_HALF, ROAD_KEEP_HALF + ROAD_KEEP_RAMP, d);
-        w = 1 - sm.v;
-        wdx = (-sm.d * ex) / d;
-        wdz = (-sm.d * ez) / d;
+        smootherstepInto(ROAD_KEEP_HALF, ROAD_KEEP_HALF + ROAD_KEEP_RAMP, d);
+        w = 1 - STEP.v;
+        wdx = (-STEP.d * ex) / d;
+        wdz = (-STEP.d * ez) / d;
       }
-      if (w === 1) return { v: 1, dx: 0, dz: 0 };
+      if (w === 1) {
+        ROAD.v = 1;
+        ROAD.dx = 0;
+        ROAD.dz = 0;
+        return;
+      }
       restDx = (1 - w) * restDx - rest * wdx;
       restDz = (1 - w) * restDz - rest * wdz;
       rest *= 1 - w;
     }
   }
-  return { v: 1 - rest, dx: 0 - restDx, dz: 0 - restDz };
+  ROAD.v = 1 - rest;
+  ROAD.dx = 0 - restDx;
+  ROAD.dz = 0 - restDz;
 }
 
-const NO_WEIGHT = { v: 0, dx: 0, dz: 0 };
 const FILL_BOXES = new WeakMap<TownPlan, { x0: number; z0: number; x1: number; z1: number }>();
 
 /** The box the plan's fill (its bank included) lies in, found once per plan. */
@@ -305,9 +337,11 @@ function fillBoxOf(plan: TownPlan): { x0: number; z0: number; x1: number; z1: nu
 /** How much the town covers a world point, 0 to 1: the plan's cover (its blocks and the quay) united with the plan's fill, its bank included. */
 export function townCover(seed: number, x: number, z: number, fill: readonly FillArea[] = planFor(seed).fill): number {
   const site = siteFor(seed);
-  const cover = coverD(planFor(seed), x - site.anchor.x, z - COVE_Z).v;
+  coverInto(planFor(seed), x - site.anchor.x, z - COVE_Z);
+  const cover = COVER.v;
   if (fill.length === 0) return cover;
-  return 1 - (1 - cover) * (1 - fillWindowD(fill, x - site.anchor.x, z - COVE_Z).v);
+  fillWindowInto(fill, x - site.anchor.x, z - COVE_Z);
+  return 1 - (1 - cover) * (1 - FILL.v);
 }
 
 export { isPaved } from "./pavedGround.js";
@@ -481,7 +515,10 @@ function blockWindow(edges: readonly Edge[], x: number, z: number, margin: numbe
     const e = edges[i] as Edge;
     const d = e.nx * x + e.nz * z - e.c;
     if (d <= -margin) return 0;
-    if (d < 0) v *= smootherstepD(-margin, 0, d).v;
+    if (d < 0) {
+      smootherstepInto(-margin, 0, d);
+      v *= STEP.v;
+    }
   }
   return v;
 }
@@ -493,7 +530,10 @@ function blockWindowOff(edges: readonly Edge[], x: number, z: number, off: numbe
     const e = edges[i] as Edge;
     const d = e.nx * x + e.nz * z - e.c;
     if (d <= -off - ramp) return 0;
-    if (d < -off) v *= smootherstepD(-off - ramp, -off, d).v;
+    if (d < -off) {
+      smootherstepInto(-off - ramp, -off, d);
+      v *= STEP.v;
+    }
   }
   return v;
 }
@@ -527,61 +567,114 @@ export type Clear = { tree: number; clutter: number; yard: number; meadow: numbe
 
 const OPEN: Clear = Object.freeze({ tree: 1, clutter: 1, yard: 0, meadow: 0 });
 
-/** The street's own frame at a point: how far along it, how far to its left (signed), and its length. */
-function streetCoords(s: Streetway, x: number, z: number): { s: number; t: number; len: number } {
+/** Where `streetCoordsInto` leaves its answer. Read at once, before any other call. */
+const COORDS = { s: 0, t: 0, len: 0 };
+
+/** The street's own frame at a point: how far along it, how far to its left (signed), and its length. Left in `COORDS`. */
+function streetCoordsInto(s: Streetway, x: number, z: number): void {
   const abx = s.bx - s.ax;
   const abz = s.bz - s.az;
   const len = Math.sqrt(abx * abx + abz * abz);
   const tx = abx / len;
   const tz = abz / len;
-  return { s: (x - s.ax) * tx + (z - s.az) * tz, t: -(x - s.ax) * tz + (z - s.az) * tx, len };
+  COORDS.s = (x - s.ax) * tx + (z - s.az) * tz;
+  COORDS.t = -(x - s.ax) * tz + (z - s.az) * tx;
+  COORDS.len = len;
 }
+
+/** Where `gridFactorInto` and `alleyFactorInto` leave their answer: the share of the ground cover and of the meadow a street's right of way lets grow. Read at once, before any other call. */
+const FACTOR = { clutter: 0, meadow: 0 };
 
 /**
  * What a street's right of way lets grow at a point inside it: nothing within `PAVEMENT_CLEAR` of the roadway's edge (the curb, the gutter
  * and the trough under them), nothing on a sidewalk's slabs but a little over the back 45 cm, a little on a gravel shoulder, and on a
  * verge the grass of the lot beside it (the owner's mowing), thinned.
  */
-function gridFactor(plan: TownPlan, sw: Streetway, x: number, z: number): { clutter: number; meadow: number } {
-  const c = streetCoords(sw, x, z);
-  if (c.s < -0.5 || c.s > c.len + 0.5) return { clutter: 1, meadow: 1 };
-  const at = c.t < 0 ? -c.t : c.t;
-  if (at <= sw.cw + PAVEMENT_CLEAR) return { clutter: 0, meadow: 0 };
+function gridFactorInto(plan: TownPlan, sw: Streetway, x: number, z: number): void {
+  streetCoordsInto(sw, x, z);
+  const cs = COORDS.s;
+  const ct = COORDS.t;
+  const clen = COORDS.len;
+  if (cs < -0.5 || cs > clen + 0.5) {
+    FACTOR.clutter = 1;
+    FACTOR.meadow = 1;
+    return;
+  }
+  const at = ct < 0 ? -ct : ct;
+  if (at <= sw.cw + PAVEMENT_CLEAR) {
+    FACTOR.clutter = 0;
+    FACTOR.meadow = 0;
+    return;
+  }
   const edge = plan.edges[sw.id];
-  if (edge === undefined) return { clutter: 1, meadow: 1 };
-  const side = edge.sides[c.t > 0 ? 0 : 1];
-  const run = side.walk > 0 ? walkAt(side, c.s) : null;
-  if (run !== null && at >= sw.half - side.walk) return { clutter: at > sw.half - 0.45 ? WALK_EDGE_CLUTTER : 0, meadow: 0 };
-  if (!side.curb && at < sw.cw + side.verge) return { clutter: SHOULDER_CLUTTER, meadow: 0 };
+  if (edge === undefined) {
+    FACTOR.clutter = 1;
+    FACTOR.meadow = 1;
+    return;
+  }
+  const side = edge.sides[ct > 0 ? 0 : 1];
+  const run = side.walk > 0 ? walkAt(side, cs) : null;
+  if (run !== null && at >= sw.half - side.walk) {
+    FACTOR.clutter = at > sw.half - 0.45 ? WALK_EDGE_CLUTTER : 0;
+    FACTOR.meadow = 0;
+    return;
+  }
+  if (!side.curb && at < sw.cw + side.verge) {
+    FACTOR.clutter = SHOULDER_CLUTTER;
+    FACTOR.meadow = 0;
+    return;
+  }
   // The verge: the grass of the lot beside it, four metres past the right of way's edge.
   const abx = sw.bx - sw.ax;
   const abz = sw.bz - sw.az;
   const len = Math.sqrt(abx * abx + abz * abz);
-  const sgn = c.t > 0 ? 1 : -1;
-  const px = sw.ax + (abx / len) * c.s - (abz / len) * sgn * (sw.half + 4);
-  const pz = sw.az + (abz / len) * c.s + (abx / len) * sgn * (sw.half + 4);
+  const sgn = ct > 0 ? 1 : -1;
+  const px = sw.ax + (abx / len) * cs - (abz / len) * sgn * (sw.half + 4);
+  const pz = sw.az + (abz / len) * cs + (abx / len) * sgn * (sw.half + 4);
   const id = lotIdAt(plan, px, pz);
   const y = id >= 0 ? plan.yards[id] : undefined;
-  if (y === undefined || y.kind === "paved") return { clutter: id >= 0 ? 0 : 1, meadow: 0 };
+  if (y === undefined || y.kind === "paved") {
+    FACTOR.clutter = id >= 0 ? 0 : 1;
+    FACTOR.meadow = 0;
+    return;
+  }
   const m = YARD_MASK[y.kind];
   // The grass comes up from the pavement's edge over the next 0.8 m, not as a wall.
-  const ramp = smootherstepD(sw.cw + PAVEMENT_CLEAR, sw.cw + PAVEMENT_CLEAR + 0.8, at).v;
-  return { clutter: m.clutter * VERGE_CLUTTER * ramp, meadow: m.meadow * VERGE_MEADOW * ramp };
+  smootherstepInto(sw.cw + PAVEMENT_CLEAR, sw.cw + PAVEMENT_CLEAR + 0.8, at);
+  const ramp = STEP.v;
+  FACTOR.clutter = m.clutter * VERGE_CLUTTER * ramp;
+  FACTOR.meadow = m.meadow * VERGE_MEADOW * ramp;
 }
 
-/** An alley: the wheel tracks keep the grass off; between them and beside them it grows. */
-function alleyFactor(sw: Streetway, x: number, z: number): { clutter: number; meadow: number } {
-  const c = streetCoords(sw, x, z);
-  const at = c.t < 0 ? -c.t : c.t;
-  return at > TRACK_FROM && at < TRACK_TO ? { clutter: 0, meadow: 0 } : { clutter: 0.8, meadow: 0.5 };
+/** An alley: the wheel tracks keep the grass off; between them and beside them it grows. Left in `FACTOR`. */
+function alleyFactorInto(sw: Streetway, x: number, z: number): void {
+  streetCoordsInto(sw, x, z);
+  const ct = COORDS.t;
+  const at = ct < 0 ? -ct : ct;
+  if (at > TRACK_FROM && at < TRACK_TO) {
+    FACTOR.clutter = 0;
+    FACTOR.meadow = 0;
+  } else {
+    FACTOR.clutter = 0.8;
+    FACTOR.meadow = 0.5;
+  }
 }
 
-/** What the town leaves of the forest at a point of the plan's frame. */
-export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
+/** Where `clearInto` leaves its answer. Read at once, before any other call. */
+const CLEAR: Clear = { tree: 1, clutter: 1, yard: 0, meadow: 0 };
+
+/** What the town leaves of the forest at a point of the plan's frame, left in `CLEAR`. */
+function clearInto(plan: TownPlan, xf: number, zr: number): void {
   const index = indexOf(plan);
   const i = Math.floor((xf - index.x0) / CELL);
   const j = Math.floor((zr - index.z0) / CELL);
-  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) return OPEN;
+  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) {
+    CLEAR.tree = OPEN.tree;
+    CLEAR.clutter = OPEN.clutter;
+    CLEAR.yard = OPEN.yard;
+    CLEAR.meadow = OPEN.meadow;
+    return;
+  }
   const cell = i * index.nz + j;
   let paved = 0;
   let yard = 0;
@@ -637,14 +730,21 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
     const sw = index.streets[streets[k] as number] as Streetway;
     const d = streetDistance(sw, xf, zr);
     const shut = TREE_STREET_CLEAR + TREE_JITTER;
-    if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
+    if (d < shut + TREE_RAMP) {
+      smootherstepInto(shut, shut + TREE_RAMP, d);
+      tree *= STEP.v;
+    }
     if (sw.kind === "other") {
       const cshut = CLUTTER_STREET_CLEAR + CLUTTER_JITTER;
-      if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+      if (d < cshut + CLUTTER_RAMP) {
+        smootherstepInto(cshut, cshut + CLUTTER_RAMP, d);
+        clutter *= STEP.v;
+      }
     } else if (d <= 0) {
-      const z = sw.kind === "alley" ? alleyFactor(sw, xf, zr) : gridFactor(plan, sw, xf, zr);
-      clutter *= z.clutter;
-      meadow *= z.meadow;
+      if (sw.kind === "alley") alleyFactorInto(sw, xf, zr);
+      else gridFactorInto(plan, sw, xf, zr);
+      clutter *= FACTOR.clutter;
+      meadow *= FACTOR.meadow;
     }
   }
   const discs = index.cellDiscs[cell] as readonly number[];
@@ -654,23 +754,38 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
     const ddz = zr - dc.z;
     const d = Math.max(0, Math.sqrt(ddx * ddx + ddz * ddz) - dc.r);
     const shut = TREE_STREET_CLEAR + TREE_JITTER;
-    if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
+    if (d < shut + TREE_RAMP) {
+      smootherstepInto(shut, shut + TREE_RAMP, d);
+      tree *= STEP.v;
+    }
     const cshut = CLUTTER_STREET_CLEAR + CLUTTER_JITTER;
-    if (dc.bare && d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+    if (dc.bare && d < cshut + CLUTTER_RAMP) {
+      smootherstepInto(cshut, cshut + CLUTTER_RAMP, d);
+      clutter *= STEP.v;
+    }
   }
   const buildings = index.cellBuildings[cell] as readonly number[];
   for (let k = 0; k < buildings.length; k++) {
     const f = index.buildings[buildings[k] as number] as Footprint;
     const d = footprintDistance(f, xf, zr);
     const shut = TREE_BUILDING_CLEAR + TREE_JITTER;
-    if (d < shut + TREE_RAMP) tree *= smootherstepD(shut, shut + TREE_RAMP, d).v;
+    if (d < shut + TREE_RAMP) {
+      smootherstepInto(shut, shut + TREE_RAMP, d);
+      tree *= STEP.v;
+    }
     if (f.yard) {
       // The grass comes to the wall's foot (each larger piece is kept back by where it stands: `townClutterStands`), but for the step.
-      if (d < WALL_CLEAR + WALL_RAMP) clutter *= smootherstepD(WALL_CLEAR, WALL_CLEAR + WALL_RAMP, d).v;
+      if (d < WALL_CLEAR + WALL_RAMP) {
+        smootherstepInto(WALL_CLEAR, WALL_CLEAR + WALL_RAMP, d);
+        clutter *= STEP.v;
+      }
       if (f.stoop !== null && inYardRect(f.stoop, xf, zr, 0)) clutter = 0;
     } else {
       const cshut = CLUTTER_BUILDING_CLEAR + CLUTTER_JITTER;
-      if (d < cshut + CLUTTER_RAMP) clutter *= smootherstepD(cshut, cshut + CLUTTER_RAMP, d).v;
+      if (d < cshut + CLUTTER_RAMP) {
+        smootherstepInto(cshut, cshut + CLUTTER_RAMP, d);
+        clutter *= STEP.v;
+      }
     }
   }
   if (pavedTree > 0) tree *= 1 - pavedTree;
@@ -678,7 +793,20 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
     clutter *= 1 - pavedClutter;
     meadow *= 1 - pavedClutter;
   }
-  return { tree, clutter, yard: lawn, meadow };
+  CLEAR.tree = tree;
+  CLEAR.clutter = clutter;
+  CLEAR.yard = lawn;
+  CLEAR.meadow = meadow;
+}
+
+/** What the town leaves of the forest at a point of the plan's frame. */
+export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
+  const index = indexOf(plan);
+  const i = Math.floor((xf - index.x0) / CELL);
+  const j = Math.floor((zr - index.z0) / CELL);
+  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) return OPEN;
+  clearInto(plan, xf, zr);
+  return { tree: CLEAR.tree, clutter: CLEAR.clutter, yard: CLEAR.yard, meadow: CLEAR.meadow };
 }
 
 /**
@@ -690,11 +818,15 @@ export function townFeatureMask(seed: number, x: number, z: number): FeatureMask
   const site = siteFor(seed);
   const xf = x - site.anchor.x;
   const zr = z - COVE_Z;
-  const c = clearAt(plan, xf, zr);
-  const cover = coverD(plan, xf, zr).v;
+  clearInto(plan, xf, zr);
+  const cTree = CLEAR.tree;
+  const cClutter = CLEAR.clutter;
+  const cMeadow = CLEAR.meadow;
+  coverInto(plan, xf, zr);
+  const cover = COVER.v;
   const loose = cover === 0 ? 1 : 1 - cover;
-  if (c.tree === 1 && c.clutter === 1 && c.meadow === 0 && loose === 1) return { tree: 1, clutter: 1, meadow: 0, bare: 0 };
-  return { tree: c.tree, clutter: c.clutter, meadow: c.meadow, bare: 0, loose };
+  if (cTree === 1 && cClutter === 1 && cMeadow === 0 && loose === 1) return { tree: 1, clutter: 1, meadow: 0, bare: 0 };
+  return { tree: cTree, clutter: cClutter, meadow: cMeadow, bare: 0, loose };
 }
 
 /** How far from a yard building's wall a piece of ground cover of a class must stand. */
@@ -746,7 +878,8 @@ export function townClutterStands(seed: number, cls: number, x: number, z: numbe
 export function townYardWeight(seed: number, x: number, z: number): number {
   const plan = planFor(seed);
   const site = siteFor(seed);
-  return clearAt(plan, x - site.anchor.x, z - COVE_Z).yard;
+  clearInto(plan, x - site.anchor.x, z - COVE_Z);
+  return CLEAR.yard;
 }
 
 /**
@@ -779,10 +912,12 @@ export function townStripWeight(seed: number, x: number, z: number): number {
   for (let k = 0; k < streets.length; k++) {
     const d = streetDistance(index.streets[streets[k] as number] as Streetway, xf, zr);
     if (d >= STRIP_RAMP) continue;
-    const sw = 1 - smootherstepD(0, STRIP_RAMP, d).v;
+    smootherstepInto(0, STRIP_RAMP, d);
+    const sw = 1 - STEP.v;
     if (sw > w) w = sw;
   }
   // The yard's own weight is its lawn's (a block's window with the paved blocks' taken out): never less than it was.
-  const yard = clearAt(plan, xf, zr).yard;
+  clearInto(plan, xf, zr);
+  const yard = CLEAR.yard;
   return yard > w ? yard : w;
 }

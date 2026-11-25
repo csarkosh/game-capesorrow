@@ -15,12 +15,12 @@
 import { COVE_Z, roadCenterX, roadGradeAt } from "@csarkosh/engine/sim/olympic";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { fbm2d } from "@csarkosh/engine/sim/field";
-import { COVER_FADE, COVER_HOLD, COVER_OUT_FADE, COVER_OUT_HOLD, COVER_SPUR_FADE, COVER_SPUR_HOLD, coverD } from "./cover.js";
-import { QUAY_BANK, fillWindowD, smootherstepD, type FillArea } from "./fill.js";
+import { COVER, COVER_FADE, COVER_HOLD, COVER_OUT_FADE, COVER_OUT_HOLD, COVER_SPUR_FADE, COVER_SPUR_HOLD, coverInto } from "./cover.js";
+import { FILL, QUAY_BANK, STEP, fillWindowInto, smootherstepD, smootherstepInto, type FillArea } from "./fill.js";
 import { QUAY_HEIGHT } from "./levels.js";
 import { planFor } from "./planFor.js";
 import { SITE_HALF, SITE_INLAND, SITE_STEP, siteFor } from "./siteFor.js";
-import { shoreSplineOf, shoreXAt, type ShoreSpline } from "./shoreSpline.js";
+import { SHORE, shoreSplineOf, shoreXAtInto, type ShoreSpline } from "./shoreSpline.js";
 import type { TownSite } from "./site.js";
 import type { TownPlan } from "./types.js";
 
@@ -39,14 +39,32 @@ export const BANK = 10;
 
 /** The footprint's window along z: 1 inside, 0 beyond the blend, and its slope in z. */
 export function alongD(zr: number): { v: number; dz: number } {
-  const s = smootherstepD(TOWN_Z_HALF, TOWN_Z_HALF + EDGE, zr < 0 ? -zr : zr);
-  return { v: 1 - s.v, dz: -s.d * (zr < 0 ? -1 : 1) };
+  smootherstepInto(TOWN_Z_HALF, TOWN_Z_HALF + EDGE, zr < 0 ? -zr : zr);
+  return { v: 1 - STEP.v, dz: -STEP.d * (zr < 0 ? -1 : 1) };
 }
 
 /** The footprint's window inland: 1 up to `TOWN_INLAND` from the highway, 0 beyond the blend, and its slope in u. */
 export function inlandD(u: number): { v: number; du: number } {
-  const s = smootherstepD(TOWN_INLAND, TOWN_INLAND + EDGE, u);
-  return { v: 1 - s.v, du: -s.d };
+  smootherstepInto(TOWN_INLAND, TOWN_INLAND + EDGE, u);
+  return { v: 1 - STEP.v, du: -STEP.d };
+}
+
+/** Where `bankInto` leaves its answer: the weight, its partials and the bank's foot. Read at once, before any other call. */
+const BANKR = { v: 0, dx: 0, dz: 0, foot: 0 };
+
+/**
+ * The bank's weight at a point `s` metres landward of the water's edge (`s` having slope `sz` in z), where
+ * the shore's own slope in z is `q` (and `q2` that slope's slope): 0 seaward of the bank's foot, 1 from the
+ * edge landward. The bank is `BANK` metres wide measured across the shore, not along x, so where the shore
+ * runs east and west along a headland's flank the bank is no steeper than elsewhere. Left in `BANKR`.
+ */
+function bankInto(s: number, sz: number, q: number, q2: number): void {
+  const r = Math.sqrt(1 + q * q);
+  smootherstepInto(-BANK, 0, s / r);
+  BANKR.v = STEP.v;
+  BANKR.dx = STEP.d / r;
+  BANKR.dz = STEP.d * (sz / r - (s * q * q2) / (r * r * r));
+  BANKR.foot = BANK * r;
 }
 
 /**
@@ -56,9 +74,8 @@ export function inlandD(u: number): { v: number; du: number } {
  * runs east and west along a headland's flank the bank is no steeper than elsewhere.
  */
 export function bankD(s: number, sz: number, q: number, q2: number): { v: number; dx: number; dz: number; foot: number } {
-  const r = Math.sqrt(1 + q * q);
-  const sm = smootherstepD(-BANK, 0, s / r);
-  return { v: sm.v, dx: sm.d / r, dz: sm.d * (sz / r - (s * q * q2) / (r * r * r)), foot: BANK * r };
+  bankInto(s, sz, q, q2);
+  return { v: BANKR.v, dx: BANKR.dx, dz: BANKR.dz, foot: BANKR.foot };
 }
 
 /** Where the grade changes from the flats' to the hill's, in metres of offset from the highway: across it the x-slope eases by a quintic. */
@@ -98,14 +115,26 @@ export const RELIEF_SHORE_TO = 70;
 /** The obliquity of the shore, in the relief's own distance from the water's edge, is held under this, smoothly, so a headland's flank (a shore running near east and west) does not make the window flicker far inland. */
 export const RELIEF_OBLIQUE = 3;
 
-/** The quintic smootherstep and the integral of it, which is the hill's rise across the join: on [0, 1], K(t) = t^6 - 3 t^5 + 2.5 t^4. */
-function joinD(u: number): { k: number; s: number } {
+/** Where `joinInto` leaves its answer. */
+const JOIN = { k: 0, s: 0 };
+
+/** The quintic smootherstep and the integral of it, which is the hill's rise across the join: on [0, 1], K(t) = t^6 - 3 t^5 + 2.5 t^4. Left in `JOIN`. */
+function joinInto(u: number): void {
   const span = HILL_TO - HILL_FROM;
   const t = (u - HILL_FROM) / span;
-  if (t <= 0) return { k: 0, s: 0 };
-  if (t >= 1) return { k: u - HILL_FROM - span / 2, s: 1 };
+  if (t <= 0) {
+    JOIN.k = 0;
+    JOIN.s = 0;
+    return;
+  }
+  if (t >= 1) {
+    JOIN.k = u - HILL_FROM - span / 2;
+    JOIN.s = 1;
+    return;
+  }
   const t2 = t * t;
-  return { k: span * t2 * t2 * (t2 - 3 * t + 2.5), s: t2 * t * (t * (t * 6 - 15) + 10) };
+  JOIN.k = span * t2 * t2 * (t2 - 3 * t + 2.5);
+  JOIN.s = t2 * t * (t * (t * 6 - 15) + 10);
 }
 
 /**
@@ -117,23 +146,50 @@ export const HILL_EXTRA = 0.04;
 export const FAR_FROM = 200;
 export const FAR_SPAN = 220;
 
-function farD(u: number): { k: number; s: number } {
+/** Where `farInto` leaves its answer. */
+const FAR = { k: 0, s: 0 };
+
+function farInto(u: number): void {
   const t = (u - FAR_FROM) / FAR_SPAN;
-  if (t <= 0) return { k: 0, s: 0 };
-  if (t >= 1) return { k: u - FAR_FROM - FAR_SPAN / 2, s: 1 };
+  if (t <= 0) {
+    FAR.k = 0;
+    FAR.s = 0;
+    return;
+  }
+  if (t >= 1) {
+    FAR.k = u - FAR_FROM - FAR_SPAN / 2;
+    FAR.s = 1;
+    return;
+  }
   const t2 = t * t;
-  return { k: FAR_SPAN * t2 * t2 * (t2 - 3 * t + 2.5), s: t2 * t * (t * (t * 6 - 15) + 10) };
+  FAR.k = FAR_SPAN * t2 * t2 * (t2 - 3 * t + 2.5);
+  FAR.s = t2 * t * (t * (t * 6 - 15) + 10);
 }
 
 /** The rise of the join at the highway itself: what the flats' grade must make up so the plane meets the grade line there. */
-const JOIN_AT_HIGHWAY = joinD(0).k;
+joinInto(0);
+const JOIN_AT_HIGHWAY = JOIN.k;
 
-/** The plane's seaward foot: 0 seaward of the water's edge, the identity from `QUAY_JOIN` landward, a quintic ease between. */
-function footD(y: number): { v: number; d: number } {
-  if (y <= 0) return { v: 0, d: 0 };
-  if (y >= QUAY_JOIN) return { v: y, d: 1 };
-  const e = smootherstepD(0, QUAY_JOIN, y);
-  return { v: y * e.v, d: e.v + y * e.d };
+/** Where `footInto` leaves its answer. */
+const FOOT = { v: 0, d: 0 };
+
+/** The plane's seaward foot: 0 seaward of the water's edge, the identity from `QUAY_JOIN` landward, a quintic ease between. Left in `FOOT`. */
+function footInto(y: number): void {
+  if (y <= 0) {
+    FOOT.v = 0;
+    FOOT.d = 0;
+    return;
+  }
+  if (y >= QUAY_JOIN) {
+    FOOT.v = y;
+    FOOT.d = 1;
+    return;
+  }
+  smootherstepInto(0, QUAY_JOIN, y);
+  const ev = STEP.v;
+  const ed = STEP.d;
+  FOOT.v = y * ev;
+  FOOT.d = ev + y * ed;
 }
 
 /** What the made ground declares of itself for the level id: every constant that shapes it. */
@@ -212,11 +268,79 @@ function contextOf(seed: number): Context {
 /** A weight with its partials in x and z. */
 type Weight = { v: number; dx: number; dz: number };
 
-const ZERO: Weight = { v: 0, dx: 0, dz: 0 };
+/** Where `reliefWindowInto` leaves its answer. Read at once, before any other call. */
+const RELIEF = { v: 0, dx: 0, dz: 0 };
 
-/** The product of two weights. */
-function mul(a: Weight, b: Weight): Weight {
-  return { v: a.v * b.v, dx: a.dx * b.v + a.v * b.dx, dz: a.dz * b.v + a.v * b.dz };
+/**
+ * Where the relief window opens, 0 to 1 with its partials: closed on the fill, within `QUAY_LEVEL` metres of the quay, within
+ * `RELIEF_HIGHWAY_FROM` metres of the highway and within `RELIEF_SHORE_FROM` of the water's edge, each opening smoothly. `y` is
+ * the distance across the shore (with its z partial `yDz`), `u` the offset from the highway (with `uDz`), `fv` the fill's weight
+ * (with its partials `fdx`, `fdz`). Left in `RELIEF`.
+ */
+function reliefWindowInto(quay: { a: { x: number; z: number }; b: { x: number; z: number } }, xf: number, zr: number, y: number, yDx: number, yDz: number, u: number, uDz: number, fv: number, fdx: number, fdz: number): void {
+  smootherstepInto(RELIEF_SHORE_FROM, RELIEF_SHORE_TO, y);
+  const shoreV = STEP.v;
+  const shoreD = STEP.d;
+  if (shoreV === 0) {
+    RELIEF.v = 0;
+    RELIEF.dx = 0;
+    RELIEF.dz = 0;
+    return;
+  }
+  const au = u < 0 ? -u : u;
+  smootherstepInto(RELIEF_HIGHWAY_FROM, RELIEF_HIGHWAY_TO, au);
+  const hwV = STEP.v;
+  const hwD = STEP.d;
+  if (hwV === 0) {
+    RELIEF.v = 0;
+    RELIEF.dx = 0;
+    RELIEF.dz = 0;
+    return;
+  }
+  const qx = quay.b.x - quay.a.x;
+  const qz = quay.b.z - quay.a.z;
+  const t = Math.max(0, Math.min(1, ((xf - quay.a.x) * qx + (zr - quay.a.z) * qz) / (qx * qx + qz * qz)));
+  const ex = xf - (quay.a.x + t * qx);
+  const ez = zr - (quay.a.z + t * qz);
+  const d = Math.sqrt(ex * ex + ez * ez);
+  smootherstepInto(QUAY_LEVEL, QUAY_LEVEL + QUAY_RAMP, d);
+  const qV = STEP.v;
+  const qD = STEP.d;
+  if (qV === 0) {
+    RELIEF.v = 0;
+    RELIEF.dx = 0;
+    RELIEF.dz = 0;
+    return;
+  }
+  const sign = u < 0 ? -1 : 1;
+  // The product of the four windows, one at a time: each (v, dx, dz) times the next.
+  let kv = shoreV;
+  let kdx = shoreD * yDx;
+  let kdz = shoreD * yDz;
+  let bv = hwV;
+  let bdx = hwD * sign;
+  let bdz = hwD * sign * uDz;
+  let nv = kv * bv;
+  let ndx = kdx * bv + kv * bdx;
+  let ndz = kdz * bv + kv * bdz;
+  kv = nv;
+  kdx = ndx;
+  kdz = ndz;
+  bv = qV;
+  bdx = (qD * ex) / d;
+  bdz = (qD * ez) / d;
+  nv = kv * bv;
+  ndx = kdx * bv + kv * bdx;
+  ndz = kdz * bv + kv * bdz;
+  kv = nv;
+  kdx = ndx;
+  kdz = ndz;
+  bv = 1 - fv;
+  bdx = -fdx;
+  bdz = -fdz;
+  RELIEF.v = kv * bv;
+  RELIEF.dx = kdx * bv + kv * bdx;
+  RELIEF.dz = kdz * bv + kv * bdz;
 }
 
 /**
@@ -225,71 +349,66 @@ function mul(a: Weight, b: Weight): Weight {
  * the distance across the shore (with its z partial `yDz`), `u` the offset from the highway (with `uDz`), `fillV` the fill's weight.
  */
 export function reliefWindow(quay: { a: { x: number; z: number }; b: { x: number; z: number } }, xf: number, zr: number, y: number, yDx: number, yDz: number, u: number, uDz: number, fill: Weight): Weight {
-  const shore = smootherstepD(RELIEF_SHORE_FROM, RELIEF_SHORE_TO, y);
-  if (shore.v === 0) return ZERO;
-  const au = u < 0 ? -u : u;
-  const hw = smootherstepD(RELIEF_HIGHWAY_FROM, RELIEF_HIGHWAY_TO, au);
-  if (hw.v === 0) return ZERO;
-  const qx = quay.b.x - quay.a.x;
-  const qz = quay.b.z - quay.a.z;
-  const t = Math.max(0, Math.min(1, ((xf - quay.a.x) * qx + (zr - quay.a.z) * qz) / (qx * qx + qz * qz)));
-  const ex = xf - (quay.a.x + t * qx);
-  const ez = zr - (quay.a.z + t * qz);
-  const d = Math.sqrt(ex * ex + ez * ez);
-  const q = smootherstepD(QUAY_LEVEL, QUAY_LEVEL + QUAY_RAMP, d);
-  if (q.v === 0) return ZERO;
-  const sign = u < 0 ? -1 : 1;
-  let k: Weight = { v: shore.v, dx: shore.d * yDx, dz: shore.d * yDz };
-  k = mul(k, { v: hw.v, dx: hw.d * sign, dz: hw.d * sign * uDz });
-  k = mul(k, { v: q.v, dx: (q.d * ex) / d, dz: (q.d * ez) / d });
-  return mul(k, { v: 1 - fill.v, dx: -fill.dx, dz: -fill.dz });
+  reliefWindowInto(quay, xf, zr, y, yDx, yDz, u, uDz, fill.v, fill.dx, fill.dz);
+  return { v: RELIEF.v, dx: RELIEF.dx, dz: RELIEF.dz };
 }
 
-type Shore = { v: number; dz: number; dz2: number };
+/** Where `planeInto` leaves its answer: the plane's height and slopes, and the shore's obliquity and its slope. Read at once, before any other call. */
+const PLANE = { h: 0, dx: 0, dz: 0, r: 0, rDz: 0 };
 
 /**
  * The graded plane at a point: `QUAY + gf * r * foot(s / r) + (HILL_GRADE - gf) * K(u)`, where `s` is the distance landward of the water's edge
- * (with its z slope `sz`), `shore` the shore's line there, `u` the offset from the highway (slope `uDz`). Null where the shore and the highway are
- * too close for it to stand between them. With its height and exact slopes, and the shore's obliquity `r` and its slope.
+ * (with its z slope `sz`), the shore's line there has slope `q` in z (and `q2` that slope's slope), `u` the offset from the highway (slope `uDz`). False where the shore and the highway are
+ * too close for it to stand between them. With its height and exact slopes, and the shore's obliquity `r` and its slope, left in `PLANE`.
  */
-function planeOf(seed: number, z: number, u: number, uDz: number, s: number, sz: number, shore: Shore): { h: number; dx: number; dz: number; r: number; rDz: number } | null {
+function planeInto(seed: number, z: number, u: number, uDz: number, s: number, sz: number, q: number, q2: number): boolean {
   const D = s - u;
   const c = JOIN_AT_HIGHWAY;
-  if (!(D > c)) return null;
+  if (!(D > c)) return false;
   const Dz = sz - uDz;
   const grade = roadGradeAt(seed, z);
   const A = grade.h - QUAY;
   const gf = (A - HILL_GRADE * c) / (D - c);
   const gfDz = (grade.dz * (D - c) - (A - HILL_GRADE * c) * Dz) / ((D - c) * (D - c));
-  const q = shore.dz;
   const r = Math.sqrt(1 + q * q);
-  const rDz = (q * shore.dz2) / r;
+  const rDz = (q * q2) / r;
   const y = s / r;
   const yDz = sz / r - (s * rDz) / (r * r);
-  const foot = footD(y);
-  const join = joinD(u);
-  const far = farD(u);
-  return {
-    h: QUAY + gf * r * foot.v + (HILL_GRADE - gf) * join.k + HILL_EXTRA * far.k,
-    dx: gf * foot.d + (HILL_GRADE - gf) * join.s + HILL_EXTRA * far.s,
-    dz: gfDz * r * foot.v + gf * rDz * foot.v + gf * r * foot.d * yDz - gfDz * join.k + (HILL_GRADE - gf) * join.s * uDz + HILL_EXTRA * far.s * uDz,
-    r,
-    rDz,
-  };
+  footInto(y);
+  const footV = FOOT.v;
+  const footD = FOOT.d;
+  joinInto(u);
+  const joinK = JOIN.k;
+  const joinS = JOIN.s;
+  farInto(u);
+  const farK = FAR.k;
+  const farS = FAR.s;
+  PLANE.h = QUAY + gf * r * footV + (HILL_GRADE - gf) * joinK + HILL_EXTRA * farK;
+  PLANE.dx = gf * footD + (HILL_GRADE - gf) * joinS + HILL_EXTRA * farS;
+  PLANE.dz = gfDz * r * footV + gf * rDz * footV + gf * r * footD * yDz - gfDz * joinK + (HILL_GRADE - gf) * joinS * uDz + HILL_EXTRA * farS * uDz;
+  PLANE.r = r;
+  PLANE.rDz = rDz;
+  return true;
 }
 
 /** The graded plane alone, with no relief and no weight, at a world point whose offset from the highway is `u`: what the made ground is built over (null where it does not stand). */
 export function madePlaneD(seed: number, x: number, z: number, u: number, uDz: number): TerrainSample | null {
   const ctx = contextOf(seed);
   const zr = z - COVE_Z;
-  const shore = shoreXAt(ctx.spline, zr);
-  const plane = planeOf(seed, z, u, uDz, x - ctx.site.anchor.x - shore.v, -shore.dz, shore);
-  return plane === null ? null : { h: plane.h, dx: plane.dx, dz: plane.dz };
+  shoreXAtInto(ctx.spline, zr);
+  const shV = SHORE.v;
+  const shDz = SHORE.dz;
+  const shDz2 = SHORE.dz2;
+  if (!planeInto(seed, z, u, uDz, x - ctx.site.anchor.x - shV, -shDz, shDz, shDz2)) return null;
+  return { h: PLANE.h, dx: PLANE.dx, dz: PLANE.dz };
 }
 
+/** Where `townGroundInto` leaves the made ground. Read at once, before any other call. */
+export const GROUND = { h: 0, dx: 0, dz: 0 };
+
 /**
- * The town's ground over the coast's (`base`), at a point whose offset from the highway is `u` (with
- * its slope in z, `uDz`).
+ * The town's ground over the coast's (`bh`, `bdx`, `bdz`: the base sample's height and slopes), at a point whose offset from the highway is `u` (with
+ * its slope in z, `uDz`), left in `GROUND`. Answers false, and writes nothing, where the base stands as it is.
  *
  * The plane is `QUAY + gf * r * foot(s / r) + (HILL_GRADE - gf) * K(u)`. `s` is the distance landward of the
  * water's edge and `r` the shore's obliquity, so `s / r` is the distance across the shore: the plane is flat
@@ -299,85 +418,121 @@ export function madePlaneD(seed: number, x: number, z: number, u: number, uDz: n
  * `D` the highway's distance from the water's edge. `K` is the integral of a quintic ease from 0 to 1 over the
  * highway's few metres, so the x-slope goes from `gf` to the hill's grade without a crease.
  *
- * The made ground is the plane over `base` by the weight `w` (the plan's cover and the water's bank, united smoothly with
+ * The made ground is the plane over the base by the weight `w` (the plan's cover and the water's bank, united smoothly with
  * the plan's fill), keeping relief: `h = base + w * (plane - base + kept + own)`, where `kept` is a saturated share of
  * the coast's own height over the plane and `own` the town's own low relief, both by the relief window.
  */
-export function townGroundD(seed: number, x: number, z: number, u: number, uDz: number, base: TerrainSample, fill?: readonly FillArea[]): TerrainSample {
+export function townGroundInto(seed: number, x: number, z: number, u: number, uDz: number, bh: number, bdx: number, bdz: number, fill?: readonly FillArea[]): boolean {
   const ctx = contextOf(seed);
   const site = ctx.site;
   const xf = x - site.anchor.x;
   const zr = z - COVE_Z;
-  const cov = coverD(ctx.plan, xf, zr, false);
+  coverInto(ctx.plan, xf, zr, false);
+  const covV = COVER.v;
+  const covDx = COVER.dx;
+  const covDz = COVER.dz;
   // The plan's fill matters only near it: a point beyond its box is not asked.
   const areas = fill ?? (xf < ctx.fillBox.x0 || xf > ctx.fillBox.x1 || zr < ctx.fillBox.z0 || zr > ctx.fillBox.z1 ? NO_FILL : ctx.plan.fill);
-  if (cov.v === 0 && areas.length === 0) return base;
-  const shore = shoreXAt(ctx.spline, zr);
-  const s = xf - shore.v;
-  const sz = -shore.dz;
-  const bank = bankD(s, sz, shore.dz, shore.dz2);
+  if (covV === 0 && areas.length === 0) return false;
+  shoreXAtInto(ctx.spline, zr);
+  const shV = SHORE.v;
+  const shDz = SHORE.dz;
+  const shDz2 = SHORE.dz2;
+  const s = xf - shV;
+  const sz = -shDz;
+  bankInto(s, sz, shDz, shDz2);
+  const bankV = BANKR.v;
+  const bankDx = BANKR.dx;
+  const bankDz = BANKR.dz;
+  const bankFoot = BANKR.foot;
 
   // The cover and the bank, united smoothly with the plan's fill.
-  let fp: Weight = ZERO;
-  if (cov.v > 0 && s > -bank.foot) fp = { v: bank.v * cov.v, dx: bank.dx * cov.v + bank.v * cov.dx, dz: bank.dz * cov.v + bank.v * cov.dz };
-  let w = fp;
-  let f: Weight = ZERO;
-  if (areas.length > 0) {
-    f = fillWindowD(areas, xf, zr);
-    w = {
-      v: 1 - (1 - fp.v) * (1 - f.v),
-      dx: (1 - f.v) * fp.dx + (1 - fp.v) * f.dx,
-      dz: (1 - f.v) * fp.dz + (1 - fp.v) * f.dz,
-    };
+  let fpV = 0;
+  let fpDx = 0;
+  let fpDz = 0;
+  if (covV > 0 && s > -bankFoot) {
+    fpV = bankV * covV;
+    fpDx = bankDx * covV + bankV * covDx;
+    fpDz = bankDz * covV + bankV * covDz;
   }
-  if (w.v === 0) return base;
+  let wV = fpV;
+  let wDx = fpDx;
+  let wDz = fpDz;
+  let fV = 0;
+  let fDx = 0;
+  let fDz = 0;
+  if (areas.length > 0) {
+    fillWindowInto(areas, xf, zr);
+    fV = FILL.v;
+    fDx = FILL.dx;
+    fDz = FILL.dz;
+    wV = 1 - (1 - fpV) * (1 - fV);
+    wDx = (1 - fV) * fpDx + (1 - fpV) * fDx;
+    wDz = (1 - fV) * fpDz + (1 - fpV) * fDz;
+  }
+  if (wV === 0) return false;
 
-  const plane = planeOf(seed, z, u, uDz, s, sz, shore);
-  if (plane === null) return base;
-  const { h: planeH, dx: planeDx, dz: planeDz, r, rDz } = plane;
+  if (!planeInto(seed, z, u, uDz, s, sz, shDz, shDz2)) return false;
+  const planeH = PLANE.h;
+  const planeDx = PLANE.dx;
+  const planeDz = PLANE.dz;
+  const r = PLANE.r;
+  const rDz = PLANE.rDz;
 
-  const gap = planeH - base.h;
+  const gap = planeH - bh;
   let inside = gap;
-  let insideDx = planeDx - base.dx;
-  let insideDz = planeDz - base.dz;
+  let insideDx = planeDx - bdx;
+  let insideDz = planeDz - bdz;
 
   // The relief the town keeps.
   const span = RELIEF_OBLIQUE - 1;
   const rEff = 1 + ((r - 1) * span) / (span + (r - 1));
   const rEffDz = ((span * span) / ((span + (r - 1)) * (span + (r - 1)))) * rDz;
-  const k = reliefWindow(ctx.plan.quay, xf, zr, s / rEff, 1 / rEff, sz / rEff - (s * rEffDz) / (rEff * rEff), u, uDz, f);
-  if (k.v > 0) {
-    const hill = smootherstepD(RELIEF_HILL_FROM, RELIEF_HILL_TO, u);
-    const share = RELIEF_FLATS + (RELIEF_HILL - RELIEF_FLATS) * hill.v;
-    const shareDx = (RELIEF_HILL - RELIEF_FLATS) * hill.d;
+  reliefWindowInto(ctx.plan.quay, xf, zr, s / rEff, 1 / rEff, sz / rEff - (s * rEffDz) / (rEff * rEff), u, uDz, fV, fDx, fDz);
+  const kV = RELIEF.v;
+  const kDx = RELIEF.dx;
+  const kDz = RELIEF.dz;
+  if (kV > 0) {
+    smootherstepInto(RELIEF_HILL_FROM, RELIEF_HILL_TO, u);
+    const hillV = STEP.v;
+    const hillD = STEP.d;
+    const share = RELIEF_FLATS + (RELIEF_HILL - RELIEF_FLATS) * hillV;
+    const shareDx = (RELIEF_HILL - RELIEF_FLATS) * hillD;
     const shareDz = shareDx * uDz;
     // The share kept, y = share * window * (base - plane), saturated at RELIEF_LIMIT.
-    const kw = { v: k.v * share, dx: k.dx * share + k.v * shareDx, dz: k.dz * share + k.v * shareDz };
+    const kwV = kV * share;
+    const kwDx = kDx * share + kV * shareDx;
+    const kwDz = kDz * share + kV * shareDz;
     const delta = -gap;
-    const yv = kw.v * delta;
-    const yx = kw.dx * delta + kw.v * -insideDx;
-    const yz = kw.dz * delta + kw.v * -insideDz;
+    const yv = kwV * delta;
+    const yx = kwDx * delta + kwV * -insideDx;
+    const yz = kwDz * delta + kwV * -insideDz;
     const L = RELIEF_LIMIT;
     const ay = yv < 0 ? -yv : yv;
     const keptV = (L * yv) / (L + ay);
     const keptD = (L * L) / ((L + ay) * (L + ay));
     // The town's own relief.
-    const amp = OWN_FLATS + (OWN_HILL - OWN_FLATS) * hill.v;
-    const ampDx = (OWN_HILL - OWN_FLATS) * hill.d;
+    const amp = OWN_FLATS + (OWN_HILL - OWN_FLATS) * hillV;
+    const ampDx = (OWN_HILL - OWN_FLATS) * hillD;
     const ampDz = ampDx * uDz;
     const n = fbm2d(x / OWN_WAVE, z / OWN_WAVE, seed ^ OWN_SALT, OWN_OCTAVES);
-    const ownV = k.v * amp * n.v;
-    const ownDx = (k.dx * amp + k.v * ampDx) * n.v + (k.v * amp * n.dx) / OWN_WAVE;
-    const ownDz = (k.dz * amp + k.v * ampDz) * n.v + (k.v * amp * n.dz) / OWN_WAVE;
+    const ownV = kV * amp * n.v;
+    const ownDx = (kDx * amp + kV * ampDx) * n.v + (kV * amp * n.dx) / OWN_WAVE;
+    const ownDz = (kDz * amp + kV * ampDz) * n.v + (kV * amp * n.dz) / OWN_WAVE;
     inside += keptV + ownV;
     insideDx += keptD * yx + ownDx;
     insideDz += keptD * yz + ownDz;
   }
-  return {
-    h: base.h + w.v * inside,
-    dx: base.dx + w.dx * inside + w.v * insideDx,
-    dz: base.dz + w.dz * inside + w.v * insideDz,
-  };
+  GROUND.h = bh + wV * inside;
+  GROUND.dx = bdx + wDx * inside + wV * insideDx;
+  GROUND.dz = bdz + wDz * inside + wV * insideDz;
+  return true;
+}
+
+/** The town's ground over the coast's (`base`), at a point whose offset from the highway is `u` (with its slope in z, `uDz`): the made ground, and `base` itself where the town does not reach (see `townGroundInto`). */
+export function townGroundD(seed: number, x: number, z: number, u: number, uDz: number, base: TerrainSample, fill?: readonly FillArea[]): TerrainSample {
+  if (!townGroundInto(seed, x, z, u, uDz, base.h, base.dx, base.dz, fill)) return base;
+  return { h: GROUND.h, dx: GROUND.dx, dz: GROUND.dz };
 }
 
 /** Whether a world point stands on the made ground proper: inside the footprint, the blend and the bank not counted. */
@@ -385,5 +540,6 @@ export function inFootprint(seed: number, x: number, z: number): boolean {
   const zr = z - COVE_Z;
   if ((zr < 0 ? -zr : zr) > TOWN_Z_HALF || x - roadCenterX(seed, z) > TOWN_INLAND) return false;
   const site = siteFor(seed);
-  return x - site.anchor.x - shoreXAt(shoreSplineOf(site), zr).v >= 0;
+  shoreXAtInto(shoreSplineOf(site), zr);
+  return x - site.anchor.x - SHORE.v >= 0;
 }

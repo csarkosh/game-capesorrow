@@ -8,16 +8,48 @@
  * bands kept off the old rectangle, and a clearing about the player's start.
  */
 import { COVE_Z, type CoastOverlay } from "@csarkosh/engine/sim/olympic";
+import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
 import { CLEARING_TUNABLES, YARD_LIFT, townClutterStands, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
-import { GROUND_TUNABLES, townGroundD } from "./ground.js";
+import { GROUND, GROUND_TUNABLES, townGroundInto } from "./ground.js";
 import { RAIL_CLEARING_TUNABLES, railFeatureMask } from "./railClearing.js";
-import { RAIL_TUNABLES, railGroundD } from "./railGround.js";
+import { RAIL_GROUND, RAIL_TUNABLES, railGroundInto } from "./railGround.js";
 import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_SEED_MIX } from "./siteFor.js";
 import { townClearingX } from "./start.js";
-import { STREET_TUNABLES, streetChannelD } from "./streetField.js";
+import { CHANNEL, STREET_TUNABLES, streetChannelInto } from "./streetField.js";
 import { TOWN_GEN } from "./version.js";
 import { townWildlifeGround } from "./wildlifeGround.js";
+
+/**
+ * The town's made ground, then the streets cut into it (`streetField.ts`: the roadways lie a curb's face under the lots), then the railroad's bed laid
+ * over it (`railGround.ts`), under the highway's own corridor. Each stage leaves its answer in its own register and the next reads it by number, so the
+ * one record made is the one returned; where no stage changes the ground it is `base` itself.
+ */
+function shapeD(seed: number, x: number, z: number, u: number, uDz: number, base: TerrainSample): TerrainSample {
+  let h = base.h;
+  let dx = base.dx;
+  let dz = base.dz;
+  let changed = false;
+  if (townGroundInto(seed, x, z, u, uDz, h, dx, dz)) {
+    h = GROUND.h;
+    dx = GROUND.dx;
+    dz = GROUND.dz;
+    changed = true;
+  }
+  if (streetChannelInto(seed, x, z, h, dx, dz)) {
+    h = CHANNEL.h;
+    dx = CHANNEL.dx;
+    dz = CHANNEL.dz;
+    changed = true;
+  }
+  if (railGroundInto(seed, z, u, uDz, h, dx, dz)) {
+    h = RAIL_GROUND.h;
+    dx = RAIL_GROUND.dx;
+    dz = RAIL_GROUND.dz;
+    changed = true;
+  }
+  return changed ? { h, dx, dz } : base;
+}
 
 export const CAPE_PLACE: CoastOverlay = {
   tunables: {
@@ -37,8 +69,8 @@ export const CAPE_PLACE: CoastOverlay = {
   },
   blend: { end: townBlendEnd, windowD: townBlendWindowD },
   cliffKeepD: townKeepD,
-  // The town's made ground, with the streets cut into it (`streetField.ts`: the roadways lie a curb's face under the lots), then the railroad's bed laid over it (`railGround.ts`), under the highway's own corridor.
-  shapeD: (seed, x, z, u, uDz, base) => railGroundD(seed, z, u, uDz, streetChannelD(seed, x, z, townGroundD(seed, x, z, u, uDz, base))),
+  // The town's made ground, with the streets cut into it, then the railroad's bed laid over it, under the highway's own corridor (`shapeD` above).
+  shapeD,
   // The town's mask, with the railroad's corridor shut in it (`railClearing.ts`).
   featureMask: (seed, x, z) => railFeatureMask(seed, x, z, townFeatureMask(seed, x, z)),
   // On a yard the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and trees.
