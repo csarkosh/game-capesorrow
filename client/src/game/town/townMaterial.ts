@@ -238,6 +238,12 @@ export function townSurfaceCode(low: boolean): string {
 const SIGN_CODE = "let tsSg=textureSample(townSign,townSignSmp,input.uv,0);baseColor=tsSg.rgb*input.vTownTint.rgb;townSignA=tsSg.a;";
 
 /**
+ * The colour of the film a pane lays over what is behind it, linear: a dark grey-blue, the tone of old glass with the day on it. Dark, so that
+ * the dim back of a room goes into it and the lit front of the room still shows through; a pale film (0.1 and over) washed the whole window out to grey.
+ */
+export const GLASS_FILM: readonly [number, number, number] = [0.032, 0.038, 0.046];
+
+/**
  * Glass, as the blended layer draws it. A pane reflects by direction: the eye's ray is turned off the pane's normal (the wall's, tilted a
  * little by the pane's own fixed turn, `Fx.tilt`, since old glass is never flat and no two panes reflect alike), and where it then points
  * above the horizon the pane shows the overcast sky (paler toward the horizon), where it points level or down it shows the dark, uneven
@@ -245,6 +251,9 @@ const SIGN_CODE = "let tsSg=textureSample(townSign,townSignSmp,input.uv,0);baseC
  * from the eye, so a pane seen square-on from the sidewalk shows the lit room behind it, an upper window seen from the street is the sky's
  * pale grey-blue with the room faint behind it, and glass seen along its length is a mirror. Over that lies the grime: a band along the
  * bottom, the lower corners and streaks (`Fx.dirt`, `Fx.size`, the pane's own uv), different for each pane by its `Fx.seed`.
+ *
+ * A pane is not perfectly clear (`Fx.clear`, `GLASS_CLEAR` in `buildingKit.ts`): the share it keeps back is a film of the overcast day's
+ * own grey (`GLASS_FILM`), which is what hides how bare a room is from the street.
  *
  * The result is the glass's colour and its alpha, which the blend lays over the room: `townGlassC` is the colour as it is (not premultiplied),
  * `townGlassA` how much of the picture it covers. The low tier skips the street's variation and the grime's streaks.
@@ -289,7 +298,8 @@ export function townAlphaCode(low = false): string {
     "let tsDirtC=vec3<f32>(0.2,0.18,0.15);",
     "let tsAb=(1.0-tsClear)*(1.0-tsRk);",
     "let tsAt=clamp(tsAb+tsRk+tsGk*(1.0-tsRk),0.0,0.985);",
-    "townGlassC=(tsRc*tsRk+tsDirtC*tsGk*(1.0-tsRk))/max(tsAt,0.001);",
+    // What the glass keeps back of the room is not black: it is the film on the pane in daylight (`GLASS_FILM`), pale over what stands behind it.
+    `townGlassC=(tsRc*tsRk+vec3<f32>(${GLASS_FILM.map((c) => c.toFixed(3)).join(",")})*tsAb+tsDirtC*tsGk*(1.0-tsRk))/max(tsAt,0.001);`,
     "townGlassA=1.0;",
     "alpha=tsAt;",
     "}",
