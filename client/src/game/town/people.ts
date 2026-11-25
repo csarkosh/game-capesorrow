@@ -1,38 +1,44 @@
 /**
- * Who stands in the open shops, and where: standing people, drawn from the plan's rooms and nothing else. This is the drawing's, not the
- * simulation's: nothing here is in the plan, nothing is kept between frames, and the same plan gives the same people on every machine
- * (each draw is a hash of the building's id, the unit's id and the person's index, never a random function or the clock).
+ * Who is in the open shops, and what they are doing: standing and sitting people, drawn from the plan's rooms and nothing else. This is the
+ * drawing's, not the simulation's: nothing here is in the plan, nothing is kept between frames, and the same plan gives the same people on
+ * every machine (each draw is a hash of the building's id, the unit's id and the person's index, never a random function or the clock).
  *
- * WHAT CAUSES A PERSON. A unit is open: then it has people (a unit shut for the day or vacant has none). Most have one member of staff, who
- * stands behind the unit's service point (the first checkout, counter or desk the room has), on the long side of it with the less clear
- * floor to a wall, since the plan puts the counter so that the clerk sees the door; the clerk faces across it into the room. A room with no
- * such furnishing (a laundromat, an empty lobby) has no staff. The room's kind and a hash say how many customers (most rooms none or one),
- * and what the room holds says where each stands: in the queue at the service point, in an aisle facing a run of shelving, at a high
- * table, a window bar, the pool table or the bar, at a row of washers, or, in a dining room, waiting by the door's side wall. There is no
- * sitting clip, so nobody is put on a chair, a stool, a booth or a couch.
+ * WHAT CAUSES A PERSON. A unit is open: then it has people (a unit shut for the day or vacant has none). They are in the front of the room,
+ * within `FRONT_ZONE` of the glass, which is where the room is lit and seen. Each does what people do in that kind of room, at something it
+ * holds: staff stand behind the service point and work the till (a bartender wipes the bar); in an office someone sits at a desk and types;
+ * in a dining room, a cafe or a counter service room customers sit at tables and booths and eat; at a bar they sit on the stools, stand at
+ * a high table with a drink or play pool; in a shop they browse the shelves, racks and cases or wait at the till; in a laundromat they load
+ * a washer, fold, wait on a bench or look at their phone; in a workshop someone works at a bench. Where the service point is deeper than the
+ * zone, the staff work at something in it instead (stock a shelf, wipe a front table), and if nothing there gives them work there is no staff.
  *
- * Every spot is tried against the room's floor: inside it with a margin to each wall, clear of every furnishing's footprint, out of the
- * door's zone and clear of the people already placed; a person with no clear spot among a few tried is not there. What is authored: the
- * distances, the odds, the models' sizes. What the hash draws: who, which model, which way they face (a little off square), how tall, how
- * fast and where in the clip they start, so that no two move in step.
+ * WHERE THEY SIT is where the room is drawn with a seat (`seatsOf`, the drawing's own arithmetic, so a sitter is on a seat that stands).
+ * Every spot is tried against the room's floor: a standing person is inside it with a margin to each wall, clear of every furnishing's
+ * footprint and of the chairs, out of the door's zone and clear of the people already placed, and never faces the glass (unless their task
+ * is at something in the window); a person with no clear spot among those tried is not there. What the hash draws: who, which model, which
+ * way a standing person faces (a little off square), how tall, how fast and where in the clip they start, so that no two move in step.
  */
 import { hashN } from "./groundNoise.js";
 import { buildingLevels } from "./buildingGeometry.js";
+import { feetOf, roomSeats, styleOf, type Seat, type SeatCtx } from "./roomFill.js";
 import { xd, xp } from "./roomKit.js";
 import type { Xf } from "./roomKit.js";
 import type { TownGround } from "./townTypes.js";
-import type { Building, Furnishing, InteriorType, TownPlan, Unit } from "../../sim/town/types.js";
+import type { Building, Furnishing, FurnishingKind, InteriorType, TownPlan, Unit } from "../../sim/town/types.js";
 
 /** The five models, by credit id (`client/assets/models/people.json`). */
 export const PERSON_MODELS = ["person.nathan", "person.eric", "person.sophia", "person.carla", "person.claudia"] as const;
 export type PersonModel = (typeof PERSON_MODELS)[number];
 
-/** The length of the one clip every model has, `idle`, seconds. */
-export const IDLE_SECONDS = 2.5333;
+/** The clips every model carries (`people.json`): what a person can be doing. */
+export const ACTIVITIES = ["idle", "browse", "till", "phone", "talk", "drink", "wipe", "fold", "sit_table", "sit_eat", "sit_type", "sit_stool"] as const;
+export type Activity = (typeof ACTIVITIES)[number];
 
 export type PersonRole = "staff" | "customer";
 
-/** A person's place in their building's own frame (`s` along the front, `d` into the room, as a `Furnishing`'s) and what is needed to draw them. */
+/** A place to sit that a person is on: which furnishing it belongs to, the height of its top over the floor and its family of clips. */
+export type PersonSeat = { readonly furnishing: number; readonly top: number; readonly family: "chair" | "stool" };
+
+/** A person's place in their building's own frame (`s` along the front, `d` into the room, as a `Furnishing`'s) and what is needed to draw them. A sitter's place is the floor under the middle of their seat. */
 export type Person = {
   readonly building: number;
   readonly unit: number;
@@ -43,49 +49,53 @@ export type Person = {
   readonly model: PersonModel;
   /** Their height against the model's own, 0.95 to 1.04. */
   readonly scale: number;
-  /** Where in the clip they start, seconds. */
+  /** Where in their clip they start, seconds (they are worked on by the clip's own length). */
   readonly offset: number;
   /** How fast the clip runs for them, 0.85 to 1.1. */
   readonly rate: number;
   readonly role: PersonRole;
+  /** The clip they play. */
+  readonly activity: Activity;
+  /** The seat they sit on, or null for a standing person. */
+  readonly seat: PersonSeat | null;
+  /** The index of the furnishing their task is at (the till, the shelf, the table), or null. */
+  readonly target: number | null;
 };
 
-/** How close to a wall (and the back partition) a person stands, metres. */
+/** How far from the glass people are placed, metres (`d`): the front of the room, which the street sees lit. */
+export const FRONT_ZONE = 4.0;
+/** How close to a wall (and the back partition) a standing person stands, metres. */
 export const WALL_MARGIN = 0.35;
 /** How far a person stands from any furnishing's footprint, at least. */
 export const FURNITURE_CLEAR = 0.3;
-/** How far apart two people stand, at least. */
+/** How far apart two standing people stand, at least; with a sitter in the pair, `SEATED_APART`. */
 export const PEOPLE_APART = 0.7;
+export const SEATED_APART = 0.45;
+/** How far a standing person stands from a chair, at least. */
+const CHAIR_CLEAR = 0.4;
 /** Past the door's width on each side, and how deep from the glass, the door's zone reaches. */
 export const DOOR_SIDE = 0.45;
 export const DOOR_DEEP = 1.6;
+/** A furnishing whose centre is within this of the glass stands in the window: a task at it may face the street. */
+export const WINDOW_DEPTH = 1.7;
+/** A standing person's facing is never within this many degrees of straight out through the glass. */
+export const GLASS_ARC = 60;
 /** How far behind a service point staff stand, from its edge. */
 const STAFF_OFF = 0.45;
 /** A hair more than the least distances above, so that a spot is clear by the tests' own arithmetic too. */
 const SLACK = 0.01;
 
-/** Most customers a room of each kind has, and the fewest (a bar is never empty). */
+/** Most customers a room of each kind has, and the fewest (a bar is never empty). Seated ones in rooms that serve food and drink are more. */
 const CUSTOMERS: Record<InteriorType, readonly [number, number]> = {
-  "retail aisles": [0, 2], "counter service": [0, 2], "dining room": [0, 2], bar: [1, 3], laundromat: [0, 2], office: [0, 1], workshop: [0, 1], lobby: [0, 1], empty: [0, 0],
+  "retail aisles": [0, 2], "counter service": [0, 4], "dining room": [0, 4], bar: [1, 5], laundromat: [0, 2], office: [0, 1], workshop: [0, 0], lobby: [0, 1], empty: [0, 0],
 };
 
-const SERVICE: readonly Furnishing["kind"][] = ["checkout", "counter", "desk"];
-const BROWSED = new Set<Furnishing["kind"]>(["shelf run", "rack", "cooler", "display case", "bin"]);
-const STOOD_AT = new Set<Furnishing["kind"]>(["hightable", "windowbar", "pool table"]);
+const SERVICE: readonly FurnishingKind[] = ["checkout", "counter", "desk"];
+const BROWSED = new Set<FurnishingKind>(["shelf run", "rack", "cooler", "display case", "bin", "stand", "endcap"]);
+const WORKED = new Set<FurnishingKind>(["bench", "rack", "machine", "lift"]);
 
 /** A draw in [0, 1) for a person of a unit: the building, the unit, the person's index and what the draw is for. */
 const roll = (building: number, unit: number, index: number, salt: number): number => hashN(building, unit, index, salt);
-
-/** The room as people see it: where the floor is (a margin in from the walls), the door's zone, and what stands on it. */
-type Floor = {
-  readonly s0: number;
-  readonly s1: number;
-  readonly d0: number;
-  readonly d1: number;
-  readonly doorS0: number;
-  readonly doorS1: number;
-  readonly furnishings: readonly Furnishing[];
-};
 
 /** A furnishing's long axis (a unit vector), its length, its width. A thing wider than it is long is turned a quarter. */
 function longAxis(f: Furnishing): { ax: number; ad: number; len: number; wid: number } {
@@ -102,14 +112,6 @@ export function distanceToFootprint(f: Furnishing, s: number, d: number): number
   return Math.hypot(Math.max(Math.abs(along) - f.sx / 2, 0), Math.max(Math.abs(across) - f.sd / 2, 0));
 }
 
-function clearAt(floor: Floor, s: number, d: number, placed: readonly { s: number; d: number }[]): boolean {
-  if (s < floor.s0 || s > floor.s1 || d < floor.d0 || d > floor.d1) return false;
-  if (s > floor.doorS0 - SLACK && s < floor.doorS1 + SLACK && d < DOOR_DEEP + SLACK) return false;
-  for (const f of floor.furnishings) if (distanceToFootprint(f, s, d) < FURNITURE_CLEAR + SLACK) return false;
-  for (const p of placed) if (Math.hypot(p.s - s, p.d - d) < PEOPLE_APART + SLACK) return false;
-  return true;
-}
-
 /** How far a ray from (s, d) toward the unit vector (ns, nd) goes before it meets a wall of the room. */
 function toWall(unit: { s0: number; s1: number; depth: number }, s: number, d: number, ns: number, nd: number): number {
   let t = Infinity;
@@ -120,7 +122,10 @@ function toWall(unit: { s0: number; s1: number; depth: number }, s: number, d: n
   return t;
 }
 
+/** A place and the way to face there. */
 type Spot = { s: number; d: number; fs: number; fd: number };
+/** A thing to do at a spot: the clip, the furnishing it is at, and the seat if it is a sitter's. */
+type Task = Spot & { activity: Activity; target: number | null; seat: Seat | null };
 
 /** Turns a facing by `radians`. */
 function turned(fs: number, fd: number, radians: number): { s: number; d: number } {
@@ -148,21 +153,12 @@ function besideLong(f: Furnishing, off: number, sides: readonly number[], slides
   return out;
 }
 
-
-/** The spots at either end of a furnishing's long axis, in line with it, facing the way the customers are (away from `behind`). `first` says which end is tried first. */
-function atEnds(f: Furnishing, behind: number, first: boolean): Spot[] {
+/** The spots at either end of a furnishing's long axis, in line with it, facing the furnishing (the end of a counter, where a cashier stands). `first` says which end is tried first. */
+function atEnds(f: Furnishing, first: boolean): Spot[] {
   const { ax, ad, len } = longAxis(f);
   const reach = len / 2 + STAFF_OFF;
-  const ns = ad * behind;
-  const nd = -ax * behind;
   const ends = first ? [1, -1] : [-1, 1];
-  return ends.map((e) => ({ s: f.s + ax * reach * e, d: f.d + ad * reach * e, fs: ns, fd: nd }));
-}
-
-/** Where a person stands to be where they are, at most a few tried: the first that is clear. */
-function firstClear(floor: Floor, spots: readonly Spot[], placed: readonly { s: number; d: number }[]): Spot | null {
-  for (const spot of spots) if (clearAt(floor, spot.s, spot.d, placed)) return spot;
-  return null;
+  return ends.map((e) => ({ s: f.s + ax * reach * e, d: f.d + ad * reach * e, fs: -ax * e, fd: -ad * e }));
 }
 
 function modelFor(building: number, unit: number, index: number, used: Set<PersonModel>): PersonModel {
@@ -177,18 +173,27 @@ function modelFor(building: number, unit: number, index: number, used: Set<Perso
   return PERSON_MODELS[start] as PersonModel;
 }
 
-/** A person from a spot: the draws that make them unlike the next. */
-function personAt(building: number, unit: number, index: number, spot: Spot, role: PersonRole, used: Set<PersonModel>): Person {
-  // Up to 15 degrees either way from square to whatever they face.
-  const way = turned(spot.fs, spot.fd, (roll(building, unit, index, 11) * 2 - 1) * ((15 * Math.PI) / 180));
-  return {
-    building, unit, s: Math.round(spot.s * 1000) / 1000, d: Math.round(spot.d * 1000) / 1000, face: way,
-    model: modelFor(building, unit, index, used),
-    scale: 0.95 + roll(building, unit, index, 12) * 0.09,
-    offset: roll(building, unit, index, 13) * IDLE_SECONDS,
-    rate: 0.85 + roll(building, unit, index, 14) * 0.25,
-    role,
+/** The facing of a standing person at a spot: up to 15 degrees either way from square to what they face. A sitter faces as the seat does. */
+function facingOf(building: number, unit: number, index: number, spot: Spot, sitting: boolean): { s: number; d: number } {
+  if (sitting) return { s: spot.fs, d: spot.fd };
+  return turned(spot.fs, spot.fd, (roll(building, unit, index, 11) * 2 - 1) * ((15 * Math.PI) / 180));
+}
+
+/** Whether a facing points out through the glass: within `GLASS_ARC` degrees of straight out (toward d = 0). */
+export function facesGlass(face: { readonly s: number; readonly d: number }): boolean {
+  return -face.d > Math.cos((GLASS_ARC * Math.PI) / 180);
+}
+
+/** The seats a unit's room is drawn with, by furnishing, from the drawing's own arithmetic (`roomSeats`). */
+export function unitSeats(b: Building, unit: Unit): Seat[][] {
+  const inner = { s0: unit.s0 + 0.04, s1: unit.s1 - 0.04 };
+  const seed = b.id * 31 + unit.id;
+  const trade = unit.tenant?.trade ?? null;
+  const ctx: SeatCtx = {
+    seed, style: styleOf(seed, trade, b.era, unit.tenant?.opened ?? 0, unit.remodel?.decade ?? 0), feet: feetOf(unit.interior.furnishings),
+    door: { s: unit.door.s, w: unit.door.width }, s0: inner.s0, s1: inner.s1, d1: unit.interior.depth, chairs: [], detail: "full", trade,
   };
+  return roomSeats(ctx, unit.interior.furnishings);
 }
 
 /** The people of one open unit. */
@@ -196,113 +201,286 @@ function unitPeople(b: Building, unit: Unit): Person[] {
   const id = b.id;
   const uid = unit.id;
   const room = unit.interior;
-  const floor: Floor = {
-    s0: unit.s0 + 0.04 + WALL_MARGIN, s1: unit.s1 - 0.04 - WALL_MARGIN, d0: WALL_MARGIN, d1: room.depth - WALL_MARGIN,
-    doorS0: unit.door.s - unit.door.width / 2 - DOOR_SIDE, doorS1: unit.door.s + unit.door.width / 2 + DOOR_SIDE, furnishings: room.furnishings,
-  };
-  const bounds = { s0: unit.s0 + 0.04, s1: unit.s1 - 0.04, depth: room.depth };
-  const out: Person[] = [];
-  const placed: { s: number; d: number }[] = [];
-  const used = new Set<PersonModel>();
-  const add = (index: number, spot: Spot, role: PersonRole): void => {
-    const p = personAt(id, uid, index, spot, role, used);
-    out.push(p);
-    placed.push(p);
-  };
+  const furn = room.furnishings;
+  const top = Math.min(room.depth - WALL_MARGIN, FRONT_ZONE);
+  const inner = { s0: unit.s0 + 0.04, s1: unit.s1 - 0.04 };
+  const bounds = { s0: inner.s0, s1: inner.s1, depth: room.depth };
+  const doorS0 = unit.door.s - unit.door.width / 2 - DOOR_SIDE;
+  const doorS1 = unit.door.s + unit.door.width / 2 + DOOR_SIDE;
+  const seatsBy = unitSeats(b, unit);
+  const allSeats = seatsBy.flat();
+  // Chairs are in the way of a person standing; seats drawn at tables and desks only (a stool row's and a bench's are in their furnishing's footprint).
+  const chairObstacles = allSeats.filter((q) => q.family === "chair" && (furn[q.furnishing] as Furnishing).kind !== "booth" && (furn[q.furnishing] as Furnishing).kind !== "bench" && (furn[q.furnishing] as Furnishing).kind !== "couch");
 
-  // The service point, and the side of it staff stand on: the long side with the less clear floor between it and a wall.
-  let service: Furnishing | null = null;
+  type Draft = { s: number; d: number; sitting: boolean; role: PersonRole; index: number; activity: Activity; face: { s: number; d: number }; seat: Seat | null; target: number | null; zoneCounter: boolean };
+  const drafts: Draft[] = [];
+  const taken = new Set<string>();
+  const seatKey = (q: Seat): string => `${q.furnishing}:${q.s.toFixed(3)}:${q.d.toFixed(3)}`;
+
+  /** Whether a standing person may stand here, with this facing, for a task at `target`. */
+  const standClear = (t: Spot, index: number, target: number | null): boolean => {
+    const face = facingOf(id, uid, index, t, false);
+    const inWindow = target !== null && (furn[target] as Furnishing).d <= WINDOW_DEPTH;
+    if (facesGlass(face) && !inWindow) return false;
+    if (t.s < inner.s0 + WALL_MARGIN || t.s > inner.s1 - WALL_MARGIN || t.d < WALL_MARGIN || t.d > top) return false;
+    if (t.s > doorS0 - SLACK && t.s < doorS1 + SLACK && t.d < DOOR_DEEP + SLACK) return false;
+    for (const f of furn) if (distanceToFootprint(f, t.s, t.d) < FURNITURE_CLEAR + SLACK) return false;
+    for (const q of chairObstacles) if (Math.hypot(q.s - t.s, q.d - t.d) < CHAIR_CLEAR + SLACK) return false;
+    for (const p of drafts) if (Math.hypot(p.s - t.s, p.d - t.d) < (p.sitting ? SEATED_APART : PEOPLE_APART) + SLACK) return false;
+    return true;
+  };
+  /** Whether a seat may be sat on: free, in the front zone, inside the room and no other furnishing's, apart from the people there. */
+  const seatClear = (q: Seat): boolean => {
+    if (taken.has(seatKey(q)) || q.d > top || q.d < 0.2 || q.s < inner.s0 + 0.2 || q.s > inner.s1 - 0.2) return false;
+    for (const [k, f] of furn.entries()) if (k !== q.furnishing && distanceToFootprint(f, q.s, q.d) < 0.05) return false;
+    for (const p of drafts) if (Math.hypot(p.s - q.s, p.d - q.d) < SEATED_APART + SLACK) return false;
+    return true;
+  };
+  const place = (t: Task, index: number, role: PersonRole, zoneCounter = false): boolean => {
+    if (t.seat !== null) {
+      if (!seatClear(t.seat)) return false;
+      taken.add(seatKey(t.seat));
+    } else if (!standClear(t, index, t.target)) return false;
+    drafts.push({ s: t.s, d: t.d, sitting: t.seat !== null, role, index, activity: t.activity, face: facingOf(id, uid, index, t, t.seat !== null), seat: t.seat, target: t.target, zoneCounter });
+    return true;
+  };
+  const firstTask = (tasks: readonly Task[], index: number, role: PersonRole, zoneCounter = false): boolean => {
+    for (const t of tasks) if (place(t, index, role, zoneCounter)) return true;
+    return false;
+  };
+  const stand = (f: Furnishing, k: number, spots: readonly Spot[], activity: Activity): Task[] => spots.map((s) => ({ ...s, activity, target: k, seat: null }));
+  const sit = (q: Seat, activity: Activity): Task => ({ s: q.s, d: q.d, fs: q.fs, fd: q.fd, activity, target: q.furnishing, seat: q });
+  const indexed = furn.map((f, k) => ({ f, k }));
+
+  // ---- Staff
+  const index0 = 0;
+  const staffOn = roll(id, uid, 0, 1) < 0.9;
+  const slideA = (roll(id, uid, 0, 4) - 0.5) * 0.9;
+  const front = [slideA, 0, slideA * -0.6, 0.5, -0.5, 0.25, -0.25];
+  let service: { f: Furnishing; k: number } | null = null;
   for (const kind of SERVICE) {
-    service = room.furnishings.find((f) => f.kind === kind) ?? null;
-    if (service !== null) break;
+    const hit = indexed.find((q) => q.f.kind === kind);
+    if (hit !== undefined) {
+      service = hit;
+      break;
+    }
   }
-  let behind = 1;
-  let slide = 0;
-  if (service !== null) {
-    const { ax, ad, wid } = longAxis(service);
-    const clear = (sg: number): number => toWall(bounds, service!.s, service!.d, -ad * sg, ax * sg) - wid / 2;
+  /** Spots behind a counter (the long side with less clear floor to a wall), a little nearer, and at its end; facing it. */
+  const behindOf = (f: Furnishing): { sg: number; spots: Spot[] } => {
+    const { ax, ad, wid } = longAxis(f);
+    const clear = (sg: number): number => toWall(bounds, f.s, f.d, -ad * sg, ax * sg) - wid / 2;
     const a = clear(1);
-    const b2 = clear(-1);
-    behind = a < b2 - 1e-9 ? 1 : b2 < a - 1e-9 ? -1 : roll(id, uid, 0, 3) < 0.5 ? 1 : -1;
-    slide = (roll(id, uid, 0, 4) - 0.5) * 0.9;
-    if (roll(id, uid, 0, 1) < 0.85) {
-      const front = [slide, 0, slide * -0.6, 0.5, -0.5, 0.25, -0.25];
-      // Behind it, 0.45 m off its edge, facing across it. Where the wall is too near for that (the plan puts a counter close to a wall), a little nearer,
-      // and failing that at the end of the counter, as a cashier stands at the end of a lane, facing into the room.
-      const ordered = [...besideLong(service, STAFF_OFF, [behind], front), ...besideLong(service, STAFF_OFF - 0.1, [behind], [slide, 0]), ...atEnds(service, behind, roll(id, uid, 0, 9) < 0.5)];
-      const spot = firstClear(floor, ordered, placed);
-      if (spot !== null) add(0, spot, "staff");
+    const c = clear(-1);
+    const sg = a < c - 1e-9 ? 1 : c < a - 1e-9 ? -1 : roll(id, uid, 0, 3) < 0.5 ? 1 : -1;
+    return { sg, spots: [...besideLong(f, STAFF_OFF, [sg], front), ...besideLong(f, STAFF_OFF - 0.1, [sg], [slideA, 0]), ...atEnds(f, roll(id, uid, 0, 9) < 0.5)] };
+  };
+  let behind = 1;
+  if (service !== null) behind = behindOf(service.f).sg;
+  const office = room.type === "office" || room.type === "lobby";
+  const deskSeats = indexed.filter((q) => q.f.kind === "desk").flatMap((q) => seatsBy[q.k] as Seat[]);
+  let staffAtCounter = false;
+  if (staffOn && room.type !== "laundromat" && room.type !== "empty") {
+    let done = false;
+    if (room.type === "workshop") {
+      for (const { f, k } of indexed) {
+        if (done || !WORKED.has(f.kind)) continue;
+        done = firstTask(stand(f, k, besideLong(f, 0.5, roll(id, uid, 0, 5) < 0.5 ? [1, -1] : [-1, 1], front), "till"), index0, "staff");
+      }
+    } else {
+      if (office) for (const q of deskSeats) if (!done) done = firstTask([sit(q, "sit_type")], index0, "staff");
+      if (!done && service !== null) {
+        const bar = room.type === "bar";
+        const activity: Activity = bar && roll(id, uid, 0, 15) < 0.5 ? "wipe" : "till";
+        done = firstTask(stand(service.f, service.k, behindOf(service.f).spots, activity), index0, "staff", true);
+        staffAtCounter = done;
+      }
+      if (!done) {
+        // The service point is out of the front zone (or has no room behind it): work at something in it instead.
+        for (const { f, k } of indexed) {
+          if (done || f.d > top + 1) continue;
+          const sides = roll(id, uid, 0, 5) < 0.5 ? [1, -1] : [-1, 1];
+          if (BROWSED.has(f.kind) && f.kind !== "stand") done = firstTask(stand(f, k, besideLong(f, 0.55, sides, front), "browse"), index0, "staff");
+          else if ((f.kind === "table" || f.kind === "hightable" || f.kind === "pool table") && (room.type === "dining room" || room.type === "counter service" || room.type === "bar")) done = firstTask(stand(f, k, besideLong(f, 0.5, sides, front), "wipe"), index0, "staff");
+          else if (f.kind === "counter" || f.kind === "checkout") done = firstTask(stand(f, k, behindOf(f).spots, "till"), index0, "staff", true);
+        }
+      }
     }
   }
 
-  // How many customers: none 45 percent, one 35, two 15, three 5, within what the kind of room allows.
+  // ---- Customers
   const [least, most] = CUSTOMERS[room.type];
   const r = roll(id, uid, 1, 2);
-  const want = Math.max(least, Math.min(most, r < 0.45 ? 0 : r < 0.8 ? 1 : r < 0.95 ? 2 : 3));
-  const browsed = room.furnishings.filter((f) => BROWSED.has(f.kind) && f.sx * f.sd >= 0.3);
-  const stood = room.furnishings.filter((f) => STOOD_AT.has(f.kind));
-  const washers = room.furnishings.filter((f) => f.kind === "washer row");
-  const activities: ("queue" | "browse" | "stand" | "wash" | "wait")[] = [];
-  if (service !== null) activities.push("queue");
-  if (browsed.length > 0 && room.type !== "laundromat") activities.push("browse");
-  if (stood.length > 0) activities.push("stand");
-  if (washers.length > 0) activities.push("wash");
-  if (room.type === "dining room") activities.push("wait");
-  let queueSpot: (Spot & { off: number }) | null = null;
+  const seatedRoom = room.type === "dining room" || room.type === "counter service";
+  const raw = room.type === "bar" ? 1 + (r < 0.15 ? 0 : r < 0.4 ? 1 : r < 0.65 ? 2 : r < 0.85 ? 3 : 4) : seatedRoom ? (r < 0.25 ? 0 : r < 0.5 ? 1 : r < 0.7 ? 2 : r < 0.88 ? 3 : 4) : r < 0.3 ? 0 : r < 0.7 ? 1 : r < 0.9 ? 2 : 3;
+  const want = Math.max(least, Math.min(most, raw));
+  type Kind = "queue" | "aisle" | "seat" | "stool" | "hightable" | "pool" | "wash" | "fold" | "bench" | "wall" | "work";
+  const kinds: Kind[] = [];
+  switch (room.type) {
+    case "retail aisles": kinds.push("aisle", "queue"); break;
+    case "counter service": case "dining room": kinds.push("seat", "seat", "stool", "queue", "aisle"); break;
+    case "bar": kinds.push("stool", "stool", "hightable", "pool", "seat"); break;
+    case "laundromat": kinds.push("wash", "fold", "bench", "wall"); break;
+    case "office": kinds.push("work", "bench", "queue"); break;
+    case "lobby": kinds.push("bench", "wall", "queue"); break;
+    default: break;
+  }
   let queued = 0;
-  const customers = activities.length === 0 ? 0 : want;
-  for (let k = 0; k < customers; k++) {
+  let queueFirst: Task | null = null;
+  let lastTable = -1;
+  const seatsOfKinds = (ks: FurnishingKind[]): Seat[] => indexed.filter((q) => ks.includes(q.f.kind)).flatMap((q) => seatsBy[q.k] as Seat[]);
+  for (let k = 0; k < want && kinds.length > 0; k++) {
     const index = 1 + k;
     const sides = roll(id, uid, index, 5) < 0.5 ? [1, -1] : [-1, 1];
     const t0 = (roll(id, uid, index, 6) - 0.5) * 1.2;
     const slides = [t0, 0, -t0, 0.5, -0.5, 0.8, -0.8];
-    const start = Math.floor(roll(id, uid, index, 7) * activities.length);
-    let spot: Spot | null = null;
-    for (let a = 0; a < activities.length && spot === null; a++) {
-      const kind = activities[(start + a) % activities.length] as (typeof activities)[number];
-      const pick = <T,>(list: readonly T[], salt: number): T => list[Math.floor(roll(id, uid, index, salt) * list.length)] as T;
-      if (kind === "queue" && service !== null) {
-        if (queued === 0) {
-          // At the customer side, facing the staff, 0.5 m off the service point (further where stools stand along a bar or counter).
-          const front = [slide, slide * 0.5, 0, 0.4, -0.4];
-          for (const off of [0.5, 0.8, 1.1, 1.4]) {
-            const found = firstClear(floor, besideLong(service, off, [-behind], front), placed);
-            if (found !== null) {
-              spot = found;
-              queueSpot = { ...found, off };
+    const start = Math.floor(roll(id, uid, index, 7) * kinds.length);
+    const shuffled = (list: readonly { f: Furnishing; k: number }[], salt: number): { f: Furnishing; k: number }[] => {
+      const n = list.length;
+      const at = n === 0 ? 0 : Math.floor(roll(id, uid, index, salt) * n);
+      return list.map((_, j) => list[(at + j) % n] as { f: Furnishing; k: number });
+    };
+    let done = false;
+    for (let a = 0; a < kinds.length && !done; a++) {
+      const kind = kinds[(start + a) % kinds.length] as Kind;
+      const phoneOrTalk: Activity = roll(id, uid, index, 16) < 0.5 ? "phone" : "talk";
+      switch (kind) {
+        case "queue": {
+          if (service === null) break;
+          if (queued === 0) {
+            const tasks: Task[] = [];
+            for (const off of [0.5, 0.8, 1.1, 1.4]) tasks.push(...stand(service.f, service.k, besideLong(service.f, off, [-behind], [slideA, slideA * 0.5, 0, 0.4, -0.4]), phoneOrTalk));
+            for (const t of tasks) {
+              if (place(t, index, "customer")) {
+                queueFirst = t;
+                queued = 1;
+                done = true;
+                break;
+              }
+            }
+          } else if (queueFirst !== null) {
+            // The next in line, 0.8 m behind the first, on the same line.
+            const back: Task = { ...queueFirst, s: queueFirst.s - queueFirst.fs * 0.8, d: queueFirst.d - queueFirst.fd * 0.8 };
+            if (place(back, index, "customer")) {
+              queued++;
+              done = true;
+            }
+          }
+          break;
+        }
+        case "aisle": {
+          const act: Activity = roll(id, uid, index, 17) < 0.75 ? "browse" : "phone";
+          for (const { f, k: fk } of shuffled(indexed.filter((q) => BROWSED.has(q.f.kind)), 8)) {
+            if (done) break;
+            done = firstTask(stand(f, fk, besideLong(f, 0.55, sides, slides), act), index, "customer");
+          }
+          break;
+        }
+        case "seat": {
+          const seats = seatsOfKinds(["table", "booth"]);
+          // The same table as the last sitter half the time: two at one table face each other.
+          const order = seats.map((_, j) => seats[(Math.floor(roll(id, uid, index, 8) * seats.length) + j) % seats.length] as Seat);
+          const same = lastTable >= 0 && roll(id, uid, index, 18) < 0.5 ? order.filter((q) => q.furnishing === lastTable) : [];
+          const act: Activity = roll(id, uid, index, 19) < 0.6 ? "sit_eat" : "sit_table";
+          for (const q of [...same, ...order]) {
+            if (place(sit(q, act), index, "customer")) {
+              lastTable = q.furnishing;
+              done = true;
               break;
             }
           }
-          if (spot !== null) queued = 1;
-        } else if (queueSpot !== null) {
-          // The next in line, 0.8 m behind the first, on the same line.
-          const back: Spot = { s: queueSpot.s - queueSpot.fs * 0.8, d: queueSpot.d - queueSpot.fd * 0.8, fs: queueSpot.fs, fd: queueSpot.fd };
-          if (clearAt(floor, back.s, back.d, placed)) {
-            spot = back;
-            queued++;
-          }
+          break;
         }
-      } else if (kind === "browse") {
-        const f = pick(browsed, 8);
-        spot = firstClear(floor, besideLong(f, 0.55, sides, slides), placed);
-      } else if (kind === "stand") {
-        const f = pick(stood, 8);
-        spot = firstClear(floor, besideLong(f, 0.55, sides, slides), placed);
-      } else if (kind === "wash") {
-        const f = pick(washers, 8);
-        spot = firstClear(floor, besideLong(f, 0.55, sides, slides), placed);
-      } else if (kind === "wait") {
-        // By the door's side wall, waiting to be seated: facing into the room.
-        const leftWall = unit.door.s - unit.s0 < unit.s1 - unit.door.s;
-        const wall = leftWall ? floor.s0 : floor.s1;
-        const spots: Spot[] = [];
-        for (const d of [1.9, 2.5, 3.1, 3.7]) for (const inset of [0.05, 0.6]) spots.push({ s: wall + (leftWall ? inset : -inset), d, fs: 0, fd: 1 });
-        spot = firstClear(floor, spots, placed);
+        case "stool": {
+          const stools = seatsOfKinds(["stool row", "windowbar"]);
+          const order = stools.map((_, j) => stools[(Math.floor(roll(id, uid, index, 8) * stools.length) + j) % stools.length] as Seat);
+          for (const q of order) {
+            // Seated at a window bar, side-on to the glass: not looking out through it.
+            const turnedQ: Seat = (furn[q.furnishing] as Furnishing).kind === "windowbar" ? { ...q, fs: roll(id, uid, index, 12) < 0.5 ? 1 : -1, fd: 0 } : q;
+            if (place(sit(turnedQ, "sit_stool"), index, "customer")) {
+              done = true;
+              break;
+            }
+          }
+          break;
+        }
+        case "hightable": {
+          const tables = indexed.filter((q) => q.f.kind === "hightable");
+          // The table of the last person at one, the other side of it, if there is one: two facing each other across it.
+          const ordered = [...tables.filter((q) => q.k === lastTable), ...shuffled(tables.filter((q) => q.k !== lastTable), 8)];
+          const act: Activity = roll(id, uid, index, 20) < 0.6 ? "drink" : "talk";
+          for (const { f, k: fk } of ordered) {
+            if (done) break;
+            done = firstTask(stand(f, fk, besideLong(f, 0.55, sides, [0]), act), index, "customer");
+            if (done) lastTable = fk;
+          }
+          break;
+        }
+        case "pool": {
+          const act: Activity = roll(id, uid, index, 21) < 0.6 ? "talk" : "idle";
+          for (const { f, k: fk } of indexed.filter((q) => q.f.kind === "pool table")) if (!done) done = firstTask(stand(f, fk, besideLong(f, 0.6, sides, slides), act), index, "customer");
+          break;
+        }
+        case "wash": {
+          for (const { f, k: fk } of shuffled(indexed.filter((q) => q.f.kind === "washer row"), 8)) if (!done) done = firstTask(stand(f, fk, besideLong(f, 0.55, sides, slides), "browse"), index, "customer");
+          break;
+        }
+        case "fold": {
+          for (const { f, k: fk } of shuffled(indexed.filter((q) => q.f.kind === "table" || q.f.kind === "leaner"), 8)) if (!done) done = firstTask(stand(f, fk, besideLong(f, 0.5, sides, slides), "fold"), index, "customer");
+          break;
+        }
+        case "bench": {
+          const seats = seatsOfKinds(["bench", "couch"]);
+          const order = seats.map((_, j) => seats[(Math.floor(roll(id, uid, index, 8) * seats.length) + j) % seats.length] as Seat);
+          for (const q of order) {
+            if (place(sit(q, "sit_table"), index, "customer")) {
+              done = true;
+              break;
+            }
+          }
+          break;
+        }
+        case "wall": {
+          // By a side wall looking at a phone, turned toward the room.
+          const left = roll(id, uid, index, 22) < 0.5;
+          const wallS = left ? inner.s0 + WALL_MARGIN : inner.s1 - WALL_MARGIN;
+          const tasks: Task[] = [];
+          for (const dd of [2.2, 3.0, 3.7, 2.6, 3.4]) for (const inset of [0.02, 0.5]) tasks.push({ s: wallS + (left ? inset : -inset), d: dd, fs: left ? 1 : -1, fd: 0, activity: "phone", target: null, seat: null });
+          done = firstTask(tasks, index, "customer");
+          break;
+        }
+        case "work": {
+          // Standing by a cabinet or the water cooler, or the copier: on the phone or looking something up.
+          const act: Activity = roll(id, uid, index, 23) < 0.5 ? "phone" : "browse";
+          for (const { f, k: fk } of shuffled(indexed.filter((q) => q.f.kind === "cabinet" || q.f.kind === "water cooler" || q.f.kind === "machine" || q.f.kind === "rack"), 8)) {
+            if (!done) done = firstTask(stand(f, fk, besideLong(f, 0.55, sides, slides), act), index, "customer");
+          }
+          break;
+        }
       }
     }
-    if (spot !== null) add(index, spot, "customer");
   }
-  return out;
+
+  // A customer at the counter and the clerk across it: about half the time they talk.
+  if (staffAtCounter && queueFirst !== null && roll(id, uid, 1, 24) < 0.5) {
+    const clerk = drafts.find((p) => p.role === "staff" && p.zoneCounter);
+    const guest = drafts.find((p) => p.role === "customer" && !p.sitting && p.target === (service === null ? -2 : service.k));
+    if (clerk !== undefined && guest !== undefined) {
+      clerk.activity = "talk";
+      guest.activity = "talk";
+    }
+  }
+
+  const used = new Set<PersonModel>();
+  return drafts.map((p) => ({
+    building: id, unit: uid, s: Math.round(p.s * 1000) / 1000, d: Math.round(p.d * 1000) / 1000, face: p.face,
+    model: modelFor(id, uid, p.index, used),
+    scale: 0.95 + roll(id, uid, p.index, 12) * 0.09,
+    offset: roll(id, uid, p.index, 13) * 60,
+    rate: 0.85 + roll(id, uid, p.index, 14) * 0.25,
+    role: p.role, activity: p.activity,
+    seat: p.seat === null ? null : { furnishing: p.seat.furnishing, top: p.seat.top, family: p.seat.family },
+    target: p.target,
+  }));
 }
 
 const cache = new WeakMap<TownPlan, readonly Person[]>();

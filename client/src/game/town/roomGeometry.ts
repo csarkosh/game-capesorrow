@@ -17,7 +17,7 @@ import { BAKED, fbox, shade as lightShade, xd, xp, type Ctx } from "./roomKit.js
 import { roomField, type DayOpening } from "./roomLight.js";
 import { finishOf, roomShell, type RoomIn } from "./roomShell.js";
 import { dressRoom, goodsOf } from "./roomDressing.js";
-import { benchSet, bin, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
+import { benchSet, bin, feetOf, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
 import { carpetRoll, chairStack, highTable, leaner, stand, windowBar } from "./roomWindow.js";
 import type { Furnishing, RoomLight } from "../../sim/town/types.js";
 
@@ -345,11 +345,7 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
     seed: r.id, wear, step: full ? 0.75 : 2.0, backLamp: dw.open && !vacant ? dw.s : null, exposure: interior.type === "bar" ? 0.42 : undefined,
   });
   const fin = finishOf(r);
-  const feet: Foot[] = interior.furnishings.map((f, i) => {
-    const ex = (Math.abs(f.dir.x) * f.sx + Math.abs(f.dir.z) * f.sd) / 2;
-    const ez = (Math.abs(f.dir.z) * f.sx + Math.abs(f.dir.x) * f.sd) / 2;
-    return { i, s0: f.s - ex, s1: f.s + ex, d0: f.d - ez, d1: f.d + ez, h: f.h };
-  });
+  const feet: Foot[] = feetOf(interior.furnishings);
   const c: Ctx = {
     out, xf, floorY, seed: r.id, lit, vacant, detail, trade: r.trade, field, ceiling: interior.ceiling, s0: r.s0, s1: r.s1, d1: interior.depth, era: r.era, n: 0, chairs: [],
     type: interior.type, paint: fin.wall.paint, base: fin.base, door: { s: r.door.s, w: r.door.width }, feet, style: styleOf(r.id, r.trade, r.era, r.opened, r.remodel?.decade ?? 0),
