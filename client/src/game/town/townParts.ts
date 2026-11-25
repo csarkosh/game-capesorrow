@@ -44,9 +44,14 @@ import { createTownTextures, type TownTextures } from "./townTextures.js";
 /** A cell's mesh with what the view's test needs of it. */
 type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean; /** The model this car stands in for, until the model's meshes are made. */ model?: string };
 
-/** The depth step ahead of the terrain the flat layer is drawn with (the engine's face patches use the same). */
-const FLAT_AHEAD_UNITS = -120;
-const FLAT_AHEAD_SLOPE = -1;
+/**
+ * How far toward the eye the flat layer is drawn, so that it lies over the terrain it is laid on: steps of a 24-bit depth buffer, and the
+ * share of a pixel's own depth slope (the engine's `ahead`). Both are positive: the renderer's depth runs from 1 at the near plane to 0 far
+ * away, so toward the eye is up. With either negative the layer is drawn behind the terrain instead, and a surface with no cut under it (a
+ * yard's drive, a walk, a patch) is seen only from a few metres (`depthLead.test.ts`).
+ */
+export const FLAT_AHEAD_UNITS = 120;
+export const FLAT_AHEAD_SLOPE = 1;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
