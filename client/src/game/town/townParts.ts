@@ -17,7 +17,7 @@
  *   (`Detail`); the geometry is otherwise the same on all three.
  */
 import {
-  addToScene, createMeshFromData, createPbrMaterial, createTexture2DArray, disposeMeshGpu, updateTexture2DArrayFromPixels, markMaterialUboDirty, removeFromScene, setMeshVisible,
+  addToScene, createMeshFromData, createPbrMaterial, createTexture2DArray, disposeMeshGpu, uploadImageToArrayLayer, markMaterialUboDirty, removeFromScene, setMeshVisible,
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
 import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
@@ -44,9 +44,14 @@ import { createTownTextures, type TownTextures } from "./townTextures.js";
 /** A cell's mesh with what the view's test needs of it. */
 type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean; /** The model this car stands in for, until the model's meshes are made. */ model?: string };
 
-/** The depth step ahead of the terrain the flat layer is drawn with (the engine's face patches use the same). */
-const FLAT_AHEAD_UNITS = -120;
-const FLAT_AHEAD_SLOPE = -1;
+/**
+ * How far toward the eye the flat layer is drawn, so that it lies over the terrain it is laid on: steps of a 24-bit depth buffer, and the
+ * share of a pixel's own depth slope (the engine's `ahead`). Both are positive: the renderer's depth runs from 1 at the near plane to 0 far
+ * away, so toward the eye is up. With either negative the layer is drawn behind the terrain instead, and a surface with no cut under it (a
+ * yard's drive, a walk, a patch) is seen only from a few metres (`depthLead.test.ts`).
+ */
+export const FLAT_AHEAD_UNITS = 120;
+export const FLAT_AHEAD_SLOPE = 1;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -193,9 +198,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             paintRequest(surface, atlas.requests[k] as (typeof atlas.requests)[number]);
             if (k % 24 === 23) yield;
           }
-          const px = surface.ctx.getImageData(0, 0, atlas.width, atlas.height);
-          updateTexture2DArrayFromPixels(engine, atlasTexture, new Uint8Array(px.data.buffer));
-          host.uploads.count("textures", px.data.byteLength, 4);
+          // The canvas itself is the source: no copy of its 32 MB is read back into the page, and none is sent through the browser's
+          // write memory, which it keeps at the size of the largest write it has seen. Rows as they are (the top row first, as a read
+          // of the canvas gives them), alpha not premultiplied.
+          uploadImageToArrayLayer(engine, atlasTexture, 0, surface.ctx.canvas, { invertY: false, premultiplyAlpha: false });
+          host.uploads.count("textures", atlas.width * atlas.height * 4, 4);
+          // The canvas is let go at once: its pixels are the GPU's now.
+          surface.ctx.canvas.width = 0;
+          surface.ctx.canvas.height = 0;
         }
         left = batches.length;
         for (const batch of batches) {

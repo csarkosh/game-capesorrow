@@ -9,11 +9,17 @@
  * where the engine's ground albedos are read as stored and divided by a mean; the town's layers carry real colours and
  * paint, so they are decoded the way the base colour of Lite's own material is. The data array is read as data.
  *
- * The arrays are made empty (`createTexture2DArray`) when the renderer's part is, and filled in place by one upload when
- * the last image lands (`updateTexture2DArrayFromPixels` regenerates the mips), so the material binds the same textures for
- * its whole life and no bind group is made again. Until then the material's `townReady` is 0 (`townMaterial.ts`).
+ * The arrays are made empty (`createTexture2DArray`) when the renderer's part is, and filled in place, a layer as its image
+ * lands (`uploadImageToArrayLayer`, which makes that layer's mips), so the material binds the same textures for its whole
+ * life and no bind group is made again. Until the last has landed the material's `townReady` is 0 (`townMaterial.ts`).
+ *
+ * A layer at a time, and not the whole array in one write: the browser keeps the memory a write was sent through, in the
+ * page's process and the GPU's both, at the size of the largest it has seen (measured: an array's 22 MB stayed for the
+ * session, twice over). A layer is a megabyte, and its decoded bytes are let go as soon as it is sent. The layer goes up as
+ * an `ImageData` with no flip and no premultiplied alpha, which stores the bytes as they are (checked against a raw write
+ * in Chrome, for both formats, texels of no alpha among them).
  */
-import { createTexture2DArray, updateTexture2DArrayFromPixels, type EngineContext } from "@babylonjs/lite";
+import { createTexture2DArray, uploadImageToArrayLayer, type EngineContext, type Texture2DArray } from "@babylonjs/lite";
 import { textureUrl } from "@csarkosh/engine/game/assetUrls";
 import { decodeGroundLayer } from "@csarkosh/engine/game/groundLayers";
 import { LAYER_SIZE, TOWN_LAYERS } from "./townLayers.js";
@@ -60,17 +66,26 @@ export function createTownTextures(engine: EngineContext, low: boolean, signal: 
   let left = TOWN_IMAGES;
   const per = size * size * 4;
 
+  /** One layer's decoded bytes into its place in an array, as they are. */
+  const put = (into: Texture2DArray, index: number, bytes: Uint8ClampedArray): void => {
+    if (bytes.length !== per) throw new Error(`a town texture layer is ${bytes.length} bytes, not ${per}`);
+    const pixels = new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, per), size, size);
+    uploadImageToArrayLayer(engine, into, index, pixels, { invertY: false, premultiplyAlpha: false });
+  };
+
   async function load(): Promise<boolean> {
-    const colorBytes = new Uint8Array(per * layers);
-    const dataBytes = new Uint8Array(per * layers);
     const jobs: (() => Promise<void>)[] = [];
     for (const layer of TOWN_LAYERS) {
       jobs.push(async () => {
-        colorBytes.set(await decodeGroundLayer(townImageUrl(layer.color), size, signal), layer.index * per);
+        const bytes = await decodeGroundLayer(townImageUrl(layer.color), size, signal);
+        signal.throwIfAborted();
+        put(color, layer.index, bytes);
         left--;
       });
       jobs.push(async () => {
-        dataBytes.set(await decodeGroundLayer(townImageUrl(layer.data), size, signal), layer.index * per);
+        const bytes = await decodeGroundLayer(townImageUrl(layer.data), size, signal);
+        signal.throwIfAborted();
+        put(data, layer.index, bytes);
         left--;
       });
     }
@@ -80,8 +95,6 @@ export function createTownTextures(engine: EngineContext, low: boolean, signal: 
     };
     await Promise.all(Array.from({ length: IN_FLIGHT }, worker));
     signal.throwIfAborted();
-    updateTexture2DArrayFromPixels(engine, color, colorBytes);
-    updateTexture2DArrayFromPixels(engine, data, dataBytes);
     return true;
   }
 
