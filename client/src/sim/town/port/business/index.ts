@@ -317,7 +317,7 @@ function finish(ctx: BizCtx, d: Draft, takeName: (stem: string) => string): Buil
     if (b.kind === "motel" && !vacant) usigns.push(motelSign(rng, tenant!.name, Math.max(b.era, tenant!.opened), "open", d.lotOut, frame));
     units.push({
       id: k, s0: g.s0, s1: g.s1, door: g.door, openings, fascia: g.fascia, state, tenant, lit, vacantSince, past, remodel: g.remodel,
-      interior: { type, depth: roomDepth, ceiling, furnishings: room.furnishings, lights: room.lights }, signs: usigns,
+      interior: { type, depth: roomDepth, ceiling, furnishings: room.furnishings, lights: room.lights, thin: room.thin }, signs: usigns,
     });
   }
   signs.push(...civicOf(ctx, d, units.length > 0, rng, takeName));

@@ -52,6 +52,8 @@ export type Ctx = {
   readonly feet: readonly Foot[];
   /** The unit's own fittings: chrome or wood, matched or not, how young. */
   readonly style: Style;
+  /** Set for a furnishing deeper than `PLAIN_FROM`: drawn as its big shape only (the detail is `low`), a few bands of colour where it carries stock. */
+  readonly plain?: boolean;
 };
 
 /** An albedo lit by the room at a point (`yl` over the floor): what the room's light makes of it; a surface close to the floor is dimmer (it is lit from above and shaded by what is round it). */
