@@ -14,7 +14,8 @@ import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, shade as lightShade, xd, xp, type Ctx } from "./roomKit.js";
-import { roomField, type DayOpening } from "./roomLight.js";
+import { BACKDROP_AT, BACKDROP_MIN_BEHIND, roomField, type DayOpening } from "./roomLight.js";
+import { backdrop } from "./roomBackdrop.js";
 import { finishOf, roomShell, type RoomIn } from "./roomShell.js";
 import { dressRoom, goodsOf } from "./roomDressing.js";
 import { PLAIN_FROM, benchSet, bin, feetOf, booth, cabinets, cart, ceilingThings, checkout, counterTop, couch, deskSet, endcap, floorThings, machine, partition, plant, sheet, stools, styleOf, tableSet, waterCooler, type Foot } from "./roomFill.js";
@@ -372,6 +373,8 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
   const feet: Foot[] = feetOf(interior.furnishings);
   const c: Ctx = {
     out, xf, floorY, seed: r.id, lit, vacant, detail, trade: r.trade, field, ceiling: interior.ceiling, s0: r.s0, s1: r.s1, d1: interior.depth, era: r.era, n: 0, chairs: [],
+    // A room that is in use ends, as drawn, at a painted sheet a little behind its front; a vacant one is drawn bare to its back wall.
+    cut: !vacant && interior.depth > BACKDROP_AT + BACKDROP_MIN_BEHIND ? BACKDROP_AT : undefined,
     type: interior.type, paint: fin.wall.paint, base: fin.base, door: { s: r.door.s, w: r.door.width }, feet, style: styleOf(r.id, r.trade, r.era, r.opened, r.remodel?.decade ?? 0),
   };
   // The furnishings: all of them on the full tier, the largest few on the low.
@@ -387,8 +390,16 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
     anchors.d.push(f.d - ez - 0.05, f.d + ez + 0.05);
   }
   roomShell(c, r, fin, anchors, dw);
-  // Past `PLAIN_FROM` a room is a tenth as bright and runs to one murk: a furnishing there is its big shape (the silhouette that gives the murk depth), not its small parts.
-  for (const { f, i } of list) furnishing(full && f.d > PLAIN_FROM && f.kind !== "partition" ? { ...c, n: i, detail: "low", plain: true } : { ...c, n: i }, f, i);
+  if (c.cut !== undefined) backdrop(c, c.cut, interior.furnishings, interior.lights, field.dead, fin.floor.paint, fin.wall.paint, fin.ceiling.paint);
+  for (const { f, i } of list) {
+    // What stands wholly behind the sheet is on the sheet, painted, and not drawn.
+    const ez = (Math.abs(f.dir.z) * f.sx + Math.abs(f.dir.x) * f.sd) / 2;
+    if (c.cut !== undefined && f.d - ez > c.cut - 0.04) continue;
+    // A small thing takes the veil at one depth, its own middle's (`Ctx.veilD`).
+    const own: Ctx = ez <= 0.4 ? { ...c, n: i, veilD: f.d } : { ...c, n: i };
+    // Past `PLAIN_FROM` (in a room with no sheet) a furnishing is its big shape, not its small parts.
+    furnishing(full && f.d > PLAIN_FROM && f.kind !== "partition" ? { ...own, detail: "low", plain: true } : own, f, i);
+  }
   floorThings(c, fin.checker);
   dressRoom(c, r, fin, dw);
   ceilingThings(c, interior.furnishings, interior.lights.map((l) => l.s));

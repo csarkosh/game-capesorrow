@@ -5,7 +5,7 @@
  * light (`roomLight.ts`) at each corner, so that a surface is brighter where the room is.
  */
 import { scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { MURK, depthHaze, type RoomField } from "./roomLight.js";
+import { veil, type RoomField } from "./roomLight.js";
 import type { Fx } from "./townSurface.js";
 import type { InteriorType, Trade } from "../../sim/town/types.js";
 import type { Foot, Style } from "./roomFill.js";
@@ -37,6 +37,10 @@ export type Ctx = {
   readonly s1: number;
   /** The back wall's `d`. */
   readonly d1: number;
+  /** Set for a small furnishing: the one depth its every part takes the veil at, so that two of its faces that lie over each other (a plant's leaves) are one colour. */
+  readonly veilD?: number;
+  /** Where the room as drawn ends at a painted sheet (`roomBackdrop.ts`), metres behind the glass; undefined where it is drawn to its back wall. */
+  readonly cut?: number;
   /** The building's era, for what is old in the room. */
   readonly era: number;
   n: number;
@@ -60,9 +64,23 @@ export type Ctx = {
 export function shade(c: Ctx, albedo: Rgb, s: number, d: number, yl: number, up: number): Rgb {
   const e = c.field.at(s, d, yl, up);
   const k = up > 0.5 ? 1 : 0.7 + 0.3 * Math.min(1, Math.max(0, yl / 0.35));
-  // Past the front of the room a thing runs to the murk: its own colour and contrast go, so the back reads as dim shapes (`roomLight.ts`).
-  const h = depthHaze(d);
-  return [(albedo[0] + (MURK[0] - albedo[0]) * h) * e[0] * k, (albedo[1] + (MURK[1] - albedo[1]) * h) * e[1] * k, (albedo[2] + (MURK[2] - albedo[2]) * h) * e[2] * k];
+  // Past the front of the room a thing runs to the veil, the room's light as one even tone (`roomLight.ts`): the room is bright and bare of detail.
+  const h = c.cut === undefined ? 0 : veil(c.veilD ?? d);
+  const v = c.field.veil;
+  const r = albedo[0] * e[0] * k;
+  const g = albedo[1] * e[1] * k;
+  const b = albedo[2] * e[2] * k;
+  return [r + (v[0] - r) * h, g + (v[1] - g) * h, b + (v[2] - b) * h];
+}
+
+/** How much of a glowing thing's own colour (a tube, a neon, a lit sign) the veil takes: less than of a lit surface's, since a lamp shows through haze. */
+const VEIL_GLOW = 0.7;
+
+/** A glowing thing's colour at `d` behind the glass: its own, less what the veil takes of it. */
+export function glowing(c: Ctx, col: Rgb, d: number): Rgb {
+  const h = c.cut === undefined ? 0 : veil(d) * VEIL_GLOW;
+  const v = c.field.veil;
+  return [col[0] + (v[0] - col[0]) * h, col[1] + (v[1] - col[1]) * h, col[2] + (v[2] - col[2]) * h];
 }
 
 /**
@@ -79,6 +97,8 @@ export function fbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
   const corner = (ka: number, kb: number): [number, number] => [cs + ax * ha * ka + bx * hb * kb, cd + ad * ha * ka + bd * hb * kb];
   const ring: [number, number][] = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
   const norms: [number, number][] = [[-bx, -bd], [ax, ad], [bx, bd], [-ax, -ad]];
+  // Wholly behind the room's painted sheet: not seen, not drawn.
+  if (c.cut !== undefined && Math.min(...ring.map((q) => q[1])) > c.cut - 0.04) return;
   const baked = glow === BAKED;
   const fx: Fx = { glow: baked ? 1 : glow };
   const yb = y0 + c.floorY;
@@ -89,12 +109,14 @@ export function fbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
     if (!sides && nd > -0.5) continue;
     const a = ring[i] as [number, number];
     const b = ring[(i + 1) % 4] as [number, number];
+    // A face at the sheet or behind it (a box that stands through the sheet) is not drawn: it would lie in the sheet's own plane.
+    if (c.cut !== undefined && Math.min(a[1], b[1]) > c.cut - 0.04) continue;
     const alb = nd < -0.5 ? side : scaled(side, 0.82);
     const pts: Vec3[] = [xp(xf, a[0], a[1], yb), xp(xf, b[0], b[1], yb), xp(xf, b[0], b[1], yt), xp(xf, a[0], a[1], yt)];
-    const cols: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : alb;
+    const cols: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : glowing(c, alb, cd);
     out.poly(pts, xd(xf, ns, nd), cols, undefined, fx);
   }
-  const cols: Rgb[] | Rgb = baked ? ring.map(([s, d]) => shade(c, top, s, d, y0 + h, 1)) : top;
+  const cols: Rgb[] | Rgb = baked ? ring.map(([s, d]) => shade(c, top, s, d, y0 + h, 1)) : glowing(c, top, cd);
   out.poly(ring.map(([s, d]) => xp(xf, s, d, yt)), [0, 1, 0], cols, undefined, fx);
 }
 
@@ -129,24 +151,32 @@ export function wallFacing(c: Ctx, wall: WallName): Vec3 {
   return wall === "back" ? xd(c.xf, 0, -1) : wall === "left" ? xd(c.xf, 1, 0) : xd(c.xf, -1, 0);
 }
 
+/** Whether a thing on a wall from `a0` to `a1` along it is behind the room's painted sheet: anything on the back wall, and what is on a side wall past the sheet. */
+function hidden(c: Ctx, wall: WallName, a0: number, a1: number): boolean {
+  if (c.cut === undefined) return false;
+  return wall === "back" || Math.min(a0, a1) > c.cut - 0.04;
+}
+
 /**
  * A rectangle on a wall: from `a0` to `a1` along it and `y0` to `y1` over the floor, `off` off the wall, in `albedo` lit by the room, or
  * with its own `glow` (a lit sign, a clock's face) when it is given. `warm` is a colour it is multiplied by for a second tone at its foot
  * (a gradient, a sheet of paper faded at the top): `foot` is its albedo at `y0` where it is not the same as at `y1`.
  */
 export function wallQuad(c: Ctx, wall: WallName, a0: number, a1: number, y0: number, y1: number, offAsked: number, albedo: Rgb, glow: number = BAKED, foot?: Rgb): void {
+  if (hidden(c, wall, a0, a1)) return;
   const baked = glow === BAKED;
   const off = ladder(offAsked);
   const p = [wallPoint(c, wall, a0, y0, off), wallPoint(c, wall, a1, y0, off), wallPoint(c, wall, a1, y1, off), wallPoint(c, wall, a0, y1, off)];
   const lo = foot ?? albedo;
   const cols: Rgb[] | Rgb = baked
     ? [shade(c, lo, ...wallSD(c, wall, a0, off), y0, 0), shade(c, lo, ...wallSD(c, wall, a1, off), y0, 0), shade(c, albedo, ...wallSD(c, wall, a1, off), y1, 0), shade(c, albedo, ...wallSD(c, wall, a0, off), y1, 0)]
-    : albedo;
+    : glowing(c, albedo, wallSD(c, wall, (a0 + a1) / 2, off)[1]);
   c.out.poly(p, wallFacing(c, wall), cols, undefined, { glow: baked ? 1 : glow });
 }
 
 /** A flat polygon on a wall through points (`a` along the wall, `y` over the floor), `off` off it (the steps of `ladder`), lit by the room: a tilted frame, a dartboard. */
 export function wallPoly(c: Ctx, wall: WallName, pts: readonly (readonly [number, number])[], offAsked: number, albedo: Rgb, glow: number = BAKED): void {
+  if (hidden(c, wall, Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0])))) return;
   const off = ladder(offAsked);
   const baked = glow === BAKED;
   c.out.poly(pts.map(([a, y]) => wallPoint(c, wall, a, y, off)), wallFacing(c, wall), baked ? pts.map(([a, y]) => shade(c, albedo, ...wallSD(c, wall, a, off), y, 0)) : albedo, undefined, { glow: baked ? 1 : glow });
@@ -154,6 +184,7 @@ export function wallPoly(c: Ctx, wall: WallName, pts: readonly (readonly [number
 
 /** A box standing out from a wall: a frame, a shelf, a board with depth. `depth` is how far it stands out. Lit from the room. */
 export function wallBox(c: Ctx, wall: WallName, a0: number, a1: number, y0: number, y1: number, depth: number, albedo: Rgb, edge: Rgb = scaled(albedo, 0.7)): void {
+  if (hidden(c, wall, a0, a1)) return;
   wallQuad(c, wall, a0, a1, y0, y1, depth, albedo);
   // Its top, which a person looking in from above the sill could see, and its end toward the front of the room.
   const top = [wallPoint(c, wall, a0, y1, 0), wallPoint(c, wall, a1, y1, 0), wallPoint(c, wall, a1, y1, depth), wallPoint(c, wall, a0, y1, depth)];
@@ -164,6 +195,8 @@ export function wallBox(c: Ctx, wall: WallName, a0: number, a1: number, y0: numb
 
 /** An upright drum or post in the frame, lit from the room (one colour a face, from the light at its foot and top); radius `r` at the foot and `rt` at the top. */
 export function fcyl(c: Ctx, s: number, d: number, y0: number, r: number, h: number, sides: number, side: Rgb, top: Rgb, rt: number = r): void {
+  // A round thing that reaches the room's painted sheet is not drawn: one of its sides would lie in the sheet's own plane, and it has all but gone into the veil there.
+  if (c.cut !== undefined && d + Math.max(r, rt) > c.cut - 0.04) return;
   const { out, xf } = c;
   const yb = y0 + c.floorY;
   const yt = yb + h;

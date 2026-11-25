@@ -3,7 +3,8 @@
 // standing in it, how many furnishings are centred in it and how many of those show over a sill, whether the service point reaches into
 // it, and whether the door's zone and a way in from it are clear. The table by room type is printed.
 import { describe, expect, it } from "vitest";
-import { FRONT_ZONE } from "../../src/game/town/people.js";
+/** The band of the plan this measures, metres behind the glass: the first two ranks of furnishings. */
+const FRONT_ZONE = 4.0;
 import type { Furnishing, InteriorType, TownPlan, Unit } from "../../src/sim/town/types.js";
 import { planFor } from "../../src/sim/town/planFor.js";
 import { WORLD_SEEDS } from "./world.js";

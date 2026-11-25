@@ -13,15 +13,15 @@
 import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
-import { BAKED, fbox, fcyl, shade, xd, xp, type Ctx } from "./roomKit.js";
+import { BAKED, fbox, fcyl, glowing, shade, xd, xp, type Ctx } from "./roomKit.js";
 import type { Furnishing } from "../../sim/town/types.js";
 
 const AX = { x: 1, z: 0 };
 export const NEAR = 9;
 /**
  * A furnishing whose centre is deeper than this (metres behind the glass) is drawn plainly: its big shape and no small parts, no chairs, nothing
- * on it. The room is a tenth as bright there and runs to one murk (`roomLight.ts`, `FADE_TO`), so the parts are not seen, but the anchors'
- * silhouettes are what gives the murk depth. A stool row keeps the stools that can be sat on (within `SEAT_DEEPEST`).
+ * on it. A room in use is not drawn that deep at all (it ends at its painted sheet, `roomBackdrop.ts`), so this is a vacant unit's back and the
+ * low tier's: the parts would not be seen there. A stool row keeps the stools that can be sat on (within `SEAT_DEEPEST`).
  */
 export const PLAIN_FROM = 6.5;
 /** The deepest a stool of a plain row is still drawn and sat on: past the front zone, with a margin. */
@@ -331,7 +331,7 @@ function stoolSpots(c: SeatCtx, f: Furnishing, i: number): { s: number; d: numbe
   for (let k = 0; k < n; k++) {
     if (H(c, i * 17 + k, 13) < 0.06) continue;
     const u = -f.sx / 2 + ((k + 0.5) * f.sx) / n;
-    // A row whose centre is deep keeps only the stools a person can sit on; the rest are murk.
+    // A row whose centre is deep keeps only the stools a person can sit on.
     if (f.d > PLAIN_FROM && f.d + f.dir.z * u > SEAT_DEEPEST) continue;
     out.push({ s: f.s + f.dir.x * u + (H(c, k, 14) - 0.5) * 0.06, d: f.d + f.dir.z * u });
   }
@@ -748,6 +748,7 @@ export function partition(c: Ctx, f: Furnishing, i: number): void {
 
 /** A box hung from the ceiling or lying along it, its bottom and the sides facing the street drawn; `y0` is its bottom over the floor. */
 export function cbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: number, hb: number, dir: { x: number; z: number }, side: Rgb, bottom: Rgb, glow: number = BAKED): void {
+  if (c.cut !== undefined && cd - Math.abs(dir.x) * hb - Math.abs(dir.z) * ha > c.cut - 0.04) return;
   const { out, xf } = c;
   const ax = dir.x;
   const ad = dir.z;
@@ -758,7 +759,7 @@ export function cbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
   const baked = glow === BAKED;
   const fx = { glow: baked ? 1 : glow };
   const yb = y0 + c.floorY;
-  out.poly(ring.map(([s, d]) => xp(xf, s, d, yb)).reverse(), [0, -1, 0], baked ? ring.map(([s, d]) => shade(c, bottom, s, d, y0, -1)).reverse() : bottom, undefined, fx);
+  out.poly(ring.map(([s, d]) => xp(xf, s, d, yb)).reverse(), [0, -1, 0], baked ? ring.map(([s, d]) => shade(c, bottom, s, d, y0, -1)).reverse() : glowing(c, bottom, cd), undefined, fx);
   const norms: [number, number][] = [[-bx, -bd], [ax, ad], [bx, bd], [-ax, -ad]];
   for (let i = 0; i < 4; i++) {
     const [ns, nd] = norms[i] as [number, number];
@@ -766,7 +767,7 @@ export function cbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
     const a = ring[i] as [number, number];
     const b = ring[(i + 1) % 4] as [number, number];
     const alb = nd < -0.5 ? side : scaled(side, 0.82);
-    const col: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : alb;
+    const col: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : glowing(c, alb, cd);
     out.poly([xp(xf, a[0], a[1], yb), xp(xf, b[0], b[1], yb), xp(xf, b[0], b[1], yb + h), xp(xf, a[0], a[1], yb + h)], xd(xf, ns, nd), col, undefined, fx);
   }
 }
