@@ -26,14 +26,15 @@ export const PEOPLE_REACH_LOW = 35;
 export const PEOPLE_STEP = 0.25;
 
 /**
- * How much the base colour is darkened: the models' textures were lit for the open sky, and these people stand in a room.
- * The look is still to be tuned from pictures.
+ * How much the base colour is darkened: the models' textures were lit for the open sky, and these people stand in a room. Only a little:
+ * they stand at the front of the room, which is its bright part, behind glass that keeps back a third of them already (at 0.6 they were
+ * grey ghosts).
  */
+export const INDOOR_DARKEN = 0.92;
+
 /** The height of the seat the sitting clips were made for (m): a chair's, and a bar stool's. */
 export const CHAIR_CLIP_SEAT = 0.46;
 export const STOOL_CLIP_SEAT = 0.75;
-
-export const INDOOR_DARKEN = 0.6;
 
 export type PeoplePartsHost = {
   readonly engine: EngineContext;

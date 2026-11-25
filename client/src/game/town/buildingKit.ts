@@ -145,11 +145,11 @@ export const ROOM_GLOW = { open: 0.5, shut: 0.16, vacant: 0.2 } as const;
 
 /**
  * The colour of glass in daylight (its own tint; the sky's and the street's reflection are the material's) and how clear it is. Authored. A
- * pane keeps back half of what is behind it under a pale film (`GLASS_FILM` in `townMaterial.ts`): enough that a room is seen through it and
- * its bareness is not. It was 0.93, and the film black.
+ * pane keeps back a third of what is behind it under a pale film (`GLASS_FILM` in `townMaterial.ts`): enough that a room is seen through it and
+ * its bareness is not. It was 0.93, and the film black; at 0.5 the people at the front of a room were ghosts.
  */
 export const GLASS_TINT: Rgb = [0.34, 0.4, 0.44];
-export const GLASS_CLEAR = 0.5;
+export const GLASS_CLEAR = 0.66;
 
 /** What a pane's glass is like: how grimy (0 to 1) and how far, at most, its reflecting normal is turned from the wall's (radians; old glass more). */
 export type PaneLook = { readonly dirt?: number; readonly tilt?: number };
