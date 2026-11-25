@@ -90,7 +90,7 @@ type Wall = {
 };
 
 /** The few numbers every part of one building is built from. */
-type Frame = {
+export type Frame = {
   cx: number;
   cz: number;
   ux: number;
@@ -103,16 +103,32 @@ type Frame = {
 
 const dot = (ax: number, az: number, bx: number, bz: number): number => ax * bx + az * bz;
 
-export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole | null, sink: Sink, detail: Detail, extra?: BuildingExtras): void {
+/** Where a building stands and at what heights: its frame, the ground under it, its floor, the floor at the street door and its front wall's frame. */
+export type BuildingLevels = {
+  readonly f: Frame;
+  readonly onPiles: boolean;
+  readonly baseY: number;
+  readonly floorY: number;
+  /** The floor at the street door: the room of a shop on the front is at this height (`openingsGeometry.ts`). */
+  readonly frontFloorY: number;
+  readonly frontAt: number;
+  readonly fr: { readonly x: number; readonly z: number };
+  /** The four walls' ends and outward normals: su, sv of the two ends, then the normal. */
+  readonly sides: readonly (readonly [number, number, number, number, number, number])[];
+  readonly corner: (su: number, sv: number) => [number, number];
+  /** The building's front wall frame in the world (`BuildingUse.frame` plus the anchor), or null for a pier. */
+  readonly xf: Xf | null;
+};
+
+/**
+ * The heights a building is drawn at, from the ground under it: the walls' base, the floor, the floor at the street door. One place, so
+ * that what is put in a room later (a person) stands on the floor that is drawn.
+ */
+export function buildingLevels(g: TownGround, b: Building): BuildingLevels {
   const u = bearingU(b.bearing);
   const v = bearingV(b.bearing);
   const f: Frame = { cx: g.anchor.x + b.centre.x, cz: g.anchor.z + b.centre.z, ux: u.x, uz: u.z, vx: v.x, vz: v.z, hu: b.halfAlong, hv: b.halfAcross };
-  const out = sink(f.cx, f.cz);
-  const glass = extra === undefined ? out : extra.glass(f.cx, f.cz);
-  const ruin = b.state === "ruin";
-  const vacant = b.state === "vacant";
   const onPiles = b.lot === -1;
-
   const corner = (su: number, sv: number): [number, number] => [f.cx + f.ux * f.hu * su + f.vx * f.hv * sv, f.cz + f.uz * f.hu * su + f.vz * f.hv * sv];
 
   // The ground under the footprint: the lowest point sets the walls' base, the highest the floor (on sloping ground a
@@ -132,7 +148,6 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
 
   // Which wall is the front: the one whose normal is nearest the lot's front direction.
   const fr = b.front ?? { x: -v.x, z: -v.z };
-  const walls: Wall[] = [];
   const sides: [number, number, number, number, number, number][] = [
     // su, sv of the two ends, and the outward normal
     [1, -1, 1, 1, u.x, u.z],
@@ -150,15 +165,38 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     }
   });
 
+  // The floor: the highest ground under the footprint (never under the base). A building's height is above its floor.
+  const floorY = onPiles ? deck + 0.1 : Math.max(baseY + 0.3, high + 0.1);
+
+  // The floor at the street door: the building stands on the highest ground under it, but a front on a slope is entered from the sidewalk.
+  const fs = sides[frontAt] as (typeof sides)[number];
+  const [ax, az] = corner(fs[0], fs[1]);
+  const [bx, bz] = corner(fs[2], fs[3]);
+  const fw = wallRef(ax, az, bx, bz, fs[4], fs[5]);
+  let frontGround = -Infinity;
+  for (let k = 0; k <= 6; k++) frontGround = Math.max(frontGround, g.heightAt(fw.ax + fw.tx * fw.length * (k / 6) + fw.nx * 1.2, fw.az + fw.tz * fw.length * (k / 6) + fw.nz * 1.2));
+  const frontFloorY = onPiles ? floorY : Math.max(baseY + 0.3, Math.min(floorY, frontGround + 0.12));
+
+  const use = g.plan.uses[b.id];
+  const uf = use?.frame ?? null;
+  const xf: Xf | null = uf === null ? null : { ox: g.anchor.x + uf.origin.x, oz: g.anchor.z + uf.origin.z, nx: uf.n.x, nz: uf.n.z, tx: uf.t.x, tz: uf.t.z, width: uf.width, depth: uf.depth };
+  return { f, onPiles, baseY, floorY, frontFloorY, frontAt, fr, sides, corner, xf };
+}
+
+export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole | null, sink: Sink, detail: Detail, extra?: BuildingExtras): void {
+  const { f, onPiles, baseY, floorY, frontAt, fr, sides, corner, xf, frontFloorY } = buildingLevels(g, b);
+  const out = sink(f.cx, f.cz);
+  const glass = extra === undefined ? out : extra.glass(f.cx, f.cz);
+  const ruin = b.state === "ruin";
+  const vacant = b.state === "vacant";
+  const walls: Wall[] = [];
+
   // Roof geometry's own frame: e1 the long axis, e2 the short.
   const long = f.hu >= f.hv;
   const e1: [number, number] = long ? [f.ux, f.uz] : [f.vx, f.vz];
   const e2: [number, number] = long ? [f.vx, f.vz] : [f.ux, f.uz];
   const L = long ? f.hu : f.hv;
   const S = long ? f.hv : f.hu;
-
-  // The floor: the highest ground under the footprint (never under the base). A building's height is above its floor.
-  const floorY = onPiles ? deck + 0.1 : Math.max(baseY + 0.3, high + 0.1);
 
   const H = floorY + (ruin ? Math.max(2.6, b.height * 0.6) : b.height);
   const roofKind = ruin ? "ruin" : b.roof;
@@ -230,17 +268,10 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // ---- the walls, cut around their openings (`openingsGeometry.ts`); a ruin's are broken instead
   const refs: WallRef[] = walls.map((w) => wallRef(w.ax, w.az, w.bx, w.bz, w.nx, w.nz));
   const use = g.plan.uses[b.id];
-  const uf = use?.frame ?? null;
-  const xf: Xf | null = uf === null || uf === undefined ? null : { ox: g.anchor.x + uf.origin.x, oz: g.anchor.z + uf.origin.z, nx: uf.n.x, nz: uf.n.z, tx: uf.t.x, tz: uf.t.z, width: uf.width, depth: uf.depth };
   const planCtx: PlanCtx = {
-    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY: floorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }),
+    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }),
     surfaceOf: (r, band) => wallSurface(refs.indexOf(r), band), bandY: baseY + FOOT,
   };
-  // The floor at the street door: the building stands on the highest ground under it, but a front on a slope is entered from the sidewalk.
-  const fw = refs[frontAt] as WallRef;
-  let frontGround = -Infinity;
-  for (let k = 0; k <= 6; k++) frontGround = Math.max(frontGround, g.heightAt(fw.ax + fw.tx * fw.length * (k / 6) + fw.nx * 1.2, fw.az + fw.tz * fw.length * (k / 6) + fw.nz * 1.2));
-  planCtx.frontFloorY = onPiles ? floorY : Math.max(baseY + 0.3, Math.min(floorY, frontGround + 0.12));
   let drawSigns = (): void => {};
   let laterTone = (): void => {};
   if (ruin) {

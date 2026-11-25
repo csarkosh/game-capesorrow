@@ -37,6 +37,8 @@ import { createPaintSurface, paintRequest } from "./signPaint.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
+import { peopleFor, personWorld } from "./people.js";
+import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
 import { emptyTownReady, townSurfacePlugin } from "./townMaterial.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
@@ -106,6 +108,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let rail: RailStream | null = null;
   // The parked vehicles that stand as real models (`props/vehicleParts.ts`), on the tiers above low: loaded once the town's geometry is made.
   let vehicles: VehicleParts | null = null;
+  // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
+  let people: PeopleParts | null = null;
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
@@ -124,7 +128,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       seedScene = scene;
     },
 
-    late({ engine, scene, shared, air, wetAt, ahead, hardCover: cover }) {
+    late({ engine, scene, shared, air, wetAt, ahead, skinClock, hardCover: cover }) {
       const forest = host.forest;
       if (forest === null) return;
       hardCover = cover;
@@ -192,6 +196,12 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
       }
 
+      const plan = ground.plan;
+      people = createPeopleParts(
+        { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
+        peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person) })),
+      );
+
       function* build(): Slices {
         const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas);
         // A code-built car for each model vehicle until its model lands (and for good where its file fails): made first, so they stand with the town's first cells.
@@ -238,10 +248,16 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         building = false;
         // The town stands; now the vehicles' files are asked for, and each lands when it has.
         vehicles?.begin();
+        people?.begin();
       }
 
       building = true;
       host.jobs.begin(owner, build(), false, "town");
+    },
+
+    bodies(dt, lamp) {
+      base.side.bodies(dt, lamp);
+      people?.step(dt);
     },
 
     seen(planes, cover) {
@@ -283,6 +299,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       rail = null;
       vehicles?.dispose();
       vehicles = null;
+      people?.dispose();
+      people = null;
       host.jobs.cancel(owner);
       for (const m of made) {
         if (m.layer === "solid") hardCover?.remove(m.mesh);
