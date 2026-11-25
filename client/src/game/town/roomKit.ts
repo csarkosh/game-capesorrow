@@ -5,7 +5,7 @@
  * light (`roomLight.ts`) at each corner, so that a surface is brighter where the room is.
  */
 import { scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import type { RoomField } from "./roomLight.js";
+import { MURK, depthHaze, type RoomField } from "./roomLight.js";
 import type { Fx } from "./townSurface.js";
 import type { InteriorType, Trade } from "../../sim/town/types.js";
 import type { Foot, Style } from "./roomFill.js";
@@ -58,7 +58,9 @@ export type Ctx = {
 export function shade(c: Ctx, albedo: Rgb, s: number, d: number, yl: number, up: number): Rgb {
   const e = c.field.at(s, d, yl, up);
   const k = up > 0.5 ? 1 : 0.7 + 0.3 * Math.min(1, Math.max(0, yl / 0.35));
-  return [albedo[0] * e[0] * k, albedo[1] * e[1] * k, albedo[2] * e[2] * k];
+  // Past the front of the room a thing runs to the murk: its own colour and contrast go, so the back reads as dim shapes (`roomLight.ts`).
+  const h = depthHaze(d);
+  return [(albedo[0] + (MURK[0] - albedo[0]) * h) * e[0] * k, (albedo[1] + (MURK[1] - albedo[1]) * h) * e[1] * k, (albedo[2] + (MURK[2] - albedo[2]) * h) * e[2] * k];
 }
 
 /**
