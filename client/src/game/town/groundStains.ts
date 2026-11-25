@@ -65,8 +65,8 @@ export function groundStains(g: TownGround, flat: Sink): void {
       pts.push([ax + px, mark === undefined ? hc + gu * lx + gv * lz + LIFT : g.heightAt(ax + px, az + pz) + LIFT_MARK, az + pz]);
     }
     if (mark === undefined) {
-      // A patch with no wear laid over the ground is drifted sand: a patch of gravel.
-      flat(ax + x, az + z).poly(pts, [0, 1, 0], colour, "gravel", { rank });
+      // A patch with no wear laid over the ground is drifted sand: the fine pale grain (`materials.ts`, "sand"), in the patch's own colour.
+      flat(ax + x, az + z).poly(pts, [0, 1, 0], colour, "sand", { rank });
       return;
     }
     // Laid as wear over the ground's own material: full at the middle, none at the rim, so the material's noise breaks the outline (`townMaterial.ts`). The middle is the fan's first corner; the ring's first closes it.
