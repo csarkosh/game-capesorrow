@@ -28,7 +28,7 @@ import type { GroundField } from "@csarkosh/engine/sim/ground";
 import { COVE_Z } from "@csarkosh/engine/sim/olympic";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { GROUND_NORMAL_Y } from "@csarkosh/engine/sim/constants";
-import { smootherstepD } from "./fill.js";
+import { STEP, smootherstepInto } from "./fill.js";
 import { hasPavement } from "./junctions.js";
 import { pavementPolygon } from "./junctionShape.js";
 import { pavingAt } from "./port/edges.js";
@@ -61,9 +61,6 @@ const sqrt = Math.sqrt;
 
 export const STREET_TUNABLES: Readonly<Record<string, number>> = { HIDDEN_PAVED, HIDDEN_WALK, WALK_FADE, CURB_IN, CURB_OUT, HIDDEN, HIDDEN_FADE, SEAM, DITCH_DEPTH, DITCH_WIDTH, DITCH_OFFSET, END_FADE };
 
-/** A value and its partials. */
-type D3 = [number, number, number];
-
 type Rect = {
   readonly kind: 0;
   readonly ax: number;
@@ -82,10 +79,17 @@ type Field = { readonly items: readonly Item[]; readonly x0: number; readonly z0
 
 const FIELDS = new WeakMap<TownPlan, Field>();
 
-/** The curb's height at `s` along a side: the paving's, where the side has a curb. With its slope along the street. */
-function sideDepth(edge: StreetEdge, k: 0 | 1, s: number): [number, number] {
+/** Where `sideDepthInto` leaves its answer: the curb's height and its slope along the street. */
+const SIDE = { v: 0, ds: 0 };
+
+/** The curb's height at `s` along a side: the paving's, where the side has a curb. With its slope along the street. Left in `SIDE`. */
+function sideDepthInto(edge: StreetEdge, k: 0 | 1, s: number): void {
   const side = edge.sides[k];
-  if (!side.curb) return [0, 0];
+  if (!side.curb) {
+    SIDE.v = 0;
+    SIDE.ds = 0;
+    return;
+  }
   const pv = edge.paving;
   let v = (pavingAt(pv, s) as { curb: number }).curb;
   let ds = 0;
@@ -94,12 +98,13 @@ function sideDepth(edge: StreetEdge, k: 0 | 1, s: number): [number, number] {
     if (s > b - SEAM / 2 && s < b + SEAM / 2) {
       const a = (pv[i] as { curb: number }).curb;
       const c = (pv[i + 1] as { curb: number }).curb;
-      const sm = smootherstepD(b - SEAM / 2, b + SEAM / 2, s);
-      v = a + (c - a) * sm.v;
-      ds = (c - a) * sm.d;
+      smootherstepInto(b - SEAM / 2, b + SEAM / 2, s);
+      v = a + (c - a) * STEP.v;
+      ds = (c - a) * STEP.d;
     }
   }
-  return [v, ds];
+  SIDE.v = v;
+  SIDE.ds = ds;
 }
 
 function junctionDepth(plan: TownPlan, j: Junction): number {
@@ -116,7 +121,10 @@ function junctionDepth(plan: TownPlan, j: Junction): number {
     const so = (l.x - st.a.x) * tx + (l.z - st.a.z) * tz + (fwd ? 1 : -1) * (l.mouth + 1);
     const s = so < 0 ? 0 : so > len ? len : so;
     if (!(l.curbLeft || l.curbRight)) continue;
-    depth = Math.max(depth, sideDepth(edge, 0, s)[0], sideDepth(edge, 1, s)[0]);
+    sideDepthInto(edge, 0, s);
+    const d0 = SIDE.v;
+    sideDepthInto(edge, 1, s);
+    depth = Math.max(depth, d0, SIDE.v);
   }
   return depth;
 }
@@ -201,11 +209,39 @@ function fieldOf(plan: TownPlan): Field {
   return f;
 }
 
-const ZERO3: [number, number, number] = [0, 0, 0];
-const mul3 = (a: D3, b: D3): D3 => [a[0] * b[0], a[1] * b[0] + a[0] * b[1], a[2] * b[0] + a[0] * b[2]];
+/** A value and its partials in the plan's x and z, in one pair of registers; `mul3Into` leaves a product's here. */
+const M3 = { a: 0, b: 0, c: 0 };
+
+/** The product of two values with their partials (`a` and `b` are (value, d/dx, d/dz)): the value, and the product rule for each partial. Left in `M3`. */
+function mul3Into(a0: number, a1: number, a2: number, b0: number, b1: number, b2: number): void {
+  M3.a = a0 * b0;
+  M3.b = a1 * b0 + a0 * b1;
+  M3.c = a2 * b0 + a0 * b2;
+}
 
 /** What a street channel does at a point: the roadway's lowering and the trough's extra cut, each with its partials in the plan's x and z, and the roadway window's greatest value (for the ditch). */
-type Out = { lower: [number, number, number]; hide: [number, number, number]; road: number; ditch: [number, number, number] };
+type Out = { lv: number; ldx: number; ldz: number; hv: number; hdx: number; hdz: number; road: number; dv: number; ddx: number; ddz: number };
+
+/** The trough under a roadway's curb and beyond it, fading out over `HIDDEN_FADE`: raises `o.hv` if this cut is deeper. */
+function roadTrough(r: Rect, o: Out, at: number, sign: number, ws0: number, ws1: number, ws2: number): void {
+  smootherstepInto(r.cw + CURB_IN, r.cw + CURB_IN + HIDDEN_FADE, at);
+  const whV = STEP.v;
+  const whD = STEP.d;
+  const WH0 = 1 - whV;
+  const WH1 = 0;
+  const WH2 = -whD * sign;
+  mul3Into(WH0, WH1, WH2, 1, 0, 0);
+  const g0 = M3.a;
+  const g1 = M3.b;
+  const g2 = M3.c;
+  mul3Into(g0, g1, g2, ws0, ws1, ws2);
+  const h = M3.a * HIDDEN;
+  if (h > o.hv) {
+    o.hv = h;
+    o.hdx = HIDDEN * (M3.b * r.tx + M3.c * -r.tz);
+    o.hdz = HIDDEN * (M3.b * r.tz + M3.c * r.tx);
+  }
+}
 
 function rectAt(r: Rect, x: number, z: number, o: Out): void {
   const dx = x - r.ax;
@@ -217,17 +253,31 @@ function rectAt(r: Rect, x: number, z: number, o: Out): void {
   if (at > reach || s < -1 || s > r.len + 1) return;
   const sign = t < 0 ? -1 : 1;
   // The window along the street: it ends over END_FADE at either end.
-  const a = smootherstepD(-END_FADE, END_FADE, s);
-  const b = smootherstepD(-END_FADE, END_FADE, r.len - s);
-  const ws: D3 = [a.v * b.v, a.d * b.v - a.v * b.d, 0];
+  smootherstepInto(-END_FADE, END_FADE, s);
+  const aV = STEP.v;
+  const aD = STEP.d;
+  smootherstepInto(-END_FADE, END_FADE, r.len - s);
+  const bV = STEP.v;
+  const bD = STEP.d;
+  const ws0 = aV * bV;
+  const ws1 = aD * bV - aV * bD;
+  const ws2 = 0;
   // Across: 1 over the roadway, 0 beyond its curb.
-  const wl = smootherstepD(r.cw - CURB_IN, r.cw + CURB_OUT, at);
-  const W: D3 = [(1 - wl.v), 0, -wl.d * sign];
-  const road = W[0] * ws[0];
+  smootherstepInto(r.cw - CURB_IN, r.cw + CURB_OUT, at);
+  const wlV = STEP.v;
+  const wlD = STEP.d;
+  const W0 = 1 - wlV;
+  const W1 = 0;
+  const W2 = -wlD * sign;
+  const road = W0 * ws0;
   if (road > o.road) o.road = road;
   // The curb's height: the left side's (t > 0) and the right's, the roadway lying across them.
-  const [dl, dlS] = sideDepth(r.edge, 0, s < 0 ? 0 : s > r.len ? r.len : s);
-  const [dr, drS] = sideDepth(r.edge, 1, s < 0 ? 0 : s > r.len ? r.len : s);
+  sideDepthInto(r.edge, 0, s < 0 ? 0 : s > r.len ? r.len : s);
+  const dl = SIDE.v;
+  const dlS = SIDE.ds;
+  sideDepthInto(r.edge, 1, s < 0 ? 0 : s > r.len ? r.len : s);
+  const dr = SIDE.v;
+  const drS = SIDE.ds;
   if (at <= r.cw + CURB_OUT) {
     let u = (t + r.cw) / (2 * r.cw);
     let du = 1 / (2 * r.cw);
@@ -238,52 +288,61 @@ function rectAt(r: Rect, x: number, z: number, o: Out): void {
       u = 1;
       du = 0;
     }
-    const Dm: D3 = [dr * (1 - u) + dl * u, drS * (1 - u) + dlS * u, (dl - dr) * du];
+    const Dm0 = dr * (1 - u) + dl * u;
+    const Dm1 = drS * (1 - u) + dlS * u;
+    const Dm2 = (dl - dr) * du;
     // The lowering: Dm * W * ws, partials in (s, t).
-    const L = mul3(mul3(Dm, W), ws);
-    if (L[0] > o.lower[0]) {
-      o.lower = [L[0], L[1] * r.tx + L[2] * -r.tz, L[1] * r.tz + L[2] * r.tx];
+    mul3Into(Dm0, Dm1, Dm2, W0, W1, W2);
+    const m0 = M3.a;
+    const m1 = M3.b;
+    const m2 = M3.c;
+    mul3Into(m0, m1, m2, ws0, ws1, ws2);
+    if (M3.a > o.lv) {
+      o.lv = M3.a;
+      o.ldx = M3.b * r.tx + M3.c * -r.tz;
+      o.ldz = M3.b * r.tz + M3.c * r.tx;
     }
     // The trough: HIDDEN * its window * ws * smoothstep(Dm).
-    const wh = smootherstepD(r.cw + CURB_IN, r.cw + CURB_IN + HIDDEN_FADE, at);
-    const G: D3 = [1, 0, 0];
-    const WH: D3 = [1 - wh.v, 0, -wh.d * sign];
-    const H = mul3(mul3(WH, G), ws);
-    const h = H[0] * HIDDEN;
-    if (h > o.hide[0]) o.hide = [h, HIDDEN * (H[1] * r.tx + H[2] * -r.tz), HIDDEN * (H[1] * r.tz + H[2] * r.tx)];
+    roadTrough(r, o, at, sign, ws0, ws1, ws2);
   } else if (at <= r.cw + HIDDEN_FADE + CURB_IN) {
-    const wh = smootherstepD(r.cw + CURB_IN, r.cw + CURB_IN + HIDDEN_FADE, at);
-    const G: D3 = [1, 0, 0];
-    const WH: D3 = [1 - wh.v, 0, -wh.d * sign];
-    const H = mul3(mul3(WH, G), ws);
-    const h = H[0] * HIDDEN;
-    if (h > o.hide[0]) o.hide = [h, HIDDEN * (H[1] * r.tx + H[2] * -r.tz), HIDDEN * (H[1] * r.tz + H[2] * r.tx)];
+    roadTrough(r, o, at, sign, ws0, ws1, ws2);
   }
   // The trough under a sidewalk's pours.
   const sideW = r.edge.sides[t > 0 ? 0 : 1];
   if (sideW.walk > 0 && at > r.hw - sideW.walk - 0.5 && at < r.hw + WALK_FADE + 0.2) {
-    const inn = smootherstepD(r.hw - sideW.walk - 0.4, r.hw - sideW.walk, at);
-    const out = smootherstepD(r.hw + 0.1, r.hw + 0.1 + WALK_FADE, at);
-    const lat: D3 = [inn.v * (1 - out.v), (inn.d * (1 - out.v) - inn.v * out.d) * sign, 0];
+    smootherstepInto(r.hw - sideW.walk - 0.4, r.hw - sideW.walk, at);
+    const innV = STEP.v;
+    const innD = STEP.d;
+    smootherstepInto(r.hw + 0.1, r.hw + 0.1 + WALK_FADE, at);
+    const outV = STEP.v;
+    const outD = STEP.d;
+    const lat0 = innV * (1 - outV);
+    const lat1 = (innD * (1 - outV) - innV * outD) * sign;
     // lat holds d/dt in slot 1 for the sidewalk zone; the along window is built from the runs that reach here.
     let along = 0;
     let alongD = 0;
     for (const run of sideW.runs) {
       if (s < run.s0 - 0.6 || s > run.s1 + 0.6) continue;
-      const a0 = smootherstepD(run.s0 - 0.5, run.s0 + 0.1, s);
-      const a1 = smootherstepD(run.s1 - 0.1, run.s1 + 0.5, s);
-      const v = a0.v * (1 - a1.v);
+      smootherstepInto(run.s0 - 0.5, run.s0 + 0.1, s);
+      const a0V = STEP.v;
+      const a0D = STEP.d;
+      smootherstepInto(run.s1 - 0.1, run.s1 + 0.5, s);
+      const a1V = STEP.v;
+      const a1D = STEP.d;
+      const v = a0V * (1 - a1V);
       if (v > along) {
         along = v;
-        alongD = a0.d * (1 - a1.v) - a0.v * a1.d;
+        alongD = a0D * (1 - a1V) - a0V * a1D;
       }
     }
     if (along > 0) {
-      const h = HIDDEN_WALK * lat[0] * along;
-      if (h > o.hide[0]) {
-        const dt = HIDDEN_WALK * lat[1] * along;
-        const ds = HIDDEN_WALK * lat[0] * alongD;
-        o.hide = [h, ds * r.tx + dt * -r.tz, ds * r.tz + dt * r.tx];
+      const h = HIDDEN_WALK * lat0 * along;
+      if (h > o.hv) {
+        const dt = HIDDEN_WALK * lat1 * along;
+        const ds = HIDDEN_WALK * lat0 * alongD;
+        o.hv = h;
+        o.hdx = ds * r.tx + dt * -r.tz;
+        o.hdz = ds * r.tz + dt * r.tx;
       }
     }
   }
@@ -291,16 +350,30 @@ function rectAt(r: Rect, x: number, z: number, o: Out): void {
   const side = r.edge.sides[t > 0 ? 0 : 1];
   if (side.ditch && at > r.cw + DITCH_OFFSET - DITCH_WIDTH && at < r.cw + DITCH_OFFSET + DITCH_WIDTH) {
     const c = r.cw + side.verge + 0.9;
-    const bump = smootherstepD(0, DITCH_WIDTH / 2 + 0.4, at > c ? at - c : c - at);
+    smootherstepInto(0, DITCH_WIDTH / 2 + 0.4, at > c ? at - c : c - at);
+    const bumpV = STEP.v;
+    const bumpD = STEP.d;
     const dd = at > c ? 1 : -1;
     // 1 at the middle, 0 at its edges; fades in along the street over 8 m from its ends.
-    const e0 = smootherstepD(4, 12, s);
-    const e1 = smootherstepD(4, 12, r.len - s);
-    const along: D3 = [e0.v * e1.v, e0.d * e1.v - e0.v * e1.d, 0];
-    const across: D3 = [1 - bump.v, 0, -bump.d * dd * sign];
-    const K = mul3(across, along);
-    const v = K[0] * DITCH_DEPTH;
-    if (v > o.ditch[0]) o.ditch = [v, DITCH_DEPTH * (K[1] * r.tx + K[2] * -r.tz), DITCH_DEPTH * (K[1] * r.tz + K[2] * r.tx)];
+    smootherstepInto(4, 12, s);
+    const e0V = STEP.v;
+    const e0D = STEP.d;
+    smootherstepInto(4, 12, r.len - s);
+    const e1V = STEP.v;
+    const e1D = STEP.d;
+    const al0 = e0V * e1V;
+    const al1 = e0D * e1V - e0V * e1D;
+    const al2 = 0;
+    const ac0 = 1 - bumpV;
+    const ac1 = 0;
+    const ac2 = -bumpD * dd * sign;
+    mul3Into(ac0, ac1, ac2, al0, al1, al2);
+    const v = M3.a * DITCH_DEPTH;
+    if (v > o.dv) {
+      o.dv = v;
+      o.ddx = DITCH_DEPTH * (M3.b * r.tx + M3.c * -r.tz);
+      o.ddz = DITCH_DEPTH * (M3.b * r.tz + M3.c * r.tx);
+    }
   }
 }
 
@@ -335,42 +408,61 @@ function polyAt(p: Poly, x: number, z: number, o: Out): void {
   const gz = d > 1e-9 ? ((z - qz) / d) * (inside ? 1 : -1) : 0;
   if (p.paved === true) {
     // Other paved ground: only the terrain's cut, 1 inside the polygon and gone `WALK_FADE` outside it.
-    const wp = smootherstepD(-WALK_FADE, 0, sd);
-    const hp = HIDDEN_PAVED * wp.v;
-    if (hp > o.hide[0]) o.hide = [hp, HIDDEN_PAVED * wp.d * gx, HIDDEN_PAVED * wp.d * gz];
+    smootherstepInto(-WALK_FADE, 0, sd);
+    const hp = HIDDEN_PAVED * STEP.v;
+    if (hp > o.hv) {
+      o.hv = hp;
+      o.hdx = HIDDEN_PAVED * STEP.d * gx;
+      o.hdz = HIDDEN_PAVED * STEP.d * gz;
+    }
     return;
   }
-  const w = smootherstepD(-CURB_OUT, CURB_IN, sd);
-  if (w.v > o.road) o.road = w.v;
-  const L = p.depth * w.v;
-  if (L > o.lower[0]) o.lower = [L, p.depth * w.d * gx, p.depth * w.d * gz];
-  const wh = smootherstepD(-HIDDEN_FADE - CURB_IN, -CURB_IN, sd);
-  const h = HIDDEN * wh.v;
-  if (h > o.hide[0]) o.hide = [h, HIDDEN * wh.d * gx, HIDDEN * wh.d * gz];
+  smootherstepInto(-CURB_OUT, CURB_IN, sd);
+  const wV = STEP.v;
+  const wD = STEP.d;
+  if (wV > o.road) o.road = wV;
+  const L = p.depth * wV;
+  if (L > o.lv) {
+    o.lv = L;
+    o.ldx = p.depth * wD * gx;
+    o.ldz = p.depth * wD * gz;
+  }
+  smootherstepInto(-HIDDEN_FADE - CURB_IN, -CURB_IN, sd);
+  const h = HIDDEN * STEP.v;
+  if (h > o.hv) {
+    o.hv = h;
+    o.hdx = HIDDEN * STEP.d * gx;
+    o.hdz = HIDDEN * STEP.d * gz;
+  }
 }
 
-/** The one record every channel lookup writes into and returns (the simulation is single-threaded and each caller reads it at once): no allocation on the ground's hot path. */
-const SCRATCH: Out = { lower: [0, 0, 0], hide: [0, 0, 0], road: 0, ditch: [0, 0, 0] };
+/** The one record every channel lookup writes into (the simulation is single-threaded and each caller reads it at once): no allocation on the ground's hot path. */
+const SCRATCH: Out = { lv: 0, ldx: 0, ldz: 0, hv: 0, hdx: 0, hdz: 0, road: 0, dv: 0, ddx: 0, ddz: 0 };
 
-/** The channel at a point of the plan's frame. */
-function channelAt(plan: TownPlan, x: number, z: number): Out {
+/** The channel at a point of the plan's frame, left in `SCRATCH`. */
+function channelInto(plan: TownPlan, x: number, z: number): void {
   const o = SCRATCH;
-  o.lower = ZERO3;
-  o.hide = ZERO3;
-  o.ditch = ZERO3;
+  o.lv = 0;
+  o.ldx = 0;
+  o.ldz = 0;
+  o.hv = 0;
+  o.hdx = 0;
+  o.hdz = 0;
+  o.dv = 0;
+  o.ddx = 0;
+  o.ddz = 0;
   o.road = 0;
   const f = fieldOf(plan);
-  if (f.nx === 0) return o;
+  if (f.nx === 0) return;
   const i = Math.floor((x - f.x0) / CELL);
   const j = Math.floor((z - f.z0) / CELL);
-  if (i < 0 || j < 0 || i >= f.nx || j >= f.nz) return o;
+  if (i < 0 || j < 0 || i >= f.nx || j >= f.nz) return;
   const list = f.cells[i * f.nz + j] as readonly number[];
   for (let k = 0; k < list.length; k++) {
     const it = f.items[list[k] as number] as Item;
     if (it.kind === 0) rectAt(it, x, z, o);
     else polyAt(it, x, z, o);
   }
-  return o;
 }
 
 /** The plan and the anchor's x of the seed last asked about: one world is asked millions of times in a row. */
@@ -390,18 +482,54 @@ const NO_LIFT = Object.freeze({ v: 0, dx: 0, dz: 0 });
 
 /** The lowering of the roadway (and the ditch) at a world point, with its partials: the made ground less this is the surface walked. */
 export function streetLowerD(seed: number, x: number, z: number): { v: number; dx: number; dz: number } {
-  const o = channelAt(ensure(seed), x - lastAx, z - COVE_Z);
+  const plan = ensure(seed);
+  channelInto(plan, x - lastAx, z - COVE_Z);
+  const o = SCRATCH;
   // A ditch is taken out where a roadway is.
   const k = 1 - o.road;
-  const v = o.lower[0] + o.ditch[0] * k;
+  const v = o.lv + o.dv * k;
   if (v === 0) return { v: 0, dx: 0, dz: 0 };
-  return { v, dx: o.lower[1] + o.ditch[1] * k, dz: o.lower[2] + o.ditch[2] * k };
+  return { v, dx: o.ldx + o.ddx * k, dz: o.ldz + o.ddz * k };
+}
+
+/** Where `streetLiftInto` leaves its answer: the trough's cut and its partials (all 0 where there is none). Read at once, before any other call. */
+export const LIFT = { v: 0, dx: 0, dz: 0 };
+
+/** The trough's cut under a world point, with its partials, left in `LIFT`: the terrain stands this far under the surface that is walked and drawn. */
+export function streetLiftInto(seed: number, x: number, z: number): void {
+  const plan = ensure(seed);
+  channelInto(plan, x - lastAx, z - COVE_Z);
+  const o = SCRATCH;
+  LIFT.v = o.hv;
+  LIFT.dx = o.hdx;
+  LIFT.dz = o.hdz;
 }
 
 /** The trough's cut under a world point, with its partials: the terrain stands this far under the surface that is walked and drawn. */
 export function streetLiftD(seed: number, x: number, z: number): { v: number; dx: number; dz: number } {
-  const o = channelAt(ensure(seed), x - lastAx, z - COVE_Z);
-  return o.hide === ZERO3 ? NO_LIFT : { v: o.hide[0], dx: o.hide[1], dz: o.hide[2] };
+  streetLiftInto(seed, x, z);
+  return LIFT.v === 0 ? NO_LIFT : { v: LIFT.v, dx: LIFT.dx, dz: LIFT.dz };
+}
+
+/** Where `streetChannelInto` leaves the ground with the streets cut into it. Read at once, before any other call. */
+export const CHANNEL = { h: 0, dx: 0, dz: 0 };
+
+/**
+ * The place's ground with the streets cut into it, left in `CHANNEL`: the made ground (`bh`, `bdx`, `bdz`) less the roadway's
+ * lowering and the trough. Answers false, and writes nothing, where neither is there: the made ground stands.
+ */
+export function streetChannelInto(seed: number, x: number, z: number, bh: number, bdx: number, bdz: number): boolean {
+  const plan = ensure(seed);
+  channelInto(plan, x - lastAx, z - COVE_Z);
+  const o = SCRATCH;
+  const k = 1 - o.road;
+  const lv = o.lv + o.dv * k;
+  const hv = o.hv;
+  if (lv === 0 && hv === 0) return false;
+  CHANNEL.h = bh - lv - hv;
+  CHANNEL.dx = bdx - (o.ldx + o.ddx * k) - o.hdx;
+  CHANNEL.dz = bdz - (o.ldz + o.ddz * k) - o.hdz;
+  return true;
 }
 
 /**
@@ -409,16 +537,8 @@ export function streetLiftD(seed: number, x: number, z: number): { v: number; dx
  * neither is there it is `base`, the same object.
  */
 export function streetChannelD(seed: number, x: number, z: number, base: TerrainSample): TerrainSample {
-  const o = channelAt(ensure(seed), x - lastAx, z - COVE_Z);
-  const k = 1 - o.road;
-  const lv = o.lower[0] + o.ditch[0] * k;
-  const hv = o.hide[0];
-  if (lv === 0 && hv === 0) return base;
-  return {
-    h: base.h - lv - hv,
-    dx: base.dx - (o.lower[1] + o.ditch[1] * k) - o.hide[1],
-    dz: base.dz - (o.lower[2] + o.ditch[2] * k) - o.hide[2],
-  };
+  if (!streetChannelInto(seed, x, z, base.h, base.dx, base.dz)) return base;
+  return { h: CHANNEL.h, dx: CHANNEL.dx, dz: CHANNEL.dz };
 }
 
 /**
@@ -429,17 +549,21 @@ export function streetChannelD(seed: number, x: number, z: number, base: Terrain
 export function withStreets(base: GroundField, seed: number): GroundField {
   return {
     heightAt(x, z) {
-      const lift = streetLiftD(seed, x, z).v;
+      streetLiftInto(seed, x, z);
+      const lift = LIFT.v;
       return lift === 0 ? base.heightAt(x, z) : base.heightAt(x, z) + lift;
     },
     normalAt(x, z, out: Vec3) {
       base.normalAt(x, z, out);
-      const lift = streetLiftD(seed, x, z);
-      if (lift.v === 0 && lift.dx === 0 && lift.dz === 0) return;
+      streetLiftInto(seed, x, z);
+      const liftV = LIFT.v;
+      const liftDx = LIFT.dx;
+      const liftDz = LIFT.dz;
+      if (liftV === 0 && liftDx === 0 && liftDz === 0) return;
       // The base normal is (-dx, 1, -dz) over its length: add the lift's slope to its gradient.
       const ny = out.y > 1e-6 ? out.y : 1e-6;
-      const gx = -out.x / ny + lift.dx;
-      const gz = -out.z / ny + lift.dz;
+      const gx = -out.x / ny + liftDx;
+      const gz = -out.z / ny + liftDz;
       const inv = 1 / sqrt(1 + gx * gx + gz * gz);
       out.x = -gx * inv;
       out.y = inv;
@@ -447,7 +571,8 @@ export function withStreets(base: GroundField, seed: number): GroundField {
     },
     standNormalY: (x, z) => base.standNormalY?.(x, z) ?? GROUND_NORMAL_Y,
     above(x, y, z) {
-      const lift = streetLiftD(seed, x, z).v;
+      streetLiftInto(seed, x, z);
+      const lift = LIFT.v;
       // Over a street's trough the answer is `y - heightAt > 0` with this field's own height, to the bit.
       if (lift !== 0) return y - (base.heightAt(x, z) + lift) > 0;
       if (base.above !== undefined) return base.above(x, y, z);

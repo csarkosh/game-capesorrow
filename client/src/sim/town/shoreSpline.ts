@@ -34,15 +34,28 @@ export function shoreSplineOf(site: TownSite): ShoreSpline {
   return spline;
 }
 
+/** Where `shoreXAtInto` leaves its answer: the shore's x, its slope in z and that slope's own slope. Read at once, before any other call. */
+export const SHORE = { v: 0, dz: 0, dz2: 0 };
+
 /**
  * The shore's x in the site's frame at `zr` (metres north of the anchor), its slope in z and the slope's
- * own slope: the first derivative is continuous, the second is not at the samples.
+ * own slope, left in `SHORE`: the first derivative is continuous, the second is not at the samples.
  */
-export function shoreXAt(spline: ShoreSpline, zr: number): { v: number; dz: number; dz2: number } {
+export function shoreXAtInto(spline: ShoreSpline, zr: number): void {
   const last = spline.y.length - 1;
   const s = (zr - spline.z0) / spline.step;
-  if (s <= 0) return { v: spline.y[0] as number, dz: 0, dz2: 0 };
-  if (s >= last) return { v: spline.y[last] as number, dz: 0, dz2: 0 };
+  if (s <= 0) {
+    SHORE.v = spline.y[0] as number;
+    SHORE.dz = 0;
+    SHORE.dz2 = 0;
+    return;
+  }
+  if (s >= last) {
+    SHORE.v = spline.y[last] as number;
+    SHORE.dz = 0;
+    SHORE.dz2 = 0;
+    return;
+  }
   const k = Math.floor(s);
   const t = s - k;
   const y0 = spline.y[k] as number;
@@ -52,9 +65,16 @@ export function shoreXAt(spline: ShoreSpline, zr: number): { v: number; dz: numb
   const t2 = t * t;
   const t3 = t2 * t;
   const h = spline.step;
-  return {
-    v: (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * h * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * h * m1,
-    dz: ((6 * t2 - 6 * t) * y0 + (-6 * t2 + 6 * t) * y1) / h + (3 * t2 - 4 * t + 1) * m0 + (3 * t2 - 2 * t) * m1,
-    dz2: (((12 * t - 6) * y0 + (-12 * t + 6) * y1) / h + (6 * t - 4) * m0 + (6 * t - 2) * m1) / h,
-  };
+  SHORE.v = (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * h * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * h * m1;
+  SHORE.dz = ((6 * t2 - 6 * t) * y0 + (-6 * t2 + 6 * t) * y1) / h + (3 * t2 - 4 * t + 1) * m0 + (3 * t2 - 2 * t) * m1;
+  SHORE.dz2 = (((12 * t - 6) * y0 + (-12 * t + 6) * y1) / h + (6 * t - 4) * m0 + (6 * t - 2) * m1) / h;
+}
+
+/**
+ * The shore's x in the site's frame at `zr` (metres north of the anchor), its slope in z and the slope's
+ * own slope: the first derivative is continuous, the second is not at the samples.
+ */
+export function shoreXAt(spline: ShoreSpline, zr: number): { v: number; dz: number; dz2: number } {
+  shoreXAtInto(spline, zr);
+  return { v: SHORE.v, dz: SHORE.dz, dz2: SHORE.dz2 };
 }

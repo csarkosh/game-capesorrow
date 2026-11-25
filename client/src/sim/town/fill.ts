@@ -19,22 +19,44 @@ export type FillArea = { readonly polygon: readonly { readonly x: number; readon
 /** The width of the bank at a quay's edge, metres. */
 export const QUAY_BANK = 6;
 
-/** Quintic smootherstep with derivative: C2 at both edges. */
-export function smootherstepD(edge0: number, edge1: number, x: number): { v: number; d: number } {
+/** Where `smootherstepInto` leaves its answer: the value and the derivative. Read at once, before any other call. */
+export const STEP = { v: 0, d: 0 };
+
+/** Quintic smootherstep with derivative: C2 at both edges. Leaves its answer in `STEP`, and makes no object. */
+export function smootherstepInto(edge0: number, edge1: number, x: number): void {
   const span = edge1 - edge0;
-  if (x <= edge0) return { v: 0, d: 0 };
-  if (x >= edge1) return { v: 1, d: 0 };
+  if (x <= edge0) {
+    STEP.v = 0;
+    STEP.d = 0;
+    return;
+  }
+  if (x >= edge1) {
+    STEP.v = 1;
+    STEP.d = 0;
+    return;
+  }
   const t = (x - edge0) / span;
-  return { v: t * t * t * (t * (t * 6 - 15) + 10), d: (30 * t * t * (t - 1) * (t - 1)) / span };
+  STEP.v = t * t * t * (t * (t * 6 - 15) + 10);
+  STEP.d = (30 * t * t * (t - 1) * (t - 1)) / span;
 }
 
-/** One polygon's weight at a point of the site's frame, and its gradient. */
-function areaWindowD(area: FillArea, x: number, z: number): { v: number; dx: number; dz: number } {
+/** Quintic smootherstep with derivative: C2 at both edges. */
+export function smootherstepD(edge0: number, edge1: number, x: number): { v: number; d: number } {
+  smootherstepInto(edge0, edge1, x);
+  return { v: STEP.v, d: STEP.d };
+}
+
+/** Where `areaWindowInto` leaves its answer. */
+const AREA = { v: 0, dx: 0, dz: 0 };
+/** Scratch for one polygon's edge weights and their gradients, grown to the largest polygon and then reused. */
+const W: number[] = [];
+const WX: number[] = [];
+const WZ: number[] = [];
+
+/** One polygon's weight at a point of the site's frame, and its gradient, left in `AREA`. */
+function areaWindowInto(area: FillArea, x: number, z: number): void {
   const p = area.polygon;
   const n = p.length;
-  const w: number[] = [];
-  const wx: number[] = [];
-  const wz: number[] = [];
   for (let i = 0; i < n; i++) {
     const a = p[i] as { x: number; z: number };
     const b = p[(i + 1) % n] as { x: number; z: number };
@@ -45,40 +67,63 @@ function areaWindowD(area: FillArea, x: number, z: number): { v: number; dx: num
     const nx = -ez / len;
     const nz = ex / len;
     const d = nx * (x - a.x) + nz * (z - a.z);
-    const s = smootherstepD(-QUAY_BANK, 0, d);
-    w.push(s.v);
-    wx.push(s.d * nx);
-    wz.push(s.d * nz);
-    if (s.v === 0) return { v: 0, dx: 0, dz: 0 };
+    smootherstepInto(-QUAY_BANK, 0, d);
+    const sV = STEP.v;
+    const sD = STEP.d;
+    W[i] = sV;
+    WX[i] = sD * nx;
+    WZ[i] = sD * nz;
+    if (sV === 0) {
+      AREA.v = 0;
+      AREA.dx = 0;
+      AREA.dz = 0;
+      return;
+    }
   }
   let v = 1;
-  for (let i = 0; i < n; i++) v *= w[i] as number;
+  for (let i = 0; i < n; i++) v *= W[i] as number;
   let dx = 0;
   let dz = 0;
   for (let i = 0; i < n; i++) {
     let others = 1;
-    for (let j = 0; j < n; j++) if (j !== i) others *= w[j] as number;
-    dx += (wx[i] as number) * others;
-    dz += (wz[i] as number) * others;
+    for (let j = 0; j < n; j++) if (j !== i) others *= W[j] as number;
+    dx += (WX[i] as number) * others;
+    dz += (WZ[i] as number) * others;
   }
-  return { v, dx, dz };
+  AREA.v = v;
+  AREA.dx = dx;
+  AREA.dz = dz;
 }
 
-/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. */
-export function fillWindowD(areas: readonly FillArea[], x: number, z: number): { v: number; dx: number; dz: number } {
+/** Where `fillWindowInto` leaves its answer: the weight and its gradient. Read at once, before any other call. */
+export const FILL = { v: 0, dx: 0, dz: 0 };
+
+/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. Leaves its answer in `FILL`. */
+export function fillWindowInto(areas: readonly FillArea[], x: number, z: number): void {
   // The union's complement is the product of the areas' complements: 1 - w = Π (1 - w_i).
   let rest = 1;
   let restDx = 0;
   let restDz = 0;
-  for (const area of areas) {
-    const a = areaWindowD(area, x, z);
-    if (a.v === 0) continue;
+  for (let k = 0; k < areas.length; k++) {
+    areaWindowInto(areas[k] as FillArea, x, z);
+    const av = AREA.v;
+    if (av === 0) continue;
+    const adx = AREA.dx;
+    const adz = AREA.dz;
     // d(rest * (1 - a)) = (1 - a) d(rest) - rest da
-    restDx = (1 - a.v) * restDx - rest * a.dx;
-    restDz = (1 - a.v) * restDz - rest * a.dz;
-    rest *= 1 - a.v;
+    restDx = (1 - av) * restDx - rest * adx;
+    restDz = (1 - av) * restDz - rest * adz;
+    rest *= 1 - av;
   }
-  return { v: 1 - rest, dx: 0 - restDx, dz: 0 - restDz };
+  FILL.v = 1 - rest;
+  FILL.dx = 0 - restDx;
+  FILL.dz = 0 - restDz;
+}
+
+/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. */
+export function fillWindowD(areas: readonly FillArea[], x: number, z: number): { v: number; dx: number; dz: number } {
+  fillWindowInto(areas, x, z);
+  return { v: FILL.v, dx: FILL.dx, dz: FILL.dz };
 }
 
 /**

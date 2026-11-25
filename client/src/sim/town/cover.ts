@@ -12,7 +12,7 @@
  * The plan is read in its own frame (+x inland, +z north, origin at the anchor); `xf` and `zr` here are that frame's.
  */
 import { orient } from "./geom.js";
-import { smootherstepD } from "./fill.js";
+import { STEP, smootherstepInto } from "./fill.js";
 import { planFor } from "./planFor.js";
 import type { TownPlan } from "./types.js";
 
@@ -154,63 +154,61 @@ export function coverIndexOf(plan: TownPlan): CoverIndex {
 }
 
 // The windows are asked at every point the ground is read at, several windows a point and several edges a window, and each answer was a
-// small object made and dropped: about 2 GB of them while a town loads. A window's answer is three numbers, so they are left in these and
-// read at once by the one caller; the arithmetic, and its order, is what it was.
-let stepD = 0;
-let winDx = 0;
-let winDz = 0;
+// small object made and dropped: about 2 GB of them while a town loads. A window's answer is three numbers, so they are left in a register
+// and read at once by the one caller; the arithmetic, and its order, is what it was.
 
-/** `smootherstepD`'s value, with its derivative left in `stepD`: the same arithmetic, and no object. */
-function step(edge0: number, edge1: number, x: number): number {
-  const span = edge1 - edge0;
-  if (x <= edge0) {
-    stepD = 0;
-    return 0;
-  }
-  if (x >= edge1) {
-    stepD = 0;
-    return 1;
-  }
-  const t = (x - edge0) / span;
-  stepD = (30 * t * t * (t - 1) * (t - 1)) / span;
-  return t * t * t * (t * (t * 6 - 15) + 10);
-}
+/** Where `windowAt` leaves its answer: the weight, with its gradient (0 and no slope where it is out of reach, 1 and no slope where it holds whole). */
+const WIN = { v: 0, dx: 0, dz: 0 };
 
-/** One window's weight at a point, with its gradient left in `winDx` and `winDz`: 0 if it is out of reach, 1 and no slope where it holds whole. */
-function windowAt(w: Window, x: number, z: number): number {
+/** One window's weight at a point, with its gradient, left in `WIN`: 0 if it is out of reach, 1 and no slope where it holds whole. */
+function windowAt(w: Window, x: number, z: number): void {
   const edges = w.edges;
   const n = edges.length;
   const near = -w.hold;
   const far = -(w.hold + w.fade);
   let v = 1;
-  winDx = 0;
-  winDz = 0;
+  WIN.dx = 0;
+  WIN.dz = 0;
   for (let i = 0; i < n; i++) {
     const e = edges[i] as Edge;
     const dist = e.nx * x + e.nz * z - e.c;
-    if (dist <= far) return 0;
-    if (dist < near) v *= step(far, near, dist);
+    if (dist <= far) {
+      WIN.v = 0;
+      return;
+    }
+    if (dist < near) {
+      smootherstepInto(far, near, dist);
+      v *= STEP.v;
+    }
   }
-  if (v === 1) return 1;
+  if (v === 1) {
+    WIN.v = 1;
+    return;
+  }
   let dx = 0;
   let dz = 0;
   for (let i = 0; i < n; i++) {
     const e = edges[i] as Edge;
     const dist = e.nx * x + e.nz * z - e.c;
     if (dist >= near) continue;
-    const sv = step(far, near, dist);
+    smootherstepInto(far, near, dist);
+    const sv = STEP.v;
+    const sd = STEP.d;
     // The product of the other edges' factors.
     const others = v / sv;
-    dx += stepD * e.nx * others;
-    dz += stepD * e.nz * others;
+    dx += sd * e.nx * others;
+    dz += sd * e.nz * others;
   }
-  winDx = dx;
-  winDz = dz;
-  return v;
+  WIN.dx = dx;
+  WIN.dz = dz;
+  WIN.v = v;
 }
 
-/** The quay's own window: 1 within `COVER_HOLD` metres of the quay's line, falling to 0 over `COVER_FADE` beyond, so the waterfront's ground is whole to its ends. */
-function quayWindowD(plan: TownPlan, xf: number, zr: number): { v: number; dx: number; dz: number } {
+/** Where `quayWindowInto` leaves its answer. */
+const QUAY = { v: 0, dx: 0, dz: 0 };
+
+/** The quay's own window: 1 within `COVER_HOLD` metres of the quay's line, falling to 0 over `COVER_FADE` beyond, so the waterfront's ground is whole to its ends. Left in `QUAY`. */
+function quayWindowInto(plan: TownPlan, xf: number, zr: number): void {
   const { a, b } = plan.quay;
   const qx = b.x - a.x;
   const qz = b.z - a.z;
@@ -218,33 +216,77 @@ function quayWindowD(plan: TownPlan, xf: number, zr: number): { v: number; dx: n
   const ex = xf - (a.x + t * qx);
   const ez = zr - (a.z + t * qz);
   const d = Math.sqrt(ex * ex + ez * ez);
-  if (d >= COVER_HOLD + COVER_FADE) return { v: 0, dx: 0, dz: 0 };
-  if (d <= COVER_HOLD) return { v: 1, dx: 0, dz: 0 };
-  const s = smootherstepD(COVER_HOLD, COVER_HOLD + COVER_FADE, d);
-  return { v: 1 - s.v, dx: (-s.d * ex) / d, dz: (-s.d * ez) / d };
+  if (d >= COVER_HOLD + COVER_FADE) {
+    QUAY.v = 0;
+    QUAY.dx = 0;
+    QUAY.dz = 0;
+    return;
+  }
+  if (d <= COVER_HOLD) {
+    QUAY.v = 1;
+    QUAY.dx = 0;
+    QUAY.dz = 0;
+    return;
+  }
+  smootherstepInto(COVER_HOLD, COVER_HOLD + COVER_FADE, d);
+  const sv = STEP.v;
+  const sd = STEP.d;
+  QUAY.v = 1 - sv;
+  QUAY.dx = (-sd * ex) / d;
+  QUAY.dz = (-sd * ez) / d;
+}
+
+/** Where `coverInto` leaves its answer: the cover and its gradient. Read at once, before any other call. */
+export const COVER = { v: 0, dx: 0, dz: 0 };
+
+/** The town's cover at a point of the plan's frame, with its gradient, left in `COVER`: the smooth union of the block windows near it, and the quay's. `withLots` false leaves out the outlying lots' windows: the ground they stand on is the land's own, and only the forest and the cliff bands keep off them. */
+export function coverInto(plan: TownPlan, xf: number, zr: number, withLots = true): void {
+  quayWindowInto(plan, xf, zr);
+  const qv = QUAY.v;
+  const qdx = QUAY.dx;
+  const qdz = QUAY.dz;
+  if (qv === 1) {
+    COVER.v = qv;
+    COVER.dx = qdx;
+    COVER.dz = qdz;
+    return;
+  }
+  blocksCoverInto(plan, xf, zr, withLots);
+  const bv = BLOCKS.v;
+  const bdx = BLOCKS.dx;
+  const bdz = BLOCKS.dz;
+  if (qv === 0 || bv === 1) {
+    COVER.v = bv;
+    COVER.dx = bdx;
+    COVER.dz = bdz;
+    return;
+  }
+  // The union: 1 - w = (1 - quay)(1 - blocks).
+  COVER.v = 1 - (1 - qv) * (1 - bv);
+  COVER.dx = (1 - bv) * qdx + (1 - qv) * bdx;
+  COVER.dz = (1 - bv) * qdz + (1 - qv) * bdz;
 }
 
 /** The town's cover at a point of the plan's frame, with its gradient: the smooth union of the block windows near it, and the quay's. `withLots` false leaves out the outlying lots' windows: the ground they stand on is the land's own, and only the forest and the cliff bands keep off them. */
 export function coverD(plan: TownPlan, xf: number, zr: number, withLots = true): { v: number; dx: number; dz: number } {
-  const quay = quayWindowD(plan, xf, zr);
-  if (quay.v === 1) return quay;
-  const blocks = blocksCoverD(plan, xf, zr, withLots);
-  if (quay.v === 0) return blocks;
-  if (blocks.v === 1) return blocks;
-  // The union: 1 - w = (1 - quay)(1 - blocks).
-  return {
-    v: 1 - (1 - quay.v) * (1 - blocks.v),
-    dx: (1 - blocks.v) * quay.dx + (1 - quay.v) * blocks.dx,
-    dz: (1 - blocks.v) * quay.dz + (1 - quay.v) * blocks.dz,
-  };
+  coverInto(plan, xf, zr, withLots);
+  return { v: COVER.v, dx: COVER.dx, dz: COVER.dz };
 }
 
-/** The union of the block windows near a point. */
-function blocksCoverD(plan: TownPlan, xf: number, zr: number, withLots: boolean): { v: number; dx: number; dz: number } {
+/** Where `blocksCoverInto` leaves its answer. */
+const BLOCKS = { v: 0, dx: 0, dz: 0 };
+
+/** The union of the block windows near a point, left in `BLOCKS`. */
+function blocksCoverInto(plan: TownPlan, xf: number, zr: number, withLots: boolean): void {
   const index = coverIndexOf(plan);
   const i = Math.floor((xf - index.x0) / CELL);
   const j = Math.floor((zr - index.z0) / CELL);
-  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) return { v: 0, dx: 0, dz: 0 };
+  if (i < 0 || j < 0 || i >= index.nx || j >= index.nz) {
+    BLOCKS.v = 0;
+    BLOCKS.dx = 0;
+    BLOCKS.dz = 0;
+    return;
+  }
   const list = index.cells[i * index.nz + j] as readonly number[];
   // The union's complement is the product of the windows' complements: 1 - w = product of (1 - w_i).
   let rest = 1;
@@ -253,14 +295,24 @@ function blocksCoverD(plan: TownPlan, xf: number, zr: number, withLots: boolean)
   for (let k = 0; k < list.length; k++) {
     const w = index.windows[list[k] as number] as Window;
     if (w.lot && !withLots) continue;
-    const av = windowAt(w, xf, zr);
+    windowAt(w, xf, zr);
+    const av = WIN.v;
     if (av === 0) continue;
-    if (av === 1) return { v: 1, dx: 0, dz: 0 };
-    restDx = (1 - av) * restDx - rest * winDx;
-    restDz = (1 - av) * restDz - rest * winDz;
+    if (av === 1) {
+      BLOCKS.v = 1;
+      BLOCKS.dx = 0;
+      BLOCKS.dz = 0;
+      return;
+    }
+    const wdx = WIN.dx;
+    const wdz = WIN.dz;
+    restDx = (1 - av) * restDx - rest * wdx;
+    restDz = (1 - av) * restDz - rest * wdz;
     rest *= 1 - av;
   }
-  return { v: 1 - rest, dx: 0 - restDx, dz: 0 - restDz };
+  BLOCKS.v = 1 - rest;
+  BLOCKS.dx = 0 - restDx;
+  BLOCKS.dz = 0 - restDz;
 }
 
 /** The town's cover for a world's seed at a point of the plan's frame. */
