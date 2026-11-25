@@ -12,11 +12,16 @@ import { FLAT_AHEAD_SLOPE, FLAT_AHEAD_UNITS } from "../../src/game/town/townPart
  * with distance and the lift does not, so from a few metres away the terrain was drawn over every surface with no cut under it (a yard's
  * drive and walk, the patches of a yard) and a base surface over the marks laid on it (cracks, patches, lids, paint): they were seen
  * only from right beside them.
+ *
+ * The slope-scaled share of the engine's offset is left at zero for the flat layer: it is computed at each vertex, so a mark of large
+ * triangles and the roadway of small ones under it got different shares, and one was drawn through the other in a wedge that moved with
+ * the eye.
  */
 describe("the flat ground's depth lead", () => {
-  it("brings the flat layer toward the eye: both of its offsets are positive", () => {
+  it("brings the flat layer toward the eye, by the same amount at every point: its steps are positive and it takes no share of the slope", () => {
     expect(FLAT_AHEAD_UNITS).toBeGreaterThan(0);
-    expect(FLAT_AHEAD_SLOPE).toBeGreaterThan(0);
+    // The slope's share is worked out a vertex at a time, so it differs between two surfaces at one place by more than a rank's step.
+    expect(FLAT_AHEAD_SLOPE).toBe(0);
   });
 
   it("brings a higher rank toward the eye: the rank's line adds a positive share of the rank to the clip depth", () => {

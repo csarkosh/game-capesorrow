@@ -28,7 +28,7 @@ export type MatName =
   | "wood" | "bark" | "boards" | "ply" | "painted" | "plastic" | "cloth" | "rope"
   | "steel" | "rusty" | "ribbed" | "sheet"
   | "concrete" | "formed" | "brick" | "stone" | "plaster"
-  | "rubber" | "tar" | "shingle" | "soil" | "gravel" | "plant";
+  | "rubber" | "tar" | "shingle" | "soil" | "gravel" | "sand" | "plant";
 
 /** A material with its own wear, scale or tint in the place of the table's. */
 export type MatSpec = { readonly mat: MatName; readonly wear?: number; readonly wearKind?: WearKind; readonly scale?: number; readonly streaks?: boolean };
@@ -75,6 +75,8 @@ const MATS: Readonly<Record<MatName, Mat>> = {
   shingle: { layer: "roof_shingle" },
   soil: { layer: "mud" },
   gravel: { layer: "gravel" },
+  // Drifted sand: the concrete's fine pale grain, whose own colour is sand's. (As gravel it was the gravel's stones at twice their brightness: cream, blotched maroon.)
+  sand: { layer: "sidewalk", scale: 5 },
   // Stand-in for leaves and stems where the engine's own plants are not used: the moss layer's green mat.
   plant: { layer: "moss", scale: 2 },
 };

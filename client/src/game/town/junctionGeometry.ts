@@ -20,7 +20,7 @@ import { RANK, type Over } from "./groundSurfaces.js";
 import type { Rgb } from "./meshBuilder.js";
 import { withMat } from "./materials.js";
 import { ASPHALT, CURB, DOME, GRAVEL, PLANTER, SIDEWALK } from "./palette.js";
-import { CURB_WIDTH, ROADWAY_LIFT, WALK_LIFT } from "./streetGeometry.js";
+import { CURB_WIDTH, OPEN_GROUND_LIFT, ROADWAY_LIFT, WALK_LIFT } from "./streetGeometry.js";
 import type { WJunction } from "./junctionWorld.js";
 import { triangulate, type P2, type P3, type RoadSet, type Surface } from "./surface.js";
 import type { Sink, TownGround } from "./townTypes.js";
@@ -115,7 +115,15 @@ function corner(g: TownGround, surf: Surface, legs: readonly JunctionLeg[], k: J
         const w1 = 0.9 + 0.6 * hashN(ckey, i + 1, 0, 5);
         const o0 = -0.04 - 0.12 * hashN(ckey, i, 0, 6);
         const o1 = -0.04 - 0.12 * hashN(ckey, i + 1, 0, 6);
-        surf.flat([p2(shift(p, o0, i)), p2(shift(q, o1, i)), p2(shift(q, w1, i)), p2(shift(p, w0, i))], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", rank: RANK.under, group: "shoulder", tint: [0.95, 0.9, 0.82], frame, dirt: (v) => clamp01(0.2 + 0.6 * smooth(0, 1.4, Math.sqrt((v[0] - c.x) * (v[0] - c.x) + (v[2] - c.z) * (v[2] - c.z)) - k.radius + 1.4)), wear: 0.12 });
+        // As a street's shoulder (`streetGeometry.ts`): under the asphalt's level to a hand's breadth out of its edge, then rising to `OPEN_GROUND_LIFT` at its own edge, where the terrain is not cut.
+        const over: Over = { layer: "gravel", rank: RANK.under, group: "shoulder", tint: [0.95, 0.9, 0.82], frame, dirt: (v) => clamp01(0.2 + 0.6 * smooth(0, 1.4, Math.sqrt((v[0] - c.x) * (v[0] - c.x) + (v[2] - c.z) * (v[2] - c.z)) - k.radius + 1.4)), wear: 0.12 };
+        const low = ROADWAY_LIFT - 0.004;
+        const a0 = p2(shift(p, 0.1, i));
+        const a1 = p2(shift(q, 0.1, i));
+        surf.flat([p2(shift(p, o0, i)), p2(shift(q, o1, i)), a1, a0], low, GRAVEL, over);
+        const b0 = p2(shift(p, w0, i));
+        const b1 = p2(shift(q, w1, i));
+        surf.poly([[a0[0], a0[1], low], [a1[0], a1[1], low], [b1[0], b1[1], OPEN_GROUND_LIFT], [b0[0], b0[1], OPEN_GROUND_LIFT]], GRAVEL, over);
       }
       return;
     }
