@@ -48,6 +48,15 @@ export const TILE = 4;
 export const STREET_LIFT = 0.024;
 /** Every roadway's lift over the ground (which is already cut down by the curb's height: `sim/town/streetField.ts`), the junctions' pavements and the legs alike. */
 export const ROADWAY_LIFT = 0.012;
+/**
+ * How far over the ground a surface lies where the terrain under it is not cut down (a shoulder's outer edge, an alley's wheel tracks): the
+ * terrain is drawn as an upper envelope of the ground, a few centimetres over it wherever it bends, so a surface lying millimetres over
+ * uncut ground is under the drawn terrain in places, and shows only from where the flat layer's depth lead (which grows with distance) is
+ * more than the terrain stands over it: it comes and goes as one walks. The yards' surfaces lie this far over theirs (`yardGeometry.ts`).
+ */
+export const OPEN_GROUND_LIFT = 0.04;
+/** How far out of the asphalt's edge a shoulder still lies under the asphalt's level, metres: within the cut the terrain has under a roadway. */
+const SHOULDER_UNDER = 0.1;
 /** The curb's top and the sidewalk's lie this much over the ground at the lots' level, so a sidewalk is level with the lot behind it. */
 export const WALK_LIFT = 0.012;
 /** The curb's width. */
@@ -473,7 +482,15 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const q = (s: number, t: number): P2 => at(p, s, sg * t);
       const dirt = (v: readonly [number, number, number]): number => clamp01(0.18 + 0.7 * smooth(p.cw, p.cw + w, lat(v)));
       const wear = (v: readonly [number, number, number]): number => clamp01(0.05 + 0.35 * smooth(p.cw + 0.3, p.cw + w, lat(v)));
-      surf.flat([q(s0, edge + e0 - 0.08), q(s1, edge + e1 - 0.08), q(s1, o1), q(s0, o0)], ROADWAY_LIFT - 0.004, GRAVEL, { layer: "gravel", rank: RANK.under, group: "shoulder", tint: [0.95, 0.9, 0.82], frame, dirt, wear });
+      // Two strips. The inner, from 8 cm under the asphalt's edge to a hand's breadth out of it, lies under the asphalt (the terrain is cut down under
+      // the roadway and a little beyond). The outer rises from there to `OPEN_GROUND_LIFT` at the shoulder's own edge, where the terrain is not cut.
+      const over: Over = { layer: "gravel", rank: RANK.under, group: "shoulder", tint: [0.95, 0.9, 0.82], frame, dirt, wear };
+      const low = ROADWAY_LIFT - 0.004;
+      const m0 = Math.min(edge + e0 + SHOULDER_UNDER, o0);
+      const m1 = Math.min(edge + e1 + SHOULDER_UNDER, o1);
+      surf.flat([q(s0, edge + e0 - 0.08), q(s1, edge + e1 - 0.08), q(s1, m1), q(s0, m0)], low, GRAVEL, over);
+      const c = (pt: P2, lift: number): P3 => [pt[0], pt[1], lift];
+      if (o0 - m0 > 0.01 || o1 - m1 > 0.01) surf.poly([c(q(s0, m0), low), c(q(s1, m1), low), c(q(s1, o1), OPEN_GROUND_LIFT), c(q(s0, o0), OPEN_GROUND_LIFT)], GRAVEL, over);
     }
   }
 
@@ -519,7 +536,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
         const centre = c0;
         void centre;
         const hump = (v: readonly [number, number, number]): number => clamp01(0.45 + 0.4 * Math.abs(Math.abs((v[0] - p.ax) * p.nx + (v[2] - p.az) * p.nz) - 0.85));
-        surf.flat([q(s0, c0 - w0), q(s1, c1 - w1), q(s1, c1 + w1), q(s0, c0 + w0)], 0.01, GRAVEL, { layer: "gravel", tint: [0.8, 0.75, 0.68], frame, dirt: hump, wear: 0.08, rank: RANK.mark });
+        surf.flat([q(s0, c0 - w0), q(s1, c1 - w1), q(s1, c1 + w1), q(s0, c0 + w0)], OPEN_GROUND_LIFT, GRAVEL, { layer: "gravel", tint: [0.8, 0.75, 0.68], frame, dirt: hump, wear: 0.08, rank: RANK.mark });
       }
     }
   }
