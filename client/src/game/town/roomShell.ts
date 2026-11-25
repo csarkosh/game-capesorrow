@@ -24,6 +24,8 @@ import type { Detail } from "./townTypes.js";
 export type RoomIn = {
   /** Where the room's haze goes (`roomHaze.ts`): a blended layer drawn before the glass. A room given none has no haze, only its veil and its sheet. */
   readonly haze?: MeshBuilder;
+  /** The room is seen through its glass out of focus (`townBlur.ts`): it is drawn whole to its back wall, with no veil, sheet or haze. */
+  readonly through?: boolean;
   readonly xf: Xf;
   readonly floorY: number;
   readonly s0: number;

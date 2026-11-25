@@ -282,7 +282,7 @@ export function townAlphaCode(low = false): string {
     "if(tsClear>0.001){",
     `let tsSeed=input.${TOWN_VARYING}.z;let tsDirt=input.${TOWN_VARYING}.y;`,
     // A sheet of a room's haze (`roomHaze.ts`, marked by a seed of 2, where a pane's is 0 to 1): one colour, carried in the floats a pane's size and tilt use, and no reflection.
-    `if(tsSeed>1.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
+    `if(tsSeed>1.5&&tsSeed<2.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
     "let tsVe=normalize(scene.vEyePosition.xyz-input.worldPos);",
     "var tsGn=N;",
     "let tsTg=normalize(vec3<f32>(-tsGn.z,0.0,tsGn.x));",

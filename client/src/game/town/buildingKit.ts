@@ -152,7 +152,11 @@ export const GLASS_TINT: Rgb = [0.34, 0.4, 0.44];
 export const GLASS_CLEAR = 0.66;
 
 /** What a pane's glass is like: how grimy (0 to 1) and how far, at most, its reflecting normal is turned from the wall's (radians; old glass more). */
-export type PaneLook = { readonly dirt?: number; readonly tilt?: number };
+/** A pane's own look. `through`: what is behind it is read from the kept frame and shown out of focus (`townBlur.ts`): a shop's room. */
+export type PaneLook = { readonly dirt?: number; readonly tilt?: number; readonly through?: boolean };
+
+/** What is added to the seed of a pane that is seen through out of focus: a pane's own seed is 0 to 1, a haze sheet's 2 (`roomHaze.ts`), so 4 to 5 is such a pane (`townMaterial.ts` reads it). */
+export const THROUGH_SEED = 4;
 
 /**
  * A pane of glass in the blended layer: on the wall between two stations and heights, `off` off its face. Each pane has a turn of its own
@@ -163,7 +167,7 @@ export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1:
   const amp = look.tilt ?? 0.03;
   const seed = hash01(key, 8801);
   const fx: Fx = {
-    clear, dirt: look.dirt ?? 0.3, seed, size: [y1 - y0, s1 - s0],
+    clear, dirt: look.dirt ?? 0.3, seed: look.through === true ? seed + THROUGH_SEED : seed, size: [y1 - y0, s1 - s0],
     tilt: [(hash01(key, 8802) * 2 - 1) * amp, (hash01(key, 8803) * 2 - 1) * amp],
     uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
   };

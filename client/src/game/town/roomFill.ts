@@ -20,8 +20,8 @@ const AX = { x: 1, z: 0 };
 export const NEAR = 9;
 /**
  * A furnishing whose centre is deeper than this (metres behind the glass) is drawn plainly: its big shape and no small parts, no chairs, nothing
- * on it. A room in use is not drawn that deep at all (it ends at its painted sheet, `roomBackdrop.ts`), so this is a vacant unit's back and the
- * low tier's: the parts would not be seen there. A stool row keeps the stools that can be sat on (within `SEAT_DEEPEST`).
+ * on it. Where a room in use ends at its painted sheet (`roomBackdrop.ts`) it is not drawn that deep at all, and this is a vacant unit's back;
+ * where the rooms are read through their glass out of focus (`townBlur.ts`) it is every room's back, which is soft there. A stool row keeps the stools that can be sat on (within `SEAT_DEEPEST`).
  */
 export const PLAIN_FROM = 6.5;
 /** The deepest a stool of a plain row is still drawn and sat on: past the front zone, with a margin. */

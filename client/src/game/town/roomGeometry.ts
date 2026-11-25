@@ -375,7 +375,7 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
   const c: Ctx = {
     out, xf, floorY, seed: r.id, lit, vacant, detail, trade: r.trade, field, ceiling: interior.ceiling, s0: r.s0, s1: r.s1, d1: interior.depth, era: r.era, n: 0, chairs: [],
     // A room that is in use ends, as drawn, at a painted sheet a little behind its front; a vacant one is drawn bare to its back wall.
-    cut: !vacant && interior.depth > BACKDROP_AT + BACKDROP_MIN_BEHIND ? BACKDROP_AT : undefined,
+    cut: r.through !== true && !vacant && interior.depth > BACKDROP_AT + BACKDROP_MIN_BEHIND ? BACKDROP_AT : undefined,
     type: interior.type, paint: fin.wall.paint, base: fin.base, door: { s: r.door.s, w: r.door.width }, feet, style: styleOf(r.id, r.trade, r.era, r.opened, r.remodel?.decade ?? 0),
   };
   // The furnishings: all of them on the full tier, the largest few on the low.

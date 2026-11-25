@@ -27,7 +27,9 @@ describe("the town's part of the renderer", () => {
     const { host } = fakeHost(null);
     const base = noParts(host);
     const mine = townParts(host);
-    expect(Object.keys(mine.side).sort()).toEqual(Object.keys(base.side).sort());
+    // The town's side says one thing more: its glass reads the frame the opaque draws left (`townBlur.ts`), so the medium tier keeps it.
+    expect(Object.keys(mine.side).sort()).toEqual([...Object.keys(base.side), "keepsFrame"].sort());
+    expect(mine.side.keepsFrame).toBe(true);
     expect(Object.keys(mine.api)).toEqual(Object.keys(base.api));
     mine.api.setUnsettle(0.25);
     expect(mine.side.look.unsettle).toBe(0.25);
