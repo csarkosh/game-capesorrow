@@ -28,7 +28,8 @@ export type SurfaceMaker = (w: WallRef) => Surface;
 export type WinCtx = { report?: FillReport; out: MeshBuilder; glass: MeshBuilder; detail: Detail; id: number; era: number; surface: SurfaceMaker; trim: Rgb; wall: Rgb; /** The front draws a stone sill under each window itself. */ stoneSill?: boolean };
 
 /** What a window is told of its place beyond the plan's treatment: whether the room behind is lit by the unit, how grimy the glass is (0 to 1), how old and so how wavy it is. */
-export type WinLook = { readonly lit?: boolean; readonly dirt?: number; readonly vacant?: boolean };
+/** `through`: the pane shows a shop's room out of focus (`PaneLook.through`). */
+export type WinLook = { readonly lit?: boolean; readonly dirt?: number; readonly vacant?: boolean; readonly through?: boolean };
 
 const CURTAINS: readonly Rgb[] = [
   [0.7, 0.66, 0.55], [0.55, 0.2, 0.18], [0.25, 0.35, 0.5], [0.78, 0.78, 0.74], [0.3, 0.42, 0.3], [0.5, 0.4, 0.55], [0.85, 0.7, 0.35], [0.35, 0.3, 0.27],
@@ -138,7 +139,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   const dirt = look.dirt ?? Math.min(0.9, 0.2 + 0.25 * Math.min(1, (2026 - c.era) / 120) + hash01(seed, 643) * 0.25);
   const oldness = Math.min(1, (2026 - c.era) / 130);
   // The pane: old glass is wavier, so its reflecting normal turns more.
-  pane(glass, w, sa, y0, sb, y1, gOff, GLASS_CLEAR, GLASS_TINT, { dirt, tilt: 0.018 + 0.035 * oldness });
+  pane(glass, w, sa, y0, sb, y1, gOff, GLASS_CLEAR, GLASS_TINT, { dirt, tilt: 0.018 + 0.035 * oldness, ...(look.through === true ? { through: true } : {}) });
   if (full) {
     // The meeting rail of a double-hung window, and its muntin cut round it, in front of the glass.
     const mid = y0 + height * (replaced ? 0.5 : 0.52);

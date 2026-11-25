@@ -24,6 +24,7 @@ import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engin
 import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLeaner } from "./leanMesh.js";
+import { townBlurPlugin } from "./townBlur.js";
 import { packSurface } from "./surfacePack.js";
 import type { RenderGame, RenderHost, RenderPlayer, RenderSide, RenderState } from "@csarkosh/engine/game/lite/renderGame";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
@@ -61,6 +62,8 @@ export const FLAT_AHEAD_UNITS = 120;
 export const FLAT_AHEAD_SLOPE = 0;
 /** Where among the see-through draws a room's haze stands: after the cars' shadows and before the lettering and the glass, which are laid over it. */
 export const HAZE_ORDER = SEE_THROUGH_ORDER.lettering - 1;
+/** Where the lettering stands on a tier whose glass writes its whole pixel (`townBlur.ts`): after the glass. */
+export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -115,6 +118,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
+    // The shops' glass reads the frame the opaque draws left, to show each room out of focus (`townBlur.ts`): the medium tier keeps it too.
+    keepsFrame: true,
 
     early({ engine, scene }) {
       // Lite builds the PBR pipelines of a scene's meshes by the build made when the scene is registered, and that build knows
@@ -130,7 +135,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       seedScene = scene;
     },
 
-    late({ engine, scene, shared, air, wetAt, ahead, skinClock, hardCover: cover }) {
+    late({ engine, scene, shared, air, wetAt, ahead, skinClock, hardCover: cover, behind }) {
       const forest = host.forest;
       if (forest === null) return;
       hardCover = cover;
@@ -163,11 +168,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       };
       // The town's own draw before the railroad's, so where a crossing's panel lies flush with a street the panel is drawn last.
       const wearsTextures = textures !== null;
+      // Whether the rooms are seen through their glass out of focus: the frame behind the glass is kept, and the glass has its plugin.
+      const through = behind !== undefined && wearsTextures;
       const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
       const glassMaterial = (): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
-        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, ready, low)] : []), air()];
+        // Where the frame behind the glass is kept, a shop's pane reads its room from it, out of focus (`townBlur.ts`).
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, ready, low)] : []), ...(through && behind !== undefined ? [townBlurPlugin(behind, shared)] : []), air()];
         if (textures !== null) textured.push(m);
         return m;
       };
@@ -205,7 +213,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       );
 
       function* build(): Slices {
-        const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas);
+        const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas, through);
         // A code-built car for each model vehicle until its model lands (and for good where its file fails): made first, so they stand with the town's first cells.
         if (fleet.length > 0) batches.unshift(...(yield* standInGeometry(ground, fleet)));
         // Paint the lettering, a few signs a slice, and upload the atlas once.
@@ -234,7 +242,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             const set = seeThrough as NonNullable<typeof seeThrough>;
             // A room's haze is the glass's material (its sheets say what they are), drawn before the lettering and the glass, which are laid over it.
             mesh.material = batch.layer === "sign" ? (set.sign as PbrMaterialProps) : set.glass;
-            mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : batch.layer === "sign" ? SEE_THROUGH_ORDER.lettering : HAZE_ORDER;
+            // Where a pane reads the frame behind it, it is drawn in the half after the break and writes its whole pixel: the lettering is then
+            // drawn after the glass, not before it.
+            mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : batch.layer === "sign" ? (through ? LETTERING_OVER_GLASS : SEE_THROUGH_ORDER.lettering) : HAZE_ORDER;
+            if (through && batch.layer === "glass") mesh.afterBreak = true;
           } else {
             mesh.material = town[batch.layer];
             mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;

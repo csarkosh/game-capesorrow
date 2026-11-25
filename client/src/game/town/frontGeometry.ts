@@ -29,6 +29,8 @@ export type FrontIn = {
   readonly glass: MeshBuilder;
   /** Where the haze of each unit's room goes (`roomHaze.ts`), where there is a layer for it. */
   readonly haze?: MeshBuilder;
+  /** The rooms are seen through their glass out of focus (`BuildingExtras.through`): each is drawn whole, and its panes are marked. */
+  readonly through?: boolean;
   readonly w: WallRef;
   readonly xf: Xf;
   readonly b: Building;
@@ -102,7 +104,8 @@ export function planFront(i: FrontIn): FrontPlan {
         if (o.cover === "bricked") return;
         // How grimy the glass is: a vacant unit's most, then a shut one's, and an old front's more than a new one's.
         const dirt = Math.min(0.95, (vacantUnit ? 0.75 : u.state === "open" ? 0.22 : 0.45) + 0.2 * Math.min(1, (2026 - b.era) / 130) + 0.15 * hash01(b.id * 5 + u.id * 3 + k, 436));
-        const look = { lit, dirt, vacant: vacantUnit };
+        // A pane with a room behind it shows the room out of focus, on the tier that reads the frame behind its glass.
+        const look = { lit, dirt, vacant: vacantUnit, ...(i.through === true && !boardedUnit && u.interior.type !== undefined ? { through: true } : {}) };
         if (o.cover === "boarded") {
           drawWindow(wc, w, sa, sb, y0, y1, "boarded", "none", u.id * 5 + k, false, "boarded", false, look);
         } else {
@@ -176,8 +179,10 @@ export function planFront(i: FrontIn): FrontPlan {
       // transom or the head's rail. The return of the recess (or the reveal of a flush door) runs exactly to the leaf, so the room is seen
       // through the glass and through nothing else.
       const o = wquad(out, w, da, floorY, db, floorY + 0.8, -depth, scaled(timber, 0.9), leafMat);
-      glazed(out, glass, w, da, floorY + 0.8, db, leafTop, o, 0.1, timber, leafMat);
-      if (dHead > floorY + 2.3) glazed(out, glass, w, da, leafTop, db, dHead, o, 0.06, timber, leafMat);
+      // The door's glass shows the room as the windows do.
+      const doorLook = i.through === true && u.interior.type !== undefined ? { through: true } : {};
+      glazed(out, glass, w, da, floorY + 0.8, db, leafTop, o, 0.1, timber, leafMat, doorLook);
+      if (dHead > floorY + 2.3) glazed(out, glass, w, da, leafTop, db, dHead, o, 0.06, timber, leafMat, doorLook);
       else wquad(out, w, da, leafTop, db, dHead, o, timber, leafMat);
       reveal(out, w, da, db, floorY, dHead, -o, scaled(i.wall, 0.8), [0.35, 0.34, 0.32], rec > 0 ? i.surface(w) : undefined, "concrete");
       // The pull, a plate of brass.
@@ -187,7 +192,7 @@ export function planFront(i: FrontIn): FrontPlan {
     if (!boardedUnit && u.interior.type !== undefined) {
       drawers.push(() => {
         const from = out.vertices;
-        roomGeometry(out, { ...(i.haze === undefined ? {} : { haze: i.haze }), xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, opened: u.tenant?.opened ?? 0, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width } });
+        roomGeometry(out, { ...(i.haze === undefined ? {} : { haze: i.haze }), ...(i.through === true ? { through: true } : {}), xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, opened: u.tenant?.opened ?? 0, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width } });
         if (i.report !== undefined) {
           const ext = { s0: Infinity, s1: -Infinity, d0: Infinity, d1: -Infinity, y0: Infinity, y1: -Infinity };
           out.forEachPosition(from, (x, y, z) => {

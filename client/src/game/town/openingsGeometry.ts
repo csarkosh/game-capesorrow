@@ -37,6 +37,8 @@ export type PlanCtx = {
   readonly glass: MeshBuilder;
   /** Where the haze of a shop's room goes (`roomHaze.ts`), where there is a layer for it. */
   readonly haze?: MeshBuilder;
+  /** The rooms are seen through their glass out of focus (`BuildingExtras.through`). */
+  readonly through?: boolean;
   readonly detail: Detail;
   readonly wall: Rgb;
   readonly report?: FillReport;
@@ -122,7 +124,7 @@ export function planWalls(c: PlanCtx): WallPlan[] {
   const units = use !== undefined && use.units.length > 0 && c.xf !== null;
 
   if (units && use !== undefined && c.xf !== null) {
-    const f = planFront({ ...(c.report === undefined ? {} : { report: c.report }), ...(c.haze === undefined ? {} : { haze: c.haze }), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
+    const f = planFront({ ...(c.report === undefined ? {} : { report: c.report }), ...(c.haze === undefined ? {} : { haze: c.haze }), ...(c.through === true ? { through: true } : {}), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
     const p = plans[c.frontAt] as WallPlan;
     p.holes.push(...f.holes);
     p.draws.push(() => f.draw());

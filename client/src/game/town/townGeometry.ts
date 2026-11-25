@@ -73,7 +73,7 @@ export function townGround(worldSeed: number): TownGround {
 }
 
 /** Everything of the town, as batches. `from` is where the player starts: the cells nearest it come first. */
-export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; z: number }, atlas: SignAtlas = new SignAtlas(detail === "low" ? 2048 : 4096, detail === "low" ? 1024 : 2048, detail === "low" ? 36 : 56)): Slices<TownBatch[]> {
+export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; z: number }, atlas: SignAtlas = new SignAtlas(detail === "low" ? 2048 : 4096, detail === "low" ? 1024 : 2048, detail === "low" ? 36 : 56), through = false): Slices<TownBatch[]> {
   const cells = new Map<string, { cx: number; cz: number; flat: MeshBuilder; solid: MeshBuilder; haze: MeshBuilder; glass: MeshBuilder; sign: MeshBuilder }>();
   const cell = (x: number, z: number): { flat: MeshBuilder; solid: MeshBuilder; haze: MeshBuilder; glass: MeshBuilder; sign: MeshBuilder } => {
     const cx = Math.floor(x / CELL);
@@ -87,7 +87,8 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
     return c;
   };
   const sinks = { flat: (x: number, z: number) => cell(x, z).flat, solid: (x: number, z: number) => cell(x, z).solid, glass: (x: number, z: number) => cell(x, z).glass, sign: (x: number, z: number) => cell(x, z).sign, haze: (x: number, z: number) => cell(x, z).haze };
-  const extras = { glass: sinks.glass, sign: sinks.sign, haze: sinks.haze, atlas };
+  // `through`: the renderer reads the frame behind its glass, so the rooms are drawn whole and their panes show them out of focus (`townBlur.ts`).
+  const extras = { glass: sinks.glass, sign: sinks.sign, haze: sinks.haze, atlas, through };
 
   forgetMarks(g);
   resetLedger();
