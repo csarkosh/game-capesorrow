@@ -24,19 +24,19 @@ import { THROUGH_SEED } from "./buildingKit.js";
 import { TOWN_VARYING } from "./townMaterial.js";
 
 /** Where behind the pane the blur begins and where it is whole, metres. */
-export const BLUR_FROM = 0.35;
-export const BLUR_FULL = 2.2;
+export const BLUR_FROM = 0.25;
+export const BLUR_FULL = 1.3;
 /** The radius of the blur where it is whole, metres at the place read. */
-export const BLUR_M = 0.3;
+export const BLUR_M = 0.45;
 /** The most the radius is, in the frame's pixels: a room seen from a step away would otherwise be read over a disc too wide for its taps. */
-export const BLUR_MAX_PX = 56;
+export const BLUR_MAX_PX = 80;
 /** How much brighter a place deep in the room is read than it is, and the haze laid over it: its colour, how much of the place it takes, and by how much of the place's own brightness the haze is lit (a dark room has none). */
 export const GLOW = 0.7;
 export const HAZE: readonly [number, number, number] = [0.62, 0.59, 0.52];
 export const HAZE_SHARE = 0.3;
 export const HAZE_BY = 4;
 /** Reads of the frame for one pixel. */
-export const TAPS = 20;
+export const TAPS = 28;
 
 /** The frame behind the glass, as the engine keeps it. */
 export type FrameBehind = { colour(): Texture2D; depth(): Texture2D };
