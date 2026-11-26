@@ -18,7 +18,7 @@
  *
  * Every value is a first tuning by eye, on two streets.
  */
-import { gameLook, lookGradeAt, type GameLook, type LookFinish, type LookGrade } from "@csarkosh/engine/game/gameLook";
+import { gameLook, lookGradeAt, type GameLook, type LookFinish, type LookGrade, type LookSward } from "@csarkosh/engine/game/gameLook";
 import type { PaintPalette } from "@csarkosh/engine/game/gradeParams";
 import { sunPositionAt } from "@csarkosh/engine/game/sky";
 import type { WeatherParams } from "@csarkosh/engine/game/weather";
@@ -84,6 +84,14 @@ const GRADES: readonly LookGrade[] = [
 /** The finish over the picture: fine grain, a faint dark edge to the frame, the light barely banded, and a thin grey line where one thing ends. */
 const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], bands: 0.25 };
 
+/**
+ * The ground under the grass. The line is drawn on every blade's edge, so the grass is darker than the engine's own floor under it, and
+ * where the blades are built late round a player who runs, the bare ground showed as a pale patch that then went dark. The floor is as
+ * dark as the blades are with the line on them, and the ground is pulled all the way to it: measured with the blades off, the bare
+ * ground then shows within a few parts in a hundred of the grass over it.
+ */
+const SWARD: LookSward = { floor: [0.031, 0.041, 0.013], pull: 1 };
+
 export const CAPE_LOOK: Partial<GameLook> = {
   paint: 0,
   farSoft: 0,
@@ -94,6 +102,7 @@ export const CAPE_LOOK: Partial<GameLook> = {
   weatherName: "overcast",
   hour: 12,
   finish: FINISH,
+  sward: SWARD,
   grades: GRADES,
 };
 
