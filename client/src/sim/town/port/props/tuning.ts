@@ -149,7 +149,12 @@ export const POLE_HEIGHT = { min: 9.5, max: 12 };
 export const POLE_LEAN = 0.12;
 export const POLE_STUB = 0.07;
 export const POLE_TRANSFORMER = 0.14;
-export const JUNCTION_LIGHT = 0.4;
+export const JUNCTION_LIGHT = 0.5;
+/** A junction's light is on the nearest pole of its streets within this many metres (a major junction's, more), the farthest apart two lights may be along a main street or an avenue, and how far from a street's line a light still serves it. */
+export const JUNCTION_POLE_REACH = 22;
+export const JUNCTION_POLE_REACH_MAJOR = 40;
+export const LIGHT_GAP = 70;
+export const LIGHT_REACH_ACROSS = 14;
 /** A crossarm on the streets of these eras (the rest have pin brackets): the share. */
 export const CROSSARM: Readonly<Record<"core" | "old" | "later" | "edge", number>> = { core: 0.55, old: 0.85, later: 0.3, edge: 0.45 };
 /** A building's service drop is made when a pole of its street is within this many metres. */

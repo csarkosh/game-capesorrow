@@ -41,7 +41,9 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { emptyTownReady, townSurfacePlugin, type TownReady } from "./townMaterial.js";
+import { emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
+import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
+import { lampSites } from "./props/lamps.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
@@ -67,6 +69,10 @@ export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
 
 /** How far the hour moves before the materials are written again (a hundredth of an hour). */
 const HOUR_STEP = 0.01;
+/** How far the eye moves before the lamp list is chosen again, metres. */
+const LAMP_EYE_STEP = 0.25;
+/** The lamps the low tier is lit by (a loop of twelve in each fragment, not twenty-four). */
+const LOW_LAMPS = 12;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -121,6 +127,13 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
   let shownHour = 12;
   let ready: TownReady | null = null;
+  // Every lamp the town has (once the town's plan is known), the nearest lit ones to the eye as the materials were last written, and where the eye and the hour then were.
+  let lamps: readonly Lamp[] = [];
+  const lampList = emptyLampList();
+  let lampEye = { x: Infinity, y: 0, z: 0 };
+  let lampHour = -1;
+  let lampsLit = false;
+  let lampMax = MAX_LAMPS;
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
@@ -132,13 +145,28 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       ...base.side.wildlife,
       look(state, x, y, z, yaw, pitch, fov, aspect, hour, mist) {
         base.side.wildlife.look(state, x, y, z, yaw, pitch, fov, aspect, hour, mist);
-        if (Math.abs(hour - shownHour) > HOUR_STEP) {
+        const moved = Math.abs(hour - shownHour) > HOUR_STEP;
+        if (moved) {
           shownHour = hour;
           if (ready !== null) {
             ready.townHour[0] = hour;
             for (const m of textured) markMaterialUboDirty(m);
           }
           people?.setHour(hour);
+        }
+        // The lamps' light: the nearest lit lamps to the eye, written when the eye or the hour has moved (and not at all through the day, when no lamp is lit).
+        if (ready !== null && lamps.length > 0) {
+          const near = (x - lampEye.x) * (x - lampEye.x) + (z - lampEye.z) * (z - lampEye.z) + (y - lampEye.y) * (y - lampEye.y) < LAMP_EYE_STEP * LAMP_EYE_STEP;
+          if (!near || Math.abs(hour - lampHour) > HOUR_STEP) {
+            lampEye = { x, y, z };
+            lampHour = hour;
+            fillLamps(lamps, x, y, z, hour, lampList, lampMax);
+            if (lampList.count > 0 || lampsLit) {
+              lampsLit = lampList.count > 0;
+              writeLamps(ready, lampList);
+              for (const m of textured) markMaterialUboDirty(m);
+            }
+          }
         }
       },
     },
@@ -231,6 +259,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
 
       const plan = ground.plan;
+      lamps = lampSites(ground);
+      lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       people = createPeopleParts(
         { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
         peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person) })),
@@ -340,6 +370,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       vehicles = null;
       people?.dispose();
       people = null;
+      lamps = [];
       host.jobs.cancel(owner);
       for (const m of made) {
         if (m.layer === "solid") hardCover?.remove(m.mesh);

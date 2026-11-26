@@ -154,6 +154,20 @@ export class MeshBuilder {
   /** The hours code (`hours.ts`) every layered polygon laid now carries in its float 10 (0: none). Set by `withHours`. */
   private hoursCode = 0;
 
+  /** The glow (`Fx.glow`) every polygon laid now takes when it names none: a lamp's lens or a lit sign is built by boxes and cylinders that cannot say it. Set by `withGlow`. */
+  private glowBase = 0;
+
+  /** Runs `fn` with `glow` as the glow of every polygon it lays that names none of its own, and puts back the one before. */
+  withGlow<T>(glow: number, fn: () => T): T {
+    const before = this.glowBase;
+    this.glowBase = glow;
+    try {
+      return fn();
+    } finally {
+      this.glowBase = before;
+    }
+  }
+
   /** Runs `fn` with `code` as the hours every layered polygon it lays carries (a room's, `roomGeometry.ts`), and puts back the one before. */
   withHours<T>(code: number, fn: () => T): T {
     const before = this.hoursCode;
@@ -232,7 +246,7 @@ export class MeshBuilder {
     const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
     const kind = (WEAR_KIND_NUMBER[surface?.wearKind ?? "moss"] ?? 0) + (surface?.streaks === true ? 0.5 : 0);
     const kind2 = (WEAR_KIND_NUMBER[surface?.wearKind2 ?? "moss"] ?? 0) + (surface?.streaks2 === true ? 0.5 : 0);
-    const glow = fx?.glow ?? 0;
+    const glow = fx?.glow ?? this.glowBase;
     const clear = fx?.clear ?? 0;
     // One colour for the polygon, or one a corner (a baked light): then a textured corner's tint is its own colour.
     const per = typeof (colour as readonly unknown[])[0] !== "number";
@@ -283,7 +297,7 @@ export class MeshBuilder {
 
   /**
    * A flat polygon mapped to explicit UVs (one per corner, in the corners' order): for a face of the sign atlas (`signAtlas.ts`), whose
-   * texels the sign's own plugin reads by the UV as given. It carries no layer (`NO_LAYER`), a tint and a glow.
+   * texels the sign's own plugin reads by the UV as given. It carries no layer (`NO_LAYER`), a tint, a glow and, from `withHours`, the hours the glow follows (a lit sign's: the sign layer's material reads them as a room's).
    */
   polyUv(points: readonly Vec3[], uvs: readonly (readonly [number, number])[], hint: Vec3, tint: Rgb, fx?: Fx): void {
     const base = this.vertices;
@@ -310,7 +324,7 @@ export class MeshBuilder {
       this.col.push4(tint[0], tint[1], tint[2], 1);
       const uv = uvs[i] as readonly [number, number];
       this.uv.push2(uv[0], uv[1]);
-      this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? 0, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, 0, 0);
+      this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? this.glowBase, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, this.hoursCode, 0);
     });
     for (let i = 1; i < n - 1; i++) {
       if (flip) this.idx.push3(base, base + i, base + i + 1);

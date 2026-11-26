@@ -5,6 +5,8 @@
  * of such a wall: small windows at uneven stations, a back door with a light over it, a loading door, a big door, and none at all on a
  * wall that stands against its neighbour.
  *
+ * In the evening a home's windows are lit by their own night codes and its porch has a light (`windowNight.ts`).
+ *
  * What is authored: the window sizes by age (tall and narrow before 1940, wider and lower after), the loading doors' size, the door colours,
  * the share of windows of a house that an owner replaced with vinyl (three in ten before 1990, a roll per window from the building's id: one
  * owner's remodel, which is why the neighbours do not match), and the pale roll-up shutters. What the plan causes: each window's station, storey,
@@ -12,11 +14,14 @@
  */
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingUse, TownPlan, WindowState } from "../../sim/town/types.js";
+import { withMat } from "./materials.js";
+import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
-import { cutWall, doorIn, pairedDoors, pane, pickOf, reveal, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { cutWall, doorIn, pairedDoors, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { planFront } from "./frontGeometry.js";
 import type { Xf } from "./roomGeometry.js";
 import { drawWindow, type WinCtx } from "./windowGeometry.js";
+import { NEVER_CODE, PORCH, PORCH_GLOW, isHome, looseWindowCode, porchCode, windowCodes } from "./windowNight.js";
 import type { Detail, FillReport, TownGround } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
 
@@ -162,7 +167,8 @@ export function planWalls(c: PlanCtx): WallPlan[] {
       if (p.holes.some((h) => h.s0 < hole.s1 + 0.3 && h.s1 > hole.s0 - 0.3)) continue;
       p.holes.push(hole);
       const state = c.vacant ? "boarded" : pickOf(["blinds", "curtained", "dark", "lit", "blinds"] as const, seed * 17 + k, 467);
-      p.draws.push(() => drawWindow({ ...ctxW, detail: "low" }, w, hole.s0, hole.s1, hole.y0, hole.y1, c.profile === "industrial" && !c.vacant ? "dark" : state, "none", seed * 19 + k, hash01(seed + k, 468) < 0.25 && b.era > 1960));
+      const night = looseWindowCode(b, seed * 19 + k, c.profile === "industrial" && !c.vacant ? "dark" : state);
+      p.draws.push(() => drawWindow({ ...ctxW, detail: "low" }, w, hole.s0, hole.s1, hole.y0, hole.y1, c.profile === "industrial" && !c.vacant ? "dark" : state, "none", seed * 19 + k, hash01(seed + k, 468) < 0.25 && b.era > 1960, "none", false, { night }));
     }
     if (rear && w.length > 3) backDoor(c, w, p, seed, floorY);
   });
@@ -244,7 +250,8 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
       const hh: Hole = { s0: s - ww / 2, s1: s + ww / 2, y0, y1: y0 + wh };
       p.holes.push(hh);
       const state = vacant ? "boarded" : pickOf(["blinds", "curtained", "lit", "dark", "blinds"] as const, b.id * 5 + j + k, 483);
-      p.draws.push(() => drawWindow(ctxW, w, hh.s0, hh.s1, hh.y0, hh.y1, state, "none", k * 9 + j, hash01(b.id * 7 + j, 484) < 0.2 && b.era > 1960));
+      const night = looseWindowCode(b, k * 9 + j, state);
+      p.draws.push(() => drawWindow(ctxW, w, hh.s0, hh.s1, hh.y0, hh.y1, state, "none", k * 9 + j, hash01(b.id * 7 + j, 484) < 0.2 && b.era > 1960, "none", false, { night }));
     }
   }
 }
@@ -302,6 +309,8 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
     return (x - w.ax) * w.tx + (z - w.az) * w.tz;
   };
   const old = b.era < 1940;
+  // The evening: which of the household's windows are lit, each with its own night code (`windowNight.ts`).
+  const nights = isHome(b) ? windowCodes(b.id, use.windows) : use.windows.map(() => NEVER_CODE);
   use.windows.forEach((wd, k) => {
     const i = wallOf(wd.wall);
     if (i < 0 || blocked[i]) return;
@@ -316,7 +325,7 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
     if (g.heightAt(w.ax + w.tx * s, w.az + w.tz * s) > y0 - 0.25) return;
     const hole: Hole = { s0: s - ww / 2, s1: s + ww / 2, y0, y1: y0 + wh };
     (plans[i] as WallPlan).holes.push(hole);
-    (plans[i] as WallPlan).draws.push(() => drawWindow({ ...ctxW, era: replaced ? 2005 : b.era, detail: i === c.frontAt ? ctxW.detail : "low" }, w, hole.s0, hole.s1, hole.y0, hole.y1, wd.state, wd.sill, k, replaced));
+    (plans[i] as WallPlan).draws.push(() => drawWindow({ ...ctxW, era: replaced ? 2005 : b.era, detail: i === c.frontAt ? ctxW.detail : "low" }, w, hole.s0, hole.s1, hole.y0, hole.y1, wd.state, wd.sill, k, replaced, "none", false, { night: nights[k] as number }));
   });
   if (use.door !== null) {
     const fi = c.frontAt;
@@ -326,6 +335,23 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
     (plans[fi] as WallPlan).holes.push(hole);
     // A door from another decade: a share of the doors are the modern steel door of a later owner, grey or white.
     const other = hash01(b.id, 491) < 0.3;
+    // The porch light by the door, on for two homes in three (`windowNight.ts`): a small fixture on the wall and a lens that glows by its own night code; the lamp list (`props/lamps.ts`) has it too, to light its own steps.
+    const porch = c.vacant ? null : porchCode(b, use);
+    if (porch !== null) {
+      (plans[fi] as WallPlan).draws.push(() => {
+        const s = porch.side > 0 ? hole.s1 + PORCH.beside : hole.s0 - PORCH.beside;
+        const y = floorY + PORCH.height;
+        const yl = y - 0.025;
+        // Its front stands where no face of the wall's own is within 2.45 cm of it (`faceLedger.ts`): a porch's post or trim beside the door is not coplanar with it.
+        const pa = wat(w, s - 0.07, 0, PORCH.out);
+        const pb = wat(w, s + 0.07, 0, PORCH.out);
+        const front = PORCH.out + standOff(w.nx, w.nz, pa[0], pa[2], pb[0], pb[2], y, y + 0.2);
+        withMat("painted", () => {
+          wbox(out, w, s - 0.07, s + 0.07, y, y + 0.2, 0, front, [0.12, 0.12, 0.13], [0.14, 0.14, 0.15], false, "painted");
+          out.withHours(porch.code, () => out.withGlow(PORCH_GLOW, () => out.poly([wat(w, s - 0.05, yl, 0.015), wat(w, s + 0.05, yl, 0.015), wat(w, s + 0.05, yl, front - 0.015), wat(w, s - 0.05, yl, front - 0.015)], [0, -1, 0], PORCH.colour)));
+        });
+      });
+    }
     (plans[fi] as WallPlan).draws.push(() => {
       if (c.vacant) {
         reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.14, scaled(c.wall, 0.8), [0.4, 0.38, 0.34]);

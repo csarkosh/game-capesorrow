@@ -56,10 +56,17 @@
  * overcast sky (Schlick's fresnel from the eye, so a window seen along its length is a mirror and one seen square-on shows the room).
  * Both work whether or not the textures have landed.
  *
+ * **Hours, night codes and lamps.** A layered vertex's float 10 (`townWear`.z) carries the hours of its unit (`HOURS_CODE`, `hours.ts`) or, in a second band of codes, a night code
+ * (a lamp's lens, a lit window, a porch light): the glow is kept by how lit the code is at the hour. The sign layer's flat vertices carry a shop's hours the same way. The
+ * nearest lamps' light (`lampLight.ts`) is added to a layered surface's glow by `LAMP_CODE`, from a list of uniforms written once a frame by `townParts.ts`.
+ *
  * **Tiers.** The low tier's arrays are 256 x 256 (a quarter of the memory and of the upload), its overlay takes only the
  * overlay's colour and roughness (no second normal), and its wear noise has two octaves.
  */
-import { ALWAYS_CODE, CODE_BASE, CODE_STRIDE, FADE_HOURS, HOURS_PER_DAY } from "./hours.js";
+import {
+  ALWAYS_CODE, CODE_BASE, CODE_STRIDE, DAWN_HOUR, DUSK_HOUR, FADE_HOURS, HOURS_PER_DAY, NIGHT_BASE, NIGHT_FADE_HOURS, NIGHT_LEAD_HOURS, OFF_FIRST_HOUR, OFF_STEPS, OFF_STEP_HOURS, ON_STEP_HOURS, UNTIL_DAWN,
+} from "./hours.js";
+import { MAX_LAMPS, type LampList } from "./lampLight.js";
 import { SURFACE_PACKED_BYTES } from "./surfacePack.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
@@ -211,17 +218,64 @@ export const SHUT_LIGHT: readonly [number, number, number] = [0.42, 0.45, 0.52];
  * open the unit is at the hour, and the rest of it is lit by the scene (`SHUT_LIGHT`) (`material.townHour`): the arithmetic of `openShare`, written from `hours.ts`'s own constants (the distance to the
  * nearer edge of the hours, which side of it the hour is on, a ramp over `FADE_HOURS` either side). Code `ALWAYS_CODE` is never shut.
  */
-export const HOURS_CODE = [
-  `if(tsLayer>=0&&tsWearV.z>0.5){var hsh=1.0;if(tsWearV.z<${f(ALWAYS_CODE - 0.5)}){`,
+export function hoursCodeFor(sign: boolean): string {
+  return [
+  `if(${sign ? "" : "tsLayer>=0&&"}tsWearV.z>0.5){`,
+  // A night code (a lamp's lens, a lit window, a porch light): `nightShare` of `hours.ts`. With the share at 0 the surface is what the scene lights, with
+  // none of its own glow; a lens (a glow of 1 or more) is then dull grey glass, its colour kept for the night.
+  `if(tsWearV.z>${f(NIGHT_BASE - 0.5)}){`,
+  `let nk=tsWearV.z-${f(NIGHT_BASE)};let non=floor(nk/${f(OFF_STEPS)});let noff=nk-non*${f(OFF_STEPS)};let nh=material.townHour;`,
+  `let nt=select(nh+${f(HOURS_PER_DAY)},nh,nh>=12.0);`,
+  `let non_t=${f(DUSK_HOUR - NIGHT_LEAD_HOURS)}+non*${f(ON_STEP_HOURS)};`,
+  `let noff_t=select(${f(OFF_FIRST_HOUR)}+noff*${f(OFF_STEP_HOURS)},${f(DAWN_HOUR + HOURS_PER_DAY)},noff>${f(UNTIL_DAWN - 0.5)});`,
+  `let nin=(nt>=non_t)&&(nt<noff_t);let nd=min(abs(nt-non_t),abs(nt-noff_t));`,
+  `let nsh=clamp(0.5+select(-nd,nd,nin)/${f(2 * NIGHT_FADE_HOURS)},0.0,1.0)*select(0.0,1.0,noff_t>non_t);`,
+  "let nown=townGlowC;townGlowC=nown*nsh;",
+  "let nbase=nown/max(tsSurf.w,1.0);",
+  "let ndull=mix(nbase,vec3<f32>(dot(nbase,vec3<f32>(0.2126,0.7152,0.0722))*0.6),step(1.0,tsSurf.w));",
+  "baseColor=baseColor+ndull*(1.0-nsh);",
+  "}else{",
+  `var hsh=1.0;if(tsWearV.z<${f(ALWAYS_CODE - 0.5)}){`,
   `let hk=tsWearV.z-${f(CODE_BASE)};let ho=floor(hk/${f(CODE_STRIDE)});let hz=hk-ho*${f(CODE_STRIDE)};let hh=material.townHour;`,
   "let hin=select((hh>=ho)||(hh<hz),(hh>=ho)&&(hh<hz),ho<hz);",
   `let h1=abs(hh-ho);let h2=abs(hh-hz);let hd=min(min(h1,${f(HOURS_PER_DAY)}-h1),min(h2,${f(HOURS_PER_DAY)}-h2));`,
   `hsh=clamp(0.5+select(-hd,hd,hin)/${f(2 * FADE_HOURS)},0.0,1.0);}`,
   `let hown=townGlowC;townGlowC=hown*hsh;baseColor=baseColor+hown*vec3<f32>(${SHUT_LIGHT.map(f).join(",")})*(1.0-hsh);}`,
+  "}",
+].join("");
+}
+
+/** The hours decode of the layered surfaces (a lit sign's, on the flat vertices of the sign layer, is `hoursCodeFor(true)`). */
+export const HOURS_CODE = hoursCodeFor(false);
+
+/**
+ * The light of the nearest lamps (`lampLight.ts`), added to the glow of a layered surface: for each lamp in the list, the surface's own colour times the
+ * lamp's colour and strength times a falloff (full out to `LAMP_FULL` of the range, then smooth to nothing at the range) times how much the surface faces
+ * the lamp (a soft wrap, so a wall just past square is not black). The lamps are a list of uniforms (`lampP0`..: position and range, `lampC0`..: colour and strength) read into
+ * private arrays only when there is a lamp (`townLamps`), so the day pays nothing. The glow is added before the fog, as the other glows are; the exposure
+ * follows the sky into the dark, so `LAMP_GAIN` was set by looking at the town at night.
+ */
+export const LAMP_FULL = 0.25;
+export const LAMP_GAIN = 1.2;
+export const LAMP_WRAP = 0.3;
+export const LAMP_CODE = [
+  "if(material.townLamps>0.5&&tsLayer>=0){",
+  `var tsLP:array<vec4<f32>,${MAX_LAMPS}>;var tsLC:array<vec4<f32>,${MAX_LAMPS}>;`,
+  ...Array.from({ length: MAX_LAMPS }, (_, i) => `tsLP[${i}]=material.lampP${i};tsLC[${i}]=material.lampC${i};`),
+  "var tsLamp=vec3<f32>(0.0);",
+  "for(var li:i32=0;li<i32(material.townLamps+0.5);li=li+1){",
+  "let lp=tsLP[li];let lc=tsLC[li];let ld=lp.xyz-input.worldPos;let lr=length(ld);",
+  "if(lr<lp.w){",
+  `let lq=clamp((lr-lp.w*${f(LAMP_FULL)})/(lp.w*${f(1 - LAMP_FULL)}),0.0,1.0);let lf=1.0-lq*lq*(3.0-2.0*lq);`,
+  `let lw=clamp((dot(N,ld/max(lr,0.001))+${f(LAMP_WRAP)})/${f(1 + LAMP_WRAP)},0.0,1.0);`,
+  `tsLamp=tsLamp+lc.rgb*(lc.w*lf*lw*lw);}`,
+  "}",
+  `townGlowC=townGlowC+tsBase0*tsLamp*${f(LAMP_GAIN)};`,
+  "}",
 ].join("");
 
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
-export function townSurfaceCode(low: boolean): string {
+export function townSurfaceCode(low: boolean, sign = false): string {
   return [
     `let tsSurf=input.${TOWN_VARYING};`,
     `let tsWearV=input.${TOWN_WEAR_VARYING};`,
@@ -249,9 +303,11 @@ export function townSurfaceCode(low: boolean): string {
     `if(tsLayer==${layerIndex("metal_aged")}||tsLayer==${layerIndex("metal_painted")}||tsLayer==${layerIndex("roof_metal")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`,
     "}",
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
-    `if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));${HOURS_CODE}}`,
-    BLIND_CODE,
+    "let tsBase0=baseColor;",
+    `if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));${sign ? hoursCodeFor(true) : HOURS_CODE}}`,
+    sign ? "" : BLIND_CODE,
     WIRE_CODE,
+    LAMP_CODE,
   ].join("");
 }
 
@@ -345,11 +401,33 @@ export const TOWN_COMPOSE_CODE = "if(townGlassA>0.5){color=townGlassC;}color=col
 /** What the plugin draws with: the two arrays (the colour's read as sRGB, the data as data), filled in place when the images land. */
 export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Texture2DArray };
 
-/** The plugin's uniforms: `townReady`, 0 until the arrays are filled, then 1; `townHour`, the hour of day 0 to 24 (12 until a frame says otherwise). `markMaterialUboDirty` after changing either. */
-export type TownReady = { townReady: number[]; townHour: number[] };
+/**
+ * The plugin's uniforms: `townReady`, 0 until the arrays are filled, then 1; `townHour`, the hour of day 0 to 24 (12 until a frame says otherwise); `townLamps`, how
+ * many of the lamp list's entries are used (0: none, which is the day); and the list itself, `lampP<i>` (a lamp's x, y, z and range) and `lampC<i>` (its colour and
+ * strength), one vec4 each, since a uniform array is not a type the material's buffer takes. `markMaterialUboDirty` after changing any.
+ */
+export type TownReady = { townReady: number[]; townHour: number[]; townLamps: number[] } & Record<string, number[]>;
 
 export function emptyTownReady(): TownReady {
-  return { townReady: [0], townHour: [12] };
+  const r: TownReady = { townReady: [0], townHour: [12], townLamps: [0] };
+  for (let i = 0; i < MAX_LAMPS; i++) {
+    r[`lampP${i}`] = [0, 0, 0, 0];
+    r[`lampC${i}`] = [0, 0, 0, 0];
+  }
+  return r;
+}
+
+/** Copies a lamp list into the uniforms. */
+export function writeLamps(ready: TownReady, list: LampList): void {
+  ready.townLamps[0] = list.count;
+  for (let i = 0; i < list.count; i++) {
+    const p = ready[`lampP${i}`] as number[];
+    const c = ready[`lampC${i}`] as number[];
+    for (let k = 0; k < 4; k++) {
+      p[k] = list.pos[i * 4 + k] as number;
+      c[k] = list.col[i * 4 + k] as number;
+    }
+  }
 }
 
 const READY_FIELDS: readonly UniformField[] = uniformFields(emptyTownReady());
@@ -371,7 +449,7 @@ export const RANK_CODE = `out.clipPos.z+=${(RANK_UNITS / 2 ** 24).toExponential(
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
 export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
   const definitions = townDefinitions(low);
-  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined);
   return {
     name: "TownSurface",
     priority: 200,
