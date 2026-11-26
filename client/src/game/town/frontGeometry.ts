@@ -13,7 +13,8 @@
  * unit's or the building's id and says what it stands for in a comment.
  */
 import { withMat } from "./materials.js";
-import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
+import { accentOf, QUIET_FADE } from "./accents.js";
+import { greyed, hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { doorIn, glazed, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { unitHours } from "./hours.js";
 import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
@@ -35,6 +36,8 @@ export type FrontIn = {
   readonly w: WallRef;
   readonly xf: Xf;
   readonly b: Building;
+  /** The block the building stands on, which the accent colours are keyed by (`accents.ts`); the building's own id where it is not given. */
+  readonly block?: number;
   readonly use: BuildingUse;
   readonly floorY: number;
   readonly wallTop: number;
@@ -64,6 +67,7 @@ export function planFront(i: FrontIn): FrontPlan {
   const wallSky = i.surface(w).shade;
   const sky = wallSky === undefined ? {} : { shade: wallSky };
   const full = detail === "full";
+  const block = i.block ?? b.id;
   // Frame stations to the wall's own: the wall may run the other way from the frame's `t`.
   const origin = xp(xf, 0, 0, 0);
   const sign = w.tx * xf.tx + w.tz * xf.tz >= 0 ? 1 : -1;
@@ -83,7 +87,7 @@ export function planFront(i: FrontIn): FrontPlan {
     const lit = u.state === "open";
     const boardedUnit = u.state === "vacant boarded";
     const vacantUnit = u.state.startsWith("vacant");
-    const bulk = pickOf(BULKHEAD, b.id * 7 + u.id, 430);
+    const bulk = accentOf(block, b.id * 7 + u.id, 430) ?? pickOf(BULKHEAD, b.id * 7 + u.id, 430);
     const widenedAt = u.remodel?.what === "widened window" ? u.openings.findIndex((o) => o.widened) : -1;
     u.openings.forEach((o, k) => {
       i.report?.openings.push({ unit: u.id, s0: o.s0, s1: o.s1, sill: o.sill, head: o.head, cover: o.cover });
@@ -170,7 +174,7 @@ export function planFront(i: FrontIn): FrontPlan {
       const rec = u.door.recess;
       const depth = rec > 0 ? rec : 0.1;
       const dr = u.remodel?.what === "new door" ? frameColour(b.id * 3 + u.id, u.remodel.decade, false) : unitFrame(b, u, false);
-      const timber = modern ? ([0.4, 0.42, 0.44] as Rgb) : dr;
+      const timber = modern ? ([0.4, 0.42, 0.44] as Rgb) : accentOf(block, b.id * 3 + u.id, 431) ?? dr;
       const leafTop = floorY + 2.05;
       // An aluminium door of the modern fronts, a painted timber one of the old.
       const leafMat = modern ? "sheet" : "boards";
@@ -215,7 +219,7 @@ export function planFront(i: FrontIn): FrontPlan {
       const a = Math.min(...u.openings.map((o) => Math.min(o.s0, o.s1))) - 0.1;
       const c = Math.max(...u.openings.map((o) => Math.max(o.s0, o.s1))) + 0.1;
       const head = floorY + Math.max(...u.openings.map((o) => o.head));
-      drawers.push(() => (kind === "awning" ? awning(out, w, ends(a, c), head, b.id * 23 + u.id) : canopy(out, w, ends(a, c), head, b.id * 29 + u.id)));
+      drawers.push(() => (kind === "awning" ? awning(out, w, ends(a, c), head, b.id * 23 + u.id, block) : canopy(out, w, ends(a, c), head, b.id * 29 + u.id, block)));
     }
   });
 
@@ -303,8 +307,9 @@ export function planFront(i: FrontIn): FrontPlan {
 }
 
 /** A canvas awning over a unit's glass: stripes of two tones sloping from the wall to a valance; faded, torn, or just the frame. */
-function awning(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: number, id: number): void {
-  const col = pickOf(CANVAS, id, 440);
+function awning(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: number, id: number, block: number): void {
+  // The block's accent on some; the rest of the canvases are faded toward grey (`QUIET_FADE`), as sun and salt leave them.
+  const col = accentOf(block, id, 440) ?? greyed(pickOf(CANVAS, id, 440), QUIET_FADE);
   const state = hash01(id, 441);
   const faded = state < 0.33;
   const torn = state > 0.82;
@@ -332,7 +337,7 @@ function awning(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: 
 }
 
 /** A flat canopy of a strip front: a slab over the glass on its own posts' brackets. */
-function canopy(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: number, id: number): void {
-  const col: Rgb = pickOf([[0.3, 0.3, 0.3], [0.4, 0.4, 0.38], [0.2, 0.25, 0.3]] as readonly Rgb[], id, 443);
+function canopy(out: MeshBuilder, w: WallRef, [sa, sb]: [number, number], head: number, id: number, block: number): void {
+  const col: Rgb = accentOf(block, id, 443) ?? pickOf([[0.3, 0.3, 0.3], [0.4, 0.4, 0.38], [0.2, 0.25, 0.3]] as readonly Rgb[], id, 443);
   wbox(out, w, sa, sb, head + 0.1, head + 0.3, 0, 1.4, col, scaled(col, 1.1), true, "painted");
 }
