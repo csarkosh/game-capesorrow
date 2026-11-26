@@ -718,7 +718,10 @@ export function planHarbour(input: HarbourInput, rng: Rng): HarbourOut {
   // ---- The working lights: pier lamps, quay lamps, float lights, yard floods and the mill's yard lights. Drawn after everything else the stage
   // draws, so no earlier draw moves. The props stage runs after this one and keeps its places off every light (`props/context.ts`).
   const LAMP_GAP = 6;
-  const lampFree = (p: Vec, gap = LAMP_GAP): boolean => lights.every((l) => (l.x - p.x) * (l.x - p.x) + (l.z - p.z) * (l.z - p.z) >= gap * gap);
+  // Clear of the town's own track too, by a little more than a prop's clearance of its centre line: the spur runs out onto a wharf and along a yard's edge,
+  // where a deck's or a yard's lamp would otherwise stand in it.
+  const offTrack = (p: Vec): boolean => layout.spurs.every((sp) => lineDist(sp.points, p) >= PROP_OFFSET + 0.4);
+  const lampFree = (p: Vec, gap = LAMP_GAP): boolean => offTrack(p) && lights.every((l) => (l.x - p.x) * (l.x - p.x) + (l.z - p.z) * (l.z - p.z) >= gap * gap);
   const seedOf = (): number => Math.floor(next(rng) * 0x7fffffff);
   // `overlapDepth` is 0 or less only when two shapes do not overlap (it is no distance), so a margin is made by growing the post's box.
   const post = (c: Vec, grow = 0): Poly => rectOf(c, { x: 1, z: 0 }, 0.3 + grow, 0.3 + grow);
