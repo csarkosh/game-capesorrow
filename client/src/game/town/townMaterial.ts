@@ -303,6 +303,14 @@ function skyCode(ranked: boolean): string {
 export const TOWN_LIGHT_CODE =
   "{let tsLd=directDiffuse-townDd;if(u32(lights.lights[lightIndex].vLightData.w)!=1u){directDiffuse=townDd+tsLd*townSky;}townDd=directDiffuse;}";
 
+/**
+ * A glow with no hours of its own is the day's: paper in a vacant shop's glass, an office's blinds, a sticker on a pane glow a little as daylight
+ * comes through or falls on them, and nothing lights them at night. So such a glow is kept by how much day there is (`material.townDay`, 1 by day
+ * and 0 at night: `look.ts`, `daylightAt`) and the rest of the surface is handed back to the scene's light, which at night is the dark and the lamps.
+ */
+export const DAY_GLOW_CODE =
+  "if(tsSurf.w>0.001&&tsLayer>=0&&tsWearV.z<=0.5){baseColor=baseColor+tsBase0*clamp(tsSurf.w,0.0,1.0)*(1.0-material.townDay);townGlowC=townGlowC*material.townDay;}";
+
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
 export function townSurfaceCode(low: boolean, sign = false, ranked = false): string {
   return [
@@ -335,6 +343,7 @@ export function townSurfaceCode(low: boolean, sign = false, ranked = false): str
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
     "let tsBase0=baseColor;",
     `if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));${sign ? hoursCodeFor(true) : HOURS_CODE}}`,
+    DAY_GLOW_CODE,
     sign ? "" : BLIND_CODE,
     WIRE_CODE,
     LAMP_CODE,
@@ -427,20 +436,20 @@ export function townAlphaCode(low = false): string {
 }
 
 /** The WGSL at `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: the sky's own light and its reflection (the environment's two terms) scaled by `townSky`, then a glass's colour as `townAlphaCode` made it, and every surface's glow. */
-export const TOWN_COMPOSE_CODE = "color-=(finalIrradiance+finalRadianceScaled)*(1.0-townSky);if(townGlassA>0.5){color=townGlassC;}color=color+townGlowC;";
+export const TOWN_COMPOSE_CODE = "color-=(finalIrradiance+finalRadianceScaled)*(1.0-townSky);if(townGlassA>0.5){color=townGlassC;}color=color+townGlowC*material.townGlow;";
 
 /** What the plugin draws with: the two arrays (the colour's read as sRGB, the data as data), filled in place when the images land. */
 export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Texture2DArray };
 
 /**
- * The plugin's uniforms: `townReady`, 0 until the arrays are filled, then 1; `townHour`, the hour of day 0 to 24 (12 until a frame says otherwise); `townLamps`, how
+ * The plugin's uniforms: `townReady`, 0 until the arrays are filled, then 1; `townHour`, the hour of day 0 to 24 (12 until a frame says otherwise); `townGlow`, what every glow is multiplied by at that hour so that a lit thing stays as bright to the eye while the night's grade darkens the frame round it (`look.ts`, `litGainAt`; 1 by day); `townDay`, how much day there is, 1 to 0, which a glow with no hours of its own is kept by (`DAY_GLOW_CODE`); `townLamps`, how
  * many of the lamp list's entries are used (0: none, which is the day); and the list itself, `lampP<i>` (a lamp's x, y, z and range) and `lampC<i>` (its colour and
  * strength), one vec4 each, since a uniform array is not a type the material's buffer takes. `markMaterialUboDirty` after changing any.
  */
-export type TownReady = { townReady: number[]; townHour: number[]; townLamps: number[] } & Record<string, number[]>;
+export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townLamps: number[] } & Record<string, number[]>;
 
 export function emptyTownReady(): TownReady {
-  const r: TownReady = { townReady: [0], townHour: [12], townLamps: [0] };
+  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townLamps: [0] };
   for (let i = 0; i < MAX_LAMPS; i++) {
     r[`lampP${i}`] = [0, 0, 0, 0];
     r[`lampC${i}`] = [0, 0, 0, 0];

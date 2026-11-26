@@ -4,7 +4,7 @@
  * finger floats and slips), the boats (moored in the slips and alongside piers, a few at anchor, a tug), the pilings (the fields
  * of dead piles where a cannery's or a mill's wharf was pulled down, and dolphins off the pier ends), the mill's water (a log
  * pond held by a boom, a jack ladder, a closed mill's rusting wigwam burner), the port's terminal (its yard by what it handles,
- * a loaded barge and tug at its wharf), and the lights.
+ * a loaded barge and tug at its wharf), and the lights (the headlands', the longest pier's, then lamps along every pier and the quay, float lights, the terminal's floods and the mill's yard lights, drawn last).
  *
  * Depth is not read from the ground (the plan never reads it): it is the distance seaward of the site's shore times the
  * coast's beach grade (`BEACH_GRADE`), no deeper than `MAX_DEPTH`; `test/townWorld/harbour.test.ts` checks it against the
@@ -228,6 +228,8 @@ export function planHarbour(input: HarbourInput, rng: Rng): HarbourOut {
   const slips: Slip[] = [];
   const boats: Boat[] = [];
   const slipBoatSlots: { slip: number; cls: SlipClass; pose: Pose; length: number }[] = [];
+  /** Each main float placed: its reach, where its gangway lands and the stretch it covers, for the lights (drawn last). */
+  const floatRuns: { w: { a: Vec; b: Vec }; sg: number; s0: number; s1: number }[] = [];
 
   type Interval = { reach: number; s0: number; s1: number };
   const intervals: Interval[] = [];
@@ -308,6 +310,7 @@ export function planHarbour(input: HarbourInput, rng: Rng): HarbourOut {
     // A finger too near the gangway is dropped: it is clear space for the walk.
     const fid = addDeck("float", centre, T, lf / 2, FLOAT_WIDTH / 2, FLOAT_TOP, FLOAT_TOP);
     floats.push(fid);
+    floatRuns.push({ w, sg, s0: fl0, s1: fl1 });
     gangways.push(addDeck("gangway", gc, S, (gEnd - gStart) / 2, GANGWAY_WIDTH / 2, DECK_TOP, FLOAT_TOP - 0.02));
     taken.push(mainPoly, gPoly);
     const placed: boolean[] = [];
@@ -712,6 +715,125 @@ export function planHarbour(input: HarbourInput, rng: Rng): HarbourOut {
     );
   }
 
+  // ---- The working lights: pier lamps, quay lamps, float lights, yard floods and the mill's yard lights. Drawn after everything else the stage
+  // draws, so no earlier draw moves. The props stage runs after this one and keeps its places off every light (`props/context.ts`).
+  const LAMP_GAP = 6;
+  // Clear of the town's own track too, by a little more than a prop's clearance of its centre line: the spur runs out onto a wharf and along a yard's edge,
+  // where a deck's or a yard's lamp would otherwise stand in it.
+  const offTrack = (p: Vec): boolean => layout.spurs.every((sp) => lineDist(sp.points, p) >= PROP_OFFSET + 0.4);
+  const lampFree = (p: Vec, gap = LAMP_GAP): boolean => offTrack(p) && lights.every((l) => (l.x - p.x) * (l.x - p.x) + (l.z - p.z) * (l.z - p.z) >= gap * gap);
+  const seedOf = (): number => Math.floor(next(rng) * 0x7fffffff);
+  // `overlapDepth` is 0 or less only when two shapes do not overlap (it is no distance), so a margin is made by growing the post's box.
+  const post = (c: Vec, grow = 0): Poly => rectOf(c, { x: 1, z: 0 }, 0.3 + grow, 0.3 + grow);
+  const clearOfWalls = (c: Vec): boolean => solidRects.every((r) => overlapDepth(post(c, 0.5), r) <= 0);
+  const onLand = (c: Vec): boolean => depthAt(c) === 0 && clearOfWalls(c) && streetOk(post(c), 0.5) && layout.spurs.every((sp) => lineShapeDist(sp.points, post(c)) >= PROP_OFFSET);
+  const dist = (a: Vec, b: Vec): number => Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
+  // Pier lamps: a post at the deck's edge every 18 to 26 m from the head, on one side or alternating; a short pier has its head's.
+  // Read from the decks, so a pier the boats' list did not take up (no spot) is lit too; the head is the end that lies seaward (toward negative x).
+  for (const deck of input.decks) {
+    if (deck.kind !== "pier" && deck.kind !== "wharf") continue;
+    const alongLong = deck.halfAlong >= deck.halfAcross;
+    const long = alongLong ? deck.axis : { x: deck.axis.z, z: -deck.axis.x };
+    const d = long.x <= 0 ? long : { x: -long.x, z: -long.z };
+    const p = { deck, halfLong: alongLong ? deck.halfAlong : deck.halfAcross, halfWide: alongLong ? deck.halfAcross : deck.halfAlong };
+    const n = { x: -d.z, z: d.x };
+    // Just inboard of the bull rail that runs along the deck's edge (the rail is a hand wide, a hand inboard of it).
+    const edge = Math.max(0.2, p.halfWide - 0.8);
+    const alternate = chance(rng, 0.5);
+    let side = chance(rng, 0.5) ? 1 : -1;
+    const put = (s: number, sd: number): boolean => {
+      const c = { x: p.deck.centre.x + d.x * s + n.x * sd * edge, z: p.deck.centre.z + d.z * s + n.z * sd * edge };
+      if (!lampFree(c) || !clearOfWalls(c)) return false;
+      lights.push({ kind: "pier lamp", x: c.x, z: c.z, height: 4.5, dx: -n.x * sd, dz: -n.z * sd, seed: seedOf() });
+      return true;
+    };
+    let count = 0;
+    let s = p.halfLong - 0.8;
+    while (s > -p.halfLong + 3) {
+      if (put(s, side) || put(s, -side) || put(s - 2.5, side)) count++;
+      if (alternate) side = -side;
+      s -= range(rng, 18, 26);
+    }
+    // A pier a lamp could not be set on by the draws (sheds, the pier light) is swept for a place.
+    for (let t = p.halfLong - 1; count === 0 && p.halfLong * 2 > 12 && t > -p.halfLong + 1; t -= 3) if (put(t, 1) || put(t, -1)) count++;
+  }
+  // Quay lamps: a taller post on the apron behind the wall's edge every 28 to 40 m, clear of the piers' lamps (15 m), of the piers and gangways, and of the town's streets.
+  for (const w of quay.wet) {
+    const len = Math.sqrt((w.b.x - w.a.x) * (w.b.x - w.a.x) + (w.b.z - w.a.z) * (w.b.z - w.a.z));
+    let s = range(rng, 8, 20);
+    while (s < len - 6) {
+      // Inboard of the bollards (which stand 1.3 m back from the edge, `quayGeometry.ts`), so no post stands on one.
+      const c = at(w, s, QUAY_APRON - 2.6);
+      const walk = [...input.decks, ...decks].filter((d) => d.kind === "pier" || d.kind === "wharf" || d.kind === "gangway");
+      if (
+        lights.every((l) => l.kind !== "pier lamp" || dist(l, c) >= 15) && lampFree(c) && clearOfWalls(c) && streetOk(post(c), 0.5) &&
+        walk.every((d) => overlapDepth(post(c, 1.2), rectOf(d.centre, d.axis, d.halfAlong, d.halfAcross)) <= 0)
+      ) lights.push({ kind: "quay lamp", x: c.x, z: c.z, height: 7, dx: S.x, dz: S.z, seed: seedOf() });
+      s += range(rng, 28, 40);
+    }
+  }
+  // Float lights: a low dock light on the main float beside each gangway's landing and every 12 to 18 m along it.
+  for (const fr of floatRuns) {
+    const off = FLOAT_OFFSET - 1;
+    const tryAt = (s: number): void => {
+      const c = at(fr.w, s, off);
+      if (lampFree(c)) lights.push({ kind: "float light", x: c.x, z: c.z, height: 1.2, seed: seedOf() });
+    };
+    tryAt(fr.sg + 1.7);
+    for (let s = fr.s0 + range(rng, 3, 9); s < fr.s1 - 2; s += range(rng, 12, 18)) tryAt(s);
+  }
+  // Yard floods: two to four tall masts at the terminal's yard edges looking in (an idle terminal keeps one); the mill's yard lights by its log pond.
+  if (terminal !== null && blockPolys.length > 0) {
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    const grow = (x: number, z: number): void => {
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      z0 = Math.min(z0, z);
+      z1 = Math.max(z1, z);
+    };
+    if (yard.length > 0) for (const y of yard) {
+      const r = Math.max(y.halfX, y.halfZ);
+      grow(y.x - r, y.z - r);
+      grow(y.x + r, y.z + r);
+    } else for (const b of blockPolys) for (const q of b) grow(q.x, q.z);
+    const mid = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 };
+    const want = idle ? 1 : int(rng, 2, 4);
+    const masts: Vec[] = [];
+    for (let k = 0; k < want; k++) {
+      for (let tries = 0; tries < 60; tries++) {
+        const side = int(rng, 0, 3);
+        const u = next(rng);
+        const m = 3 + next(rng) * 2;
+        const c = side === 0 ? { x: x0 - m, z: z0 + u * (z1 - z0) } : side === 1 ? { x: x1 + m, z: z0 + u * (z1 - z0) } : side === 2 ? { x: x0 + u * (x1 - x0), z: z0 - m } : { x: x0 + u * (x1 - x0), z: z1 + m };
+        if (!landOk(post(c), blockPolys) || !lampFree(c, 10) || masts.some((q) => dist(q, c) < 14)) continue;
+        const l = dist(c, mid);
+        if (!(l > 0.5)) continue;
+        masts.push(c);
+        yardTaken.push(post(c));
+        lights.push({ kind: "flood mast", x: c.x, z: c.z, height: Math.round(range(rng, 14, 18)), dx: (mid.x - c.x) / l, dz: (mid.z - c.z) / l, seed: seedOf() });
+        break;
+      }
+    }
+  }
+  if (!millClosed && logPond !== null) {
+    const lp = logPond;
+    const want = int(rng, 1, 2);
+    let got = 0;
+    for (const zf of [-0.45, 0.45, 0]) {
+      if (got >= want) break;
+      for (const off of [3.5, 6, 9]) {
+        const c = { x: lp.centre.x + lp.halfX + off, z: lp.centre.z + zf * lp.halfZ };
+        if (!onLand(c) || !lampFree(c) || !yardTaken.every((r) => overlapDepth(post(c, 1), r) <= 0)) continue;
+        lights.push({ kind: "yard light", x: c.x, z: c.z, height: 6, dx: -1, dz: 0, seed: seedOf() });
+        got++;
+        break;
+      }
+    }
+  }
+
   const harbour: Harbour = { boats, slips, floats, gangways, pilings, dolphins, logPond, burner, terminal, lights, events };
   return { harbour, decks };
 }
@@ -779,6 +901,8 @@ function pilingField(
   return { origin, year, piles };
 }
 
+const LIGHT_KINDS: readonly Light["kind"][] = ["harbour light", "day beacon", "pier light", "pier lamp", "quay lamp", "float light", "flood mast", "yard light"];
+
 /** One line that says what a town's harbour holds: for the map page's list and the tests' report. */
 export function harbourSummary(h: Harbour): string {
   const count = (state: BoatState): number => h.boats.filter((b) => b.state === state).length;
@@ -793,6 +917,6 @@ export function harbourSummary(h: Harbour): string {
     `slips ${h.slips.length} (${h.slips.filter((s) => s.boat === null).length} empty), floats ${h.floats.length}, gangways ${h.gangways.length}, ` +
     `dead piles ${piles}, dolphins ${h.dolphins.length / 3}, ` +
     `pond ${h.logPond === null ? "none" : h.logPond.working ? `working (${h.logPond.logs.length} logs${h.logPond.jackLadder ? ", jack ladder" : ""})` : "empty boom"}, burner ${h.burner ? "yes" : "no"}, ` +
-    `terminal ${t === null ? "none" : `${t.cargo} ${t.idle ? "idle" : `${t.yard.length} items${t.barge ? ", barge" : ", no barge"}`}`}, lights ${h.lights.length}`
+    `terminal ${t === null ? "none" : `${t.cargo} ${t.idle ? "idle" : `${t.yard.length} items${t.barge ? ", barge" : ", no barge"}`}`}, lights ${h.lights.length} (${LIGHT_KINDS.map((k) => `${h.lights.filter((l) => l.kind === k).length} ${k}`).join(", ")})`
   );
 }

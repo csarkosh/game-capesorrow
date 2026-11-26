@@ -21,6 +21,8 @@ export const STEP = 0.025;
 
 const SLAT_COLOURS: readonly Rgb[] = [[0.8, 0.77, 0.68], [0.86, 0.86, 0.83], [0.58, 0.48, 0.34], [0.7, 0.7, 0.72], [0.3, 0.3, 0.32]];
 const PAPER: readonly Rgb[] = [[0.78, 0.66, 0.46], [0.84, 0.8, 0.7], [0.72, 0.6, 0.4]];
+/** How much a sheet of paper in a vacant unit's glass glows by day, as daylight falls on it (it has no light behind it: at night the material takes this away, `townMaterial.ts` `DAY_GLOW_CODE`, and a vacant shop is dark). */
+const PAPER_GLOW = 0.2;
 
 export type Behind = { readonly out: MeshBuilder; readonly w: WallRef; readonly detail: Detail; readonly seed: number; /** The glass's own offset; things behind it are at `glass - STEP * k`. */ readonly glass: number; readonly lit: boolean; /** A home's window: the glow its covering has when its light is on (its night code, `windowNight.ts`, says when), in the place of the room's. */ readonly glow?: number };
 
@@ -152,7 +154,7 @@ export function paperSheets(b: Behind, sa: number, sb: number, y0: number, y1: n
       const cutY = 0.25 + hash01(seed + i, 627) * 0.3;
       const right = hash01(seed + i, 628) < 0.5;
       const paint = (pts: Vec3[]): void => {
-        out.poly(pts, [w.nx, 0, w.nz], pts.map((p) => tone(col, p[1])), undefined, { glow: b.lit ? 0.9 : 0.8 });
+        out.poly(pts, [w.nx, 0, w.nz], pts.map((p) => tone(col, p[1])), undefined, { glow: PAPER_GLOW });
       };
       if (short > 0.05 && full) {
         // A ragged bottom edge: a strip of quads, each its own height (a convex piece apiece, none over another).
@@ -179,7 +181,7 @@ export function paperSheets(b: Behind, sa: number, sb: number, y0: number, y1: n
       // Tape: a short strip at the top corners of the sheet, and at the seam's middle.
       for (const s of [a + 0.06, c - 0.06]) {
         if (torn && ((right && s > c - 0.1) || (!right && s < a + 0.1))) continue;
-        out.poly([wat(w, s - 0.04, topY - 0.07, tape), wat(w, s + 0.04, topY - 0.07, tape), wat(w, s + 0.04, topY + 0.01, tape), wat(w, s - 0.04, topY + 0.01, tape)], [w.nx, 0, w.nz], [0.75, 0.72, 0.58], undefined, { glow: 0.8 });
+        out.poly([wat(w, s - 0.04, topY - 0.07, tape), wat(w, s + 0.04, topY - 0.07, tape), wat(w, s + 0.04, topY + 0.01, tape), wat(w, s - 0.04, topY + 0.01, tape)], [w.nx, 0, w.nz], [0.75, 0.72, 0.58], undefined, { glow: PAPER_GLOW });
       }
     }
   });
