@@ -11,9 +11,9 @@ import {
   MessageType, dequantizePitch, dequantizePosition, dequantizeYaw, quantizePitch, quantizePosition, quantizeVelocity, quantizeYaw,
 } from "@csarkosh/engine/net/wire";
 import { cloneVec3 } from "@csarkosh/engine/sim/core";
-import { carPressed } from "./sim/car/rules.js";
+import { carPressed, newRide } from "./sim/car/rules.js";
 import { seatPlace } from "./sim/car/seats.js";
-import { LEAVING, SEATED, type Car, type Ride } from "./sim/car/types.js";
+import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "./sim/car/types.js";
 import { WALK_RULES, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
 /** What two ends must share to drive and walk together. */
@@ -39,6 +39,20 @@ function clamp(v: number, lo: number, hi: number): number {
 
 function int16(v: number, scale: number): number {
   return Math.round(clamp(v * scale, -32768, 32767));
+}
+
+/**
+ * A ride as read off the wire, or an error: a snapshot comes from another player's machine, so a phase must be one of the four,
+ * a rider must name a car and a seat of the four, and no two riders may hold one seat. A player on foot has no ride but `newRide()`.
+ */
+function readRide(car: number, seat: number, phase: number, ticks: number, taken: Set<number>): Ride {
+  if (phase !== FOOT && phase !== ENTERING && phase !== SEATED && phase !== LEAVING) throw new Error("a snapshot of the game with a ride of no phase");
+  if (phase === FOOT) return newRide();
+  if (car === 0 || seat < 0 || seat > 3) throw new Error("a snapshot of the game with a rider in no seat");
+  const key = car * 4 + seat;
+  if (taken.has(key)) throw new Error("a snapshot of the game with two riders in one seat");
+  taken.add(key);
+  return { car, seat, phase, ticks };
 }
 
 function copyCar(car: Car): Car {
@@ -100,6 +114,8 @@ export function decodeWalkSnapshot(buffer: ArrayBuffer): WalkSnapshot {
   const carCount = view.getUint8(carsAt);
   if (buffer.byteLength !== carsAt + 1 + carCount * CAR_BYTES) throw new Error("a snapshot of the game of the wrong length");
   const players: WalkMover[] = [];
+  /** The seats the riders hold, as car * 4 + seat: no two riders share one. */
+  const taken = new Set<number>();
   let o = HEAD_BYTES;
   for (let i = 0; i < count; i++) {
     players.push({
@@ -110,7 +126,7 @@ export function decodeWalkSnapshot(buffer: ArrayBuffer): WalkSnapshot {
       yaw: dequantizeYaw(view.getUint16(o + 20, true)),
       pitch: dequantizePitch(view.getInt8(o + 22)),
       grounded: view.getUint8(o + 23) === 1,
-      ride: { car: view.getUint8(o + 24), seat: view.getInt8(o + 25), phase: view.getUint8(o + 26) as Ride["phase"], ticks: view.getUint8(o + 27) },
+      ride: readRide(view.getUint8(o + 24), view.getInt8(o + 25), view.getUint8(o + 26), view.getUint8(o + 27), taken),
     });
     o += MOVER_BYTES;
   }
@@ -184,7 +200,8 @@ export const WALK: NetGame<WalkWorld, Walker, WalkSnapshot, WalkState, never> = 
   },
   /** The host's word on the local player's ride and on every car, as copies: the snapshot is kept for blending, and the replay that follows moves the cars. */
   correct: (world, local, truth, snapshot) => {
-    local.ride = { ...truth.ride };
+    // A rider of a car the snapshot does not hold is on foot.
+    local.ride = truth.ride.phase === FOOT || snapshot.cars.some((c) => c.id === truth.ride.car) ? { ...truth.ride } : newRide();
     world.state.cars = snapshot.cars.map(copyCar);
   },
   blend: (a, b, alpha) => ({
@@ -201,25 +218,26 @@ export const WALK: NetGame<WalkWorld, Walker, WalkSnapshot, WalkState, never> = 
   }),
   view(world, localId, between) {
     const local = world.state.players.get(localId);
-    // The local driver's car is the predicted world's own, so the camera and the car never disagree; every other car stands where the blended pair has it.
-    const cars = between === null ? world.state.cars : between.cars.map((c) => (c.seats[0] === localId ? (world.state.cars.find((w) => w.id === c.id) ?? c) : c));
+    // The predicted world steps a car only while the local player is seated at its wheel; that car is the world's own, so the camera and the car never disagree. Every other car stands where the blended pair has it.
+    const driven = local !== undefined && local.ride.phase === SEATED && local.ride.seat === 0 ? local.ride.car : 0;
+    const cars = between === null ? world.state.cars : between.cars.map((c) => (c.id === driven ? (world.state.cars.find((w) => w.id === c.id) ?? c) : c));
     const players = new Map<number, Walker>();
     // The others stand where the blended pair has them; the local player is the predicted world's own.
     for (const p of between?.players ?? []) {
       if (p.id === localId) continue;
-      players.set(p.id, { id: p.id, pos: cloneVec3(p.pos), vel: cloneVec3(p.vel), yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, lastProcessedInput: 0, ride: { ...p.ride } });
+      const known = p.ride.phase === FOOT || cars.some((c) => c.id === p.ride.car);
+      players.set(p.id, { id: p.id, pos: cloneVec3(p.pos), vel: cloneVec3(p.vel), yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, lastProcessedInput: 0, ride: known ? { ...p.ride } : newRide() });
     }
-    if (local !== undefined) {
-      // A passenger rides in the car as the blended pair has it, so it sits in the car that is drawn and not where the host's car will be a moment on.
-      const seat = local.ride.seat;
-      const car = local.ride.phase === SEATED || local.ride.phase === LEAVING ? cars.find((c) => c.id === local.ride.car) : undefined;
-      if (car !== undefined && car.seats[0] !== localId && car !== world.state.cars.find((w) => w.id === car.id)) {
-        const at = { x: 0, y: 0, z: 0 };
-        seatPlace(car, seat, at);
-        players.set(localId, { ...local, pos: at });
-      } else {
-        players.set(localId, local);
-      }
+    if (local === undefined) return { tick: world.state.tick, players, nextEntityId: world.state.nextEntityId, rngSeed: world.state.rngSeed, cars };
+    // A rider other than the driver sits in the car as the blended pair has it, so the body is in the car that is drawn and not where the host's car will be a moment on. With no snapshot the cars are the world's, and the body is already in its seat.
+    const rides = local.ride.phase === SEATED || local.ride.phase === LEAVING;
+    const car = between !== null && rides && driven === 0 ? cars.find((c) => c.id === local.ride.car) : undefined;
+    if (car !== undefined && local.ride.seat >= 0 && local.ride.seat <= 3) {
+      const at = { x: 0, y: 0, z: 0 };
+      seatPlace(car, local.ride.seat, at);
+      players.set(localId, { ...local, pos: at });
+    } else {
+      players.set(localId, local);
     }
     return { tick: world.state.tick, players, nextEntityId: world.state.nextEntityId, rngSeed: world.state.rngSeed, cars };
   },
