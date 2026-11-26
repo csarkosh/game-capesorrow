@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { cameraAxes, restAxes, type CameraPose } from "@csarkosh/engine/game/lite/cameraPose";
 import { newCarPose, type CarPose } from "../../src/game/car/carPose.js";
-import { CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
+import { ENTER_TICKS, LEAVE_TICKS } from "../../src/sim/car/tuning.js";
+import { ENTERING, FOOT, LEAVING, SEATED } from "../../src/sim/car/types.js";
+import { SEAT_RATE, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
 
 const open = (): boolean => false;
 const flat = (): number => 0;
@@ -257,10 +259,65 @@ describe("the chase camera", () => {
     expect([c.tx, c.tz]).toEqual([51, 61]);
   });
 
-  it("allocates nothing a frame: the pose and the chase are the only records written", () => {
+  it("adds no field to the chase record as it steps", () => {
     const c = newChase();
     const keys = Object.keys(c).sort();
     stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), pose());
     expect(Object.keys(c).sort()).toEqual(keys);
+  });
+});
+
+describe("how far into the seat the camera is", () => {
+  it("maps the ride's phase and ticks (counting down) to the target", () => {
+    expect(seatTarget(FOOT, 0)).toBe(0);
+    expect(seatTarget(SEATED, 0)).toBe(1);
+    expect(seatTarget(ENTERING, ENTER_TICKS)).toBe(0);
+    expect(seatTarget(ENTERING, 1)).toBeCloseTo(1 - 1 / ENTER_TICKS, 9);
+    expect(seatTarget(ENTERING, 0)).toBe(1);
+    expect(seatTarget(LEAVING, LEAVE_TICKS)).toBe(1);
+    expect(seatTarget(LEAVING, 1)).toBeCloseTo(1 / LEAVE_TICKS, 9);
+    expect(seatTarget(LEAVING, 0)).toBe(0);
+    let last = -1;
+    for (let t = ENTER_TICKS; t >= 0; t--) { const v = seatTarget(ENTERING, t); expect(v).toBeGreaterThan(last); last = v; }
+    last = 2;
+    for (let t = LEAVE_TICKS; t >= 0; t--) { const v = seatTarget(LEAVING, t); expect(v).toBeLessThan(last); last = v; }
+  });
+
+  it("follows plain entering and leaving exactly, from exactly 0 to exactly 1 and back", () => {
+    let shown = 0;
+    for (let t = ENTER_TICKS; t >= 0; t--) {
+      shown = seatStep(shown, seatTarget(ENTERING, t), 1 / 60);
+      expect(shown).toBe(seatTarget(ENTERING, t));
+    }
+    shown = seatStep(shown, seatTarget(SEATED, 0), 1 / 60);
+    expect(shown).toBe(1);
+    for (let t = LEAVE_TICKS; t >= 0; t--) {
+      shown = seatStep(shown, seatTarget(LEAVING, t), 1 / 60);
+      expect(shown).toBe(seatTarget(LEAVING, t));
+    }
+    expect(shown).toBe(0);
+  });
+
+  it("eases back out when a leave is refused: no frame moves it far, and it arrives at 1", () => {
+    let shown = 1;
+    for (let t = LEAVE_TICKS; t >= 1; t--) shown = seatStep(shown, seatTarget(LEAVING, t), 1 / 60);
+    expect(shown).toBeCloseTo(1 / LEAVE_TICKS, 9);
+    let frames = 0;
+    while (shown < 1 && frames < 100) {
+      const next = seatStep(shown, seatTarget(SEATED, 0), 1 / 60);
+      expect(next - shown).toBeLessThanOrEqual(SEAT_RATE / 60 + 1e-12);
+      shown = next;
+      frames++;
+    }
+    expect(shown).toBe(1);
+    expect(frames).toBeGreaterThan(10);
+  });
+
+  it("lands on the target after a long frame, without passing it", () => {
+    expect(seatStep(0, 1, 2)).toBe(1);
+    expect(seatStep(1, 0, 2)).toBe(0);
+    expect(seatStep(0.5, 0.5, 2)).toBe(0.5);
+    expect(seatStep(0.3, 1, 0)).toBe(0.3);
+    expect(seatStep(0.3, 1, NaN)).toBe(0.3);
   });
 });

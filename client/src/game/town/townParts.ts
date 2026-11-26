@@ -41,10 +41,9 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { groundAt } from "./props/kit.js";
 import { createCarParts, type CarParts } from "../car/carParts.js";
 import { carDebug, type CarDebug, type CarDebugSource } from "../car/carDebug.js";
-import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "../../sim/car/types.js";
-import { ENTER_TICKS, LEAVE_TICKS } from "../../sim/car/tuning.js";
+import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { SOLID_CELL, townSolids, STRIDE } from "../../sim/town/solid.js";
-import { newChase, stepChase } from "../car/chaseCamera.js";
+import { newChase, seatStep, seatTarget, stepChase } from "../car/chaseCamera.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
@@ -149,6 +148,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   const chaseShot = { fov: 0 as number | null, centre: { x: 0, z: 0 }, coverAtEye: false };
   const chaseSeen = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 0, seated: 0 };
   let chasing = false;
+  // How far into the seat the camera is shown: the ride's own value followed at a bounded rate, so a refused leave eases back out.
+  let shownSeat = 0;
   let chasedCar = 0;
   let lastSeconds = -1;
   let drawnGround: ((x: number, z: number) => number) | null = null;
@@ -407,11 +408,13 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       if (ride === undefined || drawn === null || drawnGround === null) {
         chase.started = false;
         chasing = false;
+        shownSeat = 0;
         return base.side.shot(seconds, pose, local, state, localId, alpha);
       }
       if (ride.car !== chasedCar) chase.started = false;
       chasedCar = ride.car;
-      const seated = ride.phase === ENTERING ? 1 - ride.ticks / ENTER_TICKS : ride.phase === LEAVING ? ride.ticks / LEAVE_TICKS : 1;
+      shownSeat = seatStep(shownSeat, seatTarget(ride.phase, ride.ticks), dt);
+      const seated = shownSeat;
       Object.assign(chaseEye, pose);
       chaseLook.yaw = local.yaw;
       chaseLook.pitch = local.pitch;
@@ -480,6 +483,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       holding = false;
       chasing = false;
       chase.started = false;
+      shownSeat = 0;
       drawnGround = null;
       held.cars = NO_CARS;
       held.players = new Map();

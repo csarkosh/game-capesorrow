@@ -13,6 +13,8 @@
  */
 import { EYE_SNAP_M } from "@csarkosh/engine/game/eyeBlend";
 import type { CameraPose } from "@csarkosh/engine/game/lite/cameraPose";
+import { ENTER_TICKS, LEAVE_TICKS } from "../../sim/car/tuning.js";
+import { ENTERING, FOOT, LEAVING, SEATED } from "../../sim/car/types.js";
 import type { CarPose } from "./carPose.js";
 
 /** The camera's distance from the aim point and its height over the car at rest (m); the aim point's height over the car's place (m). */
@@ -127,4 +129,21 @@ export function stepChase(
   out.roll = eye.roll * (1 - s);
   const speed = Math.abs(car.speed);
   return CHASE_FOV * Math.min(1, Number.isFinite(speed) ? speed / WIDE_SPEED : 0) * s;
+}
+
+/** The most the shown seat moves a second: faster than plain getting in (1 per second) and out (1.67), so those are followed exactly, and a refused leave comes back out in a quarter of a second. */
+export const SEAT_RATE = 4;
+
+/** How far into the seat a ride is, 0 to 1: `ticks` counts DOWN, so entering rises as it runs out and leaving falls. */
+export function seatTarget(phase: number, ticks: number): number {
+  if (phase === ENTERING) return Math.min(1, Math.max(0, 1 - ticks / ENTER_TICKS));
+  if (phase === LEAVING) return Math.min(1, Math.max(0, ticks / LEAVE_TICKS));
+  return phase === SEATED ? 1 : phase === FOOT ? 0 : 0;
+}
+
+/** The shown seat moved toward `target` by at most `SEAT_RATE * dt`, landing on it without passing it. */
+export function seatStep(shown: number, target: number, dt: number): number {
+  const most = SEAT_RATE * (dt > 0 ? dt : 0);
+  const d = target - shown;
+  return d > most ? shown + most : d < -most ? shown - most : target;
 }
