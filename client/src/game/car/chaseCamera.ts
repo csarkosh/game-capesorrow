@@ -34,6 +34,13 @@ const PITCH_LOW = -0.1, PITCH_HIGH = 1.0;
 const STEP = 0.5, SHORT = 0.3, HALVINGS = 5;
 /** The camera stays this far over the ground (m). */
 const GROUND_CLEAR = 0.4;
+/** How far over the drawn ground a point of the camera's sweep must stand to be clear of it, metres. */
+export const GROUND_BLOCK = 0.1;
+
+/** Whether a point of the camera's sweep stands under the drawn ground (with `GROUND_BLOCK` to spare), so that a crest in the way hides the car. Pure; allocates nothing. */
+export function underGround(groundAt: (x: number, z: number) => number, x: number, y: number, z: number): boolean {
+  return y < groundAt(x, z) + GROUND_BLOCK;
+}
 /** The speed (m/s) at which the lens is widest, and the most one step's seconds count for. */
 const WIDE_SPEED = 30, DT_MAX = 1;
 const TWO_PI = Math.PI * 2;
@@ -60,7 +67,8 @@ export function stepChase(
 ): number {
   const step = dt > 0 ? (dt < DT_MAX ? dt : DT_MAX) : 0;
   // The followed point: at the car at the start and where the car has jumped, otherwise closing on it.
-  if (!c.started || Math.hypot(car.x - c.tx, car.y - c.ty, car.z - c.tz) > EYE_SNAP_M) {
+  // Written so that a distance that is not a number snaps too: a car place that was NaN for a frame must not hold the followed point there.
+  if (!c.started || !(Math.hypot(car.x - c.tx, car.y - c.ty, car.z - c.tz) <= EYE_SNAP_M)) {
     c.tx = car.x;
     c.ty = car.y;
     c.tz = car.z;

@@ -3,7 +3,7 @@ import { cameraAxes, restAxes, type CameraPose } from "@csarkosh/engine/game/lit
 import { newCarPose, type CarPose } from "../../src/game/car/carPose.js";
 import { ENTER_TICKS, LEAVE_TICKS } from "../../src/sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED } from "../../src/sim/car/types.js";
-import { SEAT_RATE, CHASE_RELEASE, BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, inBox, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
+import { GROUND_BLOCK, underGround, SEAT_RATE, CHASE_RELEASE, BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, inBox, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
 
 const open = (): boolean => false;
 const flat = (): number => 0;
@@ -161,6 +161,41 @@ describe("the chase camera", () => {
     const f = forward(out);
     expect(f.z).toBeGreaterThan(0.5);
     expect(f.y).toBeLessThan(0);
+  });
+
+  it("counts a sample under the drawn ground, with a margin, as blocked, and one over it as clear", () => {
+    const hill = (_x: number, z: number): number => (z < 0 ? 4 : 1);
+    expect(underGround(hill, 0, 3.9, -5)).toBe(true);
+    expect(underGround(hill, 0, 4 + GROUND_BLOCK - 0.01, -5)).toBe(true);
+    expect(underGround(hill, 0, 4 + GROUND_BLOCK + 0.01, -5)).toBe(false);
+    expect(underGround(hill, 0, 2, 5)).toBe(false);
+    expect(underGround(() => NaN, 0, 0, 0)).toBe(false);
+  });
+
+  it("is pulled in before a crest between it and the car, and not by ground that lies below the line", () => {
+    const car = carAt(0, 0, 0, 1, 0, 0);
+    // The ground rises to 4 m behind the car, over the camera's whole height there.
+    const crest = (_x: number, z: number): number => (z < -2 ? 4 : 0);
+    const c = newChase();
+    const { out } = settle(c, car, { yaw: 0, pitch: 0 }, 10, pose(), (x, y, z) => underGround(crest, x, y, z), crest);
+    expect(c.back).toBeLessThan(CHASE_BACK - 3);
+    expect(out.z).toBeGreaterThan(-3.5);
+    // Level ground leaves the full distance.
+    const level = newChase();
+    settle(level, car, { yaw: 0, pitch: 0 }, 10, pose(), (x, y, z) => underGround(flat, x, y, z), flat);
+    expect(level.back).toBe(CHASE_BACK);
+  });
+
+  it("snaps to a car that is back from a place that was not a number, instead of following NaN for ever", () => {
+    const c = newChase();
+    const out = pose();
+    const gone = carAt(0, 0, 0, 1);
+    gone.x = NaN;
+    gone.z = NaN;
+    stepChase(c, gone, { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    stepChase(c, carAt(5, 6, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    expect([c.tx, c.tz]).toEqual([5, 6]);
+    for (const v of [out.x, out.y, out.z, out.yaw, out.pitch]) expect(Number.isFinite(v)).toBe(true);
   });
 
   it("is the walker's eye at seated 0 and the chase at 1", () => {
