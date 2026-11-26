@@ -23,13 +23,15 @@ export const CHASE_BACK = 6.5, CHASE_UP = 2.4, CHASE_AIM = 1.5;
 export const CHASE_LAG = 10, CHASE_RETURN = 2.5, CHASE_IDLE = 2;
 /** The nearest the camera is drawn in to by a wall (m), and the widest the lens grows (rad, at 30 m/s). */
 export const CHASE_MIN = 1.5, CHASE_FOV = 0.12;
+/** How fast the camera comes back out after a wall or a parked vehicle has drawn it in, m/s: it takes a second to win back three metres, slow enough that a street of parked cars does not make it pump, quick enough to be clear of the thing once the car is past. */
+export const CHASE_RELEASE = 4;
 
 /** The pitch (held to) that puts the camera `CHASE_UP` over the car with the aim `CHASE_AIM` over it: about 0.14 rad down. */
 const REST_PITCH = Math.asin((CHASE_UP - CHASE_AIM) / CHASE_BACK);
 /** The pitch the camera's look is held to, rad. */
 const PITCH_LOW = -0.1, PITCH_HIGH = 1.0;
 /** The line from the aim point to the camera is tested this often (m), and the camera stops this short of what it meets (m). */
-const STEP = 0.5, SHORT = 0.3;
+const STEP = 0.5, SHORT = 0.3, HALVINGS = 5;
 /** The camera stays this far over the ground (m). */
 const GROUND_CLEAR = 0.4;
 /** The speed (m/s) at which the lens is widest, and the most one step's seconds count for. */
@@ -63,6 +65,7 @@ export function stepChase(
     c.ty = car.y;
     c.tz = car.z;
     c.started = true;
+    c.back = CHASE_BACK;
     c.yawBias = 0;
     c.pitchBias = 0;
     c.idle = 0;
@@ -99,13 +102,24 @@ export function stepChase(
   const by = Math.sin(pitch);
   const bz = -Math.cos(yaw) * Math.cos(pitch);
   // The nearest blocked sample along the line, 0.5 m apart; the camera stops 0.3 m short of it and never nearer than `CHASE_MIN`.
-  let back = CHASE_BACK;
+  // Where the line first meets something is refined by bisection between the blocked sample and the clear one before it, so the distance moves
+  // smoothly as the car passes a box and not in steps of the sampling.
+  let swept = CHASE_BACK;
   for (let d = STEP; d <= CHASE_BACK + 1e-9; d += STEP) {
     if (blocked(ax + bx * d, ay + by * d, az + bz * d)) {
-      back = Math.max(CHASE_MIN, d - SHORT);
+      let lo = d - STEP;
+      let hi = d;
+      for (let n = 0; n < HALVINGS; n++) {
+        const mid = (lo + hi) / 2;
+        if (blocked(ax + bx * mid, ay + by * mid, az + bz * mid)) hi = mid;
+        else lo = mid;
+      }
+      swept = Math.max(CHASE_MIN, hi - SHORT);
       break;
     }
   }
+  // The distance shown goes in at once (the camera is never seen inside a thing) and comes back out at `CHASE_RELEASE`.
+  const back = swept <= c.back ? swept : Math.min(swept, c.back + CHASE_RELEASE * step);
   c.back = back;
   const cx = ax + bx * back;
   const cz = az + bz * back;
@@ -151,11 +165,14 @@ export function seatStep(shown: number, target: number, dt: number): number {
 
 /**
  * What a prop's box counts for. The boxes (`propSolid.ts`) carry no height and no kind, only an oriented footprint, so the camera is stopped by
- * a box by its footprint: a box under `PROP_THIN` across (poles, mailbox posts, fence runs) is let through, since a few centimetres of wood
- * must not yank the camera in; any other (vehicles, trailers, bins, heavy gear) is a column `PROP_TOP` over the ground at the point, the height
- * of a tall van, so a camera at the usual 2.4 m is stopped before a parked truck's bed and not carried through it. `BOX_MARGIN` is the camera's own thickness.
+ * a box by its footprint: a box whose smaller half-extent is under `PROP_THIN_HALF` (so under 0.6 m across: a pole 0.42 m square, a fence panel 0.14 m
+ * wide, a mailbox post) is let through, since a few centimetres of wood must not yank the camera in; any other (vehicles, trailers, bins of 0.7 m,
+ * heavy gear) is a column `PROP_TOP` over the ground at the point. 4 m: the resting camera stands 2.4 m over the car's ground, and a street may
+ * climb 15 percent (about 1 m over the 6.5 m of the line) so the ground at a sample differs from the car's by that much either way; 4 m keeps the
+ * resting camera at least 0.6 m inside the column on any street, so a rise in the road or a small pitch of the mouse does not flip samples across
+ * its top, while a camera pitched well up still looks over a parked car. `BOX_MARGIN` is the camera's own thickness.
  */
-export const PROP_THIN = 0.3, PROP_TOP = 2.6, BOX_MARGIN = 0.2;
+export const PROP_THIN_HALF = 0.3, PROP_TOP = 4, BOX_MARGIN = 0.2;
 
 /** The numbers of a grid of boxes (`TownSolids`' own layout: six to a box, centre, along axis, half extents) and the cells that list them. */
 export type BoxGrid = { x0: number; z0: number; cols: number; rows: number; start: Int32Array; list: Int32Array; rects: Float64Array };
@@ -171,7 +188,7 @@ export function inBox(rects: Float64Array, o: number, x: number, z: number, marg
 }
 
 /**
- * Whether the point is in a box of the grid, a thin box excepted and `top` (a height, metres) over it excepted, the buildings' (`thin` 0, `top` Infinity)
+ * Whether the point is in a box of the grid, a box with a half-extent under `thin` excepted and `top` (a height, metres) over it excepted, the buildings' (`thin` 0, `top` Infinity)
  * and the props' alike. Reads the one cell the point is in, and allocates nothing.
  */
 export function boxBlocks(grid: BoxGrid, x: number, y: number, z: number, thin: number, top: number, margin: number): boolean {

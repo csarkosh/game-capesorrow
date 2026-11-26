@@ -44,7 +44,7 @@ import { carDebug, type CarDebug, type CarDebugSource } from "../car/carDebug.js
 import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { townSolids } from "../../sim/town/solid.js";
 import { propSolids } from "../../sim/town/propSolid.js";
-import { BOX_MARGIN, PROP_THIN, PROP_TOP, boxBlocks, carBlocks, newChase, seatStep, seatTarget, stepChase } from "../car/chaseCamera.js";
+import { BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, newChase, seatStep, seatTarget, stepChase } from "../car/chaseCamera.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
@@ -156,10 +156,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let drawnGround: ((x: number, z: number) => number) | null = null;
   let worldSeed = 0;
   // Whether a point stands in the way of the camera (`chaseCamera.ts`): a building's footprint (the plan carries no height for it, so a column), a prop's
-  // box that is not thin and lower than `PROP_TOP` over the ground there, or another car. One cell of each grid, nothing allocated.
+  // box that is not thin (smaller half-extent at least `PROP_THIN_HALF`) and lower than `PROP_TOP` over the ground there, or another car. One cell of each grid, nothing allocated.
   const blocked = (x: number, y: number, z: number): boolean => {
     if (boxBlocks(townSolids(worldSeed), x, y, z, 0, Infinity, BOX_MARGIN)) return true;
-    if (drawnGround !== null && boxBlocks(propSolids(worldSeed), x, y, z, PROP_THIN, drawnGround(x, z) + PROP_TOP, BOX_MARGIN)) return true;
+    if (drawnGround !== null && boxBlocks(propSolids(worldSeed), x, y, z, PROP_THIN_HALF, drawnGround(x, z) + PROP_TOP, BOX_MARGIN)) return true;
     return carBlocks(held.cars, chasedCar, x, y, z);
   };
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.

@@ -3,7 +3,7 @@ import { cameraAxes, restAxes, type CameraPose } from "@csarkosh/engine/game/lit
 import { newCarPose, type CarPose } from "../../src/game/car/carPose.js";
 import { ENTER_TICKS, LEAVE_TICKS } from "../../src/sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED } from "../../src/sim/car/types.js";
-import { SEAT_RATE, BOX_MARGIN, PROP_THIN, PROP_TOP, boxBlocks, carBlocks, inBox, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
+import { SEAT_RATE, CHASE_RELEASE, BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, inBox, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
 
 const open = (): boolean => false;
 const flat = (): number => 0;
@@ -135,14 +135,14 @@ describe("the chase camera", () => {
   it("is pulled in before a wall between it and the car, 0.3 m short of the first blocked sample", () => {
     const car = carAt(0, 0, 0, 1);
     const wall = (_x: number, _y: number, z: number): boolean => z < -3.2;
-    const { out } = settle(newChase(), car, { yaw: 0, pitch: 0 }, 10, pose(), wall);
+    const c = newChase();
+    const { out } = settle(c, car, { yaw: 0, pitch: 0 }, 10, pose(), wall);
     const d = dist(out, 0, CHASE_AIM, 0);
     expect(d).toBeLessThan(CHASE_BACK - 2);
     expect(d).toBeGreaterThanOrEqual(CHASE_MIN);
-    // The samples are 0.5 m apart along the line, the first blocked at or past the wall; the camera is 0.3 m before it.
-    const first = Math.ceil((d + 0.3) / 0.5 - 1e-6) * 0.5;
-    expect(Math.abs(first - (d + 0.3))).toBeLessThan(1e-6);
-    expect(out.z).toBeGreaterThan(-3.2 - 0.5);
+    // The wall lies at z = -3.2; along the line (its pitch is the camera's) that is 3.2 / cos(pitch) from the aim, found to within the bisection's 0.5 / 32 m.
+    expect(Math.abs(d + 0.3 - 3.2 / Math.cos(out.pitch))).toBeLessThan(0.03);
+    expect(c.back).toBeCloseTo(d, 6);
   });
 
   it("is never nearer than 1.5 m, even with a wall against the car", () => {
@@ -329,9 +329,9 @@ describe("what stops the camera besides walls", () => {
   const over = 0 + PROP_TOP;
 
   it("blocks a sample inside a parked vehicle's box and not one beside it", () => {
-    expect(boxBlocks(grid, 10.5, 1, 10.2, PROP_THIN, over, BOX_MARGIN)).toBe(true);
-    expect(boxBlocks(grid, 10, 1, 11.0, PROP_THIN, over, BOX_MARGIN)).toBe(false);
-    expect(boxBlocks(grid, 12, 1, 10, PROP_THIN, over, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(grid, 10.5, 1, 10.2, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(true);
+    expect(boxBlocks(grid, 10, 1, 11.0, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(grid, 12, 1, 10, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(false);
   });
 
   it("turns the box: along its axis it is long, across it short", () => {
@@ -343,19 +343,22 @@ describe("what stops the camera besides walls", () => {
   });
 
   it("lets a sample above the vehicle's top through", () => {
-    expect(boxBlocks(grid, 10, PROP_TOP + 0.01, 10, PROP_THIN, over, BOX_MARGIN)).toBe(false);
-    expect(boxBlocks(grid, 10, 2.4, 10, PROP_THIN, over, BOX_MARGIN)).toBe(true);
+    expect(boxBlocks(grid, 10, PROP_TOP + 0.01, 10, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(grid, 10, 2.4, 10, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(true);
+    // The resting camera, 2.4 m over a car, with the ground 1 m lower there (a street climbing 15 percent), is well inside the column.
+    expect(boxBlocks(grid, 10, 2.4, 10, PROP_THIN_HALF, -1 + PROP_TOP, BOX_MARGIN)).toBe(true);
+    expect(PROP_TOP - 2.4 - 1).toBeGreaterThanOrEqual(0.5);
   });
 
-  it("lets the camera through a thin prop, a pole or a post under 0.3 m across", () => {
-    expect(boxBlocks(grid, 20, 1, 10, PROP_THIN, over, BOX_MARGIN)).toBe(false);
+  it("lets the camera through a thin prop, a pole or a post, a smaller half-extent under 0.3 m", () => {
+    expect(boxBlocks(grid, 20, 1, 10, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(false);
     // The same box counts for a building (thin 0).
     expect(boxBlocks(grid, 20, 1, 10, 0, Infinity, BOX_MARGIN)).toBe(true);
   });
 
   it("answers false outside the grid", () => {
-    expect(boxBlocks(grid, -50, 1, 10, PROP_THIN, over, BOX_MARGIN)).toBe(false);
-    expect(boxBlocks(grid, 10, 1, 500, PROP_THIN, over, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(grid, -50, 1, 10, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(grid, 10, 1, 500, PROP_THIN_HALF, over, BOX_MARGIN)).toBe(false);
   });
 
   it("blocks inside another car's footprint up to its roof and not above it, and never the car it follows", () => {
@@ -371,7 +374,7 @@ describe("what stops the camera besides walls", () => {
   it("pulls the chase in before a vehicle, and reports how far it stands", () => {
     const car = carAt(0, 0, 0, 1);
     const c = newChase();
-    const truck = (x: number, y: number, z: number): boolean => boxBlocks({ ...grid, rects: new Float64Array([0, -4, 1, 0, 1.2, 0.5]), x0: -16, z0: -16, cols: 2, rows: 2, start: Int32Array.from([0, 0, 1, 1, 1]), list: Int32Array.from([0]) }, x, y, z, PROP_THIN, PROP_TOP, BOX_MARGIN);
+    const truck = (x: number, y: number, z: number): boolean => boxBlocks({ ...grid, rects: new Float64Array([0, -4, 1, 0, 1.2, 0.5]), x0: -16, z0: -16, cols: 2, rows: 2, start: Int32Array.from([0, 0, 1, 1, 1]), list: Int32Array.from([0]) }, x, y, z, PROP_THIN_HALF, PROP_TOP, BOX_MARGIN);
     const { out } = settle(c, car, { yaw: 0, pitch: 0 }, 10, pose(), truck);
     expect(c.back).toBeLessThan(CHASE_BACK - 1);
     expect(dist(out, 0, CHASE_AIM, 0)).toBeCloseTo(c.back, 3);
@@ -379,5 +382,96 @@ describe("what stops the camera besides walls", () => {
     const clear = newChase();
     settle(clear, car, { yaw: 0, pitch: 0 }, 1);
     expect(clear.back).toBe(CHASE_BACK);
+  });
+});
+
+describe("the pulled-in distance", () => {
+  
+  it("half-extent line: a 0.42 m pole passes, a 0.7 m bin blocks", () => {
+    const mk = (half: number): Parameters<typeof boxBlocks>[0] => ({ x0: 0, z0: 0, cols: 1, rows: 1, start: Int32Array.from([0, 1]), list: Int32Array.from([0]), rects: new Float64Array([5, 5, 1, 0, half, half]) });
+    expect(boxBlocks(mk(0.21), 5, 1, 5, PROP_THIN_HALF, 4, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(mk(0.35), 5, 1, 5, PROP_THIN_HALF, 4, BOX_MARGIN)).toBe(true);
+    expect(boxBlocks(mk(0.29), 5, 1, 5, PROP_THIN_HALF, 4, BOX_MARGIN)).toBe(false);
+    expect(boxBlocks(mk(0.31), 5, 1, 5, PROP_THIN_HALF, 4, BOX_MARGIN)).toBe(true);
+  });
+
+  it("goes in by the swept distance at once, refined finer than the 0.5 m samples, and out at the release rate", () => {
+    // A wall across the line at z = -3.3: the swept distance is within 0.04 m of 3.3 - 0.3 (five halvings of 0.5 m).
+    const c = newChase();
+    const car = carAt(0, 0, 0, 1);
+    const out = pose();
+    const wall = (_x: number, _y: number, z: number): boolean => z < -3.3;
+    stepChase(c, car, { yaw: 0, pitch: 0 }, 1, 1 / 60, wall, flat, pose(), out);
+    expect(c.back).toBeLessThan(3.1);
+    expect(c.back).toBeGreaterThan(2.9);
+    const taken = c.back;
+    stepChase(c, car, { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    expect(c.back - taken).toBeCloseTo(CHASE_RELEASE / 60, 9);
+  });
+
+  it("backing toward a box: goes in by small steps as it comes into the line, never longer than the swept distance, out no faster than the release, full again after", () => {
+    // The car reverses along +z (heading -z, so the camera is on its +z side) toward a box at z 30 to 35 and through it.
+    const c = newChase();
+    const out = pose();
+    const look = { yaw: Math.PI, pitch: 0.14 };
+    const inBox = (x: number, _y: number, z: number): boolean => Math.abs(x) < 0.5 && z > 30 && z < 35;
+    let last = CHASE_BACK;
+    let fastestIn = 0;
+    let slowestOut = 0;
+    let sawPulled = false;
+    for (let f = 0; f < 700; f++) {
+      const car = carAt(0, f * 0.1, 0, -1);
+      stepChase(c, car, look, 1, 1 / 60, inBox, flat, pose(), out);
+      const exact = Math.max(CHASE_MIN, (30 - c.tz) / Math.cos(0.14) - 0.3);
+      if (c.tz < 30 && exact + 0.3 <= CHASE_BACK - 0.05) expect(c.back).toBeLessThanOrEqual(exact + 0.04);
+      expect(c.back).toBeLessThanOrEqual(CHASE_BACK);
+      expect(c.back - last).toBeLessThanOrEqual(CHASE_RELEASE / 60 + 1e-9);
+      if (c.tz < 28) fastestIn = Math.min(fastestIn, c.back - last);
+      slowestOut = Math.max(slowestOut, c.back - last);
+      if (c.back < CHASE_BACK - 0.1) sawPulled = true;
+      last = c.back;
+    }
+    expect(sawPulled).toBe(true);
+    // The box enters the line at 0.1 m a frame; the first frame it is met the camera goes in by the 0.3 m it stops short and the 0.1 m it moved, and
+    // after that by 0.1 a frame: not a jump of three metres.
+    expect(fastestIn).toBeGreaterThan(-0.45);
+    expect(slowestOut).toBeGreaterThan(0);
+    expect(last).toBe(CHASE_BACK);
+  });
+
+  it("does not pump between two far values when a box is in the line on alternate frames", () => {
+    const c = newChase();
+    const out = pose();
+    const seen: number[] = [];
+    for (let f = 0; f < 120; f++) {
+      const on = f % 2 === 0;
+      stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, (_x, _y, z) => on && z < -3.3, flat, pose(), out);
+      if (f > 2) seen.push(c.back);
+    }
+    expect(Math.max(...seen) - Math.min(...seen)).toBeLessThan(0.2);
+  });
+
+  it("is finite and sane for dt 0 and 2 s", () => {
+    for (const dt of [0, 2]) {
+      const c = newChase();
+      const out = pose();
+      const wall = (_x: number, _y: number, z: number): boolean => z < -3.3;
+      stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, dt, wall, flat, pose(), out);
+      stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, dt, open, flat, pose(), out);
+      expect(Number.isFinite(c.back)).toBe(true);
+      expect(c.back).toBeGreaterThanOrEqual(CHASE_MIN);
+      expect(c.back).toBeLessThanOrEqual(CHASE_BACK);
+      expect(dt === 0 ? c.back < 3.1 : c.back === CHASE_BACK).toBe(true);
+    }
+  });
+
+  it("starts at the full distance and again after the chase is started over or the car jumps", () => {
+    const c = newChase();
+    expect(c.back).toBe(CHASE_BACK);
+    const out = pose();
+    stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, (_x, _y, z) => z < -3.3, flat, pose(), out);
+    expect(c.back).toBeLessThan(3.1);
+    stepChase(c, carAt(500, 500, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    expect(c.back).toBe(CHASE_BACK);
   });
 });
