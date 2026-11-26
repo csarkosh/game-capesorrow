@@ -82,7 +82,12 @@ const GRADES: readonly LookGrade[] = [
 ];
 
 /** The finish over the picture: fine grain, a faint dark edge to the frame, the light barely banded, and a thin grey line where one thing ends. */
-const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], bands: 0.25 };
+/**
+ * Where the line begins and where it is full, as a step in depth over the distance to what is behind it: half the engine's own, so that
+ * relief of 5 to 15 cm (a sill, a casing, a pilaster) is drawn from across a street. Paint on a wall lies flush under a depth rank
+ * (`game/town/paint.ts`) and draws none, which is what lets these come down.
+ */
+const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], lineFrom: 0.005, lineTo: 0.025, bands: 0.25 };
 
 /**
  * The ground under the grass. The line is drawn on every blade's edge, so the grass is darker than the engine's own floor under it, and
