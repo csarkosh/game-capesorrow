@@ -37,6 +37,19 @@ describe("the car's reading for measuring tools", () => {
     expect(debug.doors(1)[0]?.x).not.toBe(123);
   });
 
+  it("answers the camera as a copy, and null where the camera is the walker's", () => {
+    const held = { x: 1, y: 2, z: 3, yaw: 0.5, pitch: 0.1, fov: 1.2, seated: 0.5 };
+    let on = true;
+    const withCamera = carDebug({ state: () => null, pose: () => null, camera: () => (on ? held : null) });
+    const a = withCamera.camera();
+    expect(a).toEqual(held);
+    (a as { x: number }).x = 99;
+    expect(withCamera.camera()?.x).toBe(1);
+    on = false;
+    expect(withCamera.camera()).toBeNull();
+    expect(carDebug({ state: () => null, pose: () => null }).camera()).toBeNull();
+  });
+
   it("answers nothing before there is a state", () => {
     const none = carDebug({ state: () => null, pose: () => null });
     expect(none.cars()).toEqual([]);

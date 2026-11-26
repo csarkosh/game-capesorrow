@@ -1,0 +1,266 @@
+import { describe, expect, it } from "vitest";
+import { cameraAxes, restAxes, type CameraPose } from "@csarkosh/engine/game/lite/cameraPose";
+import { newCarPose, type CarPose } from "../../src/game/car/carPose.js";
+import { CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
+
+const open = (): boolean => false;
+const flat = (): number => 0;
+const pose = (): CameraPose => ({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 });
+
+function carAt(x: number, z: number, hx: number, hz: number, speed = 0, y = 0): CarPose {
+  const len = Math.hypot(hx, hz);
+  const p = newCarPose();
+  Object.assign(p, { id: 1, x, y, z, hx: hx / len, hz: hz / len, speed });
+  return p;
+}
+
+/** Steps `seconds` of 60 Hz frames, the mouse still, and returns the pose and the last widening. */
+function settle(c: Chase, car: CarPose, look: { yaw: number; pitch: number }, seconds: number, eye = pose(), blocked: (x: number, y: number, z: number) => boolean = open, ground: (x: number, z: number) => number = flat): { out: CameraPose; fov: number } {
+  const out = pose();
+  let fov = 0;
+  for (let i = 0; i < Math.round(seconds * 60); i++) fov = stepChase(c, car, look, 1, 1 / 60, blocked, ground, eye, out);
+  return { out, fov };
+}
+
+const forward = (p: CameraPose): { x: number; y: number; z: number } => {
+  const a = cameraAxes(p.yaw, p.pitch, p.roll, restAxes());
+  return { x: a.fx, y: a.fy, z: a.fz };
+};
+const dist = (p: CameraPose, x: number, y: number, z: number): number => Math.hypot(p.x - x, p.y - y, p.z - z);
+
+describe("the chase camera", () => {
+  it("settles 6.5 m from the aim and 2.4 m above a car at rest once the mouse has been still 2 s", () => {
+    const car = carAt(10, 20, 0, 1, 0, 3);
+    const { out } = settle(newChase(), car, { yaw: 1.3, pitch: 0.4 }, 10);
+    expect(dist(out, 10, 3 + CHASE_AIM, 20)).toBeCloseTo(CHASE_BACK, 1);
+    expect(out.y - car.y).toBeCloseTo(CHASE_UP, 1);
+  });
+
+  it("is behind the car, not in front, for headings along every axis and diagonal", () => {
+    for (const [hx, hz] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1], [3, -4]] as const) {
+      const car = carAt(5, -7, hx, hz);
+      const { out } = settle(newChase(), car, { yaw: 2, pitch: 0 }, 10);
+      expect((out.x - car.x) * car.hx + (out.z - car.z) * car.hz, `heading ${hx},${hz}`).toBeLessThan(-6);
+      // And not off to a side.
+      expect((out.x - car.x) * car.hz - (out.z - car.z) * car.hx, `heading ${hx},${hz}`).toBeCloseTo(0, 1);
+    }
+  });
+
+  it("states the engine's yaw: a car heading +z has the camera at its -z, one heading +x at its -x", () => {
+    const alongZ = settle(newChase(), carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 10).out;
+    expect(alongZ.z).toBeLessThan(-6);
+    expect(Math.abs(alongZ.x)).toBeLessThan(0.1);
+    expect(Math.abs(alongZ.yaw)).toBeLessThan(0.01);
+    const alongX = settle(newChase(), carAt(0, 0, 1, 0), { yaw: 0, pitch: 0 }, 10).out;
+    expect(alongX.x).toBeLessThan(-6);
+    expect(alongX.yaw).toBeCloseTo(Math.PI / 2, 2);
+  });
+
+  it("looks at the car: the forward vector, made as the engine makes it, passes near the aim point", () => {
+    for (const [hx, hz, yaw, pitch] of [[0, 1, 0, 0], [-1, 1, 4, 0.7], [1, -1, -3, -0.05]] as const) {
+      const car = carAt(3, 4, hx, hz, 0, 1);
+      const { out } = settle(newChase(), car, { yaw, pitch }, 10);
+      const f = forward(out);
+      const to = { x: 3 - out.x, y: 1 + CHASE_AIM - out.y, z: 4 - out.z };
+      const along = to.x * f.x + to.y * f.y + to.z * f.z;
+      expect(along).toBeGreaterThan(5);
+      expect(Math.hypot(to.x - f.x * along, to.y - f.y * along, to.z - f.z * along)).toBeLessThan(0.3);
+    }
+  });
+
+  it("looks at the car even in the first frames, with the mouse turned away from it", () => {
+    const car = carAt(0, 0, 0, 1);
+    const out = pose();
+    stepChase(newChase(), car, { yaw: 2.5, pitch: 0.3 }, 1, 1 / 60, open, flat, pose(), out);
+    const f = forward(out);
+    const to = { x: -out.x, y: CHASE_AIM - out.y, z: -out.z };
+    const along = to.x * f.x + to.y * f.y + to.z * f.z;
+    expect(Math.hypot(to.x - f.x * along, to.y - f.y * along, to.z - f.z * along)).toBeLessThan(0.3);
+  });
+
+  it("raises the camera when the mouse pitches down and lowers it when it pitches up, as the engine's pitch means", () => {
+    const car = carAt(0, 0, 0, 1);
+    // Positive pitch looks down: the camera is higher.
+    const down = settle(newChase(), car, { yaw: 0, pitch: 0.5 }, 0.5).out;
+    const level = settle(newChase(), car, { yaw: 0, pitch: 0 }, 0.5).out;
+    const up = settle(newChase(), car, { yaw: 0, pitch: -0.1 }, 0.5).out;
+    expect(down.y).toBeGreaterThan(level.y + 1);
+    expect(up.y).toBeLessThan(level.y);
+    expect(level.y).toBeCloseTo(CHASE_AIM, 1);
+  });
+
+  it("holds the pitch to -0.1 and 1.0", () => {
+    const car = carAt(0, 0, 0, 1);
+    const high = settle(newChase(), car, { yaw: 0, pitch: 1.5 }, 0.5).out;
+    expect(high.y).toBeCloseTo(CHASE_AIM + CHASE_BACK * Math.sin(1.0), 1);
+    const low = settle(newChase(), car, { yaw: 0, pitch: -1.5 }, 0.5, pose(), open, () => -50).out;
+    expect(low.y).toBeCloseTo(CHASE_AIM - CHASE_BACK * Math.sin(0.1), 1);
+  });
+
+  it("swings round with the mouse by the same angle, with no jump on the first move", () => {
+    const car = carAt(0, 0, 0, 1);
+    const c = newChase();
+    const before = settle(c, car, { yaw: 0, pitch: 0.14 }, 4).out;
+    const out = pose();
+    stepChase(c, car, { yaw: 0.6, pitch: 0.14 }, 1, 1 / 60, open, flat, pose(), out);
+    // One frame of mouse: the camera has turned by the mouse's angle about the aim point, the biases (settled) are kept.
+    expect(out.yaw - before.yaw).toBeCloseTo(0.6, 2);
+    const turned = Math.atan2(Math.sin(Math.atan2(out.x, out.z) - Math.atan2(before.x, before.z)), Math.cos(Math.atan2(out.x, out.z) - Math.atan2(before.x, before.z)));
+    expect(Math.abs(turned)).toBeCloseTo(0.6, 1);
+    expect(Math.abs(Math.hypot(out.x, out.z) - Math.hypot(before.x, before.z))).toBeLessThan(0.05);
+    // Still for a moment after: the camera stays where the mouse left it.
+    const held = pose();
+    stepChase(c, car, { yaw: 0.6, pitch: 0.14 }, 1, 1 / 60, open, flat, pose(), held);
+    expect(Math.abs(held.yaw - out.yaw)).toBeLessThan(0.001);
+  });
+
+  it("comes round behind the car only after the mouse has been still for 2 s", () => {
+    const car = carAt(0, 0, 0, 1);
+    const c = newChase();
+    const look = { yaw: 1.5, pitch: 0.14 };
+    expect(settle(c, car, look, 1.5).out.yaw).toBeCloseTo(1.5, 2);
+    expect(settle(c, car, look, 8).out.yaw).toBeCloseTo(0, 1);
+  });
+
+  it("turns the shorter way round to the car's yaw", () => {
+    const car = carAt(0, 0, 0, 1);
+    const out = settle(newChase(), car, { yaw: 3.0 + 2 * Math.PI, pitch: 0.14 }, 10).out;
+    // Equal to the car's yaw, 0, modulo a turn.
+    expect(Math.sin(out.yaw)).toBeCloseTo(0, 1);
+    expect(Math.cos(out.yaw)).toBeCloseTo(1, 1);
+  });
+
+  it("is pulled in before a wall between it and the car, 0.3 m short of the first blocked sample", () => {
+    const car = carAt(0, 0, 0, 1);
+    const wall = (_x: number, _y: number, z: number): boolean => z < -3.2;
+    const { out } = settle(newChase(), car, { yaw: 0, pitch: 0 }, 10, pose(), wall);
+    const d = dist(out, 0, CHASE_AIM, 0);
+    expect(d).toBeLessThan(CHASE_BACK - 2);
+    expect(d).toBeGreaterThanOrEqual(CHASE_MIN);
+    // The samples are 0.5 m apart along the line, the first blocked at or past the wall; the camera is 0.3 m before it.
+    const first = Math.ceil((d + 0.3) / 0.5 - 1e-6) * 0.5;
+    expect(Math.abs(first - (d + 0.3))).toBeLessThan(1e-6);
+    expect(out.z).toBeGreaterThan(-3.2 - 0.5);
+  });
+
+  it("is never nearer than 1.5 m, even with a wall against the car", () => {
+    const car = carAt(0, 0, 0, 1);
+    const { out } = settle(newChase(), car, { yaw: 0, pitch: 0 }, 10, pose(), () => true);
+    expect(dist(out, 0, CHASE_AIM, 0)).toBeCloseTo(CHASE_MIN, 3);
+  });
+
+  it("never goes under the ground", () => {
+    const car = carAt(0, 0, 0, 1, 0, 0);
+    // The ground rises behind the car to 4 m: the camera would be inside it.
+    const hill = (_x: number, z: number): number => (z < -2 ? 4 : 0);
+    const { out } = settle(newChase(), car, { yaw: 0, pitch: -0.1 }, 10, pose(), open, hill);
+    expect(out.y).toBeGreaterThanOrEqual(4 + 0.4 - 1e-9);
+    // And still looks at the car.
+    const f = forward(out);
+    expect(f.z).toBeGreaterThan(0.5);
+    expect(f.y).toBeLessThan(0);
+  });
+
+  it("is the walker's eye at seated 0 and the chase at 1", () => {
+    const car = carAt(0, 0, 0, 1);
+    const eye: CameraPose = { x: 4, y: 1.6, z: -2, yaw: 5.5, pitch: 0.2, roll: 0.05 };
+    const c = newChase();
+    const out = pose();
+    stepChase(c, car, { yaw: 0, pitch: 0.14 }, 0, 1 / 60, open, flat, eye, out);
+    expect(out).toEqual(eye);
+    const full = settle(newChase(), car, { yaw: 0, pitch: 0.14 }, 10, eye).out;
+    expect(full.roll).toBe(0);
+    expect(dist(full, 0, CHASE_AIM, 0)).toBeCloseTo(CHASE_BACK, 1);
+  });
+
+  it("eases from the eye without a jump: each step of seated moves the pose a little, from the first frame to the last", () => {
+    const car = carAt(0, 0, 0, 1);
+    const eye: CameraPose = { x: 3, y: 1.6, z: 3, yaw: 2, pitch: 0, roll: 0.02 };
+    const c = newChase();
+    const last = pose();
+    let worst = 0;
+    stepChase(c, car, { yaw: 2, pitch: 0 }, 0, 1 / 60, open, flat, eye, last);
+    for (let tick = 1; tick <= 60; tick++) {
+      const now = pose();
+      stepChase(c, car, { yaw: 2, pitch: 0 }, tick / 60, 1 / 60, open, flat, eye, now);
+      worst = Math.max(worst, Math.hypot(now.x - last.x, now.y - last.y, now.z - last.z), Math.abs(now.yaw - last.yaw) * 3);
+      Object.assign(last, now);
+    }
+    // The whole way is about 9 m over 60 steps; the steepest step of a smoothstep is 1.5 times the mean.
+    expect(worst).toBeLessThan(0.35);
+    expect(worst).toBeGreaterThan(0);
+  });
+
+  it("has no jump from ENTERING to SEATED: seated reaches 1 as the last tick of entering runs out, and 1 holds", () => {
+    const car = carAt(0, 0, 0, 1);
+    const eye = pose();
+    const a = pose();
+    const b = pose();
+    const c = newChase();
+    stepChase(c, car, { yaw: 0, pitch: 0.14 }, 59 / 60, 1 / 60, open, flat, eye, a);
+    stepChase(c, car, { yaw: 0, pitch: 0.14 }, 1, 1 / 60, open, flat, eye, b);
+    expect(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)).toBeLessThan(0.05);
+  });
+
+  it("answers a lens wider by 0.12 rad at 30 m/s and no more", () => {
+    const at = (speed: number): number => settle(newChase(), carAt(0, 0, 0, 1, speed), { yaw: 0, pitch: 0 }, 0.2).fov;
+    expect(at(0)).toBe(0);
+    expect(at(15)).toBeCloseTo(CHASE_FOV / 2, 6);
+    expect(at(30)).toBeCloseTo(CHASE_FOV, 6);
+    expect(at(80)).toBeCloseTo(CHASE_FOV, 6);
+    expect(at(-30)).toBeCloseTo(CHASE_FOV, 6);
+  });
+
+  it("leaves roll 0 and every number finite for a frame time of 0, of 2 s, and of NaN", () => {
+    for (const dt of [0, 2, -1, NaN, Infinity]) {
+      const c = newChase();
+      const out = pose();
+      const fov = stepChase(c, carAt(1, 2, 0.6, 0.8, 12), { yaw: 1, pitch: 0.2 }, 1, dt, open, flat, pose(), out);
+      for (const v of [out.x, out.y, out.z, out.yaw, out.pitch, fov, c.tx, c.yawBias, c.pitchBias, c.idle]) expect(Number.isFinite(v), `dt ${dt}`).toBe(true);
+      expect(out.roll).toBe(0);
+    }
+  });
+
+  it("writes no NaN for a heading of zero length or a camera on the aim point", () => {
+    const out = pose();
+    stepChase(newChase(), carAt(0, 0, 0, 1), { yaw: 0.3, pitch: 0.1 }, 1, 1 / 60, open, flat, pose(), out);
+    const dead = newCarPose();
+    Object.assign(dead, { x: 2, y: 0, z: 2, hx: 0, hz: 0 });
+    const c = newChase();
+    stepChase(c, dead, { yaw: 0.3, pitch: 0.1 }, 1, 1 / 60, open, flat, pose(), out);
+    for (let i = 0; i < 200; i++) stepChase(c, dead, { yaw: 0.3, pitch: 0.1 }, 1, 1 / 60, open, flat, pose(), out);
+    for (const v of [out.x, out.y, out.z, out.yaw, out.pitch]) expect(Number.isFinite(v)).toBe(true);
+    // Heading unknown: the camera keeps the mouse's own yaw.
+    expect(out.yaw).toBeCloseTo(0.3, 1);
+  });
+
+  it("follows the car with a lag, and snaps to it where the car jumps by more than a few metres", () => {
+    const c = newChase();
+    const out = pose();
+    stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    stepChase(c, carAt(1, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    expect(c.tx).toBeGreaterThan(0);
+    expect(c.tx).toBeLessThan(0.5);
+    stepChase(c, carAt(900, -400, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), out);
+    expect(c.tx).toBe(900);
+    expect(c.tz).toBe(-400);
+    expect(Math.hypot(out.x - 900, out.z + 400)).toBeLessThan(10);
+  });
+
+  it("starts from the car when the chase is new, and again once started is cleared", () => {
+    const c = newChase();
+    const out = pose();
+    stepChase(c, carAt(50, 60, 0, 1), { yaw: 0, pitch: 0 }, 0.5, 1 / 60, open, flat, pose(), out);
+    expect([c.tx, c.tz, c.started]).toEqual([50, 60, true]);
+    c.started = false;
+    stepChase(c, carAt(51, 61, 0, 1), { yaw: 0, pitch: 0 }, 0.5, 1 / 60, open, flat, pose(), out);
+    expect([c.tx, c.tz]).toEqual([51, 61]);
+  });
+
+  it("allocates nothing a frame: the pose and the chase are the only records written", () => {
+    const c = newChase();
+    const keys = Object.keys(c).sort();
+    stepChase(c, carAt(0, 0, 0, 1), { yaw: 0, pitch: 0 }, 1, 1 / 60, open, flat, pose(), pose());
+    expect(Object.keys(c).sort()).toEqual(keys);
+  });
+});

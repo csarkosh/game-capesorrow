@@ -12,6 +12,8 @@ export type CarDebug = {
   /** The local player as this frame's state has it, or null before there is one. */
   self(): { x: number; y: number; z: number; yaw: number; pitch: number; ride: { car: number; seat: number; phase: number; ticks: number } } | null;
   /** Where a walker stands to use each seat's door of a car (seat 0 is the driver's), or an empty list for an unknown car. */
+  /** The camera as the last frame wrote it while the local player is in the car (its place, yaw, pitch, lens and how far into the seat, 0 to 1), or null. */
+  camera(): { x: number; y: number; z: number; yaw: number; pitch: number; fov: number; seated: number } | null;
   doors(id: number): { x: number; z: number }[];
 };
 
@@ -19,6 +21,8 @@ export type CarDebug = {
 export type CarDebugSource = {
   state(): { cars: readonly Car[]; localId: number; players: ReadonlyMap<number, { pos: { x: number; y: number; z: number }; yaw: number; pitch: number; ride?: Ride }> } | null;
   pose(id: number): CarPose | null;
+  /** The camera's last written record, or null when it is the walker's own. */
+  camera?(): { x: number; y: number; z: number; yaw: number; pitch: number; fov: number; seated: number } | null;
 };
 
 export function carDebug(source: CarDebugSource): CarDebug {
@@ -40,6 +44,10 @@ export function carDebug(source: CarDebugSource): CarDebug {
       if (state === null || me === undefined) return null;
       const ride = me.ride ?? { car: 0, seat: 0, phase: 0, ticks: 0 };
       return { x: me.pos.x, y: me.pos.y, z: me.pos.z, yaw: me.yaw, pitch: me.pitch, ride: { car: ride.car, seat: ride.seat, phase: ride.phase, ticks: ride.ticks } };
+    },
+    camera() {
+      const c = source.camera?.() ?? null;
+      return c === null ? null : { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch, fov: c.fov, seated: c.seated };
     },
     doors(id) {
       const car = source.state()?.cars.find((c) => c.id === id);
