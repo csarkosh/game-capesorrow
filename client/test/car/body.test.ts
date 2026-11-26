@@ -3,7 +3,7 @@ import { boxesNear } from "@csarkosh/engine/sim/boxSource";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv, driveCar, wheelPoints, type CarWorld } from "../../src/sim/car/body.js";
-import { AXLE_FRONT, AXLE_REAR, TRACK, WADE } from "../../src/sim/car/tuning.js";
+import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
 import type { Car, CarControls } from "../../src/sim/car/types.js";
 import { bearingU } from "../../src/sim/town/bearings.js";
 import { deckTopAt } from "../../src/sim/town/decks.js";
@@ -380,8 +380,11 @@ describe("the car on the ground, the rails and the water", () => {
     const { c, start, wettest } = run!;
     expect(Math.hypot(c.x - start.x, c.z - start.z)).toBeGreaterThan(10);
     expect(wettest).toBeLessThanOrEqual(WADE);
-    expect(wettest).toBeGreaterThan(0);
     expect(c.speed).toBe(0);
+    // And reversing frees it.
+    const stopped = { x: c.x, z: c.z };
+    drive(c, back, 2);
+    expect(Math.hypot(c.x - stopped.x, c.z - stopped.z)).toBeGreaterThanOrEqual(2);
   });
 
   it("cannot be driven off the quay's street into the sea, and can reverse away from the edge", () => {
@@ -394,6 +397,102 @@ describe("the car on the ground, the rails and the water", () => {
     drive(c, back, 3);
     expect(Math.hypot(c.x - edge.x, c.z - edge.z)).toBeGreaterThan(3);
     expect(Math.hypot(c.x - start.x, c.z - start.z)).toBeLessThan(Math.hypot(edge.x - start.x, edge.z - start.z));
+  });
+
+  /** The slope between the axles along the heading, and the wettest wheel, at the car's place. */
+  function slopeAt(c: Car): number {
+    const g = groundOf(worldFor(seed));
+    return (g.heightAt(c.x + c.hx * AXLE_FRONT, c.z + c.hz * AXLE_FRONT) - g.heightAt(c.x + c.hx * AXLE_REAR, c.z + c.hz * AXLE_REAR)) / WHEELBASE;
+  }
+  function wettestWheel(c: Car): number {
+    const g = groundOf(worldFor(seed));
+    const w = new Float64Array(8);
+    wheelPoints(c, w);
+    let wettest = -Infinity;
+    for (let k = 0; k < 8; k += 2) {
+      const level = waterLevelAt(world as never, w[k] as number, w[k + 1] as number) ?? -Infinity;
+      wettest = Math.max(wettest, level - g.heightAt(w[k] as number, w[k + 1] as number));
+    }
+    return wettest;
+  }
+  /** Street 126's bank (or the first street end that runs down one): the start 12 m before the end, and the way down. */
+  function bank(): { sx: number; sz: number; dx: number; dz: number } {
+    for (const st of plan.streets.filter((s) => s.kind !== "highway" && s.kind !== "stair" && s.kind !== "rail")) {
+      const len = Math.hypot(st.b.x - st.a.x, st.b.z - st.a.z);
+      for (const ends of [[st.a, st.b], [st.b, st.a]] as const) {
+        const dx = (ends[0].x - ends[1].x) / len;
+        const dz = (ends[0].z - ends[1].z) / len;
+        const sx = anchor.x + ends[0].x - dx * 12;
+        const sz = anchor.z + ends[0].z - dz * 12;
+        const c = carAt(sx, sz, dx, dz);
+        drive(c, full, 14);
+        if (deckTopAt(seed, c.x, c.z) === null && wettestWheel(c) > 0 && Math.hypot(c.x - sx, c.z - sz) > 10 && lineClear(sx, sz, dx, dz, Math.hypot(c.x - sx, c.z - sz), 3, null)) return { sx, sz, dx, dz };
+      }
+    }
+    throw new Error("no bank found");
+  }
+  it("stops at the brink of a bank, never on ground past the climb limit, and reversing frees it", () => {
+    const { sx, sz, dx, dz } = bank();
+    const c = carAt(sx, sz, dx, dz);
+    let worst = 0;
+    for (let i = 0; i < 60 * 10; i++) {
+      driveCar(world, c, full);
+      worst = Math.max(worst, Math.abs(slopeAt(c)));
+      expect(wettestWheel(c)).toBeLessThanOrEqual(WADE);
+    }
+    expect(worst).toBeLessThanOrEqual(CLIMB_MAX + 1e-9);
+    expect(c.speed).toBe(0);
+    expect(Math.hypot(c.x - sx, c.z - sz)).toBeGreaterThan(10);
+    const stopped = { x: c.x, z: c.z };
+    drive(c, back, 2);
+    expect(Math.hypot(c.x - stopped.x, c.z - stopped.z)).toBeGreaterThanOrEqual(2);
+    expect(wettestWheel(c)).toBeLessThanOrEqual(WADE);
+  });
+
+  it("backed toward the brink of a bank it stops, and forward throttle frees it", () => {
+    const { sx, sz, dx, dz } = bank();
+    // Facing away from the water, from the same start, reversing toward it.
+    const c = carAt(sx, sz, -dx, -dz);
+    let worst = 0;
+    for (let i = 0; i < 60 * 12; i++) {
+      driveCar(world, c, back);
+      worst = Math.max(worst, Math.abs(slopeAt(c)));
+      expect(wettestWheel(c)).toBeLessThanOrEqual(WADE);
+    }
+    expect(worst).toBeLessThanOrEqual(CLIMB_MAX + 1e-9);
+    expect(Math.hypot(c.x - sx, c.z - sz)).toBeGreaterThan(8);
+    expect(c.speed).toBe(0);
+    const stopped = { x: c.x, z: c.z };
+    drive(c, full, 2);
+    expect(Math.hypot(c.x - stopped.x, c.z - stopped.z)).toBeGreaterThanOrEqual(2);
+  });
+
+  it("backs up out of ground nose-down at a slope between 0.35 and 0.45", () => {
+    const g = groundOf(worldFor(seed));
+    let tried = 0;
+    for (let ix = -400; ix < 600; ix += 4) {
+      for (let iz = -300; iz < 600; iz += 4) {
+        const x = anchor.x + ix;
+        const z = iz;
+        for (const [hx, hz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const c = carAt(x, z, hx, hz);
+          const slope = slopeAt(c);
+          if (slope > -0.35 || slope < -0.44 || wettestWheel(c) > 0 || deckTopAt(seed, x, z) !== null) continue;
+          if (!lineClear(x, z, -hx, -hz, 6, 3, null) || !lineClear(x, z, hx, hz, 1, 3, null)) continue;
+          if (Math.abs(g.heightAt(x, z) - g.heightAt(x - hx * 6, z - hz * 6)) < 1) continue;
+          // The way back up stays within the limit for the first 3 m (a steeper place behind is a wall, which the bank tests cover).
+          let open = true;
+          for (let s = 0.25; s <= 3; s += 0.25) if (Math.abs(slopeAt(carAt(x - hx * s, z - hz * s, hx, hz))) > CLIMB_MAX - 0.01) open = false;
+          if (!open) continue;
+          tried++;
+          drive(c, back, 2);
+          expect(c.speed, `at ${ix},${iz}`).toBeLessThan(0);
+          expect((c.x - x) * -hx + (c.z - z) * -hz, `at ${ix},${iz}`).toBeGreaterThan(1);
+          if (tried === 3) return;
+        }
+      }
+    }
+    expect(tried).toBeGreaterThan(0);
   });
 
   it("is held on a pier by its rails", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { stepCar } from "../../src/sim/car/step.js";
+import { CLIMB_MAX, GRAVITY, REVERSE_ACCEL } from "../../src/sim/car/tuning.js";
 import type { Car, CarControls, CarEnv } from "../../src/sim/car/types.js";
 
 const flat: CarEnv = { top: 30, grip: 8.3, slope: 0 };
@@ -15,6 +16,10 @@ function car(): Car {
 }
 
 describe("stepCar", () => {
+  it("reverses harder than gravity pulls on the steepest ground the car may be on", () => {
+    expect(REVERSE_ACCEL).toBeGreaterThan(GRAVITY * CLIMB_MAX);
+  });
+
   it("gathers speed from rest: 0 to 25 m/s in about 8 s", () => {
     const c = car();
     let ticks = 0;

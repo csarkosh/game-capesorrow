@@ -21,9 +21,10 @@ import { constrainTrestle } from "../town/railDeck.js";
 import { constrainCircle } from "../town/solid.js";
 import { stepCar } from "./step.js";
 import { surfaceAt } from "./surface.js";
-import { AXLE_FRONT, AXLE_REAR, CAR_HEIGHT, GRIP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "./tuning.js";
+import { AXLE_FRONT, AXLE_REAR, CAR_HEIGHT, CLIMB_MAX, GRIP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "./tuning.js";
 import type { Car, CarControls, CarEnv } from "./types.js";
 
+const abs = Math.abs;
 const min = Math.min;
 const max = Math.max;
 const sqrt = Math.sqrt;
@@ -89,9 +90,14 @@ export function carEnv(world: CarWorld, car: Car): CarEnv {
     top += TOP_SPEED[surface] as number;
     grip += GRIP[surface] as number;
   }
+  return { top: top / 4, grip: grip / 4, slope: slopeAlong(world, car) };
+}
+
+/** The rise along the car's heading between its axles, over the wheelbase. */
+function slopeAlong(world: CarWorld, car: Car): number {
   const front = heightAt(world, car.x + car.hx * AXLE_FRONT, car.z + car.hz * AXLE_FRONT);
   const rear = heightAt(world, car.x + car.hx * AXLE_REAR, car.z + car.hz * AXLE_REAR);
-  return { top: top / 4, grip: grip / 4, slope: (front - rear) / WHEELBASE };
+  return (front - rear) / WHEELBASE;
 }
 
 /**
@@ -157,12 +163,13 @@ function settleCircle(world: CarWorld, seed: number, roof: number): boolean {
   return moved;
 }
 
-/** One whole tick of the car in the world: `carEnv`, `stepCar`, then out of every solid, held by rails, kept out of water, and stood on the ground. */
+/** One whole tick of the car in the world: `carEnv`, `stepCar`, then out of every solid, held by rails, kept out of water and off ground too steep to climb, and stood on the ground. */
 export function driveCar(world: CarWorld, car: Car, controls: CarControls): void {
   const seed = world.forest.seed;
   const startX = car.x;
   const startZ = car.z;
-  stepCar(car, controls, carEnv(world, car));
+  const env = carEnv(world, car);
+  stepCar(car, controls, env);
 
   // Out of the walls. The car's velocity in the world is along the heading and to the right of it.
   VEL.x = car.hx * car.speed + car.hz * car.slip;
@@ -210,7 +217,11 @@ export function driveCar(world: CarWorld, car: Car, controls: CarControls): void
     const level = waterLevelAt(watered, WHEELS[i] as number, WHEELS[i + 1] as number);
     if (level !== null && g < level - WADE) wet = true;
   }
-  if (wet) {
+  // Steep ground is a wall both ways: a move on to ground steeper than the climb limit, and steeper than where the tick began, is undone.
+  // A move toward gentler ground is always allowed, so a car on steep ground can leave it.
+  const now = abs(slopeAlong(world, car));
+  const steep = now > CLIMB_MAX && now > abs(env.slope);
+  if (wet || steep) {
     car.x = startX;
     car.z = startZ;
     car.speed = 0;

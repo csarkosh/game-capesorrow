@@ -16,8 +16,8 @@ export const GRIP: readonly number[] = [8.3, 5.4, 4.9, 3.9];
 
 /** Along the heading, m/s²: the engine at full throttle from rest, the brake, rolling resistance, the handbrake's addition, and the drag on a car over its surface's top speed. */
 export const ACCEL = 6.7, BRAKE = 9, COAST = 1.2, HANDBRAKE = 7, OVERSPEED_DRAG = 4;
-/** Reverse: its top speed (m/s) and its acceleration (m/s²). */
-export const REVERSE_TOP = 6, REVERSE_ACCEL = 3;
+/** Reverse: its top speed (m/s) and its acceleration (m/s²). The acceleration must stay above `GRAVITY * CLIMB_MAX` (4.41), so that reversing always frees a car from any ground the climb limit lets it be on. */
+export const REVERSE_TOP = 6, REVERSE_ACCEL = 5;
 
 /** Steering: the tangent of the full lock, the speed (m/s) at which the lock has fallen to half what it is at rest (it is divided by 1 + (v / fade)²), the rate the wheels turn to a target and the rate they return to centre, per second. */
 export const STEER_LOCK = 0.625, STEER_FADE = 14, STEER_RATE = 2.2, STEER_RETURN = 3.5;
