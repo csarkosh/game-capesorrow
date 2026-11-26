@@ -60,6 +60,9 @@ function unitFrame(b: Building, u: Unit, widened: boolean): Rgb {
 
 export function planFront(i: FrontIn): FrontPlan {
   const { out, glass, w, xf, b, use, floorY, wallTop, detail } = i;
+  // What stands at the front's foot (a bulkhead, the water table) sees the sky the wall sees there (`skyShade.ts`): darkest at the sidewalk.
+  const wallSky = i.surface(w).shade;
+  const sky = wallSky === undefined ? {} : { shade: wallSky };
   const full = detail === "full";
   // Frame stations to the wall's own: the wall may run the other way from the frame's `t`.
   const origin = xp(xf, 0, 0, 0);
@@ -145,14 +148,14 @@ export function planFront(i: FrontIn): FrontPlan {
             // Its top is at least 5 cm over the water table's (35 cm), which runs across the front.
             const roll = hash01(b.id * 7 + u.id, 450);
             const fr = i.surface(w).frame;
-            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4), false, { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 2.2), ...bulkheadWear(b, vacantUnit, roll, false, false) });
+            wbox(out, w, sa - 0.04, sb + 0.04, floorY, floorY + Math.max(sill, 0.4), 0, 0.05, bulk, scaled(bulk, 1.4), false, { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 2.2), ...sky, ...bulkheadWear(b, vacantUnit, roll, false, false) });
             // The panel's field, a shade off the frame, and a kick plate at its foot that has taken the shoes and the mop.
-            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8), { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 1.8), ...bulkheadWear(b, vacantUnit, roll, false, false) });
+            wquad(out, w, sa + 0.1, floorY + 0.1, sb - 0.1, floorY + sill - 0.1, 0.17, scaled(bulk, 0.8), { layer: "planks_weathered", frame: fr, tint: scaled(bulk, 1.8), ...sky, ...bulkheadWear(b, vacantUnit, roll, false, false) });
           } else {
             const roll = hash01(b.id * 7 + u.id, 450);
             const fr = i.surface(w).frame;
             const top = floorY + Math.min(0.5, sill);
-            wquad(out, w, sa, floorY, sb, top, 0.03, [0.13, 0.13, 0.14], { layer: "metal_painted", frame: fr, tint: [0.5, 0.5, 0.52], ...bulkheadWear(b, vacantUnit, roll, true, false) });
+            wquad(out, w, sa, floorY, sb, top, 0.03, [0.13, 0.13, 0.14], { layer: "metal_painted", frame: fr, tint: [0.5, 0.5, 0.52], ...sky, ...bulkheadWear(b, vacantUnit, roll, true, false) });
           }
         }
       });
@@ -273,7 +276,7 @@ export function planFront(i: FrontIn): FrontPlan {
       const tone = scaled([0.4, 0.4, 0.38], 0.9 + hash01(b.id, 436) * 0.2);
       let from = 0;
       for (const [ga, gb] of [...gaps, [w.length, w.length] as [number, number]]) {
-        if (ga - from > 0.12) wbox(out, w, from, ga, floorY - 0.05, floorY + 0.35, 0, 0.08, tone, [0.45, 0.45, 0.43], undefined, "concrete");
+        if (ga - from > 0.12) wbox(out, w, from, ga, floorY - 0.05, floorY + 0.35, 0, 0.08, tone, [0.45, 0.45, 0.43], undefined, { mat: "concrete", ...sky });
         from = Math.max(from, gb);
       }
     }

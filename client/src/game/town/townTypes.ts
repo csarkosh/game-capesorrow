@@ -50,6 +50,8 @@ export type BuildingExtras = {
   readonly haze?: Sink;
   /** The rooms are drawn whole and seen through their glass out of focus (`townBlur.ts`): no sheet, veil or haze, and a shop's panes are marked for it. */
   readonly through?: boolean;
+  /** The dark on the ground at the walls' feet (`footShade.ts`): blended sheets drawn before the haze. Without it a building has none. */
+  readonly shade?: Sink;
 };
 
 /** What a building's fronts record of what they drew, for a test to hold them to the plan: filled in by the builders when a report is given. */

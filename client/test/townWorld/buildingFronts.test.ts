@@ -203,7 +203,7 @@ describe("the whole town's arrays", () => {
         expect(max).toBeLessThan(n);
         for (const arr of [a.positions, a.normals, a.uvs, a.surface]) for (let i = 0; i < arr.length; i += 97) expect(Number.isFinite(arr[i] as number)).toBe(true);
       }
-      expect([...layers].sort()).toEqual(["flat", "glass", "haze", "sign", "solid"]);
+      expect([...layers].sort()).toEqual(["flat", "glass", "haze", "shade", "sign", "solid"]);
     }
   }, 240_000);
 

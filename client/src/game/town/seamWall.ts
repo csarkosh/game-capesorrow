@@ -152,7 +152,9 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       const ta = Math.max(ya + 0.03, Math.min(top, ya + hMax + 0.03) - tilt);
       const tb = Math.max(yb + 0.03, Math.min(top, yb + hMax + 0.03) + tilt);
       void t0;
-      out.poly([wat(w, s0, ya, off), wat(w, s1, yb, off), wat(w, s1, tb, off), wat(w, s0, ta, off)], [w.nx, 0, w.nz], colour, mat);
+      // At the wall's foot it sees the sky the wall sees there (`skyShade.ts`): darkest at the ground.
+      const sky = h.shade[k];
+      out.poly([wat(w, s0, ya, off), wat(w, s1, yb, off), wat(w, s1, tb, off), wat(w, s0, ta, off)], [w.nx, 0, w.nz], colour, sky === undefined ? mat : typeof mat === "string" ? { mat, shade: sky } : { ...mat, shade: sky });
       return true;
     };
     // The tops over the ground at both feet: at least this, or the wall's foundation does not show here at all.

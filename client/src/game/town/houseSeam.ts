@@ -6,6 +6,7 @@
  */
 import type { Building, TownPlan, Yard } from "../../sim/town/types.js";
 import type { WallRef } from "./buildingKit.js";
+import type { Shade } from "./townSurface.js";
 import { hash01 } from "./meshBuilder.js";
 
 export type HouseSeam = {
@@ -23,6 +24,8 @@ export type HouseSeam = {
   readonly baseY: number;
   /** The top of the foundation band, over the lowest ground (it is the same all the way round). */
   readonly foundTop: number;
+  /** The sky each wall sees (`skyShade.ts`), by wall: what is laid at a wall's foot is as dark as the wall is there. */
+  readonly shade: readonly (Shade | undefined)[];
   /** The front door: its station on the front wall, the half width of what stands at it (the steps or the porch), how far that reaches out from the wall. */
   readonly door: { readonly s: number; readonly floorY: number; readonly half: number; readonly out: number; readonly porch: { readonly s0: number; readonly s1: number } | null } | null;
 };

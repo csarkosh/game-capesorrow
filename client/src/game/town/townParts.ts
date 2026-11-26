@@ -41,7 +41,7 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { emptyTownReady, townSurfacePlugin, type TownReady } from "./townMaterial.js";
+import { RANK_UNITS, emptyTownReady, townSurfacePlugin, type TownReady } from "./townMaterial.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
@@ -67,6 +67,10 @@ export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
 
 /** How far the hour moves before the materials are written again (a hundredth of an hour). */
 const HOUR_STEP = 0.01;
+/** Where the dark at the walls' feet stands (`footShade.ts`): over the water, before the cars' shadows and everything laid over the ground after them. */
+export const SHADE_ORDER = SEE_THROUGH_ORDER.carShadow - 1;
+/** The dark at the walls' feet is drawn this many depth steps ahead of where it lies: past the flat ground's own (`FLAT_AHEAD_UNITS`) and its highest rank's, which it lies over. */
+export const SHADE_AHEAD_UNITS = FLAT_AHEAD_UNITS + 16 * RANK_UNITS;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -217,7 +221,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         textured.push(m);
         return m;
       };
-      const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture) } : null;
+      // The dark at the walls' feet (`footShade.ts`): the glass's material, which reads a sheet by its seed, drawn ahead of the flat ground it lies over.
+      const shadeMaterial = (): PbrMaterialProps => {
+        const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1, alphaBlend: true, usePhysicalLightFalloff: true });
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, readied, low)] : []), ahead(SHADE_AHEAD_UNITS, 0), air()];
+        if (textures !== null) textured.push(m);
+        return m;
+      };
+      const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
       // The railroad's own materials (its draw order is its own, after the town's), reading the same texture layers and wear.
       const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       const worldSeed = forest.seed;
@@ -256,13 +267,16 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
-          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null))) {
+          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null)) || (batch.layer === "shade" && (seeThrough === null || seeThrough.shade === null))) {
             left--;
             continue;
           }
           const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
           if (wearsTextures) mesh.pluginVertexData = packSurface(a.surface);
-          if (batch.layer === "glass" || batch.layer === "sign" || batch.layer === "haze") {
+          if (batch.layer === "shade") {
+            mesh.material = (seeThrough as NonNullable<typeof seeThrough>).shade as PbrMaterialProps;
+            mesh.renderOrder = SHADE_ORDER;
+          } else if (batch.layer === "glass" || batch.layer === "sign" || batch.layer === "haze") {
             // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
             const set = seeThrough as NonNullable<typeof seeThrough>;
             // A room's haze is the glass's material (its sheets say what they are), drawn before the lettering and the glass, which are laid over it.

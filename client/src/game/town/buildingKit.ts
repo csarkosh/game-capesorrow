@@ -10,6 +10,7 @@ import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBui
 import type { Fx, Surface } from "./townSurface.js";
 import { currentMat, isMat, surfaceOn, type MatRef } from "./materials.js";
 import { noteFace, standOff } from "./faceLedger.js";
+import { REVEAL_HEAD, REVEAL_JAMB, REVEAL_SILL } from "./skyShade.js";
 
 export type WallRef = {
   readonly ax: number;
@@ -183,11 +184,16 @@ export function reveal(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0:
   const nt: Vec3 = [-w.tx, 0, -w.tz];
   // A surface given for the wall's own plane (a deep recess's returns are the wall's) is laid on each face by that face's own lie.
   const given = mat ?? currentMat() ?? "painted";
-  const face = (pts: readonly Vec3[], n: Vec3, c: Rgb, of: Surface | MatRef = given): void => out.poly(pts, n, c, isMat(of) ? of : surfaceOn(of, pts, n));
-  face([wat(w, sa, y0, 0), wat(w, sa, y0, -depth), wat(w, sa, y1, -depth), wat(w, sa, y1, 0)], t, scaled(colour, 0.85));
-  face([wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sb, y1, 0)], nt, scaled(colour, 0.85));
-  face([wat(w, sa, y0, 0), wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sa, y0, -depth)], [0, 1, 0], sillColour, sillMat ?? given);
-  face([wat(w, sa, y1, 0), wat(w, sb, y1, 0), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], scaled(colour, 0.7));
+  // Inside the opening less of the sky is seen (`skyShade.ts`): the colour is darkened, and a surface's own tint with it.
+  const face = (pts: readonly Vec3[], n: Vec3, c: Rgb, sky: number, of: Surface | MatRef = given): void => {
+    if (isMat(of)) return out.poly(pts, n, scaled(c, sky), of);
+    const on = surfaceOn(of, pts, n);
+    out.poly(pts, n, scaled(c, sky), on.tint === undefined ? on : { ...on, tint: scaled(on.tint, sky) });
+  };
+  face([wat(w, sa, y0, 0), wat(w, sa, y0, -depth), wat(w, sa, y1, -depth), wat(w, sa, y1, 0)], t, colour, REVEAL_JAMB);
+  face([wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sb, y1, -depth), wat(w, sb, y1, 0)], nt, colour, REVEAL_JAMB);
+  face([wat(w, sa, y0, 0), wat(w, sb, y0, 0), wat(w, sb, y0, -depth), wat(w, sa, y0, -depth)], [0, 1, 0], sillColour, REVEAL_SILL, sillMat ?? given);
+  face([wat(w, sa, y1, 0), wat(w, sb, y1, 0), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], colour, REVEAL_HEAD);
 }
 
 /**

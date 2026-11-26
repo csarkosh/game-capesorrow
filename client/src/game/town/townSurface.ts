@@ -74,7 +74,19 @@ export type Surface = {
   readonly streaks2?: boolean;
   /** How many times finer than true size the texture is laid (1 when absent): a small thing shows more of the picture. */
   readonly scale?: number;
+  /** Where the surface stands under the sky, carried in its corners (`skyShade.ts`). In the open when absent. */
+  readonly shade?: Shade;
 };
+
+/** A plane, `[a, b, c, d]` for `a·x + b·y + c·z + d = 0` with (a, b, c) a unit vector, so a point's value is its distance from the plane in metres. */
+export type Cut = readonly [number, number, number, number];
+
+/**
+ * Where a corner stands under the sky (`skyShade.ts`): `at` gives its two codes, its height over the ground and its depth under the roof
+ * (0 for none of either), which ride in its surface record for the material to shade the pixel by. `cuts` are planes a polygon that carries
+ * the shade is cut along (`MeshBuilder.poly`), where the codes do not run straight across it.
+ */
+export type Shade = { readonly at: (p: Vec3) => readonly [number, number]; readonly cuts: readonly Cut[] };
 
 /** A direction made unit length (a direction of no length is left as it is). */
 function unit(a: Vec3): Vec3 {

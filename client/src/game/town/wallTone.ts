@@ -54,6 +54,8 @@ export function wallTone(c: WallToneCtx): void {
       !holes.some((h) => h.s0 < s1 + 0.4 && h.s1 > s0 - 0.4 && h.y0 < baseY + y1 + 0.4 && h.y1 > baseY + y0 - 0.4) &&
       !placed.some((q) => q.s0 < s1 + 0.1 && q.s1 > s0 - 0.1 && q.y0 < y1 + 0.1 && q.y1 > y0 - 0.1);
     const base = c.surfaceOf(w, 1);
+    /** A mark of another layer lies on the wall, and sees the sky the wall sees there (`skyShade.ts`). */
+    const sky = base.shade === undefined ? {} : { shade: base.shade };
     /** An unpainted wall (concrete, brick, weathered boards) is dark in the textures, so a darker mark shows nothing on it: its marks are the lighter ones (efflorescence, chalk, repaint) and rust. */
     const dark = !c.paint;
     const r = (k: number): number => hash01(b.id * 31 + i * 7 + k, 5151);
@@ -61,7 +63,7 @@ export function wallTone(c: WallToneCtx): void {
     const tone = (k: number, over?: Partial<Surface>): { colour: Rgb; surface: Surface } =>
       dark
         ? // On a dark textured wall a lighter mark is paint or chalk, a layer of its own (the paintable one, whose colour is the paint's), not the wall's texture turned up.
-          { colour: [0.2 * k, 0.185 * k, 0.16 * k], surface: { layer: "siding_painted", frame: base.frame, wear: 0.05, wear2: 0, ...(over ?? {}) } }
+          { colour: [0.2 * k, 0.185 * k, 0.16 * k], surface: { layer: "siding_painted", frame: base.frame, wear: 0.05, wear2: 0, ...sky, ...(over ?? {}) } }
         : {
             colour: scaled(c.colour, k),
             surface: { ...base, ...(c.paint || base.tint === undefined ? {} : { tint: scaled(base.tint, k) }), ...(over ?? {}) },
@@ -112,7 +114,7 @@ export function wallTone(c: WallToneCtx): void {
           const pw2 = Math.min(pw, 1.3 + 0.9 * r(50 + p));
           const ph2 = Math.min(2.4, ph * 1.5);
           if (!free(s0, s0 + pw2, y0, y0 + ph2)) continue;
-          wquad(out, w, s0, baseY + y0, s0 + pw2, baseY + y0 + ph2, OFF, [0.42, 0.31, 0.18], { layer: "plywood", frame: base.frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
+          wquad(out, w, s0, baseY + y0, s0 + pw2, baseY + y0 + ph2, OFF, [0.42, 0.31, 0.18], { layer: "plywood", frame: base.frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel", ...sky });
           placed.push({ s0, s1: s0 + pw2, y0, y1: y0 + ph2 });
         }
         break;
@@ -165,7 +167,7 @@ export function wallTone(c: WallToneCtx): void {
       if (!free(s0, s0 + rw, y1 - rh, y1)) continue;
       if (dark && r(110 + j) < 0.3) {
         // Rust-brown, from a fixing: narrow, ragged at its foot.
-        wquad(out, w, s0, baseY + y1 - rh * 0.8, s0 + Math.min(rw, 0.3), baseY + y1, OFF, [0.3, 0.15, 0.08], { layer: "siding_painted", frame: base.frame, wear: 0.1, wear2: 0 });
+        wquad(out, w, s0, baseY + y1 - rh * 0.8, s0 + Math.min(rw, 0.3), baseY + y1, OFF, [0.3, 0.15, 0.08], { layer: "siding_painted", frame: base.frame, wear: 0.1, wear2: 0, ...sky });
         placed.push({ s0, s1: s0 + rw, y0: y1 - rh * 0.8, y1 });
         continue;
       }

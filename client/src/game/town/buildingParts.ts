@@ -19,7 +19,7 @@ import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBui
 import { pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { isClear, noteFace } from "./faceLedger.js";
 import { agingOf } from "./buildingWear.js";
-import { withMat, type MatName } from "./materials.js";
+import { withMat, type MatName, type MatRef } from "./materials.js";
 import { attachmentsGeometry } from "./buildingAttach.js";
 import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
@@ -93,6 +93,12 @@ function eachWall(i: PartsIn, fn: (w: WallRef, k: number) => void): void {
 }
 
 // ---- Houses
+/** The material `mat` on wall `k`, seeing the sky that wall sees (`skyShade.ts`). */
+function skyOf(i: PartsIn, k: number, mat: MatName): MatRef {
+  const shade = i.wallSurface(k).shade;
+  return shade === undefined ? mat : { mat, shade };
+}
+
 function housePart(i: PartsIn, full: boolean): void {
   const { b, out, refs, frontAt, floorY, baseY } = i;
   const { age, neglect } = agingOf(b);
@@ -107,8 +113,10 @@ function housePart(i: PartsIn, full: boolean): void {
     const odd = hash01(b.id, 530) < 0.5 ? Math.floor(hash01(b.id, 531) * i.refs.length) : -1;
     const oddTrim: Rgb = [trim[0] * 0.78, trim[1] * 0.72, trim[2] * 0.6];
     i.refs.forEach((w, wk) => {
-      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim, undefined, "painted");
-      wbox(out, w, w.length - 0.1, w.length + 0.07, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim, undefined, "painted");
+      // A board on a wall sees the sky its wall sees: darker under the eave (`skyShade.ts`).
+      const painted = skyOf(i, wk, "painted");
+      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim, undefined, painted);
+      wbox(out, w, w.length - 0.1, w.length + 0.07, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim, undefined, painted);
     });
   }
   // Steps and a porch at the front door.
@@ -199,7 +207,8 @@ function housePart(i: PartsIn, full: boolean): void {
     const spans: [number, number, boolean, boolean][] = gap === null ? [[-0.11, w.length + 0.11, false, false]] : [[-0.11, gap[0], false, true], [gap[1], w.length + 0.11, true, false]];
     for (const [a, e, endA, endE] of spans) {
       if (e - a < 0.15) continue;
-      const o = wquad(out, w, a, baseY, e, foundTop, 0.11, CONCRETE, "concrete");
+      // The foundation's face is the wall's foot, where it meets the ground: it is as dark there as the wall would be (`skyShade.ts`).
+      const o = wquad(out, w, a, baseY, e, foundTop, 0.11, CONCRETE, skyOf(i, k, "concrete"));
       foundOff[k] = Math.max(foundOff[k] as number, o);
       // Its top reaches a little past its face, over what the years have laid on the face (`seamWall.ts`), so nothing there is seen from above as a sheet standing free.
       // It sheds water: higher at the wall than at its lip.
@@ -208,7 +217,7 @@ function housePart(i: PartsIn, full: boolean): void {
       if (endE) out.poly([wat(w, e, baseY, 0), wat(w, e, baseY, o + 0.13), wat(w, e, foundTop - 0.02, o + 0.13), wat(w, e, foundTop + 0.05, 0)], [w.tx, 0, w.tz], scaled(CONCRETE, 0.85), "concrete");
     }
   });
-  const seam: HouseSeam = { b, roofKind: i.roofKind, occupied: [], added: null, foundOff, refs, blocked: i.blocked, frontAt, baseY, foundTop, door: seamDoor };
+  const seam: HouseSeam = { b, roofKind: i.roofKind, occupied: [], added: null, foundOff, refs, blocked: i.blocked, frontAt, baseY, foundTop, shade: refs.map((_, k) => i.wallSurface(k).shade), door: seamDoor };
   noteHouse(seam);
   // What the years added or mended, before the machines that stand against the walls: an addition's walls are faces they are then put clear of.
   addition(i);
