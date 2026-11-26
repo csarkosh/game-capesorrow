@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAPACITY, createCarParts, slotFor } from "../../src/game/car/carParts.js";
+import { CAPACITY, createCarParts, drawnOf } from "../../src/game/car/carParts.js";
 import type { Car } from "../../src/sim/car/types.js";
 
 function car(x: number, id = 1): Car {
@@ -50,11 +50,35 @@ describe("the car's frames", () => {
     expect(p.pose(5)).not.toBeNull();
   });
 
-  it("gives the driven car a place among the drawn however late it comes", () => {
-    expect(slotFor(0, CAPACITY, false)).toBe(0);
-    expect(slotFor(CAPACITY - 1, CAPACITY, false)).toBe(CAPACITY - 1);
-    expect(slotFor(CAPACITY, CAPACITY, false)).toBe(-1);
-    expect(slotFor(CAPACITY, CAPACITY, true)).toBe(CAPACITY - 1);
+  describe("which cars are drawn", () => {
+    const pick = (ids: number[], driven: number): number[] => {
+      const out: number[] = [];
+      const n = drawnOf(ids, CAPACITY, driven, out);
+      return out.slice(0, n);
+    };
+    it("draws all of three, the driven one first among them", () => {
+      expect(pick([7, 8, 9], 7)).toEqual([0, 1, 2]);
+    });
+    it("draws the driven car last of five in the place of the fourth", () => {
+      const got = pick([1, 2, 3, 4, 5], 5);
+      expect(got).toHaveLength(4);
+      expect(got).toContain(4);
+      expect(got).not.toContain(3);
+      expect(got).toEqual([0, 1, 2, 4]);
+    });
+    it("draws the first four of five when the driven car is the second", () => {
+      expect(pick([1, 2, 3, 4, 5], 2)).toEqual([0, 1, 2, 3]);
+    });
+    it("draws the first four of four with none driven", () => {
+      expect(pick([1, 2, 3, 4], 0)).toEqual([0, 1, 2, 3]);
+    });
+    it("draws the driven third of six, and the first four", () => {
+      expect(pick([1, 2, 3, 4, 5, 6], 3)).toEqual([0, 1, 2, 3]);
+    });
+    it("draws none of none, and leaves a driven car that is not there out", () => {
+      expect(pick([], 5)).toEqual([]);
+      expect(pick([1, 2, 3, 4, 5], 99)).toEqual([0, 1, 2, 3]);
+    });
   });
 
   it("answers null for a car the frame does not have, and poses without the model", () => {

@@ -126,12 +126,21 @@ function patchGeometry(): { positions: Float32Array; normals: Float32Array; indi
 }
 
 /**
- * Where a car goes among the drawn, given how many are drawn already: the next place while there is room, the last place for the car the
- * local player drives when there is none (so it is always drawn, whatever its place in the state), and -1 for a car left out.
+ * Which cars are drawn: the first `capacity` of the state's, in its order, except that the car the local player drives (`driven`, 0 for
+ * none) always is, in the last place if it would not have had one. Fills `out` with the cars' indices in `ids` and answers how many; it makes nothing.
  */
-export function slotFor(filled: number, capacity: number, driven: boolean): number {
-  if (filled < capacity) return filled;
-  return driven ? capacity - 1 : -1;
+export function drawnOf(ids: readonly number[], capacity: number, driven: number, out: number[]): number {
+  const n = Math.min(ids.length, capacity);
+  for (let i = 0; i < n; i++) out[i] = i;
+  if (driven !== 0 && n === capacity && n > 0) {
+    let among = false;
+    for (let i = 0; i < n; i++) if (ids[i] === driven) among = true;
+    if (!among) {
+      const at = ids.indexOf(driven);
+      if (at >= 0) out[n - 1] = at;
+    }
+  }
+  return n;
 }
 
 export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z: number): number; ahead(units: number, slope?: number): MaterialPlugin }): CarParts {
@@ -153,6 +162,10 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
   let visible = false;
   /** The cars of the last frame in the order they are written into the instances. */
   const drawn: Entry[] = [];
+  /** The frame's cars in the state's order, their ids, and the indices chosen to be drawn (`drawnOf`): kept to make no arrays a frame. */
+  const posed: Entry[] = [];
+  const posedIds: number[] = [];
+  const pick: number[] = [];
 
   const meshes = (): Mesh[] => [...bodies.map((b) => b.mesh), ...wheels.map((w) => w.mesh), ...(patch === null ? [] : [patch.mesh])];
 
@@ -300,6 +313,8 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
     if (disposed) return;
     stamp++;
     drawn.length = 0;
+    posed.length = 0;
+    posedIds.length = 0;
     for (const c of cars) {
       let e = entries.get(c.id);
       if (e === undefined) {
@@ -333,11 +348,13 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
       }
       carPose(before, c, a, host.groundAt, e.pose);
       e.roll = rollAfter(e.roll, e.pose.speed, dt);
-      // Every car is posed, whatever the count, for the camera's sake; only the first `CAPACITY` are drawn.
-      const slot = slotFor(drawn.length, CAPACITY, c.id === driven);
-      if (slot === drawn.length) drawn.push(e);
-      else if (slot >= 0) drawn[slot] = e;
+      // Every car is posed, whatever the count, for the camera's sake.
+      posed.push(e);
+      posedIds.push(c.id);
     }
+    // Of them `CAPACITY` are drawn: the first in the state's order, and the driven car among them (`drawnOf`).
+    const count = drawnOf(posedIds, CAPACITY, driven, pick);
+    for (let k = 0; k < count; k++) drawn.push(posed[pick[k] as number] as Entry);
     for (const [id, e] of entries) if (e.stamp !== stamp) entries.delete(id);
     if (ready) write(drawn.length);
   }
@@ -384,6 +401,7 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
       patch = null;
       entries.clear();
       drawn.length = 0;
+      posed.length = 0;
       ready = false;
     },
   };
