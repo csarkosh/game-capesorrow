@@ -21,7 +21,7 @@ import { constrainTrestle } from "../town/railDeck.js";
 import { constrainCircle } from "../town/solid.js";
 import { stepCar } from "./step.js";
 import { surfaceAt } from "./surface.js";
-import { AXLE_FRONT, AXLE_REAR, CAR_HEIGHT, CLIMB_MAX, GRIP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "./tuning.js";
+import { AXLE_FRONT, AXLE_REAR, CAR_HEIGHT, CLIMB_MAX, GRIP, SPEED_CAP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "./tuning.js";
 import type { Car, CarControls, CarEnv } from "./types.js";
 
 const abs = Math.abs;
@@ -79,7 +79,7 @@ export function wheelPoints(car: Car, out: Float64Array): void {
   out[7] = bz + rz * half;
 }
 
-/** What the car's step needs of the ground under it: the four wheels' mean top speed and grip, and the rise along its heading between its axles. */
+/** What the car's step needs of the ground under it: the four wheels' mean top speed (held to `SPEED_CAP`) and grip, and the rise along its heading between its axles. */
 export function carEnv(world: CarWorld, car: Car): CarEnv {
   wheelPoints(car, WHEELS);
   const seed = world.forest.seed;
@@ -90,7 +90,7 @@ export function carEnv(world: CarWorld, car: Car): CarEnv {
     top += TOP_SPEED[surface] as number;
     grip += GRIP[surface] as number;
   }
-  return { top: top / 4, grip: grip / 4, slope: slopeAlong(world, car) };
+  return { top: min(top / 4, SPEED_CAP), grip: grip / 4, slope: slopeAlong(world, car) };
 }
 
 /** The rise along the car's heading between its axles, over the wheelbase. */

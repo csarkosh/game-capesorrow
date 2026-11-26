@@ -13,6 +13,8 @@ export const AXLE_FRONT = 1.434, AXLE_REAR = -1.218, WHEELBASE = 2.652, TRACK = 
 /** Top speed (m/s) and sideways grip (m/s²), each by `Surface`. */
 export const TOP_SPEED: readonly number[] = [30, 20, 12, 6];
 export const GRIP: readonly number[] = [8.3, 5.4, 4.9, 3.9];
+/** The most speed (m/s) the car is let reach on any surface: the speed the world is known to keep up with, apart from the surfaces' own speeds. Raise it when the world is made ahead of travel. */
+export const SPEED_CAP = 10;
 
 /** Along the heading, m/s²: the engine at full throttle from rest, the brake, rolling resistance, the handbrake's addition, and the drag on a car over its surface's top speed. */
 export const ACCEL = 6.7, BRAKE = 9, COAST = 1.2, HANDBRAKE = 7, OVERSPEED_DRAG = 4;

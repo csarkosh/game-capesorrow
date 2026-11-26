@@ -4,8 +4,8 @@ import type { Aabb } from "@csarkosh/engine/sim/level";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv, driveCar, wheelPoints, type CarWorld } from "../../src/sim/car/body.js";
-import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
-import type { Car, CarControls } from "../../src/sim/car/types.js";
+import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, GRIP, SPEED_CAP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
+import { GRAVEL, PAVED, type Car, type CarControls } from "../../src/sim/car/types.js";
 import { bearingU } from "../../src/sim/town/bearings.js";
 import { deckTopAt } from "../../src/sim/town/decks.js";
 import { constrainCircle, solidsNear } from "../../src/sim/town/solid.js";
@@ -152,12 +152,12 @@ describe("the car's wheels and the ground under them", () => {
     const street = plan.streets.find((s) => s.kind === "street");
     expect(alley).toBeDefined();
     expect(street).toBeDefined();
-    for (const [st, top, grip] of [[alley!, 20, 5.4], [street!, 30, 8.3]] as const) {
+    for (const [st, surface] of [[alley!, GRAVEL], [street!, PAVED]] as const) {
       const len = Math.hypot(st.b.x - st.a.x, st.b.z - st.a.z);
       const c = carAt(anchor.x + (st.a.x + st.b.x) / 2, anchor.z + (st.a.z + st.b.z) / 2, (st.b.x - st.a.x) / len, (st.b.z - st.a.z) / len);
       const env = carEnv(world, c);
-      expect(env.top).toBe(top);
-      expect(env.grip).toBe(grip);
+      expect(env.top).toBe(Math.min(TOP_SPEED[surface]!, SPEED_CAP));
+      expect(env.grip).toBe(GRIP[surface]);
     }
   });
 
@@ -205,6 +205,7 @@ describe("the car among the town's solids", () => {
 
   it("slides along a wall it meets at a shallow angle, keeping most of its speed", () => {
     const angle = 8 * Math.PI / 180;
+    const ENTRY_SPEED = 14;
     const long = buildings.filter((r) => Math.max(r.hu, r.hv) > 20);
     expect(long.length).toBeGreaterThan(0);
     let tried = 0;
@@ -225,14 +226,14 @@ describe("the car among the town's solids", () => {
         const sz = r.cz - wz * half + nz * (depth + 2) - wz * 6;
         const hx = wx * Math.cos(angle) - nx * Math.sin(angle);
         const hz = wz * Math.cos(angle) - nz * Math.sin(angle);
-        const c = carAt(sx, sz, hx, hz, 14);
+        const c = carAt(sx, sz, hx, hz, ENTRY_SPEED);
         // A paved start and a clear line along the wall, so the wall is the only thing met.
-        if (carEnv(world, c).top < 30) continue;
+        if (carEnv(world, c).grip < GRIP[PAVED]!) continue;
         if (!lineClear(sx, sz, wx, wz, 2 * half, 1.2 + 0, r)) continue;
         tried++;
         drive(c, full, 1.2);
         if (gapTo(r, c) < 0.05 && gapTo(r, c) > -1e-6) {
-          expect(c.speed).toBeGreaterThan(8);
+          expect(c.speed).toBeGreaterThan(0.57 * Math.min(ENTRY_SPEED, SPEED_CAP));
           expect(deepest(c)).toBeLessThan(1e-6);
           return;
         }
@@ -652,8 +653,8 @@ describe("the car on the ground, the rails and the water", () => {
     const z = anchor.z + 5000;
     const c = carAt(roadCenterX(seed, z), z, 0, 1);
     drive(c, full, 3);
-    expect(c.speed).toBeGreaterThan(15);
-    expect(c.z).toBeGreaterThan(z + 20);
+    expect(c.speed).toBeGreaterThan(0.8 * Math.min(TOP_SPEED[PAVED]!, SPEED_CAP));
+    expect(c.z).toBeGreaterThan(z + 0.5 * 3 * Math.min(TOP_SPEED[PAVED]!, SPEED_CAP));
     expect(c.x).toBeCloseTo(roadCenterX(seed, z), 3);
   });
 });
