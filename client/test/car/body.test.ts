@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { boxesNear } from "@csarkosh/engine/sim/boxSource";
+import type { Aabb } from "@csarkosh/engine/sim/level";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv, driveCar, wheelPoints, type CarWorld } from "../../src/sim/car/body.js";
@@ -95,7 +96,31 @@ function faces(r: Rect): { x: number; z: number; nx: number; nz: number; length:
   ];
 }
 
-/** The first rectangle among `targets` and face of it that a car driven straight at from 20 m reaches, clear of anything else on the way. */
+/**
+ * Whether the line from (x, z) along (dx, dz) for `length` metres is plain: its ground within half a metre of the start's, dry, and no
+ * forest box but `skip` standing a wall's height over it within 1.5 m. Things true before any car moves.
+ */
+function plainLine(x: number, z: number, dx: number, dz: number, length: number, skip: Aabb | null): boolean {
+  const g = groundOf(worldFor(seed));
+  const h0 = g.heightAt(x, z);
+  for (let s = 0; s <= length; s += 0.5) {
+    const px = x + dx * s;
+    const pz = z + dz * s;
+    const h = g.heightAt(px, pz);
+    if (Math.abs(h - h0) > 0.5) return false;
+    const level = waterLevelAt(world as never, px, pz);
+    if (level !== null && h < level - WADE) return false;
+    for (const o of boxesNear(world.boxes, { x: px - 1.5, y: -50, z: pz - 1.5 }, { x: px + 1.5, y: 200, z: pz + 1.5 })) {
+      if (o !== skip && o.max.y > h + 0.35) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The first rectangle among `targets` and face of it that a car can be driven straight at from 20 m: chosen by what is true before the
+ * car moves (a clear, plain line to the wall), never by what the drive does, so a car that goes through the wall fails the test.
+ */
 function headOn(targets: readonly Rect[], wanted: (r: Rect) => boolean): { rect: Rect; car: Car } {
   for (const rect of targets) {
     if (!wanted(rect)) continue;
@@ -103,10 +128,8 @@ function headOn(targets: readonly Rect[], wanted: (r: Rect) => boolean): { rect:
       const x = f.x + f.nx * 20;
       const z = f.z + f.nz * 20;
       if (!lineClear(x, z, -f.nx, -f.nz, 20, 3, rect)) continue;
-      const c = carAt(x, z, -f.nx, -f.nz);
-      if (Math.abs(c.y - groundOf(worldFor(seed)).heightAt(f.x, f.z)) > 0.5) continue;
-      drive(c, full, 6);
-      if (gapTo(rect, c) < 0.05) return { rect, car: carAt(x, z, -f.nx, -f.nz) };
+      if (!plainLine(x, z, -f.nx, -f.nz, 20, null)) continue;
+      return { rect, car: carAt(x, z, -f.nx, -f.nz) };
     }
   }
   throw new Error("no clear approach found");
@@ -227,38 +250,28 @@ describe("the car among the town's solids", () => {
   });
 
   it("is stopped by a tree", () => {
-    const g = groundOf(worldFor(seed));
-    let stopped = 0;
-    for (let wx = anchor.x - 900; wx < anchor.x + 900 && stopped === 0; wx += 60) {
-      for (let wz = -900; wz < 900 && stopped === 0; wz += 60) {
-        const near = boxesNear(world.boxes, { x: wx, y: -50, z: wz }, { x: wx + 60, y: 200, z: wz + 60 }).slice();
-        for (const b of near) {
+    // The first tree found (a box under 2 m wide and 2.5 m or more high) with a clear, plain 15 m line to it from the west: chosen before any car moves.
+    let tree: Aabb | null = null;
+    for (let wx = anchor.x - 900; wx < anchor.x + 900 && tree === null; wx += 60) {
+      for (let wz = -900; wz < 900 && tree === null; wz += 60) {
+        for (const b of boxesNear(world.boxes, { x: wx, y: -50, z: wz }, { x: wx + 60, y: 200, z: wz + 60 }).slice()) {
           if (b.max.x - b.min.x > 2 || b.max.z - b.min.z > 2 || b.max.y - b.min.y < 2.5) continue;
           const tx = (b.min.x + b.max.x) / 2;
           const tz = (b.min.z + b.max.z) / 2;
-          // Approached along +x from 15 m west, over ground that holds no other box high enough to be a wall.
-          const c = carAt(tx - 15, tz, 1, 0);
-          if (Math.abs(c.y - g.heightAt(tx, tz)) > 0.5 || !lineClear(tx - 15, tz, 1, 0, 14, 3, null)) continue;
-          let alone = true;
-          for (let s = 0; s <= 14 && alone; s += 1) {
-            for (const o of boxesNear(world.boxes, { x: tx - 15 + s - 2, y: -50, z: tz - 2 }, { x: tx - 15 + s + 2, y: 200, z: tz + 2 })) {
-              if (o !== b && o.max.y > g.heightAt(tx - 15 + s, tz) + 0.35) alone = false;
-            }
-          }
-          if (!alone) continue;
-          drive(c, full, 6);
-          const front = c.x + c.hx * 1.58;
-          const reach = Math.hypot(front - tx, c.z - tz);
-          if (reach < CAR_RADIUS + (b.max.x - b.min.x) / 2 + 0.1) {
-            expect(Math.abs(c.speed)).toBeLessThan(0.5);
-            expect(reach).toBeGreaterThan(CAR_RADIUS - 1e-3);
-            stopped++;
-            break;
-          }
+          if (lineClear(tx - 15, tz, 1, 0, 14, 3, null) && plainLine(tx - 15, tz, 1, 0, 14, b)) { tree = b; break; }
         }
       }
     }
-    expect(stopped).toBe(1);
+    expect(tree).not.toBeNull();
+    const b = tree as Aabb;
+    const tx = (b.min.x + b.max.x) / 2;
+    const tz = (b.min.z + b.max.z) / 2;
+    const c = carAt(tx - 15, tz, 1, 0);
+    drive(c, full, 6);
+    const reach = Math.hypot(c.x + c.hx * 1.58 - tx, c.z - tz);
+    expect(Math.abs(c.speed)).toBeLessThan(0.5);
+    expect(reach).toBeGreaterThan(CAR_RADIUS - 1e-3);
+    expect(reach).toBeLessThan(CAR_RADIUS + (b.max.x - b.min.x) / 2 + 0.1);
   });
 
   it("drives over a box lower than a curb and is not stopped by one it passes under", () => {
@@ -308,6 +321,8 @@ describe("the car among the town's solids", () => {
 describe("the car on the ground, the rails and the water", () => {
   it("climbs a curb: from the roadway on to the sidewalk, y rises by the curb and it goes on", () => {
     const g = groundOf(worldFor(seed));
+    // The first curb found with a clear, plain line across it, chosen before any car moves.
+    let place: { mx: number; mz: number; nx: number; nz: number; at: number } | null = null;
     for (const st of plan.streets.filter((s) => s.kind === "street" || s.kind === "avenue")) {
       const len = Math.hypot(st.b.x - st.a.x, st.b.z - st.a.z);
       const dx = (st.b.x - st.a.x) / len;
@@ -315,7 +330,7 @@ describe("the car on the ground, the rails and the water", () => {
       for (const side of [-1, 1]) {
         const nx = -dz * side;
         const nz = dx * side;
-        for (let s = 0.2; s < 0.8; s += 0.1) {
+        for (let s = 0.2; s < 0.8 && place === null; s += 0.1) {
           const mx = anchor.x + st.a.x + (st.b.x - st.a.x) * s;
           const mz = anchor.z + st.a.z + (st.b.z - st.a.z) * s;
           // The curb: the first place out from the centre line where the ground climbs 0.1 m or more in half a metre.
@@ -323,20 +338,24 @@ describe("the car on the ground, the rails and the water", () => {
           for (let d = 0.5; d < st.roadway / 2 + 2; d += 0.05) {
             if (g.heightAt(mx + nx * (d + 0.5), mz + nz * (d + 0.5)) - g.heightAt(mx + nx * d, mz + nz * d) >= 0.1) { at = d; break; }
           }
-          if (at < 0 || !lineClear(mx + nx * (at - 4), mz + nz * (at - 4), nx, nz, 9, 3, null)) continue;
-          const c = carAt(mx + nx * (at - 3.5), mz + nz * (at - 3.5), nx, nz, 5);
-          const before = c.y;
-          drive(c, full, 1);
-          const out = (c.x - mx) * nx + (c.z - mz) * nz;
-          if (out < at + 1.5) continue;
-          expect(c.y - before).toBeGreaterThan(0.08);
-          expect(c.y - before).toBeLessThan(0.3);
-          expect(c.speed).toBeGreaterThan(2);
-          return;
+          if (at < 0) continue;
+          const x0 = mx + nx * (at - 4);
+          const z0 = mz + nz * (at - 4);
+          if (lineClear(x0, z0, nx, nz, 9, 3, null) && plainLine(x0, z0, nx, nz, 9, null)) place = { mx, mz, nx, nz, at };
         }
+        if (place !== null) break;
       }
+      if (place !== null) break;
     }
-    throw new Error("no curb crossed");
+    expect(place).not.toBeNull();
+    const { mx, mz, nx, nz, at } = place!;
+    const c = carAt(mx + nx * (at - 3.5), mz + nz * (at - 3.5), nx, nz, 5);
+    const before = c.y;
+    drive(c, full, 1);
+    expect((c.x - mx) * nx + (c.z - mz) * nz).toBeGreaterThan(at + 1.5);
+    expect(c.y - before).toBeGreaterThan(0.08);
+    expect(c.y - before).toBeLessThan(0.3);
+    expect(c.speed).toBeGreaterThan(2);
   });
 
   /** The first street whose end runs on to water, driven at full throttle from 12 m before its end; null when `wanted` is not met by where the car ends. */
@@ -493,6 +512,84 @@ describe("the car on the ground, the rails and the water", () => {
       }
     }
     expect(tried).toBeGreaterThan(0);
+  });
+
+  it("at full lock along the top of a bank, never on ground past the limit, and at rest in a pose it can reverse from", () => {
+    const { sx, sz, dx, dz } = bank();
+    const down = carAt(sx, sz, dx, dz);
+    drive(down, full, 10);
+    // Back from the brink 3 m, then along the brink (across the way down), steering toward the drop.
+    const bx = down.x - dx * 3;
+    const bz = down.z - dz * 3;
+    for (const side of [1, -1]) {
+      // side 1: heading (-dz, dx), whose right is (dx, dz), the drop; side -1: heading (dz, -dx), whose left is the drop.
+      const c = carAt(bx, bz, -dz * side, dx * side, 8);
+      expect(Math.abs(slopeAt(c))).toBeLessThanOrEqual(CLIMB_MAX);
+      for (let i = 0; i < 60 * 8; i++) {
+        driveCar(world, c, { throttle: 1, turn: side, handbrake: false });
+        expect(Math.abs(slopeAt(c)), `side ${side} tick ${i}`).toBeLessThanOrEqual(CLIMB_MAX + 1e-9);
+        expect(wettestWheel(c)).toBeLessThanOrEqual(WADE);
+      }
+      // At rest where it ended, and reverse frees it.
+      c.speed = 0;
+      c.slip = 0;
+      c.steer = 0;
+      const rest = { x: c.x, z: c.z };
+      drive(c, back, 2);
+      expect(Math.hypot(c.x - rest.x, c.z - rest.z), `side ${side}`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("across a steep side slope, steering downhill at full lock never takes it on to ground past the limit along its heading", () => {
+    let runs = 0;
+    for (let ix = -400; ix < 600 && runs < 3; ix += 3) {
+      for (let iz = -300; iz < 600 && runs < 3; iz += 3) {
+        const x = anchor.x + ix;
+        const z = iz;
+        for (const [hx, hz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const c = carAt(x, z, hx, hz, 5);
+          // Along the heading within the limit and across it over the limit; the right of the heading is (hz, -hx).
+          const across = slopeAt(carAt(x, z, hz, -hx));
+          if (Math.abs(slopeAt(c)) > 0.3 || Math.abs(across) < 0.5 || wettestWheel(c) > -2 || deckTopAt(seed, x, z) !== null) continue;
+          if (!lineClear(x, z, hx, hz, 12, 3, null) || !lineClear(x, z, hz, -hx, 6, 3, null) || !lineClear(x, z, -hz, hx, 6, 3, null)) continue;
+          runs++;
+          // Downhill is to the right when the ground falls along (hz, -hx), that is when `across` is negative.
+          const turn = across < 0 ? 1 : -1;
+          for (let i = 0; i < 60 * 6; i++) {
+            driveCar(world, c, { throttle: 1, turn, handbrake: false });
+            expect(Math.abs(slopeAt(c)), `at ${ix},${iz} tick ${i}`).toBeLessThanOrEqual(CLIMB_MAX + 1e-9);
+          }
+          break;
+        }
+      }
+    }
+    expect(runs).toBeGreaterThan(0);
+  });
+
+  it("with one wheel 0.4 m under the water, can be driven out toward the shore", () => {
+    let runs = 0;
+    for (let ix = -500; ix < 300 && runs < 2; ix += 2) {
+      for (let iz = -300; iz < 600 && runs < 2; iz += 2) {
+        const x = anchor.x + ix;
+        const z = iz;
+        for (const [hx, hz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const c = carAt(x, z, hx, hz);
+          const depth = wettestWheel(c);
+          if (depth < 0.35 || depth > 0.5 || Math.abs(slopeAt(c)) > 0.3 || deckTopAt(seed, x, z) !== null) continue;
+          // Which way leads up: the way the deepest wheel gets shallower over the next 2 m.
+          const ahead = wettestWheel(carAt(x + hx * 2, z + hz * 2, hx, hz));
+          const behind = wettestWheel(carAt(x - hx * 2, z - hz * 2, hx, hz));
+          if (Math.min(ahead, behind) > depth - 0.2) continue;
+          const controls = ahead < behind ? full : back;
+          runs++;
+          drive(c, controls, 3);
+          expect(Math.hypot(c.x - x, c.z - z), `at ${ix},${iz}`).toBeGreaterThan(1);
+          expect(wettestWheel(c), `at ${ix},${iz}`).toBeLessThan(depth - 0.2);
+          break;
+        }
+      }
+    }
+    expect(runs).toBeGreaterThan(0);
   });
 
   it("is held on a pier by its rails", () => {

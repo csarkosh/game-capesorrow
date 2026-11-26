@@ -163,11 +163,27 @@ function settleCircle(world: CarWorld, seed: number, roof: number): boolean {
   return moved;
 }
 
+/** How far under the water the deepest of the four wheels' ground lies, metres (negative where every wheel is dry or there is no water). */
+function deepestWheel(world: CarWorld, car: Car): number {
+  wheelPoints(car, WHEELS);
+  const watered = world as unknown as Parameters<typeof waterLevelAt>[0];
+  let deepest = -Infinity;
+  for (let i = 0; i < 8; i += 2) {
+    const level = waterLevelAt(watered, WHEELS[i] as number, WHEELS[i + 1] as number);
+    if (level !== null) deepest = max(deepest, level - heightAt(world, WHEELS[i] as number, WHEELS[i + 1] as number));
+  }
+  return deepest;
+}
+
 /** One whole tick of the car in the world: `carEnv`, `stepCar`, then out of every solid, held by rails, kept out of water and off ground too steep to climb, and stood on the ground. */
 export function driveCar(world: CarWorld, car: Car, controls: CarControls): void {
   const seed = world.forest.seed;
   const startX = car.x;
   const startZ = car.z;
+  const startHx = car.hx;
+  const startHz = car.hz;
+  const startSteer = car.steer;
+  const startDepth = deepestWheel(world, car);
   const env = carEnv(world, car);
   stepCar(car, controls, env);
 
@@ -206,29 +222,25 @@ export function driveCar(world: CarWorld, car: Car, controls: CarControls): void
     car.slip = VEL.x * car.hz - VEL.z * car.hx;
   }
 
-  // Out of the water: a wheel in over `WADE` sends the car back to where the tick began, at rest.
-  wheelPoints(car, WHEELS);
-  let sum = 0;
-  let wet = false;
-  const watered = world as unknown as Parameters<typeof waterLevelAt>[0];
-  for (let i = 0; i < 8; i += 2) {
-    const g = heightAt(world, WHEELS[i] as number, WHEELS[i + 1] as number);
-    sum += g;
-    const level = waterLevelAt(watered, WHEELS[i] as number, WHEELS[i + 1] as number);
-    if (level !== null && g < level - WADE) wet = true;
-  }
+  // Out of the water: a move that leaves a wheel in over `WADE`, and deeper than the deepest wheel was where the tick began, is undone.
+  // A car somehow in the water can always move toward shallower ground.
+  const depth = deepestWheel(world, car);
   // Steep ground is a wall both ways: a move on to ground steeper than the climb limit, and steeper than where the tick began, is undone.
   // A move toward gentler ground is always allowed, so a car on steep ground can leave it.
   const now = abs(slopeAlong(world, car));
   const steep = now > CLIMB_MAX && now > abs(env.slope);
-  if (wet || steep) {
+  if ((depth > WADE && depth > startDepth) || steep) {
+    // The whole pose the tick began with, at rest: a start that passed the checks.
     car.x = startX;
     car.z = startZ;
+    car.hx = startHx;
+    car.hz = startHz;
+    car.steer = startSteer;
     car.speed = 0;
     car.slip = 0;
-    wheelPoints(car, WHEELS);
-    sum = 0;
-    for (let i = 0; i < 8; i += 2) sum += heightAt(world, WHEELS[i] as number, WHEELS[i + 1] as number);
   }
+  wheelPoints(car, WHEELS);
+  let sum = 0;
+  for (let i = 0; i < 8; i += 2) sum += heightAt(world, WHEELS[i] as number, WHEELS[i + 1] as number);
   car.y = sum / 4;
 }
