@@ -9,10 +9,11 @@
  * not a pair: the back face is never drawn.
  */
 import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
+import { paintRank } from "../../src/game/town/paint.js";
 import { MEAN } from "../../src/game/town/materials.js";
 import { TOWN_LAYERS } from "../../src/game/town/townLayers.js";
 
-export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Its three corners' UVs (in tiles), and its first corner's tint and wear: what a textured face shows where. */ readonly uv: readonly [number, number, number, number, number, number]; readonly tint: readonly [number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string; /** For flat ground, its depth rank (`townMaterial.ts`): a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly rank: number };
+export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Its three corners' UVs (in tiles), and its first corner's tint and wear: what a textured face shows where. */ readonly uv: readonly [number, number, number, number, number, number]; readonly tint: readonly [number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string; /** For flat ground, its depth rank (`townMaterial.ts`): a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly rank: number; /** For a face of the standing layers, its rank of paint (`paint.ts`), read from its first corner's colour alpha: a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly paint: number };
 
 export type NearPair = { readonly a: Tri; readonly b: Tri; readonly gap: number; readonly area: number; readonly at: readonly [number, number, number] };
 
@@ -66,7 +67,7 @@ export function trianglesOf(arrays: MeshArrays, layer: string, into: Tri[] = [],
     const [i0, i1, i2] = [(I[t] as number) * 2, (I[t + 1] as number) * 2, (I[t + 2] as number) * 2];
     const uv: Tri["uv"] = [U[i0] as number, U[i0 + 1] as number, U[i1] as number, U[i1 + 1] as number, U[i2] as number, U[i2 + 1] as number];
     const tint: Tri["tint"] = [arrays.surface[sv + 4] as number, arrays.surface[sv + 5] as number, arrays.surface[sv + 6] as number, arrays.surface[sv + 1] as number];
-    into.push({ layer, p, n: [nx, ny, nz], d: nx * p[0] + ny * p[1] + nz * p[2], index: t / 3, look, uv, tint, rank: layer === "flat" ? (arrays.surface[sv + 11] as number) : 0, ...(tag === undefined ? {} : { tag }) });
+    into.push({ layer, p, n: [nx, ny, nz], d: nx * p[0] + ny * p[1] + nz * p[2], index: t / 3, look, uv, tint, rank: layer === "flat" ? (arrays.surface[sv + 11] as number) : 0, paint: layer === "flat" ? 0 : paintRank(arrays.colors[cv + 3] as number), ...(tag === undefined ? {} : { tag }) });
   }
   return into;
 }

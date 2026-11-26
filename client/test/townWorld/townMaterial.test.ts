@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PAINT_GAIN, TOWN_LAYERS, layerIndex } from "../../src/game/town/townLayers.js";
-import { TOWN_ATTRIBUTE, TOWN_TINT_ATTRIBUTE, TOWN_VERTEX_FLOATS, TOWN_WEAR_ATTRIBUTE, emptyTownReady, townDefinitions, townSurfaceCode, townSurfacePlugin } from "../../src/game/town/townMaterial.js";
+import { PAINT_CODE, PAINT_K, PAINT_UNITS, RANK_CODE, TOWN_ATTRIBUTE, TOWN_TINT_ATTRIBUTE, TOWN_VERTEX_FLOATS, TOWN_WEAR_ATTRIBUTE, emptyTownReady, townDefinitions, townSurfaceCode, townSurfacePlugin } from "../../src/game/town/townMaterial.js";
+import { PAINT_RANKS, paintAlpha, paintRank } from "../../src/game/town/paint.js";
 import { SURFACE_FLOATS } from "../../src/game/town/meshBuilder.js";
 import { townTextureBytes, townTextureSize } from "../../src/game/town/townTextures.js";
 
@@ -51,5 +52,22 @@ describe("the town's material plugin", () => {
     expect(townTextureBytes(true) * 4).toBeCloseTo(townTextureBytes(false), -1);
     // The full tier's two arrays with their mip chains: about 62 MB.
     expect(townTextureBytes(false) / 1e6).toBeCloseTo(61.6, 0);
+  });
+
+  it("draws a rank of paint PAINT_UNITS steps ahead in the vertex stage of the materials that are not the flat ground's, and nothing for a vertex of alpha 1", () => {
+    const vertex = (ranked: boolean): string => {
+      const plugin = townSurfacePlugin({ color: {} as never, data: {} as never }, emptyTownReady(), false, undefined, ranked);
+      return plugin.getCustomCode?.("vertex")?.CUSTOM_VERTEX_MAIN_END ?? "";
+    };
+    expect(vertex(false)).toContain(PAINT_CODE);
+    expect(vertex(false)).not.toContain(RANK_CODE);
+    expect(vertex(true)).toContain(RANK_CODE);
+    expect(vertex(true)).not.toContain(PAINT_CODE);
+    // One rank is `1 / PAINT_RANKS` of alpha, and the line moves the depth by PAINT_UNITS steps of the 24-bit buffer for it.
+    expect(PAINT_K / PAINT_RANKS).toBeCloseTo(PAINT_UNITS / 2 ** 24, 12);
+    expect(PAINT_CODE).toContain("(1.0-color.a)");
+    // A rank survives the colour's float, and rank 0 is alpha 1.
+    expect(paintAlpha(0)).toBe(1);
+    for (let r = 0; r < PAINT_RANKS; r++) expect(paintRank(Math.fround(paintAlpha(r)))).toBe(r);
   });
 });

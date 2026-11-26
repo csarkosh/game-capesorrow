@@ -1,6 +1,7 @@
 /**
- * A big wall's tone at the scale of metres, laid over its surface as flat decals 3 cm off the face (the ledger, `faceLedger.ts`, keeps them clear of what else
- * hangs there): from 60 m the texture and the streaks are fine detail and a wall reads as one flat tone unless it has large shapes of its own.
+ * A big wall's tone at the scale of metres, laid over its surface as paint: sheets that lie flush on the face (2 mm off it, `paint.ts`) and are held from it by
+ * a rank of paint, so no line is drawn round them and they are no faces of the ledger (`faceLedger.ts`); a sheet of plywood is a board and stands 3 cm off, a face of the
+ * ledger. From 60 m the texture and the streaks are fine detail and a wall reads as one flat tone unless it has large shapes of its own.
  *
  * By the building's record (`levelOf`, its age and its keeping):
  * - **A dark lower third** with a ragged top, the tide of splash and damp that climbs a wall: higher and darker the heavier the weathering.
@@ -13,6 +14,7 @@ import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { levelOf, agingOf } from "./buildingWear.js";
 import { wat, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { isClear } from "./faceLedger.js";
+import { paintOff } from "./paint.js";
 import type { Surface } from "./townSurface.js";
 import type { Building } from "../../sim/town/types.js";
 
@@ -30,7 +32,12 @@ export type WallToneCtx = {
   readonly paint: boolean;
 };
 
+/** Where a sheet of plywood nailed over a repair stands off the wall: a real board, 3 cm, a face of the ledger like any other. */
 const OFF = 0.03;
+/** The rank of every sheet of paint here: the tone of the wall's lower third, a patch, a stain, a ghost sign's rows. None lies over another (`placed`), so one rank holds them all. */
+const TONE_RANK = 1;
+/** Where a sheet of paint is looked for a face already on the wall: the plane the ledger's faces are kept clear of (`OFF`), though the paint itself lies flush. Paint is not put under a pipe or a plate. */
+const PROBE = OFF;
 
 export function wallTone(c: WallToneCtx): void {
   const { out, b, baseY } = c;
@@ -45,8 +52,8 @@ export function wallTone(c: WallToneCtx): void {
     const placed: { s0: number; s1: number; y0: number; y1: number }[] = [];
     const free = (s0: number, s1: number, y0: number, y1: number): boolean => {
       // And no face already on the wall within 2.45 cm of where this one stands (a sill's streak, a plate): it is skipped, not pushed out beside the pipes.
-      const pa = wat(w, s0, baseY + y0, OFF);
-      const pb = wat(w, s1, baseY + y0, OFF);
+      const pa = wat(w, s0, baseY + y0, PROBE);
+      const pb = wat(w, s1, baseY + y0, PROBE);
       if (!isClear(w.nx, w.nz, pa[0], pa[2], pb[0], pb[2], baseY + y0, baseY + y1)) return false;
       return freeOf(s0, s1, y0, y1);
     };
@@ -69,7 +76,7 @@ export function wallTone(c: WallToneCtx): void {
             surface: { ...base, ...(c.paint || base.tint === undefined ? {} : { tint: scaled(base.tint, k) }), ...(over ?? {}) },
           };
     const put = (s0: number, y0: number, s1: number, y1: number, t: { colour: Rgb; surface: Surface }): void => {
-        wquad(out, w, s0, baseY + y0, s1, baseY + y1, OFF, t.colour, t.surface);
+      wquad(out, w, s0, baseY + y0, s1, baseY + y1, paintOff(TONE_RANK), t.colour, t.surface, { paint: TONE_RANK });
       placed.push({ s0, s1, y0, y1 });
     };
 
@@ -109,7 +116,11 @@ export function wallTone(c: WallToneCtx): void {
         const y0 = 1.6 + (topLow - ph - 2.4) * hash01(b.id * 19 + i * 3 + p * 5 + t, 5154);
         if (!free(s0, s0 + pw, y0, y0 + ph)) continue;
         if (kindRoll < 0.6 || (dark && kindRoll < 0.8)) put(s0, y0, s0 + pw, y0 + ph, tone((dark ? 1.3 : 1.45) + 0.2 * r(40 + p), { wear: 0.04, wear2: 0 }));
-        else if (kindRoll < 0.8 || !wood || L < 0.35) put(s0, y0, s0 + pw * 0.6, y0 + ph * 1.5, tone(0.78 - 0.1 * L, { wear: 0.25, wearKind: "grime" }));
+        else if (kindRoll < 0.8 || !wood || L < 0.35) {
+          // A leak's stain is taller than the patch asked for: the room it takes is looked for, so that no two sheets of one rank overlap.
+          if (!free(s0, s0 + pw * 0.6, y0, y0 + ph * 1.5)) continue;
+          put(s0, y0, s0 + pw * 0.6, y0 + ph * 1.5, tone(0.78 - 0.1 * L, { wear: 0.25, wearKind: "grime" }));
+        }
         else {
           const pw2 = Math.min(pw, 1.3 + 0.9 * r(50 + p));
           const ph2 = Math.min(2.4, ph * 1.5);
@@ -133,7 +144,7 @@ export function wallTone(c: WallToneCtx): void {
         const pale = tone(1.55, { wear: 0.03, wear2: 0 });
         const ink = tone(1.25, { wear: 0.03, wear2: 0 });
         const raw = (a: number, ya: number, e: number, yb: number, t: { colour: Rgb; surface: Surface }): void => {
-          wquad(out, w, a, baseY + ya, e, baseY + yb, OFF, t.colour, t.surface);
+          wquad(out, w, a, baseY + ya, e, baseY + yb, paintOff(TONE_RANK), t.colour, t.surface, { paint: TONE_RANK });
         };
         const lines = 2 + Math.floor(2 * r(63));
         let y = y0;
@@ -167,7 +178,7 @@ export function wallTone(c: WallToneCtx): void {
       if (!free(s0, s0 + rw, y1 - rh, y1)) continue;
       if (dark && r(110 + j) < 0.3) {
         // Rust-brown, from a fixing: narrow, ragged at its foot.
-        wquad(out, w, s0, baseY + y1 - rh * 0.8, s0 + Math.min(rw, 0.3), baseY + y1, OFF, [0.3, 0.15, 0.08], { layer: "siding_painted", frame: base.frame, wear: 0.1, wear2: 0, ...sky });
+        wquad(out, w, s0, baseY + y1 - rh * 0.8, s0 + Math.min(rw, 0.3), baseY + y1, paintOff(TONE_RANK), [0.3, 0.15, 0.08], { layer: "siding_painted", frame: base.frame, wear: 0.1, wear2: 0, ...sky }, { paint: TONE_RANK });
         placed.push({ s0, s1: s0 + rw, y0: y1 - rh * 0.8, y1 });
         continue;
       }

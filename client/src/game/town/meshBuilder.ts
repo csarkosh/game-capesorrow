@@ -11,6 +11,7 @@
  */
 import { NO_LAYER, TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
 import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Cut, type Fx, type Surface, type WearKind } from "./townSurface.js";
+import { paintAlpha } from "./paint.js";
 import { FALLBACK, currentMat, isMat, matLook, matSurface, unnamed, type MatRef } from "./materials.js";
 
 export type Vec3 = readonly [number, number, number];
@@ -317,7 +318,7 @@ export class MeshBuilder {
       this.pos.push3(p[0], p[1], p[2]);
       if (fx?.normal === undefined) this.nor.push3(nx, ny, nz);
       else this.nor.push3(fx.normal[0], fx.normal[1], fx.normal[2]);
-      this.col.push4(colourHere[0], colourHere[1], colourHere[2], 1);
+      this.col.push4(colourHere[0], colourHere[1], colourHere[2], fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
       if (basis === null || surface === undefined) {
         const cuv = fx?.uvs?.[pointIndex];
         this.uv.push2(cuv?.[0] ?? 0, cuv?.[1] ?? 0);
@@ -381,7 +382,7 @@ export class MeshBuilder {
     points.forEach((p, i) => {
       this.pos.push3(p[0], p[1], p[2]);
       this.nor.push3(nx * k, ny * k, nz * k);
-      this.col.push4(tint[0], tint[1], tint[2], 1);
+      this.col.push4(tint[0], tint[1], tint[2], fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
       const uv = uvs[i] as readonly [number, number];
       this.uv.push2(uv[0], uv[1]);
       this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? this.glowBase, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, this.hoursCode, 0);

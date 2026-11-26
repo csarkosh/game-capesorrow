@@ -20,6 +20,7 @@ import type { Material, WindowCover, WindowTreatment } from "../../sim/town/type
 import type { Surface } from "./townSurface.js";
 import { standOff } from "./faceLedger.js";
 import { sillStreak } from "./buildingWear.js";
+import { paintOff } from "./paint.js";
 import type { Detail, FillReport } from "./townTypes.js";
 import { NEVER_CODE, windowLight } from "./windowNight.js";
 
@@ -64,6 +65,9 @@ export function frameColour(id: number, era: number, replaced: boolean): Rgb {
   return pickOf([[0.4, 0.42, 0.44], [0.18, 0.14, 0.11], [0.62, 0.62, 0.6]] as readonly Rgb[], id, 401);
 }
 
+/** The rank of paint of a sill's streak: over the wall's tone (rank 1, `wallTone.ts`). */
+const STREAK_RANK = 2;
+
 /** The treatment of a window's own cover (in the plan: paper, boards) is in the shop's front; this is the window's: see the header. */
 export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: number, y1: number, state: WindowTreatment, sill: "none" | "plant" | "lamp", salt: number, replaced: boolean, cover: WindowCover = "none", shop = false, look: WinLook = {}): void {
   const { out, glass, detail } = c;
@@ -90,13 +94,13 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     return;
   }
   reveal(out, w, sa, sb, y0, y1, rv, scaled(c.wall, 0.8), scaled(c.trim, 0.9));
-  // Under the sill the rain that runs off it leaves a streak of dirt down the wall (its own decal, in the wall's material); more on an older wall.
+  // Under the sill the rain that runs off it leaves a streak of dirt down the wall (paint, lying flush on it: its own sheet, in the wall's material, over the wall's tone); more on an older wall.
   if (full && !shop && hash01(seed, 423) < 0.2 + 0.4 * Math.min(1, (2026 - c.era) / 120)) {
     const base = c.surface(w);
     const cw = Math.min(width * (0.3 + hash01(seed, 424) * 0.4), 0.9);
     const drop = 0.4 + 1.1 * hash01(seed, 426) * hash01(seed, 427);
     const mid = (sa + sb) / 2 + (hash01(seed, 425) - 0.5) * width * 0.25;
-    wquad(out, w, mid - cw / 2, y0 - drop, mid + cw / 2, y0 - 0.14, 0.03, c.wall, sillStreak(base, 0.65, y0, drop));
+    wquad(out, w, mid - cw / 2, y0 - drop, mid + cw / 2, y0 - 0.14, paintOff(STREAK_RANK), c.wall, sillStreak(base, 0.65, y0, drop), { paint: STREAK_RANK });
   }
   if (full && !shop) {
     // Trim boards round it, the sill under it (a replaced window has none: it was fitted in the old opening).
