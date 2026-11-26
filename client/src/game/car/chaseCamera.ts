@@ -13,7 +13,7 @@
  */
 import { EYE_SNAP_M } from "@csarkosh/engine/game/eyeBlend";
 import type { CameraPose } from "@csarkosh/engine/game/lite/cameraPose";
-import { ENTER_TICKS, LEAVE_TICKS } from "../../sim/car/tuning.js";
+import { CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, LEAVE_TICKS } from "../../sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED } from "../../sim/car/types.js";
 import type { CarPose } from "./carPose.js";
 
@@ -36,10 +36,10 @@ const GROUND_CLEAR = 0.4;
 const WIDE_SPEED = 30, DT_MAX = 1;
 const TWO_PI = Math.PI * 2;
 
-export type Chase = { tx: number; ty: number; tz: number; yawBias: number; pitchBias: number; idle: number; lastYaw: number; lastPitch: number; started: boolean };
+export type Chase = { tx: number; ty: number; tz: number; yawBias: number; pitchBias: number; idle: number; lastYaw: number; lastPitch: number; started: boolean; /** How far from the aim point the camera stood this step: `CHASE_BACK` when nothing was in the way. */ back: number };
 
 export function newChase(): Chase {
-  return { tx: 0, ty: 0, tz: 0, yawBias: 0, pitchBias: 0, idle: 0, lastYaw: 0, lastPitch: 0, started: false };
+  return { tx: 0, ty: 0, tz: 0, yawBias: 0, pitchBias: 0, idle: 0, lastYaw: 0, lastPitch: 0, started: false, back: CHASE_BACK };
 }
 
 /** An angle brought to [-pi, pi]. */
@@ -106,6 +106,7 @@ export function stepChase(
       break;
     }
   }
+  c.back = back;
   const cx = ax + bx * back;
   const cz = az + bz * back;
   const floor = groundAt(cx, cz) + GROUND_CLEAR;
@@ -146,4 +147,56 @@ export function seatStep(shown: number, target: number, dt: number): number {
   const most = SEAT_RATE * (dt > 0 ? dt : 0);
   const d = target - shown;
   return d > most ? shown + most : d < -most ? shown - most : target;
+}
+
+/**
+ * What a prop's box counts for. The boxes (`propSolid.ts`) carry no height and no kind, only an oriented footprint, so the camera is stopped by
+ * a box by its footprint: a box under `PROP_THIN` across (poles, mailbox posts, fence runs) is let through, since a few centimetres of wood
+ * must not yank the camera in; any other (vehicles, trailers, bins, heavy gear) is a column `PROP_TOP` over the ground at the point, the height
+ * of a tall van, so a camera at the usual 2.4 m is stopped before a parked truck's bed and not carried through it. `BOX_MARGIN` is the camera's own thickness.
+ */
+export const PROP_THIN = 0.3, PROP_TOP = 2.6, BOX_MARGIN = 0.2;
+
+/** The numbers of a grid of boxes (`TownSolids`' own layout: six to a box, centre, along axis, half extents) and the cells that list them. */
+export type BoxGrid = { x0: number; z0: number; cols: number; rows: number; start: Int32Array; list: Int32Array; rects: Float64Array };
+const GRID_CELL = 16, GRID_STRIDE = 6;
+
+/** Whether (x, z) is inside the oriented box at `o` of `rects`, widened by `margin`. */
+export function inBox(rects: Float64Array, o: number, x: number, z: number, margin: number): boolean {
+  const u = rects[o + 2] as number;
+  const v = rects[o + 3] as number;
+  const dx = x - (rects[o] as number);
+  const dz = z - (rects[o + 1] as number);
+  return Math.abs(dx * u + dz * v) < (rects[o + 4] as number) + margin && Math.abs(dx * v - dz * u) < (rects[o + 5] as number) + margin;
+}
+
+/**
+ * Whether the point is in a box of the grid, a thin box excepted and `top` (a height, metres) over it excepted, the buildings' (`thin` 0, `top` Infinity)
+ * and the props' alike. Reads the one cell the point is in, and allocates nothing.
+ */
+export function boxBlocks(grid: BoxGrid, x: number, y: number, z: number, thin: number, top: number, margin: number): boolean {
+  if (!(y < top)) return false;
+  const c = Math.floor((x - grid.x0) / GRID_CELL);
+  const r = Math.floor((z - grid.z0) / GRID_CELL);
+  if (c < 0 || r < 0 || c >= grid.cols || r >= grid.rows) return false;
+  const cell = r * grid.cols + c;
+  const end = grid.start[cell + 1] as number;
+  for (let k = grid.start[cell] as number; k < end; k++) {
+    const o = (grid.list[k] as number) * GRID_STRIDE;
+    if (Math.min(grid.rects[o + 4] as number, grid.rects[o + 5] as number) < thin) continue;
+    if (inBox(grid.rects, o, x, z, margin)) return true;
+  }
+  return false;
+}
+
+/** Whether the point is inside any car but `skip`'s: its footprint turned by its heading, up to its roof. */
+export function carBlocks(cars: readonly { id: number; x: number; y: number; z: number; hx: number; hz: number }[], skip: number, x: number, y: number, z: number): boolean {
+  for (let i = 0; i < cars.length; i++) {
+    const car = cars[i] as (typeof cars)[number];
+    if (car.id === skip || y >= car.y + CAR_HEIGHT + BOX_MARGIN || y < car.y - BOX_MARGIN) continue;
+    const dx = x - car.x;
+    const dz = z - car.z;
+    if (Math.abs(dx * car.hx + dz * car.hz) < CAR_LENGTH / 2 + BOX_MARGIN && Math.abs(dx * car.hz - dz * car.hx) < CAR_WIDTH / 2 + BOX_MARGIN) return true;
+  }
+  return false;
 }
