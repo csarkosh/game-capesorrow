@@ -87,7 +87,7 @@ export function openFaces(f: TownFaces, g0: TownGround, fresh: () => TownGround 
   const big: number[] = [];
   for (let i = 0; i < n; i++) {
     const t = tris[i] as Tri;
-    if (t.layer === "glass" || t.layer === "haze") continue;
+    if (t.layer === "glass" || t.layer === "haze" || t.layer === "shade") continue;
     const p = t.p;
     const x0 = Math.floor(Math.min(p[0], p[3], p[6]) / CELL);
     const x1 = Math.floor(Math.max(p[0], p[3], p[6]) / CELL);

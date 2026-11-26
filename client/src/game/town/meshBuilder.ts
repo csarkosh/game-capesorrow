@@ -10,7 +10,7 @@
  * was before surfaces existed: its vertices carry no layer (`NO_LAYER`) and the renderer draws them as flat colour.
  */
 import { NO_LAYER, TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
-import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Fx, type Surface, type WearKind } from "./townSurface.js";
+import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Cut, type Fx, type Surface, type WearKind } from "./townSurface.js";
 import { FALLBACK, currentMat, isMat, matLook, matSurface, unnamed, type MatRef } from "./materials.js";
 
 export type Vec3 = readonly [number, number, number];
@@ -40,7 +40,7 @@ export type Rgb = readonly [number, number, number];
  * material reads: `uvs` (two floats a vertex, in texture tiles: metres over the layer's tile size) and `surface` (twelve floats
  * a vertex: the layer's index or `NO_LAYER`, the wear's amount 0 to 1, the wear's kind (`WEAR_KIND_NUMBER`, plus a half for streaks), the glow
  * (0 lit by the scene, 1 lit by itself); then the tint, red, green, blue, and how clear it is (0 opaque); then the second wear's amount and
- * kind, and two floats left). `colors` is the flat colour, as before.
+ * kind, and two floats that say where a textured corner stands under the sky, `skyShade.ts`). `colors` is the flat colour, as before.
  */
 export type MeshArrays = { positions: Float32Array; normals: Float32Array; colors: Float32Array; uvs: Float32Array; surface: Float32Array; indices: Uint32Array };
 
@@ -48,6 +48,45 @@ export type MeshArrays = { positions: Float32Array; normals: Float32Array; color
 export const SURFACE_FLOATS = 12;
 
 const ONE: Rgb = [1, 1, 1];
+
+/** A corner nearer a cut than this, metres, is on it. */
+const CUT_NEAR = 1e-3;
+
+/** A convex polygon cut along each of `cuts` it lies across: the convex pieces, which together are the polygon (itself alone when no cut crosses it). */
+export function cutBy(points: readonly Vec3[], cuts: readonly Cut[]): (readonly Vec3[])[] {
+  let pieces: (readonly Vec3[])[] = [points];
+  for (const c of cuts) {
+    const next: (readonly Vec3[])[] = [];
+    for (const poly of pieces) {
+      const d = poly.map((p) => c[0] * p[0] + c[1] * p[1] + c[2] * p[2] + c[3]);
+      if (!d.some((v) => v > CUT_NEAR) || !d.some((v) => v < -CUT_NEAR)) {
+        next.push(poly);
+        continue;
+      }
+      const over: Vec3[] = [];
+      const under: Vec3[] = [];
+      for (let i = 0; i < poly.length; i++) {
+        const p = poly[i] as Vec3;
+        const q = poly[(i + 1) % poly.length] as Vec3;
+        const dp = d[i] as number;
+        const dq = d[(i + 1) % poly.length] as number;
+        // A corner on the cut is a corner of both pieces.
+        if (dp >= -CUT_NEAR) over.push(p);
+        if (dp <= CUT_NEAR) under.push(p);
+        if ((dp > CUT_NEAR && dq < -CUT_NEAR) || (dp < -CUT_NEAR && dq > CUT_NEAR)) {
+          const t = dp / (dp - dq);
+          const m: Vec3 = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
+          over.push(m);
+          under.push(m);
+        }
+      }
+      if (over.length >= 3) next.push(over);
+      if (under.length >= 3) next.push(under);
+    }
+    pieces = next;
+  }
+  return pieces;
+}
 
 /**
  * A run of 32-bit numbers that grows: what a builder keeps its vertices in. Not a plain array, which holds eight bytes a number where the
@@ -178,6 +217,8 @@ export class MeshBuilder {
       this.hoursCode = before;
     }
   }
+  /** True while the pieces of a polygon cut along its shade's planes are being laid (`poly`): a piece is not cut again. */
+  private cutting = false;
 
   get vertices(): number {
     return this.pos.length / 3;
@@ -242,6 +283,21 @@ export class MeshBuilder {
       if (mat === null) unnamed.polygons++;
       surface = matSurface(mat ?? FALLBACK, points, [nx, ny, nz], typeof (colour as readonly unknown[])[0] === "number" ? (colour as Rgb) : null);
     }
+    // A surface that carries a shade (`skyShade.ts`) is cut along the planes its codes bend at, and each piece laid as a polygon of its own, of the
+    // whole polygon's surface (a material's grain runs along the polygon's longest edge, not a piece's). Not a polygon coloured or mapped by
+    // the corner: a piece's corners are not the polygon's.
+    if (!this.cutting && surface?.shade !== undefined && surface.shade.cuts.length > 0 && typeof (colour as readonly unknown[])[0] === "number" && fx?.uvs === undefined) {
+      const pieces = cutBy(points, surface.shade.cuts);
+      if (pieces.length > 1) {
+        this.cutting = true;
+        try {
+          for (const piece of pieces) this.poly(piece, [nx, ny, nz], colour, surface, fx);
+        } finally {
+          this.cutting = false;
+        }
+        return;
+      }
+    }
     const basis = surface === undefined ? null : basisOf(surface);
     const layer = surface === undefined ? NO_LAYER : layerIndex(surface.layer);
     const kind = (WEAR_KIND_NUMBER[surface?.wearKind ?? "moss"] ?? 0) + (surface?.streaks === true ? 0.5 : 0);
@@ -272,7 +328,11 @@ export class MeshBuilder {
         this.uv.push2(u, v);
         const wear = surface.wear === undefined ? 0 : typeof surface.wear === "number" ? surface.wear : surface.wear(p);
         const w2 = surface.wear2 === undefined ? 0 : typeof surface.wear2 === "number" ? surface.wear2 : surface.wear2(p);
-        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, this.hoursCode, fx?.rank ?? 0);
+        // Where the corner stands under the sky (`skyShade.ts`): its two codes, in the two floats a textured corner leaves unused. The first is a
+        // room's hours where the corner is a room's (`withHours`): a foot's code is under a half and an hours' is 1 or more, so the material tells
+        // them apart. The second is the flat ground's depth rank where it has one (`Fx.rank`), and the ground's material does not read it as a code.
+        const sky = surface.shade?.at(p);
+        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, this.hoursCode > 0 ? this.hoursCode : (sky?.[0] ?? 0), fx?.rank ?? sky?.[1] ?? 0);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:

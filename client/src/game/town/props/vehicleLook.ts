@@ -7,6 +7,7 @@
  * role); the worn ones (the two derelicts and the covered car) keep their own textures.
  */
 import { rnd } from "./kit.js";
+import { accentOf } from "../accents.js";
 import type { Rgb } from "../meshBuilder.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 
@@ -45,7 +46,8 @@ const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const MUD_OF_SPOT = { curb: 0.12, drive: 0.3, lot: 0.25, "pull-off": 0.55, yard: 0.6, harbour: 0.45 } as const;
 
 export function vehicleLook(v: Vehicle): VehicleLook {
-  const base = MODEL_PAINT[v.colour % MODEL_PAINT.length] as Rgb;
+  // On some, the lot's accent paint (a work truck, an old pickup) in place of the plan's colour; the plan has no block here, so the lot keys the family.
+  const base = accentOf(v.lot >= 0 ? v.lot : v.id, v.seed, 700) ?? (MODEL_PAINT[v.colour % MODEL_PAINT.length] as Rgb);
   // Each car's own shade: a little lighter or darker, and a touch off its hue.
   const value = 0.86 + 0.28 * rnd(v.seed, 31);
   const warm = (rnd(v.seed, 32) - 0.5) * 0.12;

@@ -21,6 +21,7 @@ import yard from "../levels/yard.json" with { type: "json" };
 import { startClock, stepClock } from "./game/dayClock.js";
 import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
+import { CAPE_LOOK } from "./look.js";
 import { WALK, type WalkSnapshot } from "./net.js";
 import { townStart } from "./sim/town/start.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
@@ -99,6 +100,8 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   /** The town's start, on the made ground at the cove (the rules' spawn searches out from the same place). */
   startOf: townStart,
   weatherIsOwn: () => false,
+  /** The game's look in the place of the engine's: no strokes, its own palette, weather and exposure (`look.ts`). */
+  look: CAPE_LOOK,
   renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),
   audio: () => createAmbientAudio(noGameSound),
   hud: createWalkHud,

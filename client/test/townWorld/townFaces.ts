@@ -29,7 +29,8 @@ export function townFaces(seed: number, detail: Detail, trace = true): TownFaces
       // A room's haze is not a face: it is the room's air, drawn as see-through sheets across the room (`roomHaze.ts`), each taking a sixth or
       // less of what is behind it. A sheet stands near in plane to whatever stands in the room at its depth, and which side of that face it
       // falls on changes the face's colour by the sheet's share, where the buffer cannot tell them apart: from across a street, not seen.
-      if (b.layer !== "haze") trianglesOf(b.arrays, b.layer, tris, tags);
+      // Nor is the dark at a wall's foot (`footShade.ts`): a see-through sheet laid over the ground, which it lies in plane with by design.
+      if (b.layer !== "haze" && b.layer !== "shade") trianglesOf(b.arrays, b.layer, tris, tags);
       void before;
       vertices += b.arrays.positions.length / 3;
       triangles += b.arrays.indices.length / 3;

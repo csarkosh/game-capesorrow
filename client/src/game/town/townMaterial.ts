@@ -28,6 +28,10 @@
  *   overlay layer over the result; the base colour becomes the textured colour times the occlusion. The wet look's weather
  *   share then reads the roughness this left, and `baseColourPlugin`'s `surfaceAlbedo=baseColor` the colour.
  *   Metallic stays 0: rust and metal sheet are drawn as dielectrics.
+ * - `CUSTOM_FRAGMENT_LIGHT` and `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: the sky a pixel sees (`skyShade.ts`). A textured corner says
+ *   how far it stands over the ground and under its roof (`townWear`.z and w), the surface code turns the two into `townSky`, and the sky's
+ *   light is scaled by it where each part of it is summed: the fill light in the light loop, the environment's diffuse and reflection at the
+ *   composition. The sun's light and the surface's colour are untouched.
  *
  * **The normal.** There is no tangent attribute. The tangent frame is made in the fragment stage from screen-space
  * derivatives of the world position and the UV (the cotangent frame: no attribute, right for any UV, mirrored ones too), the
@@ -72,6 +76,7 @@ import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
 import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
 import { PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY, layerIndex } from "./townLayers.js";
+import { EAVE_CODE, EAVE_REACH, EAVE_SHADE, FOOT_CODE, FOOT_REACH, FOOT_SHADE, FOOT_UNIT } from "./skyShade.js";
 
 /** The attribute and varying names. */
 export const TOWN_ATTRIBUTE = "townSurface";
@@ -126,6 +131,9 @@ export function townDefinitions(low: boolean): string {
     "return c;}",
     "var<private> townGlowC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassA:f32=0.0;",
+    // How much of the sky's light the pixel takes (`SKY_CODE`), and the lights' sum before the light at hand (`TOWN_LIGHT_CODE`).
+    "var<private> townSky:f32=1.0;",
+    "var<private> townDd:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townSignA:f32=1.0;",
     `var<private> townInfo:array<vec4<f32>,${TOWN_LAYERS.length}>=array<vec4<f32>,${TOWN_LAYERS.length}>(${table});`,
@@ -274,13 +282,35 @@ export const LAMP_CODE = [
   "}",
 ].join("");
 
+/**
+ * The sky a textured pixel sees (`skyShade.ts`): its corner's two codes, the height over the ground and the depth under the roof, each eased from
+ * its shade to 1 over its reach, and their product kept in `townSky`. A code of 0 is none. The first shares its float with a room's hours
+ * (`HOURS_CODE`): it is under a half, and an hours' code is 1 or more. The flat ground's material (`ranked`) carries its depth rank where the
+ * second code would be, and reads the first alone.
+ */
+function skyCode(ranked: boolean): string {
+  const ramp = (has: string, code: string, base: number, reach: number, shade: number): string =>
+    `if(${has}){let tsT=clamp((${code}-${f(base)})/${f(reach)},0.0,1.0);tsSk=tsSk*mix(${f(shade)},1.0,tsT*tsT*(3.0-2.0*tsT));}`;
+  const foot = ramp(`tsWearV.z>${(0.25 * FOOT_UNIT).toExponential(4)}&&tsWearV.z<0.5`, `tsWearV.z*${f(1 / FOOT_UNIT)}`, FOOT_CODE, FOOT_REACH, FOOT_SHADE);
+  const eave = ramp("tsWearV.w>0.25", "tsWearV.w", EAVE_CODE, EAVE_REACH, EAVE_SHADE);
+  return `if(tsLayer>=0){var tsSk=1.0;${foot}${ranked ? "" : eave}townSky=tsSk;}`;
+}
+
+/**
+ * The WGSL at `CUSTOM_FRAGMENT_LIGHT`, inside the light loop after a light's diffuse term is added: the sky's fill (every light but the sun, which
+ * is the directional one) is scaled by `townSky`. The sun's light is left whole: a wall's foot in the sun is lit by it.
+ */
+export const TOWN_LIGHT_CODE =
+  "{let tsLd=directDiffuse-townDd;if(u32(lights.lights[lightIndex].vLightData.w)!=1u){directDiffuse=townDd+tsLd*townSky;}townDd=directDiffuse;}";
+
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
-export function townSurfaceCode(low: boolean, sign = false): string {
+export function townSurfaceCode(low: boolean, sign = false, ranked = false): string {
   return [
     `let tsSurf=input.${TOWN_VARYING};`,
     `let tsWearV=input.${TOWN_WEAR_VARYING};`,
     "let tsLayer=i32(floor(tsSurf.x+0.5));",
     "let tsDx=dpdx(input.uv);let tsDy=dpdy(input.uv);let tsPx=dpdx(input.worldPos);let tsPy=dpdy(input.worldPos);",
+    skyCode(ranked),
     "if(material.townReady>0.5&&tsLayer>=0){",
     "let tsInfo=townInfo[tsLayer];",
     "let tsCol=textureSampleGrad(townColor,townSmp,input.uv,tsLayer,tsDx,tsDy).rgb*tsInfo.z;",
@@ -365,7 +395,8 @@ export function townAlphaCode(low = false): string {
     "if(tsClear>0.001){",
     `let tsSeed=input.${TOWN_VARYING}.z;let tsDirt=input.${TOWN_VARYING}.y;`,
     // A sheet of a room's haze (`roomHaze.ts`, marked by a seed of 2, where a pane's is 0 to 1): one colour, carried in the floats a pane's size and tilt use, and no reflection.
-    `if(tsSeed>1.5&&tsSeed<2.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
+    // The dark at a wall's foot (`footShade.ts`, a seed of 3): one colour as a haze's, covering by the square of how near the wall the pixel is (the sheet's own v), times the building's own depth of it.
+    `if(tsSeed>2.5&&tsSeed<3.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=input.${TOWN_WEAR_VARYING}.w*input.uv.y*input.uv.y;}else if(tsSeed>1.5&&tsSeed<2.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
     "let tsVe=normalize(scene.vEyePosition.xyz-input.worldPos);",
     "var tsGn=N;",
     "let tsTg=normalize(vec3<f32>(-tsGn.z,0.0,tsGn.x));",
@@ -395,8 +426,8 @@ export function townAlphaCode(low = false): string {
   ].join("");
 }
 
-/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: a glass's colour as `townAlphaCode` made it, and every surface's glow. */
-export const TOWN_COMPOSE_CODE = "if(townGlassA>0.5){color=townGlassC;}color=color+townGlowC;";
+/** The WGSL at `CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION`: the sky's own light and its reflection (the environment's two terms) scaled by `townSky`, then a glass's colour as `townAlphaCode` made it, and every surface's glow. */
+export const TOWN_COMPOSE_CODE = "color-=(finalIrradiance+finalRadianceScaled)*(1.0-townSky);if(townGlassA>0.5){color=townGlassC;}color=color+townGlowC;";
 
 /** What the plugin draws with: the two arrays (the colour's read as sRGB, the data as data), filled in place when the images land. */
 export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Texture2DArray };
@@ -449,7 +480,7 @@ export const RANK_CODE = `out.clipPos.z+=${(RANK_UNITS / 2 ** 24).toExponential(
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
 export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
   const definitions = townDefinitions(low);
-  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked);
   return {
     name: "TownSurface",
     priority: 200,
@@ -457,7 +488,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"
-        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
+        ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_LIGHT: TOWN_LIGHT_CODE, CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
         : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX, CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : ""}` },
     getVertexAttributes: () => [
       // Twelve 16-bit floats a vertex (`surfacePack.ts`): the shader reads them as the 32-bit floats they stand for.

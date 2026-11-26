@@ -17,6 +17,7 @@ import type { Building, BuildingUse, TownPlan, WindowState } from "../../sim/tow
 import { withMat } from "./materials.js";
 import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
+import { accentOf, blockOfLot } from "./accents.js";
 import { cutWall, doorIn, pairedDoors, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { planFront } from "./frontGeometry.js";
 import type { Xf } from "./roomGeometry.js";
@@ -112,6 +113,10 @@ export function blockedWalls(c: PlanCtx): boolean[] {
 }
 
 const DOORS: readonly Rgb[] = [[0.16, 0.09, 0.05], [0.12, 0.2, 0.15], [0.3, 0.1, 0.08], [0.14, 0.14, 0.16], [0.4, 0.36, 0.3], [0.25, 0.3, 0.4]];
+/** A door's paint: the block's accent on some, else one of the quiet `DOORS`; `salt` is the call site's own roll. */
+function doorColour(c: PlanCtx, id: number, salt: number): Rgb {
+  return accentOf(blockOfLot(c.g.plan.lots, c.b.lot, c.b.id), id, salt) ?? pickOf(DOORS, id, salt);
+}
 const RAINCOLOURS = { shutter: [0.62, 0.64, 0.66] as Rgb };
 /** A steel door's leaf: smooth paint, with rust coming through in patches. */
 const STEEL_DOOR = { mat: "painted", wear: 0.4, wearKind: "rust" } as const;
@@ -129,7 +134,7 @@ export function planWalls(c: PlanCtx): WallPlan[] {
   const units = use !== undefined && use.units.length > 0 && c.xf !== null;
 
   if (units && use !== undefined && c.xf !== null) {
-    const f = planFront({ ...(c.report === undefined ? {} : { report: c.report }), ...(c.haze === undefined ? {} : { haze: c.haze }), ...(c.through === true ? { through: true } : {}), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s) });
+    const f = planFront({ ...(c.report === undefined ? {} : { report: c.report }), ...(c.haze === undefined ? {} : { haze: c.haze }), ...(c.through === true ? { through: true } : {}), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s), block: blockOfLot(c.g.plan.lots, b.lot, b.id) });
     const p = plans[c.frontAt] as WallPlan;
     p.holes.push(...f.holes);
     p.draws.push(() => f.draw());
@@ -179,7 +184,7 @@ export function planWalls(c: PlanCtx): WallPlan[] {
 function backDoor(c: PlanCtx, w: WallRef, p: WallPlan, seed: number, floorY: number): void {
   const { out, b } = c;
   const s = 1.2 + hash01(seed, 470) * (w.length - 2.4);
-  const col = pickOf(DOORS, seed, 471);
+  const col = doorColour(c, seed, 471);
   const hole: Hole = { s0: s - 0.5, s1: s + 0.5, y0: floorY, y1: floorY + 2.05 };
   if (p.holes.some((h) => h.s0 < hole.s1 + 0.4 && h.s1 > hole.s0 - 0.4)) return;
   p.holes.push(hole);
@@ -221,7 +226,7 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
       reveal(out, w, hole.s0, hole.s1, hole.y0, hole.y1, 0.2, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
       wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
     } else {
-      const col = pickOf(DOORS, b.id, 481);
+      const col = doorColour(c, b.id, 481);
       if (church) pairedDoors(out, w, hole, 0.16, col, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
       else {
         // The leaf fills its hole, and the reveal runs to it: nothing is seen round a door or past it.
@@ -291,7 +296,7 @@ function industrialFront(c: PlanCtx, plans: WallPlan[]): void {
     const md: Hole = { s0: ms - 0.5, s1: ms + 0.5, y0: floorY, y1: floorY + 2.05 };
     p.holes.push(md);
     p.draws.push(() => {
-      doorIn(out, w, md, 0.1, vacant ? [0.42, 0.31, 0.18] : pickOf(DOORS, b.id, 486), vacant ? "ply" : STEEL_DOOR, [0.3, 0.3, 0.3]);
+      doorIn(out, w, md, 0.1, vacant ? [0.42, 0.31, 0.18] : doorColour(c, b.id, 486), vacant ? "ply" : STEEL_DOOR, [0.3, 0.3, 0.3]);
     });
   }
 }
@@ -358,7 +363,7 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
         wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
         return;
       }
-      const col = other ? pickOf([[0.45, 0.45, 0.43], [0.62, 0.62, 0.6], [0.2, 0.25, 0.3]] as readonly Rgb[], b.id, 492) : pickOf(DOORS, b.id, 493);
+      const col = other ? pickOf([[0.45, 0.45, 0.43], [0.62, 0.62, 0.6], [0.2, 0.25, 0.3]] as readonly Rgb[], b.id, 492) : doorColour(c, b.id, 493);
       // The leaf fills its hole, and the reveal runs to it: nothing is seen round the door or past it. A later owner's door is painted steel; the house's own is boards.
       const leafMat = other ? "painted" : "boards";
       const o = doorIn(out, w, hole, 0.1, col, leafMat, scaled(c.wall, 0.8), [0.4, 0.38, 0.34], undefined, ctxW.trim);

@@ -7,11 +7,12 @@
  *   building standing on piles (no lot) starts at its deck.
  * - **Roofs** by kind: `flat` has a roof surface and a low parapet round it; `gable` has its ridge along the longer
  *   side and a gable end on each short wall (the ridge of an old wooden one sags); `hip` is a true hip, four faces with a short ridge; `shed` is a single
- *   slope, high at the back, with trapezoid side walls. The pitched roofs overhang the walls by `EAVE` m. A `ruin` is
+ *   slope, high at the back, with trapezoid side walls. The pitched roofs overhang the walls by `EAVE` m, with an underside and a board along each edge. A `ruin` is
  *   roofless, lower, and its walls are broken at the top in runs of about a metre, with inner faces and a little rubble.
  * - **Behind the glass** of each unit the plan's room (`roomGeometry.ts`); **signs** from the plan (`shopSigns.ts`); **parts** (`buildingParts.ts`) and
  *   **wear** (`buildingWear.ts`) by kind, age and history.
  * - **Colour** from `material` and the building's id (`vary`): no random call anywhere.
+ * - **The sky a wall sees** is baked into its corners (`skyShade.ts`): darker at its foot and under its eave.
  * - **A landmark** carries one touch: the FBI office a flagpole, a portico and a cornice; a church a steeple; the tsunami
  *   refuge is an open platform on legs with stairs; the mill a smokestack.
  */
@@ -19,7 +20,9 @@ import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingKind, LandmarkRole } from "../../sim/town/types.js";
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { roofStyle, roofTint, wallStyle, wallTint } from "./buildingSurfaces.js";
-import { edgeFrame, groundFrame, wallFrame, type Surface } from "./townSurface.js";
+import { edgeFrame, groundFrame, wallFrame, type Cut, type Fx, type Shade, type Surface } from "./townSurface.js";
+import { SOFFIT_SHADE, flatShade, wallShade, type GroundLine, type RoofPlane } from "./skyShade.js";
+import { footShade } from "./footShade.js";
 import { cutWall, doorIn, pairedDoors, wallRef, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { withMat } from "./materials.js";
 import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
@@ -37,6 +40,11 @@ import type { BuildingExtras, Detail, Sink, TownGround } from "./townTypes.js";
 /** How far the windows and doors lie off the wall's face, metres. */
 export const PROUD = 0.03;
 export const EAVE = 0.35;
+/** How deep the board along a pitched roof's edge is (its fascia along the eave, its barge board up the rake), metres. */
+export const ROOF_EDGE = 0.16;
+/** The underside of a roof's overhang: bare boards, which see the ground and none of the sky (`skyShade.ts`). */
+const SOFFIT: Rgb = [0.3, 0.27, 0.22];
+const SOFFIT_SKY = flatShade(SOFFIT_SHADE);
 
 type Profile = "shop" | "house" | "civic" | "industrial" | "church";
 
@@ -183,22 +191,36 @@ export function buildingLevels(g: TownGround, b: Building): BuildingLevels {
   return { f, onPiles, baseY, floorY, frontFloorY, frontAt, fr, sides, corner, xf };
 }
 
-export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole | null, sink: Sink, detail: Detail, extra?: BuildingExtras): void {
-  const { f, onPiles, baseY, floorY, frontAt, fr, sides, corner, xf, frontFloorY } = buildingLevels(g, b);
-  const out = sink(f.cx, f.cz);
-  const glass = extra === undefined ? out : extra.glass(f.cx, f.cz);
-  const haze = extra?.haze?.(f.cx, f.cz);
-  const ruin = b.state === "ruin";
-  const vacant = b.state === "vacant";
-  const walls: Wall[] = [];
+/** A building's roof: its kind (a ruin has none), its own frame (e1 the long axis, e2 the short, `L` and `S` the half lengths along them), its heights, and the roof as planes. */
+export type RoofShape = {
+  readonly roofKind: Building["roof"] | "ruin";
+  readonly long: boolean;
+  readonly e1: [number, number];
+  readonly e2: [number, number];
+  readonly L: number;
+  readonly S: number;
+  /** The roof's top: the ridge of a pitched roof, the surface of a flat one. */
+  readonly H: number;
+  readonly rise: number;
+  readonly shedDrop: number;
+  readonly wallTop: number;
+  /** A shed's high side, along e2: the one away from the front. */
+  readonly shedSign: number;
+  /** The roof as planes, as `buildingGeometry` lays it: a gable's two slopes, a hip's four, a shed's one. A flat roof lies under its walls' tops and a ruin has none: no planes. */
+  readonly planes: readonly RoofPlane[];
+  /** Where two planes meet over a wall: a gable end's ridge line. */
+  readonly creases: readonly Cut[];
+};
 
-  // Roof geometry's own frame: e1 the long axis, e2 the short.
+/** The roof over a building that stands at `levels`: one place, so that what is drawn and the sky a wall sees under it (`skyShade.ts`) agree. */
+export function roofOver(b: Building, levels: BuildingLevels): RoofShape {
+  const { f, floorY, fr } = levels;
+  const ruin = b.state === "ruin";
   const long = f.hu >= f.hv;
   const e1: [number, number] = long ? [f.ux, f.uz] : [f.vx, f.vz];
   const e2: [number, number] = long ? [f.vx, f.vz] : [f.ux, f.uz];
   const L = long ? f.hu : f.hv;
   const S = long ? f.hv : f.hu;
-
   const H = floorY + (ruin ? Math.max(2.6, b.height * 0.6) : b.height);
   const roofKind = ruin ? "ruin" : b.roof;
   let rise = 0;
@@ -207,6 +229,39 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const wallTop = H - rise;
   // The shed's high side is the one away from the front.
   const shedSign = dot(e2[0], e2[1], fr.x, fr.z) < 0 ? 1 : -1;
+  const planes: RoofPlane[] = [];
+  const creases: Cut[] = [];
+  if (roofKind === "gable" || roofKind === "hip") {
+    const he = wallTop - 0.15;
+    const fall = (H - he) / (S + EAVE);
+    for (const side of [-1, 1]) planes.push({ x: f.cx, z: f.cz, y: H, gx: -fall * side * e2[0], gz: -fall * side * e2[1] });
+    if (roofKind === "gable") {
+      // A gable end is under both slopes, which meet over its middle: the ridge's line.
+      creases.push([e2[0], 0, e2[1], -(e2[0] * f.cx + e2[1] * f.cz)]);
+    } else {
+      const r = Math.max(0.2, L - S);
+      const endFall = (H - he) / (L + EAVE - r);
+      for (const end of [-1, 1]) planes.push({ x: f.cx, z: f.cz, y: H + endFall * r, gx: -endFall * end * e1[0], gz: -endFall * end * e1[1] });
+    }
+  } else if (roofKind === "shed") {
+    const climb = (shedDrop + 0.2) / (2 * (S + EAVE));
+    planes.push({ x: f.cx, z: f.cz, y: H - shedDrop / 2, gx: climb * shedSign * e2[0], gz: climb * shedSign * e2[1] });
+  }
+  return { roofKind, long, e1, e2, L, S, H, rise, shedDrop, wallTop, shedSign, planes, creases };
+}
+
+export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole | null, sink: Sink, detail: Detail, extra?: BuildingExtras): void {
+  const levels = buildingLevels(g, b);
+  const { f, onPiles, baseY, floorY, frontAt, sides, corner, xf, frontFloorY } = levels;
+  const out = sink(f.cx, f.cz);
+  const glass = extra === undefined ? out : extra.glass(f.cx, f.cz);
+  const haze = extra?.haze?.(f.cx, f.cz);
+  const ruin = b.state === "ruin";
+  const vacant = b.state === "vacant";
+  const walls: Wall[] = [];
+
+  // The roof's own frame (e1 the long axis, e2 the short), its heights, and its planes (`roofOver`).
+  const { roofKind, long, e1, e2, L, S, H, rise, shedDrop, wallTop, shedSign, planes: roofPlanes, creases } = roofOver(b, levels);
   const topFor = (su: number, sv: number): number => {
     if (roofKind === "flat") return H + 0.5;
     if (roofKind === "shed") {
@@ -250,6 +305,25 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     return wallFrame(w.ax, w.az, (w.bx - w.ax) / w.length, (w.bz - w.az) / w.length, baseY, alongAt[i] as number, turned);
   };
   const wears: (WallWear | undefined)[] = [];
+
+  // ---- The sky each wall sees (`skyShade.ts`): darker at its foot, along the ground it stands on, and under the roof that overhangs it (`roofOver`'s planes).
+  const shades: (Shade | undefined)[] = [];
+  const shadeOf = (i: number): Shade => {
+    const w = walls[i] as Wall;
+    const tx = (w.bx - w.ax) / w.length;
+    const tz = (w.bz - w.az) / w.length;
+    // The ground just outside the wall, near each end (a building on piles stands on its deck): a straight line between the two.
+    const groundAt = (s: number): number => (onPiles ? baseY : Math.max(baseY, g.heightAt(w.ax + tx * s + w.nx * 0.4, w.az + tz * s + w.nz * 0.4)));
+    const s0 = Math.min(0.5, w.length / 4);
+    const s1 = w.length - s0;
+    const y0 = groundAt(s0);
+    const rise = (groundAt(s1) - y0) / (s1 - s0);
+    const line: GroundLine = { ax: w.ax, az: w.az, tx, tz, y: y0 - rise * s0, rise };
+    return (shades[i] ??= wallShade(line, roofPlanes, creases));
+  };
+  // The ground at the walls' feet is darker with them (`footShade.ts`).
+  const shadeSink = extra?.shade?.(f.cx, f.cz);
+  if (shadeSink !== undefined) footShade(g, shadeSink, b, walls, onPiles, baseY);
   const wallSurface = (i: number, band: 0 | 1 = 1): Surface => {
     const w = walls[i] as Wall;
     const wear = (wears[i] ??= wallWear(b, style, w.nx, w.nz, baseY));
@@ -258,6 +332,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
       frame: frameOf(i, style.turned),
       ...(style.paint ? {} : { tint: wallTint(b) }),
       ...(band === 0 ? wear.foot : wear.upper),
+      shade: shades[i] ?? shadeOf(i),
     };
   };
 
@@ -297,6 +372,30 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   // A roof's wear follows the slope: mossy on the north side, dry on the south, rusting in streaks where it is metal (`buildingWear.ts`).
   const roofSurface = (frame: Surface["frame"], nx = 0, nz = 0): Surface | undefined =>
     roofLook === null || roofKind === "ruin" ? undefined : { layer: roofLook.layer, frame, ...(roofPaint ? {} : { tint: roofTint(b) }), ...roofWear(b, roofKind, roofLook.layer === "roof_metal", nx, nz) };
+  // A pitched roof has edges: its underside (seen from the street under the overhang, where a sheet with one face showed the sky), and a board
+  // hanging from each edge, the fascia along an eave and the barge board up a rake, so the roof reads as a thing with thickness.
+  const under = (surface: Surface | undefined): Fx | undefined =>
+    surface === undefined ? undefined : { back: { colour: SOFFIT, surface: { layer: "planks_weathered", frame: surface.frame, tint: [0.85, 0.85, 0.85], shade: SOFFIT_SKY } } };
+  const edgeTrim: Rgb = scaled(b.material === "wood" ? vary([0.6, 0.6, 0.56], b.id, 9) : scaled(roofColour, 0.75), vacant ? 0.8 : 1);
+  // A board has a thickness: its inner face stands 3 cm in from its outer one. Two roofs that meet edge to edge (attached buildings a pair of
+  // eaves apart) would otherwise have one's outer face and the other's inner face in one plane, looking the same way.
+  // Where another building stands against the wall a board's end reaches past (`blockedWalls`: within 0.7 m, a pair of eaves), the two
+  // roofs' overhangs run into each other, and their boards along one line would lie in one plane: the board stops at its own wall there.
+  const shut = blockedWalls(planCtx);
+  const shutToward = (dx: number, dz: number): boolean => walls.some((w, k) => shut[k] === true && w.nx * dx + w.nz * dz > 0.9);
+  const edgeBoard = (p0: Vec3, q0: Vec3, hint: Vec3): void => {
+    const hx = q0[0] - p0[0];
+    const hz = q0[2] - p0[2];
+    const run = Math.sqrt(hx * hx + hz * hz);
+    const along = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const trim = run > 2 * EAVE + 0.1;
+    const p = trim && shutToward(-hx / run, -hz / run) ? along(p0, q0, EAVE / run) : p0;
+    const q = trim && shutToward(hx / run, hz / run) ? along(q0, p0, EAVE / run) : q0;
+    out.poly([p, q, [q[0], q[1] - ROOF_EDGE, q[2]], [p[0], p[1] - ROOF_EDGE, p[2]]], hint, edgeTrim, "painted");
+    const pi: Vec3 = [p[0] - hint[0] * 0.03, p[1], p[2] - hint[2] * 0.03];
+    const qi: Vec3 = [q[0] - hint[0] * 0.03, q[1], q[2] - hint[2] * 0.03];
+    out.poly([qi, pi, [pi[0], pi[1] - ROOF_EDGE, pi[2]], [qi[0], qi[1] - ROOF_EDGE, qi[2]]], [-hint[0], 0, -hint[2]], scaled(edgeTrim, 0.7), "painted");
+  };
   if (roofKind === "flat") {
     const inset = 0.3;
     out.poly([P(-L + inset, -S + inset, H), P(L - inset, -S + inset, H), P(L - inset, S - inset, H), P(-L + inset, S - inset, H)], [0, 1, 0], roofColour, roofSurface(groundFrame(g.anchor)));
@@ -327,13 +426,18 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
         const mid = P(0, 0, H - sag);
         const eaveMid = P(0, side * Se, he - sag * 0.35);
         const hint: Vec3 = [e2[0] * side * 0.6, 1, e2[1] * side * 0.6];
-        out.poly([a, eaveMid, mid, P(-Le, 0, H)], hint, roofColour, fr);
-        out.poly([eaveMid, P(Le, side * Se, he), P(Le, 0, H), mid], hint, roofColour, fr);
+        out.poly([a, eaveMid, mid, P(-Le, 0, H)], hint, roofColour, fr, under(fr));
+        out.poly([eaveMid, P(Le, side * Se, he), P(Le, 0, H), mid], hint, roofColour, fr, under(fr));
+        edgeBoard(a, eaveMid, [e2[0] * side, 0, e2[1] * side]);
+        edgeBoard(eaveMid, P(Le, side * Se, he), [e2[0] * side, 0, e2[1] * side]);
       } else {
-        out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, fr);
+        out.poly([a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, fr, under(fr));
+        edgeBoard(a, P(Le, side * Se, he), [e2[0] * side, 0, e2[1] * side]);
         roofSlopeDecals(out, b, [a, P(Le, side * Se, he), P(Le, 0, H), P(-Le, 0, H)], fr, e2[0] * side, e2[1] * side, roofColour, side, detail === "low");
       }
     }
+    // The barge boards up each rake.
+    for (const end of [-1, 1]) for (const side of [-1, 1]) edgeBoard(P(end * Le, side * Se, he), P(end * Le, 0, H), [e1[0] * end, 0, e1[1] * end]);
     // The gable ends, on the short walls: the wall's own texture, carried up from the wall below.
     for (const end of [-1, 1]) {
       const i = walls.findIndex((w) => dot(w.nx, w.nz, e1[0] * end, e1[1] * end) > 0.9);
@@ -347,19 +451,25 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     for (const side of [-1, 1]) {
       const a = P(-Le, side * Se, he);
       const hipSurface = roofSurface(edgeFrame(a, P(Le, side * Se, he), P(-r, 0, H)), e2[0] * side, e2[1] * side);
-      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, hipSurface);
+      out.poly([a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], [e2[0] * side * 0.6, 1, e2[1] * side * 0.6], roofColour, hipSurface, under(hipSurface));
+      edgeBoard(a, P(Le, side * Se, he), [e2[0] * side, 0, e2[1] * side]);
       roofSlopeDecals(out, b, [a, P(Le, side * Se, he), P(r, 0, H), P(-r, 0, H)], hipSurface, e2[0] * side, e2[1] * side, roofColour, side, detail === "low");
     }
     for (const end of [-1, 1]) {
       const a = P(end * Le, -Se, he);
-      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H)), e1[0] * end, e1[1] * end));
+      const endSurface = roofSurface(edgeFrame(a, P(end * Le, Se, he), P(end * r, 0, H)), e1[0] * end, e1[1] * end);
+      out.poly([a, P(end * Le, Se, he), P(end * r, 0, H)], [e1[0] * end * 0.6, 1, e1[1] * end * 0.6], scaled(roofColour, 0.92), endSurface, under(endSurface));
+      edgeBoard(a, P(end * Le, Se, he), [e1[0] * end, 0, e1[1] * end]);
     }
   } else if (roofKind === "shed") {
     const Le = L + EAVE;
     const Se = S + EAVE;
     const low0 = P(-Le, -shedSign * Se, H - shedDrop - 0.1);
     const shedSurface = roofSurface(edgeFrame(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), P(-Le, shedSign * Se, H + 0.1)), -e2[0] * shedSign, -e2[1] * shedSign);
-    out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour, shedSurface);
+    out.poly([P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], [-e2[0] * shedSign * 0.4, 1, -e2[1] * shedSign * 0.4], roofColour, shedSurface, under(shedSurface));
+    edgeBoard(low0, P(Le, -shedSign * Se, H - shedDrop - 0.1), [-e2[0] * shedSign, 0, -e2[1] * shedSign]);
+    edgeBoard(P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), [e2[0] * shedSign, 0, e2[1] * shedSign]);
+    for (const end of [-1, 1]) edgeBoard(P(end * Le, -shedSign * Se, H - shedDrop - 0.1), P(end * Le, shedSign * Se, H + 0.1), [e1[0] * end, 0, e1[1] * end]);
     roofSlopeDecals(out, b, [P(-Le, shedSign * Se, H + 0.1), P(Le, shedSign * Se, H + 0.1), P(Le, -shedSign * Se, H - shedDrop - 0.1), low0], shedSurface, -e2[0] * shedSign, -e2[1] * shedSign, roofColour, 0, detail === "low");
   }
 

@@ -114,7 +114,7 @@ describe("the town's arrays, every batch of three worlds", () => {
     expect(triangles).toBeGreaterThan(100_000);
   });
 
-  it("puts every batch in the cell its geometry stands in, and no more than a hundred and fifty meshes for the town", () => {
+  it("puts every batch in the cell its geometry stands in, and no more than a hundred and seventy meshes for the town", () => {
     for (const batch of townFor(GAME_SEED)) {
       const a = batch.arrays;
       for (let v = 0; v < a.positions.length / 3; v++) {
@@ -125,8 +125,8 @@ describe("the town's arrays, every batch of three worlds", () => {
         expect(Math.abs(cz - batch.cz)).toBeLessThanOrEqual(1);
       }
     }
-    // A cell has up to four meshes now: the flat layer, the standing, the blended glass and the signs.
-    expect(townFor(GAME_SEED).length).toBeLessThanOrEqual(150);
+    // A cell has up to six meshes now: the flat layer, the standing, the dark at the walls' feet, the rooms' haze, the blended glass and the signs.
+    expect(townFor(GAME_SEED).length).toBeLessThanOrEqual(170);
   });
 
   it("is the same arrays every time it is built", () => {
@@ -156,7 +156,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 136, flat: 40, vertices: 1483852, triangles: 767966 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 165, flat: 40, vertices: 1517518, triangles: 784572 });
   });
 });
 

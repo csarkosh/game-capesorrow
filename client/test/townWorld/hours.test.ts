@@ -206,9 +206,13 @@ describe("opening hours", () => {
       const a = batch.arrays;
       for (let i = 0; i < a.positions.length / 3; i++) {
         const layer = a.surface[i * SURFACE_FLOATS] as number;
-        const code = a.surface[i * SURFACE_FLOATS + 10] as number;
+        const spare = a.surface[i * SURFACE_FLOATS + 10] as number;
         if (layer === NO_LAYER) continue;
         layered++;
+        // The float is also where a wall's corner carries its height over the ground (`skyShade.ts`, `footCode`), always under a half:
+        // an hours' code is 1 or more, and that is how the material tells the two apart.
+        expect(spare).toBeGreaterThanOrEqual(0);
+        const code = spare < 0.5 ? 0 : spare;
         expect(valid.has(code)).toBe(true);
         if (code > 0) {
           // Only the standing layer's rooms carry one.

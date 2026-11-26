@@ -20,7 +20,7 @@
  */
 import type { LayerName } from "./townLayers.js";
 import { TOWN_LAYERS, layerIndex } from "./townLayers.js";
-import type { Surface, WearKind } from "./townSurface.js";
+import type { Shade, Surface, WearKind } from "./townSurface.js";
 
 type V3 = readonly [number, number, number];
 
@@ -31,7 +31,7 @@ export type MatName =
   | "rubber" | "tar" | "shingle" | "soil" | "gravel" | "sand" | "plant";
 
 /** A material with its own wear, scale or tint in the place of the table's. */
-export type MatSpec = { readonly mat: MatName; readonly wear?: number; readonly wearKind?: WearKind; readonly scale?: number; readonly streaks?: boolean };
+export type MatSpec = { readonly mat: MatName; readonly wear?: number; readonly wearKind?: WearKind; readonly scale?: number; readonly streaks?: boolean; /** The sky the thing sees, where it stands against a wall and sees what the wall sees (`skyShade.ts`). */ readonly shade?: Shade };
 export type MatRef = MatName | MatSpec;
 
 type Mat = {
@@ -196,6 +196,7 @@ export function matSurface(ref: MatRef, points: readonly V3[], n: V3, colour: V3
     ...(wear === undefined ? {} : { wear }),
     ...(wearKind === undefined ? {} : { wearKind }),
     ...(streaks === undefined ? {} : { streaks }),
+    ...(spec.shade === undefined ? {} : { shade: spec.shade }),
   };
 }
 

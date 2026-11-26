@@ -20,6 +20,7 @@ import { withMat } from "./materials.js";
 import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
+import { blockOfLot, signColours } from "./accents.js";
 import { hoursCode, unitHours, wrapHour, type Hours } from "./hours.js";
 import { xp, type Xf } from "./roomGeometry.js";
 import type { Building, BuildingUse, Sign, Unit } from "../../sim/town/types.js";
@@ -101,7 +102,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   const { solid, b, xf, atlas, g } = i;
   const pl = placeOf(xf, sign.place);
   const seed = (b.id * 131 + (unit?.id ?? 9) * 17 + k * 7 + sign.place.s * 3) | 0;
-  const col = coloursOf(sign.style, sign.kind, seed);
+  const col = signColours(coloursOf(sign.style, sign.kind, seed), sign.kind, blockOfLot(g.plan.lots, b.lot, b.id), seed);
   const lines = sign.lines.length > 0 ? sign.lines : [""];
   const nLines = lines.length;
   const bay = unit === null ? xf.width : unit.s1 - unit.s0;
