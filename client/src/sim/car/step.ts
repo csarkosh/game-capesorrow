@@ -60,10 +60,10 @@ export function stepCar(car: Car, controls: CarControls, env: CarEnv): void {
   if (controls.handbrake) speed = toZero(speed, HANDBRAKE * dt);
   if (speed > env.top) speed = max(speed - OVERSPEED_DRAG * dt, env.top);
 
-  // The slope. A car at rest with no throttle stays at rest; a slope too steep to climb only slows the car.
+  // The slope. A car at rest with no throttle stays at rest; a slope too steep to climb only slows a car moving forward.
   if (!(speed === 0 && t === 0)) {
     speed -= GRAVITY * env.slope * dt;
-    if (env.slope > CLIMB_MAX && speed > before) speed = max(before, 0);
+    if (env.slope > CLIMB_MAX && before >= 0 && speed > before) speed = before;
   }
   car.speed = speed;
 

@@ -15,7 +15,7 @@ function car(): Car {
 }
 
 describe("stepCar", () => {
-  it("gathers speed as the spec says: 0 to 25 m/s in about 8 s", () => {
+  it("gathers speed from rest: 0 to 25 m/s in about 8 s", () => {
     const c = car();
     let ticks = 0;
     while (c.speed < 25) { stepCar(c, full, flat); ticks++; }
@@ -118,5 +118,35 @@ describe("stepCar", () => {
     const taken: CarControls = { throttle: 0.5, turn: -0.5, handbrake: true };
     stepCar(c, taken, flat);
     expect(c.controls).toEqual(taken);
+  });
+
+  it("does not hold a reversing car at rest on a steep slope", () => {
+    const steep = { ...flat, slope: 0.5 };
+    for (const controls of [{ throttle: 1, turn: 0, handbrake: false }, { throttle: 0, turn: 0, handbrake: true }]) {
+      const c = car();
+      c.speed = -5;
+      stepCar(c, controls, steep);
+      expect(c.speed).toBeLessThan(-4.5);
+      expect(c.speed).toBeGreaterThan(-5.5);
+      expect(c.speed).not.toBe(0);
+    }
+  });
+
+  it("slides outward: to the left after a hard right turn, to the right after a hard left", () => {
+    const slide = (turn: number): Car => {
+      const c = car();
+      c.speed = 25;
+      for (let i = 0; i < 60; i++) stepCar(c, { throttle: 1, turn, handbrake: false }, flat);
+      return c;
+    };
+    expect(slide(1).slip).toBeLessThan(-0.5);
+    expect(slide(-1).slip).toBeGreaterThan(0.5);
+  });
+
+  it("backs with the nose swinging away from the lock", () => {
+    const c = car();
+    for (let i = 0; i < 120; i++) stepCar(c, { throttle: -1, turn: 1, handbrake: false }, flat);
+    expect(c.speed).toBeLessThan(0);
+    expect(c.hx).toBeLessThan(0);
   });
 });
