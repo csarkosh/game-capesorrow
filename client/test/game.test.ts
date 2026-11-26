@@ -2,7 +2,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import "../src/terrain.js";
-import { noGameSound } from "@csarkosh/engine/game/ambientAudio";
 import { isMode } from "@csarkosh/engine/game/modeList";
 import type { InputCommand } from "@csarkosh/engine/sim/core";
 import { turnedAwayModel } from "@csarkosh/engine/game/turnedAwayModel";
@@ -10,6 +9,7 @@ import { engineCatalog } from "@csarkosh/engine/testing/engineFiles";
 import { createForest } from "@csarkosh/engine/sim/forest";
 import { parseLevel } from "@csarkosh/engine/sim/level";
 import { EMPTY_GAME, WALK_MODES, WALK_SIDE } from "../src/game.js";
+import { carSound } from "../src/game/car/carSound.js";
 import { creditsEntries } from "../src/game/credits.js";
 import { WALK } from "../src/net.js";
 import { CAPE_PAGE, createCapePage } from "../src/page.js";
@@ -39,11 +39,11 @@ describe("the empty game as the page that runs a session is handed it", () => {
     expect(EMPTY_GAME.weatherIsOwn("walk")).toBe(false);
   });
 
-  it("is drawn with the engine's own and the town's parts, and heard with no voices of a game's", () => {
+  it("is drawn with the engine's own and the town's parts, and heard with the car's voice on the bus", () => {
     const game = code("game.ts");
     expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),");
-    expect(game).toContain("audio: () => createAmbientAudio(noGameSound),");
-    expect(typeof noGameSound).toBe("function");
+    expect(game).toContain("audio: () => createAmbientAudio(carSound),");
+    expect(typeof carSound).toBe("function");
   });
 
   it("does nothing at every point of a session, and lets every command through as it came", () => {

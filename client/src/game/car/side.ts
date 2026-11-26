@@ -8,14 +8,16 @@ import type { AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
 import type { WalkClient, WalkHost, WalkRenderer } from "../../game.js";
 import type { WalkHud } from "../../hud.js";
 import { returnCar } from "../../sim/car/rules.js";
+import { surfaceAt } from "../../sim/car/surface.js";
 import { doorNear, seatFor } from "../../sim/car/seats.js";
 import { INTERACT_BIT, LEAVE_SPEED } from "../../sim/car/tuning.js";
-import { SEATED, FOOT, type Car, type Ride } from "../../sim/car/types.js";
+import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
+import { HEARD_WITHIN, earshot, carVoice, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
 
 type CapeSide = SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient>;
-type CapeHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio, WalkHud>;
+type CapeHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud>;
 
 /** How long after a click a player still seated is told there is no room, and how long that line stands in Get out's place, seconds. */
 export const NO_ROOM_AFTER = 0.3, NO_ROOM_SHOWN = 1.6;
@@ -92,6 +94,14 @@ export function promptShown(): string | null {
   return shown;
 }
 
+/** What the car's voice was last fed, for a measuring tool (`__capeCar.sound()`): the note, the two levels, the surface and the distance. */
+export type VoiceSeen = { hz: number; engine: number; tyres: number; surface: number; distance: number };
+const voice: VoiceSeen = { hz: 0, engine: 0, tyres: 0, surface: 0, distance: 0 };
+let voiceOn = false;
+export function voiceShown(): VoiceSeen | null {
+  return voiceOn ? { ...voice } : null;
+}
+
 /** The console's `carhome`: no argument, applied by the game's own half; kept out of the address (its value is its default). */
 export const CAR_COMMANDS: readonly CommandSpec[] = [
   {
@@ -114,6 +124,15 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   // The host's own world, once this screen hosts: `carhome` is the host's to say, and the page's active world is its own only then.
   let hostWorld: WalkWorld | null = null;
   const watch = newClickWatch();
+  // What each car was at the last frame that saw it, for the thud; and the local player's ride at that frame, for the door. Cleared with the world.
+  const marks = new Map<number, CarMark>();
+  let lastPhase = -1;
+  const feed = { speed: 0, throttle: 0, surface: 0 as Surface, distance: 0 };
+  const forget = (): void => {
+    marks.clear();
+    lastPhase = -1;
+    voiceOn = false;
+  };
   let line: string | null = null;
   const press = { down: () => host.touchModel.interactDown(), up: () => host.touchModel.interactUp() };
   const set = (next: string | null): void => {
@@ -122,8 +141,69 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
     shown = next;
     host.hud.setPrompt(next, next !== null && host.touchStart ? press : undefined);
   };
+  /** The car's voice, the thud and the door of this frame. The ear is the local player's own place: seated, that is the car's, whatever the chase camera does. */
+  const hear = (world: WalkWorld | undefined, state: WalkState, self: Walker | undefined): void => {
+    const audio = host.ambient;
+    const list = state.cars;
+    let nearest: Car | null = null;
+    let best = HEARD_WITHIN;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i] as Car;
+      if (self !== undefined) {
+        const d = Math.hypot(c.x - self.pos.x, c.z - self.pos.z);
+        if (d < best) {
+          best = d;
+          nearest = c;
+        }
+      }
+      const m = marks.get(c.id);
+      if (m === undefined) {
+        marks.set(c.id, { tick: state.tick, x: c.x, z: c.z, speed: c.speed });
+        continue;
+      }
+      const hit = thudStrength(m, { tick: state.tick, x: c.x, z: c.z, speed: c.speed });
+      if (hit > 0 && self !== undefined) {
+        const heard = earshot(Math.hypot(c.x - self.pos.x, c.z - self.pos.z));
+        if (heard > 0) audio.thud(hit * heard);
+      }
+      m.tick = state.tick;
+      m.x = c.x;
+      m.z = c.z;
+      m.speed = c.speed;
+    }
+    if (marks.size > list.length) for (const id of marks.keys()) if (carOf(list, id) === undefined) marks.delete(id);
+    if (nearest === null) {
+      voiceOn = false;
+      audio.car(null);
+    } else {
+      const seed = world === undefined ? state.rngSeed : world.forest.seed;
+      feed.speed = nearest.speed;
+      feed.throttle = nearest.controls.throttle;
+      feed.surface = surfaceAt(seed, nearest.x, nearest.z);
+      feed.distance = best;
+      const v = carVoice(feed.speed, feed.throttle, feed.surface, feed.distance);
+      voice.hz = v.hz;
+      voice.engine = v.engine;
+      voice.tyres = v.tyres;
+      voice.surface = feed.surface;
+      voice.distance = best;
+      voiceOn = true;
+      audio.car(feed);
+    }
+    const phase = self === undefined ? -1 : self.ride.phase;
+    if (lastPhase >= 0 && phase >= 0 && (phase === FOOT) !== (lastPhase === FOOT)) audio.door();
+    lastPhase = phase;
+  };
   return {
     ...base,
+    worldIn(...args) {
+      base.worldIn(...args);
+      forget();
+    },
+    atRest(...args) {
+      base.atRest(...args);
+      forget();
+    },
     hostStarted(h) {
       base.hostStarted(h);
       hostWorld = (h as { world: WalkWorld }).world;
@@ -133,6 +213,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       line = null;
       shown = null;
       hostWorld = null;
+      forget();
+      host.ambient.car(null);
     },
     lampOn: (self) => litBy(self, cars),
     afterSync(world, state, localId, self, cmd) {
@@ -143,6 +225,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       const down = cmd !== null && (cmd.buttons & INTERACT_BIT) !== 0;
       watchClick(watch, now, down, ride, ride !== undefined && slowEnough(ride, cars));
       set(lineFor(watch, now, promptFor(self, cars)));
+      hear(world as WalkWorld | undefined, state, self);
     },
     applyOwnView(name, args) {
       if (name !== "carhome") return base.applyOwnView(name, args);

@@ -22,6 +22,8 @@ export type CarDebug = {
   prompt(): string | null;
   /** The one lamp as the last frame wrote it, or null before a frame has. */
   lamp(): LampSeen | null;
+  /** What the car's voice was last fed (the note, the levels of the engine and the tyres, the surface under the nearest car and its distance from the listener), or null when no car was within earshot. */
+  sound(): { hz: number; engine: number; tyres: number; surface: number; distance: number } | null;
 };
 
 /** What the answers are built from: the state as the last frame had it, and the poses the car's part holds. */
@@ -34,6 +36,8 @@ export type CarDebugSource = {
   prompt?(): string | null;
   /** The lamp as the last frame wrote it, or null before there is one. */
   lamp?(): LampSeen | null;
+  /** What the voice was last fed. */
+  sound?(): { hz: number; engine: number; tyres: number; surface: number; distance: number } | null;
 };
 
 export function carDebug(source: CarDebugSource): CarDebug {
@@ -61,6 +65,10 @@ export function carDebug(source: CarDebugSource): CarDebug {
       return c === null ? null : { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch, fov: c.fov, seated: c.seated, pulled: c.pulled };
     },
     prompt: () => source.prompt?.() ?? null,
+    sound() {
+      const v = source.sound?.() ?? null;
+      return v === null ? null : { hz: v.hz, engine: v.engine, tyres: v.tyres, surface: v.surface, distance: v.distance };
+    },
     lamp() {
       const l = source.lamp?.() ?? null;
       return l === null ? null : { ...l };

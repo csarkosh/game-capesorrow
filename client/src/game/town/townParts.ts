@@ -42,7 +42,7 @@ import { groundAt } from "./props/kit.js";
 import { createCarParts, type CarParts } from "../car/carParts.js";
 import { carDebug, type CarDebug, type CarDebugSource, type LampSeen } from "../car/carDebug.js";
 import { lightHeadlights, litFor } from "../car/headlights.js";
-import { promptShown } from "../car/side.js";
+import { promptShown, voiceShown } from "../car/side.js";
 import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { townSolids } from "../../sim/town/solid.js";
 import { propSolids } from "../../sim/town/propSolid.js";
@@ -312,7 +312,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
 
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
-      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, lamp: () => (lampWritten ? lampSeen : null) });
+      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null) });
       const plan = ground.plan;
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;

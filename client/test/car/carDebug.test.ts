@@ -72,4 +72,16 @@ describe("the car's reading for measuring tools", () => {
     const neither = carDebug({ state: () => null, pose: () => null });
     expect([neither.prompt(), neither.lamp()]).toEqual([null, null]);
   });
+
+  it("answers what the voice was last fed as a copy, and null when no car is heard", () => {
+    const fed = { hz: 64.5, engine: 0.4, tyres: 0.2, surface: 1, distance: 12 };
+    let on: typeof fed | null = fed;
+    const heard = carDebug({ state: () => null, pose: () => null, sound: () => on });
+    expect(heard.sound()).toEqual(fed);
+    (heard.sound() as { hz: number }).hz = 999;
+    expect(heard.sound()?.hz).toBe(64.5);
+    on = null;
+    expect(heard.sound()).toBeNull();
+    expect(carDebug({ state: () => null, pose: () => null }).sound()).toBeNull();
+  });
 });

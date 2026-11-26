@@ -8,7 +8,8 @@
  * calls it but one: before each frame's sync it moves the hour of day (`game/dayClock.ts`). A new game starts from a copy of this and fills in
  * what is its own.
  */
-import { createAmbientAudio, noGameSound, type AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
+import { createAmbientAudio, type AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
+import { carSound, type CarSoundApi } from "./game/car/carSound.js";
 import type { NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLiteRenderer } from "@csarkosh/engine/game/lite/renderer";
 import { registerCommands } from "@csarkosh/engine/game/commands";
@@ -44,7 +45,7 @@ export const WALK_MODES: ModeList = {
 };
 
 /** The session's own half as the page hands it the host (`SessionHost`): the day's clock needs the hour the console set and the one last pushed. */
-export type WalkSessionHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio, WalkHud>;
+export type WalkSessionHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud>;
 
 /** The game's own half of a session before it has a clock: nothing, at every point the page calls. */
 export const WALK_SIDE: SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient> = {
@@ -97,7 +98,7 @@ export function walkSide(host: WalkSessionHost): SessionSide<WalkWorld, WalkStat
   };
 }
 
-export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio, WalkHud, WalkHost, WalkClient> = {
+export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud, WalkHost, WalkClient> = {
   /** A forest world carries a level of its own with no brushes; this is the least the parser takes. */
   level: yard as unknown,
   modes: WALK_MODES,
@@ -108,7 +109,7 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   /** The game's look in the place of the engine's: no strokes, its own palette, weather and exposure (`look.ts`). */
   look: CAPE_LOOK,
   renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),
-  audio: () => createAmbientAudio(noGameSound),
+  audio: () => createAmbientAudio(carSound),
   hud: createWalkHud,
   side: (host) => createCapeSide(host, walkSide(host)),
   host: (_level, _seed, clock, o) => createHostSession(WALK, createWalkWorld(o.forest, true), clock, { levelId: o.forest.levelId, hostPeerId: o.hostPeerId }),
