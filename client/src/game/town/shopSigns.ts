@@ -17,7 +17,8 @@
  * Authored, not researched: every size, the glow strengths, the sag and the loose corner of a banner, the colours (`signStyle.ts`).
  */
 import { withMat } from "./materials.js";
-import { isClear, standOff } from "./faceLedger.js";
+import { faceUnder, isClear, standOff } from "./faceLedger.js";
+import { paintOff } from "./paint.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
 import { blockOfLot, signColours } from "./accents.js";
@@ -96,6 +97,12 @@ function stepOff(i: SignIn, pl: Pl, cx: number, y0: number, ww: number, hh: numb
   if (behind !== undefined) reg.push({ sg, nx: pl.nx, nz: pl.nz, off: off - behind.d, x: wx, z: wz, w: behind.ww, y0: behind.y0, h: behind.hh });
   return off;
 }
+
+/** The paint signs laid so far on a building's walls (`paintSign`), so that a sign painted over another lies one rank of paint above it. */
+const PAINTED = new WeakMap<SignIn, { nx: number; nz: number; x: number; z: number; w: number; y0: number; h: number; rank: number }[]>();
+
+/** The rank of paint of a sign painted on a wall (a ghost sign's old lettering too): over the wall's tone (rank 1), a sill's streak (2) and a patch of siding (3). Its lettering is in the one face with it (the atlas). */
+const SIGN_RANK = 4;
 
 export function signsGeometry(i: SignIn): void {
   const { use } = i;
@@ -181,6 +188,29 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx * sg, 0, pl.nz * sg], [1, 1, 1], { glow });
     return off;
   };
+  /**
+   * A sign painted on a wall, or on what is on the wall: flush, a rank of paint (`SIGN_RANK`) 2 mm over the face it is on, and no face of the ledger. Where a
+   * board stands on the wall under it (the plywood over a window), it is painted on the board, 2 mm over the board's own face and not the wall's; where another
+   * sign is painted under it, a rank over that. The lettering is the face's own atlas, so it has no face of its own to put a rank above.
+   */
+  const paintSign = (cx: number, y0: number, ww: number, hh: number): void => {
+    if (at === null) return;
+    const xa = pl.x + pl.rx * (cx - ww / 2);
+    const za = pl.z + pl.rz * (cx - ww / 2);
+    const xb = pl.x + pl.rx * (cx + ww / 2);
+    const zb = pl.z + pl.rz * (cx + ww / 2);
+    const on = faceUnder(pl.nx, pl.nz, xa, za, xb, zb, y0, y0 + hh);
+    const reg = PAINTED.get(i) ?? [];
+    PAINTED.set(i, reg);
+    let rank = SIGN_RANK;
+    for (const f of reg) {
+      if (f.nx === pl.nx && f.nz === pl.nz && Math.abs((f.x - pl.x - pl.rx * cx) * pl.rx + (f.z - pl.z - pl.rz * cx) * pl.rz) < (f.w + ww) / 2 && f.y0 < y0 + hh && y0 < f.y0 + f.h) rank = Math.max(rank, f.rank + 1);
+    }
+    reg.push({ nx: pl.nx, nz: pl.nz, x: pl.x + pl.rx * cx, z: pl.z + pl.rz * cx, w: ww, y0, h: hh, rank });
+    const off = on + paintOff(rank);
+    const c = (dr: number, yy: number): Vec3 => [pl.x + pl.rx * (cx + dr) + pl.nx * off, yy, pl.z + pl.rz * (cx + dr) + pl.nz * off];
+    i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow, paint: rank });
+  };
   /** A box on the wall: `off0` to `off1` off it, centred `cx`, `ww` wide, from `y0` up `hh`. */
   const obox = (cx: number, y0: number, ww: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side, topFace = true, under = true): void => {
     const mx = pl.x + pl.rx * cx + pl.nx * ((off0 + off1) / 2);
@@ -253,8 +283,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "wall":
     case "ghost": {
-      // 9 cm out: over the plywood on a boarded window (6 cm) and a streak's decal (3 cm) by more than the 2.5 cm a face must stand from another, whatever a millimetre or so of the sign's reading of the wall's plane.
-      quad(0, y - h / 2, w, h, 0.09);
+      // Paint: flush on the wall, or on the plywood of a boarded window that it is painted over (`paintSign`).
+      paintSign(0, y - h / 2, w, h);
       break;
     }
     case "pole": {

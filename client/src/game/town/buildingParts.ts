@@ -18,6 +18,7 @@ import type { Building, BuildingUse, LandmarkRole, Material } from "../../sim/to
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { CASING_HEAD_OUT, pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { isClear, noteFace } from "./faceLedger.js";
+import { paintOff } from "./paint.js";
 import { agingOf } from "./buildingWear.js";
 import { withMat, type MatName, type MatRef } from "./materials.js";
 import { attachmentsGeometry } from "./buildingAttach.js";
@@ -396,11 +397,14 @@ function addition(i: PartsIn): void {
   out.poly([wat(w, s0 - 0.1, top + 0.1, 0), wat(w, s1 + 0.1, top + 0.1, 0), wat(w, s1 + 0.1, low, depth + 0.2), wat(w, s0 - 0.1, low, depth + 0.2)], [w.nx * 0.4, 1, w.nz * 0.4], rc, roofSurf, { back: { colour: [0.42, 0.4, 0.36] } });
 }
 
+/** The rank of paint of a patch of siding: over a sill's streak (rank 2, `windowGeometry.ts`) and the wall's tone (rank 1). */
+const SIDING_PATCH_RANK = 3;
+
 /** A patch of newer siding where boards were replaced, a section of new roof, and a tarp weighed down on a neglected roof. */
 function repairs(i: PartsIn, age: number, neglect: number): void {
   const { b, refs, out } = i;
   if (i.detail !== "full") return;
-  // One wall has a patch of siding of another batch: a rectangle where the owner replaced boards (a roll: one wall of one house in four).
+  // One wall has a patch of siding of another batch: a rectangle where the owner replaced boards, flush with the rest (paint, a different shade of the wall's own surface; a roll: one wall of one house in four).
   if (b.material === "wood" && hash01(b.id, 530) < 0.28 + 0.2 * age) {
     // Not the front, and low on the wall, under the sills: it is a patch of siding, never over a window or the door.
     const k0 = Math.floor(hash01(b.id, 531) * refs.length);
@@ -410,7 +414,7 @@ function repairs(i: PartsIn, age: number, neglect: number): void {
       const s = 0.8 + hash01(b.id, 532) * (w.length - 2.6);
       const sf = i.wallSurface(k);
       const tint: Rgb = hash01(b.id, 533) < 0.5 ? [1.2, 1.18, 1.1] : [0.8, 0.82, 0.85];
-      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, Math.min(s + 1.1 + hash01(b.id, 535) * 0.9, w.length - 0.15), i.floorY + 0.55 + hash01(b.id, 534) * 0.3, 0.07, scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 });
+      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, Math.min(s + 1.1 + hash01(b.id, 535) * 0.9, w.length - 0.15), i.floorY + 0.55 + hash01(b.id, 534) * 0.3, paintOff(SIDING_PATCH_RANK), scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 }, { paint: SIDING_PATCH_RANK });
     }
   }
   // The roof: a patch of newer shingle, or a tarp. A tarp is on a roof that is neglected or that a storm has taken a part of (a roll for one in eight of the old).

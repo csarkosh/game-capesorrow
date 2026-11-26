@@ -62,7 +62,9 @@ export function unsafePatches(f: TownFaces, groundAt: (x: number, z: number) => 
   /** Two flat faces of different ranks are held apart by the rank (a fixed number of depth steps a rank), not by their distance: not a pair. */
   const ground = (q: NearPair): boolean => q.a.layer === "flat" && q.b.layer === "flat";
   const ranked = (q: NearPair): boolean => ground(q) && q.a.rank !== q.b.rank;
-  const found = patchesOf(pairs.filter((q) => !ground(q)), f.tris)
+  /** Two faces of the standing layers whose ranks of paint differ are held apart the same way (`paint.ts`: a rank a fixed number of depth steps, in the vertex stage): not a pair. Two of one rank are. */
+  const painted = (q: NearPair): boolean => q.a.layer !== "flat" && q.b.layer !== "flat" && q.a.paint !== q.b.paint;
+  const found = patchesOf(pairs.filter((q) => !ground(q) && !painted(q)), f.tris)
     .filter((p) => p.area >= RULE.area)
     .map((patch) => ({ patch, tall: high(patch.at) }));
   const flat = patchesOf(pairs.filter((q) => ground(q) && !ranked(q)), f.tris).filter((p) => p.area >= RULE.area).length;

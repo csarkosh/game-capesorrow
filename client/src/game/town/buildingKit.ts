@@ -30,9 +30,14 @@ export const wallRef = (ax: number, az: number, bx: number, bz: number, nx: numb
 /** The point `s` metres along the wall, at height `y` and `off` metres off its face. */
 export const wat = (w: WallRef, s: number, y: number, off: number): Vec3 => [w.ax + w.tx * s + w.nx * off, y, w.az + w.tz * s + w.nz * off];
 
-/** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). */
+/** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). Given `fx.paint` it is a sheet of paint (`paint.ts`), laid exactly where it is asked and left out of the ledger. */
 export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface | MatRef, fx?: Fx, inward = false): number {
   const k = inward ? -1 : 1;
+  // Paint lies flush on its face, held by its rank of paint (`paint.ts`): it is no face of the ledger, neither noted by it nor pushed out by it.
+  if (fx?.paint !== undefined) {
+    out.poly([wat(w, s0, y0, off), wat(w, s1, y0, off), wat(w, s1, y1, off), wat(w, s0, y1, off)], [w.nx * k, 0, w.nz * k], colour, surface, fx);
+    return off;
+  }
   // A face asked for where another already stands (a plate over a frame, a sticker over a plate) stands a step further out (`faceLedger.ts`).
   const a = wat(w, s0, y0, off);
   const b = wat(w, s1, y0, off);

@@ -29,6 +29,13 @@
  * builders cut a mark off the marks of its rank (`Surface.lay`), so there are none. Up-facing faces are compared in plan (a slab raised a
  * few millimetres over the ramp beside it, on a slope, overlaps it along their normals by the step's width and does not on the screen).
  *
+ * **What is held apart in the standing layers.** Paint on a wall or a roof (grime bands, streaks under a sill, patches, painted signs, marks on a
+ * foundation, stains) lies flush on its face, 2 mm a rank off it (`paint.ts`), and carries a rank of paint in the alpha of its vertices' colour,
+ * which the vertex stage draws that many steps ahead (`townMaterial.ts`, `PAINT_UNITS`), as it does the flat ground's rank: so two faces of the
+ * standing layers whose ranks of paint differ (a sheet of paint and the wall it lies on, which is rank 0, or two sheets of two ranks) are held apart
+ * by the rank, at every distance, and are not a pair here. Two faces of one rank of paint that overlap are, and fail: the builders order the ranks
+ * or cut one sheet against the other so that there are none.
+ *
  * **Nothing is left.** Every count is 0, on five seeds on the full tier and one on the low, and no triangle is laid twice (`MeshBuilder.finish`
  * is a copy: a place made twice is shared or left out by its builders, and the last test holds the whole town to it).
  */
@@ -110,6 +117,29 @@ describe("the rank of the flat ground", () => {
     expect(flatFaces(0, 0).flat).toBeGreaterThan(0);
     expect(flatFaces(0, 1).flat).toBe(0);
     expect(flatFaces(2, 1).flat).toBe(0);
+  });
+});
+
+describe("the rank of paint on a standing face", () => {
+  const sheets = (paintA: number, paintB: number): ReturnType<typeof unsafePatches> => {
+    const one = (off: number, paint: number, c: [number, number, number]): Tri[] => {
+      const m = new MeshBuilder();
+      m.poly([[0, 0, off], [2, 0, off], [2, 2, off], [0, 2, off]], [0, 0, 1], c, undefined, paint === 0 ? undefined : { paint });
+      return trianglesOf(m.finish(), "solid");
+    };
+    const tris = [...one(0, paintA, [0.4, 0.3, 0.2]), ...one(0.002, paintB, [0.1, 0.1, 0.1])];
+    return unsafePatches({ tris, seed: 0, detail: "full", vertices: 0, triangles: 0 }, () => 0, -100);
+  };
+  it("counts two faces of one rank of paint that overlap, and not two of different ranks", () => {
+    expect(sheets(1, 1).found.length).toBeGreaterThan(0);
+    expect(sheets(0, 0).found.length).toBeGreaterThan(0);
+    expect(sheets(0, 1).found).toHaveLength(0);
+    expect(sheets(3, 2).found).toHaveLength(0);
+  });
+  it("reads the rank back from the alpha it is written in", () => {
+    const m = new MeshBuilder();
+    m.poly([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], [0, 0, 1], [1, 1, 1], undefined, { paint: 5 });
+    expect(trianglesOf(m.finish(), "solid")[0]?.paint).toBe(5);
   });
 });
 
