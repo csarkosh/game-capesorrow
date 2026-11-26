@@ -26,7 +26,7 @@ import { constrainTrestle } from "./railDeck.js";
 import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
-import { constrainProps } from "./propSolid.js";
+import { constrainProps, propSolids } from "./propSolid.js";
 
 const abs = Math.abs;
 const min = Math.min;
@@ -165,9 +165,9 @@ type Point = { x: number; y: number; z: number };
 
 /**
  * Moves a hull out of the building `i` it overlaps and takes the velocity's part into it away. Returns whether
- * it acted; a hull that touches nothing is left exactly as it was.
+ * it acted; a hull that touches nothing is left exactly as it was. `radius` is the circle's (the player's hull by default).
  */
-export function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point): boolean {
+export function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point, radius: number = HULL_RADIUS): boolean {
   const r = solids.rects;
   const o = i * STRIDE;
   const ux = r[o + 2] as number;
@@ -184,7 +184,7 @@ export function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point): 
   const eu = lu - qu;
   const ev = lv - qv;
   const d2 = eu * eu + ev * ev;
-  if (d2 >= HULL_RADIUS * HULL_RADIUS) return false;
+  if (d2 >= radius * radius) return false;
   let nu: number;
   let nv: number;
   let push: number;
@@ -193,7 +193,7 @@ export function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point): 
     const d = sqrt(d2);
     nu = eu / d;
     nv = ev / d;
-    push = HULL_RADIUS - d + CLEAR;
+    push = radius - d + CLEAR;
   } else {
     // The centre is inside, or on an edge: out by the nearest side.
     const pu = hu - abs(lu);
@@ -201,11 +201,11 @@ export function pushOut(solids: TownSolids, i: number, pos: Point, vel: Point): 
     if (pu <= pv) {
       nu = lu < 0 ? -1 : 1;
       nv = 0;
-      push = pu + HULL_RADIUS + CLEAR;
+      push = pu + radius + CLEAR;
     } else {
       nu = 0;
       nv = lv < 0 ? -1 : 1;
-      push = pv + HULL_RADIUS + CLEAR;
+      push = pv + radius + CLEAR;
     }
   }
   // The wall's normal in the world: nu along the building's axis, nv across it.
@@ -245,6 +245,45 @@ export function townConstrain(world: { readonly forest: { readonly seed: number 
     if (constrainTrestle(world.forest.seed, pos, vel)) moved = true;
     if (!moved) return;
   }
+}
+
+/**
+ * A circle of `radius` moved out of every building and prop its box touches: every cell the circle reaches is read, not
+ * the one under its centre, so a circle wider than the grid's margin still meets what it overlaps. Passes, as `townConstrain`'s.
+ * Returns whether it moved.
+ */
+export function constrainCircle(worldSeed: number, pos: Point, vel: Point, radius: number): boolean {
+  const solids = townSolids(worldSeed);
+  const props = propSolids(worldSeed).full;
+  let any = false;
+  for (let pass = 0; pass < SOLID_PASSES; pass++) {
+    // The props first, then the buildings, as `townConstrain` does: where the two wedge a circle the buildings keep it out.
+    const inProps = pushGrid(props, pos, vel, radius);
+    const inWalls = pushGrid(solids, pos, vel, radius);
+    if (!inProps && !inWalls) return any;
+    any = true;
+  }
+  return any;
+}
+
+/** Moves the circle out of every box listed in the cells it reaches. Returns whether it moved. */
+function pushGrid(grid: TownSolids, pos: Point, vel: Point, radius: number): boolean {
+  if (grid.cols === 0) return false;
+  const c0 = max(0, floor((pos.x - radius - grid.x0) / SOLID_CELL));
+  const c1 = min(grid.cols - 1, floor((pos.x + radius - grid.x0) / SOLID_CELL));
+  const r0 = max(0, floor((pos.z - radius - grid.z0) / SOLID_CELL));
+  const r1 = min(grid.rows - 1, floor((pos.z + radius - grid.z0) / SOLID_CELL));
+  let moved = false;
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const cell = r * grid.cols + c;
+      const end = grid.start[cell + 1] as number;
+      for (let k = grid.start[cell] as number; k < end; k++) {
+        if (pushOut(grid, grid.list[k] as number, pos, vel, radius)) moved = true;
+      }
+    }
+  }
+  return moved;
 }
 
 /** The solid buildings near a place: for a test, which asks what the grid names. */

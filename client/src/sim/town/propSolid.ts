@@ -6,6 +6,7 @@
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only; the cache is only a lookup.
  */
 import { gridOf, pushOut, SOLID_CELL, STRIDE, type TownSolids } from "./solid.js";
+import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
 
@@ -50,8 +51,8 @@ export function propSolids(worldSeed: number): PropGrid {
   return made;
 }
 
-/** Moves a hull out of every prop box of its cell it overlaps. Returns whether it moved. */
-export function constrainProps(worldSeed: number, pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }): boolean {
+/** Moves a hull of `radius` (the player's by default) out of every prop box of its cell it overlaps. Returns whether it moved. */
+export function constrainProps(worldSeed: number, pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }, radius: number = HULL_RADIUS): boolean {
   const solids = propSolids(worldSeed);
   const c = Math.floor((pos.x - solids.x0) / SOLID_CELL);
   const r = Math.floor((pos.z - solids.z0) / SOLID_CELL);
@@ -60,7 +61,7 @@ export function constrainProps(worldSeed: number, pos: { x: number; y: number; z
   let moved = false;
   const full = solids.full;
   for (let k = solids.start[cell] as number; k < (solids.start[cell + 1] as number); k++) {
-    if (pushOut(full, solids.list[k] as number, pos, vel)) moved = true;
+    if (pushOut(full, solids.list[k] as number, pos, vel, radius)) moved = true;
   }
   return moved;
 }
