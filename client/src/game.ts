@@ -16,13 +16,13 @@ import type { WorldRenderer } from "@csarkosh/engine/game/rendererTypes";
 import type { SessionGame, SessionHost, SessionSide } from "@csarkosh/engine/game/sessionGame";
 import { createClientSession, type ClientSession } from "@csarkosh/engine/net/client";
 import { createHostSession, type HostSession } from "@csarkosh/engine/net/host";
-import { NO_ACTIONS } from "@csarkosh/engine/sim/core";
 import yard from "../levels/yard.json" with { type: "json" };
 import { startClock, stepClock } from "./game/dayClock.js";
 import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
 import { CAPE_LOOK } from "./look.js";
 import { WALK, type WalkSnapshot } from "./net.js";
+import { INTERACT_BIT, LAMP_BIT } from "./sim/car/tuning.js";
 import { townStart } from "./sim/town/start.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
@@ -96,7 +96,7 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   /** A forest world carries a level of its own with no brushes; this is the least the parser takes. */
   level: yard as unknown,
   modes: WALK_MODES,
-  actions: NO_ACTIONS,
+  actions: { interact: INTERACT_BIT, lamp: LAMP_BIT },
   /** The town's start, on the made ground at the cove (the rules' spawn searches out from the same place). */
   startOf: townStart,
   weatherIsOwn: () => false,

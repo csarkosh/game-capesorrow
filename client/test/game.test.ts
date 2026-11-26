@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import "../src/terrain.js";
 import { noGameSound } from "@csarkosh/engine/game/ambientAudio";
 import { isMode } from "@csarkosh/engine/game/modeList";
-import { NO_ACTIONS, type InputCommand } from "@csarkosh/engine/sim/core";
+import type { InputCommand } from "@csarkosh/engine/sim/core";
 import { turnedAwayModel } from "@csarkosh/engine/game/turnedAwayModel";
 import { engineCatalog } from "@csarkosh/engine/testing/engineFiles";
 import { createForest } from "@csarkosh/engine/sim/forest";
@@ -15,6 +15,7 @@ import { WALK } from "../src/net.js";
 import { CAPE_PAGE, createCapePage } from "../src/page.js";
 import type { WalkState, Walker } from "../src/sim.js";
 import { newRide } from "../src/sim/car/rules.js";
+import { INTERACT_BIT, LAMP_BIT } from "../src/sim/car/tuning.js";
 import { townStart } from "../src/sim/town/start.js";
 
 /**
@@ -27,13 +28,13 @@ const text = (name: string): string => readFileSync(SRC + name, "utf8");
 const code = (name: string): string => text(name).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the empty game as the page that runs a session is handed it", () => {
-  it("has a level the parser takes, one mode, no actions of its own, the town's start and no weather of its own", () => {
+  it("has a level the parser takes, one mode, the car's two actions, the town's start and no weather of its own", () => {
     const level = parseLevel(EMPTY_GAME.level);
     expect([level.id, level.brushes.length, level.playerSpawns.length]).toEqual(["empty-yard", 1, 1]);
     expect(EMPTY_GAME.modes).toBe(WALK_MODES);
     expect(isMode(WALK_MODES, WALK_MODES.initial)).toBe(true);
     expect(WALK_MODES.key.startsWith("capesorrow.")).toBe(true);
-    expect(EMPTY_GAME.actions).toBe(NO_ACTIONS);
+    expect(EMPTY_GAME.actions).toEqual({ interact: INTERACT_BIT, lamp: LAMP_BIT });
     expect(EMPTY_GAME.startOf(7)).toEqual(townStart(7));
     expect(EMPTY_GAME.weatherIsOwn("walk")).toBe(false);
   });
