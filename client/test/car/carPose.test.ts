@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AXLE_FRONT, AXLE_REAR, TRACK, WHEEL_RADIUS } from "../../src/sim/car/tuning.js";
 import type { Car } from "../../src/sim/car/types.js";
-import { carPose, newCarPose, rollAfter, wheelMatrix, type CarPose } from "../../src/game/car/carPose.js";
+import { carPose, halfTurnAboutY, newCarPose, rollAfter, wheelMatrix, type CarPose } from "../../src/game/car/carPose.js";
 
 function car(over: Partial<Car> = {}): Car {
   return { id: 1, x: 10, y: 0, z: 20, hx: 1, hz: 0, speed: 0, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, seats: [0, 0, 0, 0], ...over };
@@ -177,5 +177,14 @@ describe("the roll", () => {
     const r = rollAfter(6.2, 30, 1);
     expect(r).toBeGreaterThanOrEqual(0);
     expect(r).toBeLessThan(2 * Math.PI);
+  });
+});
+
+describe("the half turn of the loaded model", () => {
+  it("negates x and z of each point and leaves y and a tangent's handedness, on a copy", () => {
+    const a = new Float32Array([1, 2, 3, 4, 5, 6]);
+    expect(Array.from(halfTurnAboutY(a, 3))).toEqual([-1, 2, -3, -4, 5, -6]);
+    expect(Array.from(a)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(Array.from(halfTurnAboutY(new Float32Array([1, 2, 3, -1, 4, 5, 6, 1]), 4))).toEqual([-1, 2, -3, -1, -4, 5, -6, 1]);
   });
 });

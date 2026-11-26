@@ -33,7 +33,7 @@ import { MODEL_PAINT } from "../town/props/vehicleLook.js";
 import { manifestOf } from "../town/props/vehicleManifest.js";
 import { vehiclePlugin, type VehicleGeom } from "../town/props/vehicleMaterial.js";
 import { geometryOf, type VehiclePartsHost } from "../town/props/vehicleParts.js";
-import { carPose, newCarPose, rollAfter, splitWheels, wheelMatrix, type CarPose, type WheelPart } from "./carPose.js";
+import { carPose, halfTurnAboutY, newCarPose, rollAfter, splitWheels, wheelMatrix, type CarPose, type WheelPart } from "./carPose.js";
 
 export const CAR_MODEL = "vehicle.sedan_a";
 /** The most cars drawn at once: the room each mesh keeps in its instances. */
@@ -213,7 +213,12 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
     );
   }
 
-  function* make(parts: readonly ModelPart[]): Slices {
+  function* make(loaded: readonly ModelPart[]): Slices {
+    // The loader's mirror leaves the model's nose at -x: the car is drawn from the model turned half a circle about its up (`halfTurnAboutY`).
+    const parts = loaded.map((part): ModelPart => ({
+      ...part, positions: halfTurnAboutY(part.positions, 3), normals: halfTurnAboutY(part.normals, 3),
+      tangents: part.tangents === null ? null : halfTurnAboutY(part.tangents, 4),
+    }));
     const geom: VehicleGeom = geometryOf(CAR_MODEL, parts);
     const look = new Float32Array([PAINT[0], PAINT[1], PAINT[2], 0, 0, 0, 0.37, 0, 0, 0, 0, 0]);
     const data = new Float32Array(CAPACITY * FLEET_DATA_FLOATS);

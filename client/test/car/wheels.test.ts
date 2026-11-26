@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { splitWheels } from "../../src/game/car/carPose.js";
 import { manifestOf } from "../../src/game/town/props/vehicleManifest.js";
+import { drawnFrom, loaded, sedanFile, type FilePart } from "./sedanFile.js";
 import { WHEEL_RADIUS } from "../../src/sim/car/tuning.js";
 
 const WHEELS = manifestOf("vehicle.sedan_a").wheels;
@@ -81,26 +81,11 @@ describe("cutting the tyre mesh into its wheels", () => {
     expect(parts.map((w) => w.indices.length).sort()).toEqual([36, 36, 36, 39]);
   });
 
-  it("cuts the real sedan's tyre mesh into four clean wheels: no triangle straddles two", () => {
-    const file = new URL("../../assets/models/vehicle.sedan_a.glb", import.meta.url);
-    const b = fs.readFileSync(file);
-    const jl = b.readUInt32LE(12);
-    const gltf = JSON.parse(b.subarray(20, 20 + jl).toString()) as {
-      materials: { name: string }[];
-      meshes: { primitives: { material: number; indices: number; attributes: { POSITION: number } }[] }[];
-      accessors: { bufferView: number; byteOffset?: number; count: number; componentType: number }[];
-      bufferViews: { byteOffset?: number }[];
-    };
-    const bin = b.subarray(20 + jl + 8);
-    const prim = gltf.meshes.flatMap((m) => m.primitives).find((p) => gltf.materials[p.material]?.name === "tyre");
-    expect(prim).toBeDefined();
-    const p = prim as NonNullable<typeof prim>;
-    const pa = gltf.accessors[p.attributes.POSITION] as (typeof gltf.accessors)[number];
-    const po = bin.byteOffset + ((gltf.bufferViews[pa.bufferView] as { byteOffset?: number }).byteOffset ?? 0) + (pa.byteOffset ?? 0);
-    const positions = new Float32Array(bin.buffer.slice(po, po + pa.count * 12));
-    const ia = gltf.accessors[p.indices] as (typeof gltf.accessors)[number];
-    const io = bin.byteOffset + ((gltf.bufferViews[ia.bufferView] as { byteOffset?: number }).byteOffset ?? 0) + (ia.byteOffset ?? 0);
-    const indices = ia.componentType === 5125 ? new Uint32Array(bin.buffer.slice(io, io + ia.count * 4)) : Uint32Array.from(new Uint16Array(bin.buffer.slice(io, io + ia.count * 2)));
+  it("cuts the real sedan's tyre mesh, as the car is drawn from it, into four clean wheels: no triangle straddles two", () => {
+    const tyre = sedanFile().get("tyre") as FilePart;
+    // As the loader gives it (the mirror of x) and the car turns it (a half turn), not as the file has it.
+    const positions = drawnFrom(tyre.positions);
+    const indices = tyre.indices;
     const parts = splitWheels(positions, indices, WHEELS);
     expect(parts).toHaveLength(4);
     expect(parts.reduce((n, w) => n + w.indices.length, 0)).toBe(indices.length);
@@ -109,5 +94,13 @@ describe("cutting the tyre mesh into its wheels", () => {
     // No vertex had to be copied for a second wheel: the mesh's triangles are all clean.
     expect(parts.reduce((n, w) => n + w.source.length, 0)).toBeLessThanOrEqual(positions.length / 3);
     for (const w of parts) expect(radiusOf(w.positions)).toBeLessThan(WHEEL_RADIUS * 1.1);
+  });
+
+  it("cuts the mesh as the loader gives it (nose at -x) badly: the wheels would sit off their axles by the axles' difference", () => {
+    // Why the turn is needed: uncorrected, the tyre at the nose end is cut about the rear axle's place.
+    const tyre = sedanFile().get("tyre") as FilePart;
+    const parts = splitWheels(loaded(tyre.positions), tyre.indices, WHEELS);
+    const worst = Math.max(...parts.map((w) => radiusOf(w.positions)));
+    expect(worst).toBeGreaterThan(WHEEL_RADIUS * 1.5);
   });
 });

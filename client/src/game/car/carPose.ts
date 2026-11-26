@@ -140,6 +140,23 @@ export function wheelMatrix(body: ArrayLike<number>, centre: readonly [number, n
   out[at + 15] = 1;
 }
 
+/**
+ * A model's vertices as the car is drawn from them: each point (and each normal or tangent) turned half a circle about the model's up,
+ * x and z negated, a copy. Babylon Lite's glTF loader puts a mirror of x on a model's root (`__root__`, scaling (-1, 1, 1)), so a file
+ * that has its nose at +x with its left side at -z (`tools/models/build.py`) is loaded with its nose at -x and its left side still at -z:
+ * a mirror image of the car, with the nose at the tail. A half turn brings the nose to +x and the left side to +z, the car's left
+ * (-hz, hx), which is the file as the build means it: the manifest's wheel places (x along, -z across the loaded file's left) then hold.
+ * `stride` is 3 for positions and normals and 4 for tangents (whose fourth float, the handedness, is left as it is: a turn is no mirror).
+ */
+export function halfTurnAboutY(array: Float32Array, stride: number): Float32Array {
+  const out = array.slice();
+  for (let i = 0; i + 2 < out.length; i += stride) {
+    out[i] = -(out[i] as number);
+    out[i + 2] = -(out[i + 2] as number);
+  }
+  return out;
+}
+
 /** The roll after `dt` seconds at `speed` (m/s along the heading): the angle grows by the distance over the radius, kept within a turn. */
 export function rollAfter(roll: number, speed: number, dt: number): number {
   const turn = 2 * Math.PI;
