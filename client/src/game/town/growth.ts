@@ -11,6 +11,7 @@
  * Blades stand at least 6 cm off any wall and lean away from it (the depth buffer's finder, `depthSeparation.test.ts`, holds the whole town to zero faces
  * within 2.45 cm that look one way), and no two blades of a tuft look the same way.
  */
+import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { hash01 } from "./meshBuilder.js";
 import { withMat } from "./materials.js";
@@ -150,6 +151,8 @@ export function growthGeometry(g: TownGround, solid: Sink, detail: Detail): void
   const az = g.anchor.z;
   const plan = g.plan;
   const lay = (s: Site): void => {
+    // Nothing grows on the highway's bed, which is paved.
+    if (Math.abs(s.x - g.roadX(s.z)) < ROAD_BED_HALF + 0.1) return;
     // Low tier: a third of the sites, three blades each, taller.
     const roll = hash01(s.seed, 777);
     const count = s.n < 1 ? (roll < s.n ? 1 : 0) : Math.floor(s.n + (roll < s.n - Math.floor(s.n) ? 1 : 0));

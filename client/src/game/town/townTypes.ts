@@ -16,7 +16,7 @@ export type TownGround = {
   readonly anchor: { readonly x: number; readonly z: number };
   /** The ground's surface height at a world position, from the engine's ground field. */
   heightAt(x: number, z: number): number;
-  /** The x of the highway's centre line at a world z (the engine paints the road: the town's streets end at its edge). */
+  /** The x of the highway's centre line at a world z (the engine shapes and paints the road: the town's streets end at its bed's edge, and the town paves the bed through the town). */
   roadX(z: number): number;
   /** The top of the deck over a world position (the plan's decks, `sim/town/decks.ts`), or minus infinity where none stands over it. */
   deckAt(x: number, z: number): number;

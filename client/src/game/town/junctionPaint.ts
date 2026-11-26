@@ -3,12 +3,10 @@
  * just outside the junction's pavement), a stop line 4 ft before the crosswalk (or, with none, a little clear of the pavement) on each
  * leg that stops, and the dotted extension of the centre line of the main street or the avenue through the junction.
  *
- * A crosswalk across the highway lies on the engine's road surface, so its bars lie `ENGINE_MARK_LIFT` over the ground (the
- * engine's road is the ground's own height there).
+ * The highway's own legs have no crosswalk or stop line: the highway is paved through the town (`highwayGeometry.ts`) and its marks are laid there.
  */
 import { RANK, type Over } from "./groundSurfaces.js";
 import { hashN, smooth } from "./groundNoise.js";
-import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { CROSSWALK_WIDTH, STOP_LINE_WIDTH } from "../../sim/town/junctions.js";
 import { onLeg } from "../../sim/town/junctionShape.js";
 import type { JunctionLeg } from "../../sim/town/types.js";
@@ -23,8 +21,6 @@ export const BAR_WIDTH = 0.61;
 export const BAR_GAP_MAX = 1.52;
 /** A crosswalk's marks keep this far from the roadway's edge, metres. */
 const BAR_MARGIN = 0.3;
-/** The lift of paint on the engine's road surface, metres: the lift the railroad crossing's stop line takes over the same road. */
-export const ENGINE_MARK_LIFT = 0.135;
 
 /** The offsets across a roadway at which a ladder's bars begin: bars of `BAR_WIDTH` with gaps no wider than `BAR_GAP_MAX`, from `t0` to `t1`. */
 export function barOffsets(t0: number, t1: number): number[] {
@@ -37,11 +33,8 @@ export function barOffsets(t0: number, t1: number): number[] {
 
 export function junctionPaint(g: TownGround, surf: Surface, junctions: readonly WJunction[], pavements: RoadSet): void {
   /** Paint on the roadway, without any junction's pavement under it. */
-  const paint = (pts: P2[], lift: number, colour: typeof PAINT_WHITE, engine = false, over?: Over): void => {
-    for (const piece of engine ? [pts] : pavements.free(pts)) {
-      if (engine) surf.onRoad(piece, lift, colour, { rank: RANK.paint });
-      else surf.flat(piece, lift, colour, { rank: RANK.paint, ...over });
-    }
+  const paint = (pts: P2[], lift: number, colour: typeof PAINT_WHITE, over?: Over): void => {
+    for (const piece of pavements.free(pts)) surf.flat(piece, lift, colour, { rank: RANK.paint, ...over });
   };
   const lift = ROADWAY_LIFT + MARK_OVER;
   /** A main street or an avenue is kept up (its paint is faint in the wheel paths and broken, never gone); a back street may lose its bars. */
@@ -52,7 +45,7 @@ export function junctionPaint(g: TownGround, surf: Surface, junctions: readonly 
   for (const j of junctions) {
     if (j.polygon.length < 3) continue;
     for (const l of j.legs) {
-      if (l.marked) crosswalk(paint, j, l, lift, Math.imul(j.id + 11, 40503) ^ Math.imul(l.street + 3, 9973), kept(l.street));
+      if (l.marked && !l.engine) crosswalk(paint, l, lift, Math.imul(j.id + 11, 40503) ^ Math.imul(l.street + 3, 9973), kept(l.street));
       if (l.stops && l.stopLine !== null) {
         // The stop line is faded and broken like the bars, a piece at a time.
         const sk = Math.imul(j.id + 17, 40503) ^ Math.imul(l.street + 5, 9973);
@@ -63,7 +56,7 @@ export function junctionPaint(g: TownGround, surf: Surface, junctions: readonly 
           const w = wornPiece(sk, i, (t0 + t1) / 2, l.half, kept(l.street));
           if (w === null) continue;
           const pts: P2[] = [onLeg(l, l.stopLine, t0), onLeg(l, l.stopLine + STOP_LINE_WIDTH, t0), onLeg(l, l.stopLine + STOP_LINE_WIDTH, t1), onLeg(l, l.stopLine, t1)].map((v) => [v.x, v.z]);
-          paint(pts, lift, PAINT_WHITE, false, w);
+          paint(pts, lift, PAINT_WHITE, w);
         }
       }
     }
@@ -91,30 +84,11 @@ function wornPiece(key: number, i: number, t: number, half: number, kept: boolea
   return { layer: "asphalt", tint: [0.62 * k * 2.1, 0.62 * k * 2.1, 0.6 * k * 2.1], dirt: 0.1 + 0.6 * wornTo, wear: 0.04 };
 }
 
-function crosswalk(paint: (pts: P2[], lift: number, colour: typeof PAINT_WHITE, engine?: boolean, over?: Over) => void, j: WJunction, l: JunctionLeg, lift: number, wkey: number, kept: boolean): void {
-  let t0: number;
-  let t1: number;
-  let at = lift;
-  if (l.engine) {
-    // Across the highway's bed, on the side away from the streets.
-    const other = j.legs.find((m) => !m.engine);
-    const side = other === undefined ? 1 : other.dx * -l.dz + other.dz * l.dx > 0 ? -1 : 1;
-    const a = BAR_MARGIN;
-    const b = ROAD_BED_HALF * 2 - BAR_MARGIN;
-    t0 = side > 0 ? a : -b;
-    t1 = side > 0 ? b : -a;
-    at = ENGINE_MARK_LIFT;
-  } else {
-    t0 = -l.half + BAR_MARGIN;
-    t1 = l.half - BAR_MARGIN;
-  }
+function crosswalk(paint: (pts: P2[], lift: number, colour: typeof PAINT_WHITE, over?: Over) => void, l: JunctionLeg, lift: number, wkey: number, kept: boolean): void {
+  const t0 = -l.half + BAR_MARGIN;
+  const t1 = l.half - BAR_MARGIN;
   let bi = 0;
   for (const t of barOffsets(t0, t1)) {
-    if (l.engine) {
-      const pts: P2[] = [onLeg(l, l.mouth, t), onLeg(l, l.mouth + CROSSWALK_WIDTH, t), onLeg(l, l.mouth + CROSSWALK_WIDTH, t + BAR_WIDTH), onLeg(l, l.mouth, t + BAR_WIDTH)].map((v) => [v.x, v.z]);
-      paint(pts, at, PAINT_WHITE, true);
-      continue;
-    }
     // Each bar is laid in pieces along its length across the leg (the bars run along the leg, so a piece is a stretch of the bar), worn by the wheel paths.
     const n = Math.max(1, Math.round(CROSSWALK_WIDTH / 1.6));
     for (let i = 0; i < n; i++) {
@@ -123,7 +97,7 @@ function crosswalk(paint: (pts: P2[], lift: number, colour: typeof PAINT_WHITE, 
       const w = wornPiece(wkey, bi * 7 + i, t + BAR_WIDTH / 2, l.half, kept);
       if (w === null) continue;
       const pts: P2[] = [onLeg(l, m0, t), onLeg(l, m1, t), onLeg(l, m1, t + BAR_WIDTH), onLeg(l, m0, t + BAR_WIDTH)].map((v) => [v.x, v.z]);
-      paint(pts, at, PAINT_WHITE, false, w);
+      paint(pts, lift, PAINT_WHITE, w);
     }
     bi++;
   }

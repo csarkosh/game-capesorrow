@@ -18,6 +18,7 @@ import type { JunctionCorner, JunctionLeg, Vec } from "../../sim/town/types.js";
 import { clamp01, hashN, hashS, smooth } from "./groundNoise.js";
 import { RANK, type Over } from "./groundSurfaces.js";
 import type { Rgb } from "./meshBuilder.js";
+import { bedFillers } from "./highwayGeometry.js";
 import { withMat } from "./materials.js";
 import { ASPHALT, CURB, DOME, GRAVEL, PLANTER, SIDEWALK } from "./palette.js";
 import { CURB_WIDTH, OPEN_GROUND_LIFT, ROADWAY_LIFT, WALK_LIFT } from "./streetGeometry.js";
@@ -77,6 +78,12 @@ export function junctionGeometry(g: TownGround, surf: Surface, solid: Sink, pave
         group: "base",
       };
       surf.fill(pts, ROADWAY_LIFT, ASPHALT, surf.depthFor(pts, 9, 2), over);
+      // Where its edge on the highway lies out of the bed, the ground between is its own, so the highway's paving (laid on the bed) meets it with no gap.
+      for (const piece of bedFillers(g, j)) {
+        road.note(piece);
+        pavements.note(piece);
+        surf.flat(piece, ROADWAY_LIFT, ASPHALT, over);
+      }
     }
     for (const k of j.corners) corner(g, surf, j.legs, k, key);
     for (const l of j.closed) closedLeg(surf, solid, l, road);
