@@ -24,6 +24,7 @@ import type { Building, BuildingUse, Unit } from "../../sim/town/types.js";
 import type { Detail, FillReport } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
 import { bulkheadWear } from "./buildingWear.js";
+import { NEVER_CODE, isHome, windowCodes } from "./windowNight.js";
 
 export type FrontIn = {
   readonly report?: FillReport;
@@ -250,6 +251,8 @@ export function planFront(i: FrontIn): FrontPlan {
     if (upperH < 1.5) continue;
     const base = floorY + groundStoreyTop + (up.storey - 1) * upperH;
     const wh = Math.min(1.7, upperH * 0.62);
+    // The floor's own household lights its windows in the evening (flats and hotel rooms); an office's or a store room's are dark at night.
+    const nights = isHome(b) && (up.use === "apartments" || up.use === "hotel rooms") ? windowCodes(b.id * 100 + up.storey, up.windows) : up.windows.map(() => NEVER_CODE);
     up.windows.forEach((wnd, k) => {
       const y0 = base + (upperH - wh) * 0.42;
       const y1 = y0 + wh;
@@ -260,7 +263,7 @@ export function planFront(i: FrontIn): FrontPlan {
       const replaced = hash01(b.id * 41 + up.storey, 435) < (old ? 0.35 : 0.1) && k % 2 === 0;
       holes.push({ s0: sa, s1: sb, y0, y1 });
       drawers.push(() => {
-        drawWindow(winCtx, w, sa, sb, y0, y1, wnd.state, wnd.sill, up.storey * 50 + k, replaced);
+        drawWindow(winCtx, w, sa, sb, y0, y1, wnd.state, wnd.sill, up.storey * 50 + k, replaced, "none", false, { night: nights[k] as number });
         if (full && brick && !replaced) {
           // A stone sill and a lintel course over each opening of an old brick block.
           wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.1, y0 - 0.02, 0, 0.1, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");

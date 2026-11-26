@@ -25,6 +25,7 @@ import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
 import type { Detail, TownGround } from "./townTypes.js";
 import { noteHouse, type HouseSeam } from "./houseSeam.js";
+import { hasPorch } from "./windowNight.js";
 
 export type PartsIn = {
   readonly g: TownGround;
@@ -124,7 +125,7 @@ function housePart(i: PartsIn, full: boolean): void {
   let seamDoor: { s: number; floorY: number; half: number; out: number; porch: { s0: number; s1: number } | null } | null = null;
   if (i.xf !== null && door !== null) {
     const sw = stationOf(front, i.xf, door.s);
-    const porch = b.era >= 1900 && b.era < 1950 && hash01(b.id, 501) < 0.6;
+    const porch = hasPorch(b);
     const rise = Math.max(0, i.frontFloorY - i.g.heightAt(front.ax + front.tx * sw + front.nx * 1.0, front.az + front.tz * sw + front.nz * 1.0));
     if (porch) {
       // A porch: a deck at the floor's height, two posts and a roof of its own sloping to the front, a rail. One in six was closed in, in another siding.

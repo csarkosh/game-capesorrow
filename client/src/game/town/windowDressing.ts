@@ -22,7 +22,7 @@ export const STEP = 0.025;
 const SLAT_COLOURS: readonly Rgb[] = [[0.8, 0.77, 0.68], [0.86, 0.86, 0.83], [0.58, 0.48, 0.34], [0.7, 0.7, 0.72], [0.3, 0.3, 0.32]];
 const PAPER: readonly Rgb[] = [[0.78, 0.66, 0.46], [0.84, 0.8, 0.7], [0.72, 0.6, 0.4]];
 
-export type Behind = { readonly out: MeshBuilder; readonly w: WallRef; readonly detail: Detail; readonly seed: number; /** The glass's own offset; things behind it are at `glass - STEP * k`. */ readonly glass: number; readonly lit: boolean };
+export type Behind = { readonly out: MeshBuilder; readonly w: WallRef; readonly detail: Detail; readonly seed: number; /** The glass's own offset; things behind it are at `glass - STEP * k`. */ readonly glass: number; readonly lit: boolean; /** A home's window: the glow its covering has when its light is on (its night code, `windowNight.ts`, says when), in the place of the room's. */ readonly glow?: number };
 
 const at = (b: Behind, k: number): number => b.glass - STEP * k;
 
@@ -32,7 +32,7 @@ export function slatBlinds(b: Behind, sa: number, sb: number, top: number, drop:
     const { out, w, seed } = b;
     const full = b.detail === "full";
     const off = at(b, 1.5);
-    const glow = b.lit ? 0.5 : 0.1;
+    const glow = b.glow ?? (b.lit ? 0.5 : 0.1);
     const warm: Rgb = b.lit ? [col[0] * 1.08, col[1] * 1.0, col[2] * 0.88] : col;
     // The head rail and the stack of raised slats, a box at the top.
     const stack = 0.05 + (full ? hash01(seed, 600) * 0.05 : 0.04);
@@ -74,7 +74,7 @@ export function verticalBlinds(b: Behind, sa: number, sb: number, top: number, b
   withMat("cloth", () => {
     const { out, w, seed } = b;
     const off = at(b, 2.5);
-    const glow = b.lit ? 0.5 : 0.1;
+    const glow = b.glow ?? (b.lit ? 0.5 : 0.1);
     const wid = sb - sa;
     if (b.detail !== "full") {
       // The low tier: one pale panel for the whole set.

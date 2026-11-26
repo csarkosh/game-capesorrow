@@ -2,7 +2,7 @@
  * A window as a thing with a depth, never a dark rectangle: a hole through the wall with a reveal, the frame and trim of its age (painted
  * wood with trim boards and a sill, or the white vinyl of a replacement), and a pane of glass in the blended layer that reflects the sky.
  * Behind a home's glass there is nothing to see into: the whole opening is closed right behind it by curtains drawn across (a few colours,
- * plain, in folds or in stripes, some glowing as if a lamp is on), blinds fully down, or a dark window by day (an opaque cool grey, so the
+ * plain, in folds or in stripes, lit from within as if a lamp is on in the evening by the window's own night code and not by day), blinds fully down, or a dark window by day (an opaque cool grey, so the
  * sky on the glass and its grime are what is seen), as the plan's `WindowTreatment` says. A shop's glass shows the unit's room; boards go
  * over a boarded window; a broken one has shards left in the frame over an opaque dark backing. A plant or a lamp stands on the sill
  * where the plan puts one, in front of the covering.
@@ -21,6 +21,7 @@ import type { Surface } from "./townSurface.js";
 import { standOff } from "./faceLedger.js";
 import { sillStreak } from "./buildingWear.js";
 import type { Detail, FillReport } from "./townTypes.js";
+import { NEVER_CODE, windowLight } from "./windowNight.js";
 
 /** The wall's surface (its texture frame, wear), for a part laid in the same material as the wall. */
 export type SurfaceMaker = (w: WallRef) => Surface;
@@ -29,7 +30,8 @@ export type WinCtx = { report?: FillReport; out: MeshBuilder; glass: MeshBuilder
 
 /** What a window is told of its place beyond the plan's treatment: whether the room behind is lit by the unit, how grimy the glass is (0 to 1), how old and so how wavy it is. */
 /** `through`: the pane shows a shop's room out of focus (`PaneLook.through`). */
-export type WinLook = { readonly lit?: boolean; readonly dirt?: number; readonly vacant?: boolean; readonly through?: boolean };
+/** `night`: a home's window's night code (`windowNight.ts`), when its covering glows from within; none given is a window that is never lit. */
+export type WinLook = { readonly lit?: boolean; readonly dirt?: number; readonly vacant?: boolean; readonly through?: boolean; readonly night?: number };
 
 const CURTAINS: readonly Rgb[] = [
   [0.7, 0.66, 0.55], [0.55, 0.2, 0.18], [0.25, 0.35, 0.5], [0.78, 0.78, 0.74], [0.3, 0.42, 0.3], [0.5, 0.4, 0.55], [0.85, 0.7, 0.35], [0.35, 0.3, 0.27],
@@ -116,25 +118,33 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   };
   if (state === "broken") {
     // No glass: a few shards stand in the corners of the frame, and a torn curtain hangs inside. Nothing behind it is a room: an opaque dark backing closes the hole.
-    withMat("painted", () => backing(DARK_BACK, 0.05));
+    out.withHours(NEVER_CODE, () => withMat("painted", () => backing(DARK_BACK, 0.05)));
     entry.closes = "dark";
     for (const [s, y, sg] of [[sa, y1, 1], [sb, y0, -1], [sa, y0, 1]] as const) {
       const k = 0.18 + hash01(seed + sg + y, 403) * 0.25;
       glass.poly([wat(w, s, y, gOff), wat(w, s + sg * k, y, gOff), wat(w, s, y + (y === y1 ? -k * 1.6 : k * 1.6), gOff)], [w.nx, 0, w.nz], [0.5, 0.56, 0.6], undefined, { clear: 0.6 });
     }
-    curtainFolds(behind, sa + 0.05, sa + Math.min(0.35, width * 0.4), y1 - 0.05, y1 - height * 0.6, pickOf(CURTAINS, seed, 404), 1, 0.2, 3);
+    out.withHours(NEVER_CODE, () => curtainFolds(behind, sa + 0.05, sa + Math.min(0.35, width * 0.4), y1 - 0.05, y1 - height * 0.6, pickOf(CURTAINS, seed, 404), 1, 0.2, 3));
     return;
   }
   // The room behind it: lit, dim; a curtained window sometimes has a lit room behind its curtains.
   const roomLit = state === "lit" || (state === "curtained" && hash01(seed, 405) < 0.22) || (state === "blinds" && hash01(seed, 406) < 0.2);
-  // What closes the opening of a home: curtains drawn right across (most), blinds fully down, or a dark window by day.
-  const closer: "curtain" | "blind" | "dark" = shop ? "dark" : state === "blinds" ? "blind" : state === "dark" ? (look.vacant === true || hash01(seed, 660) < 0.55 ? "dark" : "curtain") : "curtain";
-  const curtainCol = state === "dark" ? scaled(pickOf(CURTAINS, seed, 417), 0.6) : pickOf(CURTAINS, seed, state === "lit" ? 415 : 407);
-  const lampOn = roomLit || look.lit === true;
-  const glowC = roomLit ? 0.7 : state === "dark" ? 0.12 : 0.18;
+  // A home's window is lit in the evening by its own night code (`windowNight.ts`), and not by day; a window with none given is never lit.
+  const code = shop ? 0 : look.night ?? NEVER_CODE;
+  const lamp = !shop && code !== NEVER_CODE ? windowLight(c.id, salt) : null;
+  // What closes the opening of a home: curtains drawn right across (most), blinds fully down, or a dark window by day (a lit one is behind a curtain).
+  const closer: "curtain" | "blind" | "dark" = shop ? "dark" : state === "blinds" ? "blind" : state === "dark" ? (lamp === null && (look.vacant === true || hash01(seed, 660) < 0.55) ? "dark" : "curtain") : "curtain";
+  // The cloth takes the light's colour (the glow is the cloth's own colour lit): a little of it by day, which is all the cloth keeps of it.
+  const warmed = (col: Rgb): Rgb => (lamp === null ? col : [col[0] * (0.4 + 0.6 * lamp.colour[0]), col[1] * (0.4 + 0.6 * lamp.colour[1]), col[2] * (0.4 + 0.6 * lamp.colour[2])]);
+  const curtainCol = warmed(state === "dark" ? scaled(pickOf(CURTAINS, seed, 417), 0.6) : pickOf(CURTAINS, seed, state === "lit" ? 415 : 407));
+  const lampOn = roomLit || look.lit === true || lamp !== null;
+  const glowC = lamp?.glow ?? 0;
+  const homeBehind: Behind = shop ? behind : { ...behind, glow: glowC };
+  /** What a home's window draws behind the glass is its own light's: lit by the night code, and the glow of nothing by day. */
+  const night = (fn: () => void): void => (shop ? fn() : out.withHours(code, fn));
   if (!shop) {
     entry.closes = closer;
-    withMat("painted", () => backing(closer === "dark" ? DARK_BACK : closer === "blind" ? scaled(slatColour(seed), 0.5) : scaled(curtainCol, 0.5), closer === "dark" ? 0.05 : glowC));
+    night(() => withMat("painted", () => backing(closer === "dark" ? DARK_BACK : closer === "blind" ? scaled(warmed(slatColour(seed)), 0.5) : scaled(curtainCol, 0.5), glowC)));
   }
   const dirt = look.dirt ?? Math.min(0.9, 0.2 + 0.25 * Math.min(1, (2026 - c.era) / 120) + hash01(seed, 643) * 0.25);
   const oldness = Math.min(1, (2026 - c.era) / 130);
@@ -156,12 +166,12 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     // A shop shows the unit's own room behind its glass.
   } else if (closer === "curtain") {
     const style = Math.floor(hash01(seed, 408) * 3);
-    curtainFolds(behind, sa, sb, y1, y0, curtainCol, style, glowC);
-    if (full) withMat("cloth", () => out.poly([wat(w, sa, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.03, behind.glass - STEP * 4), wat(w, sa, y1 - 0.03, behind.glass - STEP * 4)], [w.nx, 0, w.nz], [0.25, 0.2, 0.14], undefined, { glow: 0.1 }));
+    night(() => curtainFolds(homeBehind, sa, sb, y1, y0, curtainCol, style, glowC));
+    if (full) night(() => withMat("cloth", () => out.poly([wat(w, sa, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.06, behind.glass - STEP * 4), wat(w, sb, y1 - 0.03, behind.glass - STEP * 4), wat(w, sa, y1 - 0.03, behind.glass - STEP * 4)], [w.nx, 0, w.nz], [0.25, 0.2, 0.14], undefined, { glow: glowC * 0.2 })));
   } else if (closer === "blind") {
-    const col = slatColour(seed);
-    if (hash01(seed, 644) < 0.18) verticalBlinds(behind, sa, sb, y1, y0, col);
-    else slatBlinds(behind, sa, sb, y1, height, col);
+    const col = warmed(slatColour(seed));
+    if (hash01(seed, 644) < 0.18) night(() => verticalBlinds(homeBehind, sa, sb, y1, y0, col));
+    else night(() => slatBlinds(homeBehind, sa, sb, y1, height, col));
   }
   if (shop) {
     // The shop's own cover (blinds) is drawn by the front: nothing more here.

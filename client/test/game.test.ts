@@ -45,8 +45,8 @@ describe("the empty game as the page that runs a session is handed it", () => {
   });
 
   it("does nothing at every point of a session, and lets every command through as it came", () => {
-    const side = EMPTY_GAME.side(undefined as never);
-    expect(side).toBe(WALK_SIDE);
+    const side = EMPTY_GAME.side({ base: { hour: 12 } } as never);
+    expect(Object.keys(side).sort()).toEqual(Object.keys(WALK_SIDE).sort());
     const sample: InputCommand = { seq: 4, moveX: 1, moveZ: -1, yaw: 0.2, pitch: 0.1, buttons: 3 };
     expect(side.command(sample, undefined, undefined as never)).toBe(sample);
     expect([side.decided(), side.over(), side.holdsFrame(), side.extrasStand(), side.lampOn(undefined), side.applyOwnView("anything", [])]).toEqual([false, false, false, false, false, false]);
@@ -54,6 +54,22 @@ describe("the empty game as the page that runs a session is handed it", () => {
     const walker = (id: number): Walker => ({ id, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0 });
     const state: WalkState = { tick: 0, players: new Map([[1, walker(1)], [2, walker(2)]]), nextEntityId: 3, rngSeed: 1 };
     expect(side.entities(state)).toBe(2);
+  });
+});
+
+describe("the game's half of a session pushes the day's hour", () => {
+  it("pushes once the hour has moved past the gate, and not on a frame that has not", () => {
+    const pushed: number[] = [];
+    const host = { base: { hour: 12 }, appliedHour: 12, appliedWeather: {}, renderer: { setView: (h: number) => pushed.push(h) } };
+    const side = EMPTY_GAME.side(host as never);
+    const state = (tick: number): WalkState => ({ tick, players: new Map(), nextEntityId: 1, rngSeed: 1 });
+    side.beforeSync(undefined as never, state(0), 0, 0);
+    side.beforeSync(undefined as never, state(30), 0, 0);
+    expect(pushed).toEqual([]);
+    side.beforeSync(undefined as never, state(7200), 0, 0);
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]).toBeCloseTo(13, 6);
+    expect(host.appliedHour).toBe(pushed[0]);
   });
 });
 

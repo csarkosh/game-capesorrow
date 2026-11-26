@@ -10,6 +10,7 @@ import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBui
 import { withMat } from "./materials.js";
 import { GLASS, PILE, ROOF_METAL, STEEL, STEEL_RUST, TIMBER, TIMBER_WEATHERED } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
+import { HARBOUR_LAMP, LENS_GLOW, PIER_LAMP } from "./props/lamps.js";
 import type { Barge, Piling, YardItem } from "../../sim/town/types.js";
 
 const BARK: Rgb = [0.2, 0.14, 0.09];
@@ -330,7 +331,8 @@ export function lightGeometry(g: TownGround, sink: Sink): void {
       withMat("painted", () => {
       m.cylinder(x, z, y + 0.8, 1, l.height, 10, WHITE, WHITE, 0.7);
       m.prism([x, y + l.height + 0.8, z], [x, y + l.height + 0.85, z], 0.95, 10, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
-      m.cylinder(x, z, y + l.height + 0.85, 0.5, 1.2, 10, GLASS, GLASS);
+      // The lantern's glass shines from dusk to dawn (`props/lamps.ts`), dull by day.
+      m.withHours(HARBOUR_LAMP.code, () => m.withGlow(LENS_GLOW, () => m.cylinder(x, z, y + l.height + 0.85, 0.5, 1.2, 10, HARBOUR_LAMP.colour, HARBOUR_LAMP.colour)));
       m.cylinder(x, z, y + l.height + 2.05, 0.75, 0.6, 10, [0.5, 0.1, 0.08], [0.5, 0.1, 0.08], 0.05);
       });
     } else if (l.kind === "day beacon") {
@@ -346,7 +348,7 @@ export function lightGeometry(g: TownGround, sink: Sink): void {
       });
     } else {
       withMat("steel", () => m.prism([x, y + 0.03, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL));
-      withMat("painted", () => box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, GLASS, [0.2, 0.2, 0.22]));
+      withMat("painted", () => m.withHours(PIER_LAMP.code, () => m.withGlow(LENS_GLOW, () => box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, PIER_LAMP.colour, PIER_LAMP.colour))));
     }
   }
 }

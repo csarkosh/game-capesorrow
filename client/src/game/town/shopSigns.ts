@@ -12,6 +12,8 @@
  * with its VACANCY); sandwich: an A-frame on the sidewalk; open: a small sign in the glass; lease: the notice taped up; board: a church's or a
  * civic building's, on posts at the lot's edge or a plaque on the wall.
  *
+ * A lit sign follows its unit's opening hours (`leftOn`): the face's vertices carry the hours code (`MeshBuilder.withHours`) and the sign layer's material decodes it.
+ *
  * Authored, not researched: every size, the glow strengths, the sag and the loose corner of a banner, the colours (`signStyle.ts`).
  */
 import { withMat } from "./materials.js";
@@ -19,6 +21,7 @@ import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
 import { blockOfLot, signColours } from "./accents.js";
+import { hoursCode, unitHours, wrapHour, type Hours } from "./hours.js";
 import { xp, type Xf } from "./roomGeometry.js";
 import type { Building, BuildingUse, Sign, Unit } from "../../sim/town/types.js";
 import type { Detail, SignAtlasLike, SignSpec, TownGround } from "./townTypes.js";
@@ -148,7 +151,13 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   }
   const spec: SignSpec = { kind: sign.kind, style: sign.style, lines, decade: sign.decade, condition: sign.condition, lit: sign.lit, seed, bg: col.bg, fg: col.fg, accent: col.accent, clear, w, h };
   const at = atlas.place(w, h, spec);
-  const glow = !sign.lit ? 0 : neon || sign.kind === "open" ? 2.1 : box ? 1.05 : 0;
+  // A lit sign follows its unit's hours (`hours.ts`): an OPEN sign only while the unit is open; any other lit sign while it is open and, for half the shops (signs are left on), a while after it
+  // shuts, if that is in the evening; never in the dead of night, except for a trade that never shuts. A unit that is shut for the day or vacant has no hours, and its sign is dark.
+  const hours = unit === null ? null : unitHours(b, unit);
+  const signHours = hours === null || sign.kind === "open" ? hours : leftOn(hours, seed);
+  const dark = unit !== null && signHours === null;
+  const glow = !sign.lit || dark ? 0 : neon || sign.kind === "open" ? 2.1 : box ? 1.05 : 0;
+  const code = unit === null || glow === 0 ? 0 : hoursCode(signHours);
   const ink: Rgb = old ? [0.08, 0.07, 0.06] : [0.17, 0.17, 0.18];
 
   /** The face as a quad at `off` off the wall, centred `cx` along the viewer's right, its bottom `y0` up, facing out (or the other way when `back`). */
@@ -174,6 +183,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
   const halfBay = (cx: number): number => Math.max(-bay / 2 + w / 2, Math.min(bay / 2 - w / 2, cx));
   void halfBay;
 
+  i.face.withHours(code, () => {
   switch (sign.kind) {
     case "fascia": {
       // The board spans the sign's width; its colour is dark and its edge a trim.
@@ -301,6 +311,18 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       break;
     }
   }
+  });
+}
+
+/**
+ * The hours a lit sign (not an OPEN sign) is on, from its unit's: for about half the shops (signs are left on) it stays lit for one to three hours after the unit shuts when that is
+ * in the evening (a shut between 15:00 and 22:00), and never into the small hours; the rest are lit while the unit is open. A trade that never shuts has a sign that is always on.
+ */
+export function leftOn(hours: Hours, seed: number): Hours {
+  if (hours === "always" || hash01(seed, 730) >= 0.5) return hours;
+  const shut = hours.close < hours.open ? hours.close + 24 : hours.close;
+  if (shut < 15 || shut > 22) return hours;
+  return { open: hours.open, close: wrapHour(shut + 1 + Math.floor(hash01(seed, 731) * 3)) };
 }
 
 const PAPER_COLOURS: readonly [number, number, number][] = [[246, 240, 170], [250, 250, 245], [172, 214, 234], [244, 176, 170], [202, 230, 182], [240, 214, 160]];
