@@ -3,7 +3,8 @@
  * A pole is a tapered timber of the weathered-boards layer (it leans where the plan says it does, with the stub of its predecessor beside it
  * on some). The wires are thin smooth tubes (three sides), wider than a real wire so that they do not shimmer at a distance, hung in a
  * parabola with a sag of about one and a half per cent of the span (the sag is drawing, where trigonometry is allowed): three conductors on
- * the arm or the pins, a neutral below, a telephone cable below that.
+ * the arm or the pins, a neutral below, a telephone cable below that. A streetlight's head has a lens under it that glows by its own night code
+ * (`props/lamps.ts`: dead, sodium or white; dull grey glass by day).
  */
 import { withMat } from "../materials.js";
 import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
@@ -11,6 +12,7 @@ import type { Surface } from "../townSurface.js";
 import type { Detail, TownGround } from "../townTypes.js";
 import type { Drop, Pole } from "../../../sim/town/types.js";
 import { P, mixC, post, rnd, tube, lbox, placeOn } from "./kit.js";
+import { LAMP_COLOUR, LENS_DROP, LENS_GLOW, lampCode, lampKind } from "./lamps.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
 const WOOD: Rgb = [0.2, 0.16, 0.12];
@@ -102,7 +104,25 @@ export function poleGeometry(g: TownGround, solid: Sink, p: Pole, next: Pole | n
     withMat("steel", () => m.prism([bx, gh + top - 0.7, bz], [ex, gh + top - 0.35, ez], 0.045, 4, STEEL, STEEL));
     const hx = ex + p.light.ox * 0.15;
     const hz = ez + p.light.oz * 0.15;
-    withMat("steel", () => m.box(hx, hz, gh + top - 0.52, lt.ox, lt.oz, 0.3, 0.14, 0.16, [0.2, 0.21, 0.22], [0.22, 0.23, 0.24]));
+    const yh = gh + top - 0.52;
+    withMat("steel", () => m.box(hx, hz, yh, lt.ox, lt.oz, 0.3, 0.14, 0.16, [0.2, 0.21, 0.22], [0.22, 0.23, 0.24]));
+    // The lens: a shallow bowl under the head (its sides, which butt the head's underside, and a face). Dull grey glass by day; a lit one glows by its own night code, a dead one never does.
+    const kind = lampKind(p.seed);
+    const lens = LAMP_COLOUR[kind];
+    const lx = hx + lt.ox * 0.02;
+    const lz = hz + lt.oz * 0.02;
+    const vx = lt.oz;
+    const vz = -lt.ox;
+    const hu = 0.22;
+    const hv = 0.09;
+    const yl = yh - LENS_DROP;
+    const c = (su: number, sv: number): [number, number, number] => [lx + lt.ox * hu * su + vx * hv * sv, yl, lz + lt.oz * hu * su + vz * hv * sv];
+    withMat("painted", () => {
+      m.box(lx, lz, yl, lt.ox, lt.oz, hu, hv, LENS_DROP, [0.16, 0.17, 0.18], [0.16, 0.17, 0.18], false, null);
+      const face = (): void => m.poly([c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)], [0, -1, 0], lens);
+      if (kind === "dead") face();
+      else m.withHours(lampCode(p.seed), () => m.withGlow(LENS_GLOW, face));
+    });
   }
   if (p.stub && detail !== "low") {
     const sx = wx + tx * 0.9;

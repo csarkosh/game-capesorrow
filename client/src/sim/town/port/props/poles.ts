@@ -8,12 +8,15 @@
  */
 import { bearingU, bearingV } from "../../bearings.js";
 import { chance, range, next } from "../../rng.js";
-import type { Drop, Pole } from "../../types.js";
+import type { Drop, Pole, StreetKind } from "../../types.js";
 import { boxAt } from "./boxes.js";
 import { at, sub, type Context, type StreetFrame } from "./context.js";
 import { put, type Out } from "./out.js";
 import * as T from "./tuning.js";
 import { TAG } from "./vehicles.js";
+
+/** The streets whose junctions always have a light. */
+const MAJOR: readonly StreetKind[] = ["highway", "avenue", "main"];
 
 type MutablePole = { -readonly [K in keyof Pole]: Pole[K] };
 
@@ -79,13 +82,27 @@ export function planPoles(ctx: Context, out: Out): void {
       s += placed ? range(rng, lo, hi) : range(rng, 8, 14);
     }
   }
-  // A streetlight arm at some junctions: on the nearest pole of one of its streets that stands within 22 m of it.
+  // Street lights. A light at every junction that a highway, avenue or main street takes part in, and at about half of the others (alleys, stairs, the rail and a street's
+  // bare end have none); then along each avenue and main street a light wherever the next one is more than `LIGHT_GAP` m off. Each lamp is its own random stream, so no pole's
+  // other draws move.
+  const lit = (p: Pole): boolean => p.light !== null;
+  const armOf = (p: MutablePole): void => {
+    const f = ctx.frames[p.street] as StreetFrame;
+    // The arm reaches toward the roadway's centre line.
+    const sc = (p.x - f.ax) * f.tx + (p.z - f.az) * f.tz;
+    const c = at(f, sc, 0);
+    const ox = c.x - p.x;
+    const oz = c.z - p.z;
+    const l = Math.sqrt(ox * ox + oz * oz);
+    if (l > 0.1) p.light = { ox: ox / l, oz: oz / l };
+  };
   for (const j of ctx.plan.junctions) {
     if (j.legs.length < 3 || j.kind === "alley" || j.kind === "rail" || j.kind === "stair" || j.kind === "road end") continue;
     const rng = sub(ctx.seed0, TAG.pole, 100000 + j.id);
-    if (!chance(rng, T.JUNCTION_LIGHT)) continue;
+    const major = j.kind === "highway" || j.streets.some((sid) => MAJOR.includes(ctx.plan.streets[sid]?.kind as StreetKind));
+    if (!chance(rng, T.JUNCTION_LIGHT) && !major) continue;
     let best: MutablePole | null = null;
-    let bestD = 22;
+    let bestD = major ? T.JUNCTION_POLE_REACH_MAJOR : T.JUNCTION_POLE_REACH;
     for (const sid of j.streets) {
       for (const pid of byStreet[sid] ?? []) {
         const p = out.poles[pid] as MutablePole;
@@ -96,15 +113,81 @@ export function planPoles(ctx: Context, out: Out): void {
         }
       }
     }
-    if (best === null) continue;
-    const f = ctx.frames[best.street] as StreetFrame;
-    // The arm reaches toward the roadway's centre line.
-    const sc = (best.x - f.ax) * f.tx + (best.z - f.az) * f.tz;
-    const c = at(f, sc, 0);
-    const ox = c.x - best.x;
-    const oz = c.z - best.z;
-    const l = Math.sqrt(ox * ox + oz * oz);
-    if (l > 0.1) best.light = { ox: ox / l, oz: oz / l };
+    if (best !== null) {
+      armOf(best);
+      continue;
+    }
+    if (!major) continue;
+    // No pole of the line is near a major junction (a highway's, where the line is the street's): a pole of its own is set beside it, on the first of its streets and offsets that has room, and carries the light alone (no wires).
+    const lr = sub(ctx.seed0, TAG.pole, 300000 + j.id);
+    let placed = false;
+    for (const sid of j.streets) {
+      const f = ctx.frames[sid];
+      if (f === undefined || f.street.kind === "highway" || f.street.kind === "rail" || f.street.kind === "wharf" || f.street.kind === "stair" || f.street.kind === "alley") continue;
+      const line = lineSide(ctx, f);
+      if (line === null) continue;
+      const sj = (j.x - f.ax) * f.tx + (j.z - f.az) * f.tz;
+      for (const off of [9, -9, 12, -12, 15, -15, 19, -19, 24, -24]) {
+        const ss = sj + off;
+        if (ss < 3 || ss > f.length - 3) continue;
+        const p = at(f, ss, line.t);
+        if (!put(ctx, out, boxAt(p.x, p.z, f.tx, f.tz, 0.42, 0.42), "pole", { margin: 0.5 })) continue;
+        const id = out.poles.length;
+        const pole: MutablePole = {
+          id, street: f.street.id, x: p.x, z: p.z, height: range(lr, T.POLE_HEIGHT.min, T.POLE_HEIGHT.max), lx: 0, lz: 0, arm: 0, transformer: false, light: null, stub: false, next: -1, seed: Math.floor(next(lr) * 0x7fffffff),
+        };
+        out.poles.push(pole);
+        armOf(pole);
+        placed = true;
+        break;
+      }
+      if (placed) break;
+    }
+  }
+  // Along an avenue or main street (the highway's own line is not this plan's): where the next light is far, the pole of the street that best splits the gap carries one.
+  for (const f of ctx.frames) {
+    if (f === undefined || (f.street.kind !== "main" && f.street.kind !== "avenue")) continue;
+    const poles = (byStreet[f.street.id] ?? []).map((pid) => out.poles[pid] as MutablePole);
+    if (poles.length === 0) continue;
+    const along = (p: Pole): number => (p.x - f.ax) * f.tx + (p.z - f.az) * f.tz;
+    // The poles tried (an arm that could not be drawn leaves the pole dark: it is not tried again).
+    const tried: number[] = [];
+    for (;;) {
+      // The lights that serve this street: those of any pole within a verge of its line, and the street's two ends.
+      const marks: number[] = [0, f.length];
+      for (const p of out.poles) {
+        if (!lit(p)) continue;
+        const lat = Math.abs((p.x - f.ax) * f.nx + (p.z - f.az) * f.nz);
+        const sp = along(p);
+        if (lat < T.LIGHT_REACH_ACROSS && sp > -T.LIGHT_REACH_ACROSS && sp < f.length + T.LIGHT_REACH_ACROSS) marks.push(sp);
+      }
+      marks.sort((x, y) => x - y);
+      let lo = 0;
+      let hi = 0;
+      for (let i = 1; i < marks.length; i++) {
+        if ((marks[i] as number) - (marks[i - 1] as number) > hi - lo) {
+          lo = marks[i - 1] as number;
+          hi = marks[i] as number;
+        }
+      }
+      if (hi - lo <= T.LIGHT_GAP) break;
+      const mid = (lo + hi) / 2;
+      let pick: MutablePole | null = null;
+      let pd = Infinity;
+      for (const p of poles) {
+        if (lit(p) || tried.includes(p.id)) continue;
+        const sp = along(p);
+        if (sp <= lo + 10 || sp >= hi - 10) continue;
+        const d = Math.abs(sp - mid);
+        if (d < pd) {
+          pd = d;
+          pick = p;
+        }
+      }
+      if (pick === null) break;
+      tried.push(pick.id);
+      armOf(pick);
+    }
   }
   // Service drops: each building that has power, from the nearest pole of the street it fronts.
   for (const info of ctx.lots) {
