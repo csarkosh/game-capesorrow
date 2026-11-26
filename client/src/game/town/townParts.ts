@@ -40,8 +40,8 @@ import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { groundAt } from "./props/kit.js";
 import { createCarParts, type CarParts } from "../car/carParts.js";
-import { carDebug, type CarDebug, type CarDebugSource } from "../car/carDebug.js";
-import { litFor, placeHeadlights } from "../car/headlights.js";
+import { carDebug, type CarDebug, type CarDebugSource, type LampSeen } from "../car/carDebug.js";
+import { lightHeadlights, litFor } from "../car/headlights.js";
 import { promptShown } from "../car/side.js";
 import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { townSolids } from "../../sim/town/solid.js";
@@ -152,7 +152,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   const chaseSeen = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 0, seated: 0, pulled: 0 };
   let chasing = false;
   // The one lamp as the last frame wrote it, for the console's reading (`__capeCar.lamp()`).
-  const lampSeen = { on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1 };
+  const lampSeen: LampSeen = { on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, angle: 0, range: 0, intensity: 0, r: 0, g: 0, b: 0 };
   let lampWritten = false;
   // How far into the seat the camera is shown: the ride's own value followed at a bounded rate, so a refused leave eases back out.
   let shownSeat = 0;
@@ -439,7 +439,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const ride = held.players.get(held.localId)?.ride;
       if (lamp.lit.on && ride !== undefined && ride.phase === SEATED) {
         const drawn = car?.pose(ride.car) ?? null;
-        if (drawn !== null) placeHeadlights(drawn, lamp.at);
+        if (drawn !== null) lightHeadlights(lamp, drawn);
       }
       lampSeen.on = lamp.lit.on;
       lampSeen.x = lamp.at.x;
@@ -448,6 +448,12 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       lampSeen.dx = lamp.at.dx;
       lampSeen.dy = lamp.at.dy;
       lampSeen.dz = lamp.at.dz;
+      lampSeen.angle = lamp.at.angle;
+      lampSeen.range = lamp.at.range;
+      lampSeen.intensity = lamp.lit.state.intensity;
+      lampSeen.r = lamp.lit.state.colour.r;
+      lampSeen.g = lamp.lit.state.colour.g;
+      lampSeen.b = lamp.lit.state.colour.b;
       lampWritten = true;
     },
 

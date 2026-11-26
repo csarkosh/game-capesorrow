@@ -58,7 +58,7 @@ describe("the car's reading for measuring tools", () => {
   });
 
   it("answers the line the door shows, and the lamp as the last frame wrote it, each as a copy", () => {
-    const seen = { on: true, x: 1, y: 2, z: 3, dx: 0, dy: -0.08, dz: 1 };
+    const seen = { on: true, x: 1, y: 2, z: 3, dx: 0, dy: -0.08, dz: 1, angle: 1.5, range: 40, intensity: 2400, r: 1, g: 0.95, b: 0.84 };
     let line: string | null = "Click to get in";
     const withBoth = carDebug({ state: () => null, pose: () => null, prompt: () => line, lamp: () => seen });
     expect(withBoth.prompt()).toBe("Click to get in");
@@ -66,6 +66,7 @@ describe("the car's reading for measuring tools", () => {
     expect(a).toEqual(seen);
     (a as { x: number }).x = 99;
     expect(withBoth.lamp()?.x).toBe(1);
+    expect(withBoth.lamp()?.intensity).toBe(2400);
     line = null;
     expect(withBoth.prompt()).toBeNull();
     const neither = carDebug({ state: () => null, pose: () => null });

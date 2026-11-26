@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { HEADLIGHT_AHEAD, HEADLIGHT_DROP, HEADLIGHT_RANGE, HEADLIGHT_UP, litFor, placeHeadlights } from "../../src/game/car/headlights.js";
+import { LAMP_INTENSITY } from "@csarkosh/engine/game/lampParams";
+import { HEADLIGHT_AHEAD, HEADLIGHT_DROP, HEADLIGHT_GAIN, HEADLIGHT_RANGE, HEADLIGHT_STATE, HEADLIGHT_UP, lightHeadlights, litFor, placeHeadlights } from "../../src/game/car/headlights.js";
 import { newCarPose } from "../../src/game/car/carPose.js";
 import { FOOT, LEAVING, SEATED } from "../../src/sim/car/types.js";
 
@@ -54,5 +55,27 @@ describe("whether the lamp is the car's", () => {
     expect(litFor({ car: 0, seat: 0, phase: FOOT, ticks: 0 }, on)).toBe(false);
     expect(litFor({ car: 1, seat: 0, phase: SEATED, ticks: 0 }, null)).toBe(false);
     expect(litFor(undefined, on)).toBe(false);
+  });
+});
+
+describe("how bright the headlights are", () => {
+  it("hand the engine's lamp their own brightness and colour, in place of the walker lamp's, and place it", () => {
+    const stock = Object.freeze({ intensity: LAMP_INTENSITY, colour: { r: 1, g: 0.92, b: 0.78 } });
+    const lamp = { at: lampAt(), lit: { on: true, state: stock } };
+    lightHeadlights(lamp, poseOf(10, 3, 20, 0, 1));
+    expect(lamp.lit.state).toBe(HEADLIGHT_STATE);
+    expect(lamp.lit.state.intensity).toBe(LAMP_INTENSITY * HEADLIGHT_GAIN);
+    expect(lamp.lit.on).toBe(true);
+    expect(lamp.at.z).toBe(20 + HEADLIGHT_AHEAD);
+    expect(Object.isFrozen(HEADLIGHT_STATE) && Object.isFrozen(HEADLIGHT_STATE.colour)).toBe(true);
+  });
+
+  it("light the road 12 m ahead, from 0.65 m up, several times over what the stock lamp did, by the lamp's own reckoning (intensity times height over distance cubed)", () => {
+    const road = (intensity: number, ahead: number): number => (intensity * HEADLIGHT_UP) / Math.pow(ahead * ahead + HEADLIGHT_UP * HEADLIGHT_UP, 1.5);
+    expect(road(HEADLIGHT_STATE.intensity, 12) / road(LAMP_INTENSITY, 12)).toBeCloseTo(HEADLIGHT_GAIN, 10);
+    expect(HEADLIGHT_GAIN).toBeGreaterThanOrEqual(4);
+    // The warm white of a car's lamps: red over green over blue, none above 1.
+    const { r, g, b } = HEADLIGHT_STATE.colour;
+    expect(r >= g && g >= b && r <= 1 && b > 0.5).toBe(true);
   });
 });

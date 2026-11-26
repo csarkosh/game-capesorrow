@@ -6,6 +6,9 @@ import { doorPlace } from "../../sim/car/seats.js";
 import type { Car, Ride } from "../../sim/car/types.js";
 import type { CarPose } from "./carPose.js";
 
+/** The one lamp as the last frame wrote it: whether it is on, where it stands and points, its cone and reach, and the brightness and colour the frame handed the renderer (the scene's spot light, which the town's materials receive, is written from these). */
+export type LampSeen = { on: boolean; x: number; y: number; z: number; dx: number; dy: number; dz: number; angle: number; range: number; intensity: number; r: number; g: number; b: number };
+
 export type CarDebug = {
   /** Every car as this frame drew it. */
   cars(): { id: number; x: number; y: number; z: number; hx: number; hz: number; speed: number; steer: number; lights: boolean; driver: number; seats: number[] }[];
@@ -17,8 +20,8 @@ export type CarDebug = {
   doors(id: number): { x: number; z: number }[];
   /** The line the door shows now, or null. */
   prompt(): string | null;
-  /** The one lamp as the last frame wrote it: whether it is on, its place and its direction (a unit vector), or null before a frame has. */
-  lamp(): { on: boolean; x: number; y: number; z: number; dx: number; dy: number; dz: number } | null;
+  /** The one lamp as the last frame wrote it, or null before a frame has. */
+  lamp(): LampSeen | null;
 };
 
 /** What the answers are built from: the state as the last frame had it, and the poses the car's part holds. */
@@ -30,7 +33,7 @@ export type CarDebugSource = {
   /** The line the door shows. */
   prompt?(): string | null;
   /** The lamp as the last frame wrote it, or null before there is one. */
-  lamp?(): { on: boolean; x: number; y: number; z: number; dx: number; dy: number; dz: number } | null;
+  lamp?(): LampSeen | null;
 };
 
 export function carDebug(source: CarDebugSource): CarDebug {
@@ -60,7 +63,7 @@ export function carDebug(source: CarDebugSource): CarDebug {
     prompt: () => source.prompt?.() ?? null,
     lamp() {
       const l = source.lamp?.() ?? null;
-      return l === null ? null : { on: l.on, x: l.x, y: l.y, z: l.z, dx: l.dx, dy: l.dy, dz: l.dz };
+      return l === null ? null : { ...l };
     },
     doors(id) {
       const car = source.state()?.cars.find((c) => c.id === id);
