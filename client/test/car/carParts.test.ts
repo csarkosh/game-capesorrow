@@ -42,6 +42,14 @@ describe("the car's frames", () => {
     expect(p.pose(2)?.x).toBe(5);
   });
 
+  it("poses the driven car whatever the count of cars, though only a few are drawn", () => {
+    const p = parts();
+    const cars = [car(0, 1), car(1, 2), car(2, 3), car(3, 4), car(4, 5), car(77, 6)];
+    p.frame(cars, 1, 0, 0.016, 6);
+    expect(p.pose(6)?.x).toBe(77);
+    expect(p.pose(5)).not.toBeNull();
+  });
+
   it("answers null for a car the frame does not have, and poses without the model", () => {
     const p = parts();
     p.frame([car(0)], 1, 0, 0.016, 0);

@@ -292,7 +292,6 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
     stamp++;
     drawn.length = 0;
     for (const c of cars) {
-      if (drawn.length === CAPACITY) break;
       let e = entries.get(c.id);
       if (e === undefined) {
         e = { id: c.id, pose: newCarPose(), prev: copyCar(c), cur: copyCar(c), has: false, blend: false, span: 1, tick, roll: 0, stamp };
@@ -325,7 +324,8 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
       }
       carPose(before, c, a, host.groundAt, e.pose);
       e.roll = rollAfter(e.roll, e.pose.speed, dt);
-      drawn.push(e);
+      // Every car is posed, whatever the count, for the camera's sake; only the first `CAPACITY` are drawn.
+      if (drawn.length < CAPACITY) drawn.push(e);
     }
     for (const [id, e] of entries) if (e.stamp !== stamp) entries.delete(id);
     if (ready) write(drawn.length);
