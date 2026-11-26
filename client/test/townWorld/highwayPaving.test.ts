@@ -8,7 +8,10 @@ import "../../src/terrain.js";
 import { describe, expect, it } from "vitest";
 import { seedFromToken } from "@csarkosh/engine/game/seed";
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
-import { HIGHWAY_LEAD, highwayGeometry, highwayStrip, type HighwayStrip } from "../../src/game/town/highwayGeometry.js";
+import { HIGHWAY_LEAD, LANE_HALF, highwayGeometry, highwayStrip, type HighwayStrip } from "../../src/game/town/highwayGeometry.js";
+import { segDist } from "../../src/sim/town/geom.js";
+import { RAIL_BED_HALF } from "../../src/sim/town/rail.js";
+import { spurOf } from "../../src/sim/town/railSpur.js";
 import { worldJunctions } from "../../src/game/town/junctionWorld.js";
 import { MeshBuilder, type MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { ASPHALT, PAINT_WHITE, PAINT_YELLOW } from "../../src/game/town/palette.js";
@@ -19,6 +22,8 @@ import type { Detail, TownGround } from "../../src/game/town/townTypes.js";
 
 const GAME_SEED = 20261121;
 const SEEDS: readonly number[] = [GAME_SEED, seedFromToken("wall-shade")];
+/** Worlds whose plans mark a crosswalk across the highway (the junctions of the core lie on it): neither of the two above does. */
+const CROSSWALK_SEEDS: readonly number[] = [1, 7];
 
 /** The widest crack in a pavement's tessellation the test looks across, metres. */
 const CRACK = 0.006;
@@ -123,7 +128,51 @@ function streetsOf(seed: number, detail: Detail = "full"): Tri[] {
   return trianglesOf(b.finish());
 }
 
+/** Whether (x, z) lies on the bed of the town's spur, which keeps its own ground where the track crosses the highway: the paving and the marks are cut off it. */
+function onTrack(seed: number, x: number, z: number): boolean {
+  const track = spurOf(seed)?.points ?? [];
+  return track.some((p, i) => i > 0 && segDist({ x, z }, { x: (track[i - 1] as { x: number }).x, z: (track[i - 1] as { z: number }).z }, { x: p.x, z: p.z }) < RAIL_BED_HALF + 0.05);
+}
+
+/** Looks across the edge of each pavement that meets the highway (those of `only`, or all): a face of asphalt on each side of it, none missing and none twice. */
+function meetings(seed: number, only?: readonly number[]): { checked: number; contacts: number } {
+  const g = groundFor(seed);
+  const strip = highwayStrip(g) as HighwayStrip;
+  const covers = index(streetsOf(seed).filter((t) => isColour(t, ASPHALT)));
+  let checked = 0;
+  let contacts = 0;
+  for (const c of strip.contacts) {
+    if (only !== undefined && !only.includes(c.junction)) continue;
+    contacts++;
+    // The edge of the pavement on the highway, A to B, and the way across it toward the centre line.
+    const len = Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]);
+    const tx = (c.b[0] - c.a[0]) / len;
+    const tz = (c.b[1] - c.a[1]) / len;
+    const mid = [(c.a[0] + c.b[0]) / 2, (c.a[1] + c.b[1]) / 2] as const;
+    let nx = -tz;
+    let nz = tx;
+    if (nx * (g.roadX(mid[1]) - mid[0]) < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    for (let s = 0.3; s < len - 0.3; s += 0.25) {
+      // 1.2 cm and 5 cm off the edge on each side (a gap of more than a centimetre shows in the nearer): on the paving, and on the street's pavement. One face of asphalt over each, none missing and none twice.
+      for (const d of [-0.05, -0.012, 0.012, 0.05]) {
+        // The pavement narrows to nothing at each end of its edge, where its curb return leaves the edge tangent to it: a metre in, it is wider than 5 cm.
+        if (d === -0.05 && (s < 1 || s > len - 1)) continue;
+        const x = c.a[0] + tx * s + nx * d;
+        const z = c.a[1] + tz * s + nz * d;
+        if (onTrack(seed, x, z)) continue;
+        expect(covers(x, z), `seed ${seed} junction ${c.junction}: ${d} m across the edge, ${s.toFixed(2)} m along it, at ${x.toFixed(2)}, ${z.toFixed(2)}`).toEqual({ covered: true, twice: false });
+        checked++;
+      }
+    }
+  }
+  return { checked, contacts };
+}
+
 describe("the highway's paving", () => {
+
   it("runs from a lead before the first street that meets the highway to a lead after the last, over the whole bed, with no hole between its ends", () => {
     for (const seed of SEEDS) {
       const { g, strip, tris } = stripOf(seed);
@@ -196,37 +245,28 @@ describe("the highway's paving", () => {
 
   it("meets every street that ends on it: the pavement of each junction on the highway abuts the paving with no gap and no overlap", () => {
     for (const seed of SEEDS) {
-      const g = groundFor(seed);
-      const strip = highwayStrip(g) as HighwayStrip;
-      const covers = index(streetsOf(seed).filter((t) => isColour(t, ASPHALT)));
-      let checked = 0;
-      for (const c of strip.contacts) {
-        // The edge of the pavement on the highway, A to B, and the way across it toward the centre line.
-        const len = Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]);
-        const tx = (c.b[0] - c.a[0]) / len;
-        const tz = (c.b[1] - c.a[1]) / len;
-        const mid = [(c.a[0] + c.b[0]) / 2, (c.a[1] + c.b[1]) / 2] as const;
-        let nx = -tz;
-        let nz = tx;
-        if (nx * (g.roadX(mid[1]) - mid[0]) < 0) {
-          nx = -nx;
-          nz = -nz;
-        }
-        for (let s = 0.3; s < len - 0.3; s += 0.25) {
-          // 1.2 cm and 5 cm off the edge on each side (a gap of more than a centimetre shows in the nearer): on the paving, and on the street's pavement. One face of asphalt over each, none missing and none twice.
-          for (const d of [-0.05, -0.012, 0.012, 0.05]) {
-            // The pavement narrows to nothing at each end of its edge, where its curb return leaves the edge tangent to it: a metre in, it is wider than 5 cm.
-            if (d === -0.05 && (s < 1 || s > len - 1)) continue;
-            const x = c.a[0] + tx * s + nx * d;
-            const z = c.a[1] + tz * s + nz * d;
-            expect(covers(x, z), `seed ${seed} junction ${c.junction}: ${d} m across the edge, ${s.toFixed(2)} m along it, at ${x.toFixed(2)}, ${z.toFixed(2)}`).toEqual({ covered: true, twice: false });
-            checked++;
-          }
-        }
-      }
-      expect(strip.contacts.length).toBeGreaterThan(8);
+      const { checked, contacts } = meetings(seed);
+      expect(contacts).toBeGreaterThan(8);
       expect(checked).toBeGreaterThan(1000);
     }
+  });
+
+  it("meets the streets that the plan once shut at the highway, in the game's own world: School Street (junction 35) and the two beyond it (junction 45), each by a mouth that fills its edge, no gap and nothing drawn twice", () => {
+    const g = groundFor(GAME_SEED);
+    const joined = g.plan.junctions.filter((j) => j.kind === "highway" && (j.id === 35 || j.id === 45));
+    expect(joined.map((j) => j.id)).toEqual([35, 45]);
+    for (const j of joined) {
+      // Open: a street leg that stops, and no leg closed.
+      expect(j.closed, `junction ${j.id}`).toHaveLength(0);
+      expect(j.legs.filter((l) => !l.engine && l.stops).length, `junction ${j.id}`).toBeGreaterThanOrEqual(1);
+    }
+    expect(joined.flatMap((j) => j.legs.filter((l) => !l.engine).map((l) => l.street)).sort((p, q) => p - q)).toEqual([130, 131, 144]);
+    const { checked, contacts } = meetings(GAME_SEED, [35, 45]);
+    // Each junction's pavement meets the edge by a stretch of its own at least (the two streets of junction 45 share one when no corner of lot is left between them).
+    expect(contacts).toBeGreaterThanOrEqual(2);
+    const strip = highwayStrip(g) as HighwayStrip;
+    for (const id of [35, 45]) expect(strip.contacts.some((c) => c.junction === id), `junction ${id} meets the edge`).toBe(true);
+    expect(checked).toBeGreaterThan(300);
   });
 
   it("is marked with a double yellow centre line broken across each street's roadway and a white line at each lane's edge broken across each pavement's opening, on both tiers", () => {
@@ -242,8 +282,11 @@ describe("the highway's paving", () => {
         expect(Math.abs(x - g.roadX(z)), `seed ${seed}: a yellow line off the middle`).toBeLessThan(0.2);
         for (const [z0, z1] of strip.crossings) expect(z < z0 + 0.01 || z > z1 - 0.01, `seed ${seed}: the centre line across a street's roadway at z ${z.toFixed(2)}`).toBe(true);
       }
+      const inBar = (x: number, z: number): boolean => strip.crosswalks.some((w) => z >= w.z[0] - 0.01 && z <= w.z[1] + 0.01 && Math.abs(x - g.roadX(z)) < ROAD_BED_HALF);
       for (const t of white) {
         const [x, , z] = middle(t);
+        // The bars of a crosswalk across the highway are white too (below).
+        if (inBar(x, z)) continue;
         const off = x - g.roadX(z);
         expect(Math.abs(Math.abs(off) - 3.5), `seed ${seed}: a white line off the lane's edge`).toBeLessThan(0.1);
         for (const c of strip.contacts) if (c.side === (off < 0 ? -1 : 1)) expect(z < c.a[1] + 0.01 || z > c.b[1] - 0.01, `seed ${seed}: the edge line across junction ${c.junction}'s opening at z ${z.toFixed(2)}`).toBe(true);
@@ -251,6 +294,57 @@ describe("the highway's paving", () => {
       // The same on the low tier.
       const low = streetsOf(seed, "low");
       expect(low.filter((t) => isColour(t, PAINT_YELLOW)).length).toBeGreaterThan(500);
+    }
+  });
+
+  it("lays a crosswalk across it wherever the plan marks one: a ladder of bars on the paving, one face over each point of each bar, in the lift of any crosswalk, with the centre line and the lane's two edge lines broken across it", () => {
+    for (const seed of CROSSWALK_SEEDS) {
+      const { g, strip, tris } = stripOf(seed);
+      const planned = g.plan.junctions.filter((j) => j.kind === "highway").flatMap((j) => j.legs.filter((l) => l.engine && l.marked));
+      expect(planned.length, `seed ${seed}: the plan marks a crosswalk across the highway`).toBeGreaterThan(0);
+      expect(strip.crosswalks.length, `seed ${seed}`).toBe(planned.length);
+      const white = index(tris.filter((t) => isColour(t, PAINT_WHITE)));
+      let samples = 0;
+      for (const w of strip.crosswalks) {
+        // Bars of a ladder: 0.61 m wide, no more than 1.52 m apart, 0.3 m in from each edge of the bed, each as long as a crosswalk is wide (3.05 m).
+        expect(w.bars.length).toBeGreaterThanOrEqual(5);
+        for (const [k, bar] of w.bars.entries()) {
+          const [a, b, c] = bar as [readonly [number, number], readonly [number, number], readonly [number, number], readonly [number, number]];
+          for (const q of bar) expect(Math.abs(q[0] - g.roadX(q[1])), `seed ${seed}: a bar within the bed`).toBeLessThan(ROAD_BED_HALF - 0.29);
+          expect(Math.hypot(b[0] - a[0], b[1] - a[1]), `seed ${seed}: a bar's length`).toBeGreaterThan(2.9);
+          expect(Math.hypot(c[0] - b[0], c[1] - b[1]), `seed ${seed}: a bar's width`).toBeCloseTo(0.61, 2);
+          if (k > 0) {
+            const prev = w.bars[k - 1] as readonly (readonly [number, number])[];
+            const gap = Math.min(...bar.map((q) => Math.min(...prev.map((r) => Math.abs(q[0] - g.roadX(q[1]) - (r[0] - g.roadX(r[1])))))));
+            expect(gap, `seed ${seed}: the gap between bars`).toBeLessThan(1.53);
+          }
+          // One face of white over the bar's middle and each of its quarter points, none missing and none twice (but where the spur's bed lies over it).
+          for (const [fa, fb] of [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]] as const) {
+            const p0 = bar[0] as readonly [number, number];
+            const p1 = bar[1] as readonly [number, number];
+            const p3 = bar[3] as readonly [number, number];
+            const x = p0[0] + (p1[0] - p0[0]) * fa + (p3[0] - p0[0]) * fb;
+            const z = p0[1] + (p1[1] - p0[1]) * fa + (p3[1] - p0[1]) * fb;
+            if (onTrack(seed, x, z)) continue;
+            expect(white(x, z), `seed ${seed} junction ${w.junction}: a crosswalk's bar at ${x.toFixed(2)}, ${z.toFixed(2)}`).toEqual({ covered: true, twice: false });
+            samples++;
+          }
+        }
+        // The lines are broken across it.
+        for (const t of tris.filter((q) => isColour(q, PAINT_YELLOW))) {
+          const z = (t.p[0]![2] + t.p[1]![2] + t.p[2]![2]) / 3;
+          expect(z < w.z[0] + 0.01 || z > w.z[1] - 0.01, `seed ${seed}: the centre line across a crosswalk at z ${z.toFixed(2)}`).toBe(true);
+        }
+        const lanes = tris.filter((t) => isColour(t, PAINT_WHITE) && Math.abs(Math.abs((t.p[0]![0] + t.p[1]![0] + t.p[2]![0]) / 3 - g.roadX((t.p[0]![2] + t.p[1]![2] + t.p[2]![2]) / 3)) - LANE_HALF) < 0.1);
+        expect(lanes.length).toBeGreaterThan(100);
+        for (const t of lanes) {
+          const z = (t.p[0]![2] + t.p[1]![2] + t.p[2]![2]) / 3;
+          expect(z < w.z[0] + 0.01 || z > w.z[1] - 0.01, `seed ${seed}: a lane line across a crosswalk at z ${z.toFixed(2)}`).toBe(true);
+        }
+      }
+      expect(samples).toBeGreaterThan(30);
+      // The same on the low tier: the crosswalk is the strip's own, in both.
+      expect(streetsOf(seed, "low").filter((t) => isColour(t, PAINT_WHITE)).length).toBeGreaterThan(100);
     }
   });
 });

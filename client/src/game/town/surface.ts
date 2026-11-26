@@ -452,7 +452,7 @@ export class Surface {
 // ---- Roadways that would overlap: the first laid keeps its ground.
 
 /** Whether two convex polygons share more than a sliver of area (separating axes: the least overlap along any of them exceeds `eps`). */
-function shareArea(p: readonly P2[], q: readonly P2[], eps: number): boolean {
+export function shareArea(p: readonly P2[], q: readonly P2[], eps: number): boolean {
   for (const poly of [p, q]) {
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i] as P2;

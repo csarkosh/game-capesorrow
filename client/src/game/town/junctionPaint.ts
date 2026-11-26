@@ -3,7 +3,8 @@
  * just outside the junction's pavement), a stop line 4 ft before the crosswalk (or, with none, a little clear of the pavement) on each
  * leg that stops, and the dotted extension of the centre line of the main street or the avenue through the junction.
  *
- * The highway's own legs have no crosswalk or stop line: the highway is paved through the town (`highwayGeometry.ts`) and its marks are laid there.
+ * The highway's own legs have no stop line, and a crosswalk across the highway is not laid here: the highway is paved through the town
+ * (`highwayGeometry.ts`), and the crosswalk the plan marks across it (`marked` on its leg) is laid there, on that paving, in these bars' own size.
  */
 import { RANK, type Over } from "./groundSurfaces.js";
 import { hashN, smooth } from "./groundNoise.js";
@@ -20,7 +21,7 @@ import type { TownGround } from "./townTypes.js";
 export const BAR_WIDTH = 0.61;
 export const BAR_GAP_MAX = 1.52;
 /** A crosswalk's marks keep this far from the roadway's edge, metres. */
-const BAR_MARGIN = 0.3;
+export const BAR_MARGIN = 0.3;
 
 /** The offsets across a roadway at which a ladder's bars begin: bars of `BAR_WIDTH` with gaps no wider than `BAR_GAP_MAX`, from `t0` to `t1`. */
 export function barOffsets(t0: number, t1: number): number[] {

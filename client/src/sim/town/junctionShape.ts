@@ -52,9 +52,10 @@ function meet(pa: Vec, da: Vec, pb: Vec, db: Vec): Vec | null {
 
 /**
  * The corners of a junction and how far back from it each leg's parts begin. `rays` are in counter-clockwise order;
- * `radiusFor(i, j)` is the nominal radius of the corner between rays i and j.
+ * `radiusFor(i, j)` is the nominal radius of the corner between rays i and j. An acute corner for which `plainAcute(i, j)` holds
+ * has no curb return: the two curbs meet at a point, as a sharp corner does.
  */
-export function solveJunction(rays: readonly Ray[], radiusFor: (i: number, j: number) => number): Solved {
+export function solveJunction(rays: readonly Ray[], radiusFor: (i: number, j: number) => number, plainAcute: (i: number, j: number) => boolean = () => false): Solved {
   const n = rays.length;
   const corners: JunctionCorner[] = [];
   const bandLeft: number[] = rays.map((r) => Math.max(0, r.from));
@@ -79,8 +80,8 @@ export function solveJunction(rays: readonly Ray[], radiusFor: (i: number, j: nu
     const pb = onLeg(b, 0, -b.half);
     const v = meet(pa, da, pb, db) ?? pa;
     const lot = meet(onLeg(a, 0, a.outer), da, onLeg(b, 0, -b.outer), db);
-    if (cross <= 1e-3) {
-      // Reflex (a wedge over a half turn) or parallel: a sharp corner of the pavement, with no return.
+    if (cross <= 1e-3 || (dot > 0 && plainAcute(i, j))) {
+      // Reflex (a wedge over a half turn) or parallel, or an acute corner asked to be plain: a sharp corner of the pavement, with no return.
       corners.push({ from: i, to: j, shape: "sharp", radius: 0, nominal, reach: 0, v, ta: v, tb: v, c: null, lot, curb: true, walk: true });
       bandLeft[i] = Math.max(bandLeft[i] as number, along(a, v));
       bandRight[j] = Math.max(bandRight[j] as number, along(b, v));
@@ -164,6 +165,57 @@ export function cornerPolygon(a: ShapedLeg, b: ShapedLeg, k: JunctionCorner): Ve
   else if (k.v !== null) pts.push(k.v);
   pts.push(onLeg(b, b.bandRight, -b.half), onLeg(b, b.bandRight, -b.outer), k.lot);
   return dedupe(pts);
+}
+
+/**
+ * Whether a polygon is simple enough to pave: no two of its edges cross or lie one over the other, and none turns back (within about a degree) on the one before it.
+ * (A corner of three points in a line is fine.)
+ */
+export function isSimple(p: readonly Vec[]): boolean {
+  const n = p.length;
+  if (n < 3) return false;
+  for (let i = 0; i < n; i++) {
+    const a = p[i] as Vec;
+    const b = p[(i + 1) % n] as Vec;
+    const c = p[(i + 2) % n] as Vec;
+    const rx = b.x - a.x;
+    const rz = b.z - a.z;
+    const sx = c.x - b.x;
+    const sz = c.z - b.z;
+    // A spike: the next edge doubles back along this one.
+    const lr = Math.sqrt(rx * rx + rz * rz);
+    const ls = Math.sqrt(sx * sx + sz * sz);
+    if (lr > 1e-9 && ls > 1e-9 && Math.abs(rx * sz - rz * sx) < 0.02 * lr * ls && rx * sx + rz * sz < 0) return false;
+  }
+  const EPS = 1e-6;
+  for (let i = 0; i < n; i++) {
+    const a = p[i] as Vec;
+    const b = p[(i + 1) % n] as Vec;
+    for (let k = i + 2; k < n; k++) {
+      if (i === 0 && k === n - 1) continue;
+      const c = p[k] as Vec;
+      const d = p[(k + 1) % n] as Vec;
+      const rx = b.x - a.x;
+      const rz = b.z - a.z;
+      const sx = d.x - c.x;
+      const sz = d.z - c.z;
+      const den = rx * sz - rz * sx;
+      if (Math.abs(den) < 1e-9) {
+        // Parallel: bad where they lie on one line and share a stretch.
+        const off = (c.x - a.x) * rz - (c.z - a.z) * rx;
+        const len = Math.sqrt(rx * rx + rz * rz);
+        if (len < 1e-9 || Math.abs(off) / len > 1e-4) continue;
+        const t0 = ((c.x - a.x) * rx + (c.z - a.z) * rz) / (len * len);
+        const t1 = ((d.x - a.x) * rx + (d.z - a.z) * rz) / (len * len);
+        if (Math.min(1, Math.max(t0, t1)) - Math.max(0, Math.min(t0, t1)) > 1e-4 / len) return false;
+        continue;
+      }
+      const t = ((c.x - a.x) * sz - (c.z - a.z) * sx) / den;
+      const u = ((c.x - a.x) * rz - (c.z - a.z) * rx) / den;
+      if (t > EPS && t < 1 - EPS && u > EPS && u < 1 - EPS) return false;
+    }
+  }
+  return true;
 }
 
 /** The signed area of a polygon (positive counter-clockwise in x, z). */

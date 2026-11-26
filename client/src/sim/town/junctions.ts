@@ -33,12 +33,13 @@
  *
  * **Sharp crossings** (section 5): the seam's crossings lie outside WSDOT's 60 to 120 degrees. Where two streets cross within
  * 60 degrees, the lesser street's nearer leg is closed with a planter and a sign (a legacy of the plat), and the junction is a
- * tee of what is left. A small triangular island is not made.
+ * tee of what is left. A small triangular island is not made. A street that meets the highway is never closed for its angle: it
+ * runs on and joins at whatever angle it has, with an acute corner and a stop sign.
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { segDist, type Vec } from "./geom.js";
 import { chance, type Rng } from "./rng.js";
-import { areaOf, onLeg, pavementPolygon, polygonsOverlap, solveJunction, type Solved } from "./junctionShape.js";
+import { areaOf, isSimple, onLeg, pavementPolygon, polygonsOverlap, solveJunction, type Solved } from "./junctionShape.js";
 import { walkAt } from "./port/edges.js";
 import type { Block, Building, Junction, JunctionControl, JunctionCorner, JunctionKind, JunctionLeg, Landmark, RailCrossing, Road, SideEdge, Street, StreetEdge, StreetEnd, StreetKind } from "./types.js";
 
@@ -301,6 +302,37 @@ export function findJunctions(inp: JunctionInput): Junction[] {
 
   const build = (members: readonly number[], tight = false): Built | null => {
     const radiusOf = radiusFor(tight);
+    // The corners solved for the legs as they are. The highway's two edge legs stand at one point, which is the cluster's middle projected on the edge; the
+    // pavement's stretch along the edge lies between where the curb returns leave it, and where the point is outside that stretch the pavement's outline would
+    // run out to it and back, so the point is moved to the middle of the stretch and the corners solved again.
+    const solveWith = (all: RawLeg[], plain: boolean): Solved => {
+      const only = plain ? (i: number, j: number): boolean => (all[i] as RawLeg).engine || (all[j] as RawLeg).engine : undefined;
+      let sv = solveJunction(all, radiusOf(all), only);
+      const eng = all.filter((l) => l.engine);
+      if (eng.length === 2) {
+        const h = eng[0] as RawLeg;
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const k of sv.corners) {
+          const a = all[k.from] as RawLeg;
+          const b = all[k.to] as RawLeg;
+          if (a.engine === b.engine || k.shape === "straight") continue;
+          const p = k.shape === "arc" ? (a.engine ? k.ta : k.tb) : (k.v as Vec);
+          const u = (p.x - h.x) * h.dx + (p.z - h.z) * h.dz;
+          lo = Math.min(lo, u);
+          hi = Math.max(hi, u);
+        }
+        if (lo <= hi && (lo > 1e-6 || hi < -1e-6)) {
+          const mid = (lo + hi) / 2;
+          for (const l of eng) {
+            l.x += h.dx * mid;
+            l.z += h.dz * mid;
+          }
+          sv = solveJunction(all, radiusOf(all), only);
+        }
+      }
+      return sv;
+    };
     const ms = members.map((k) => meetings[k] as Meeting);
     let qx = 0;
     let qz = 0;
@@ -347,12 +379,20 @@ export function findJunctions(inp: JunctionInput): Junction[] {
       const e = { street: seg, road: -1, kind: "highway" as const, name: h.name, x: ex, z: ez, roadway: h.roadway, walk: 0, width: ROAD_BED_HALF * 2, half: 0, outer: 0, engine: true, from: 0, to: 1000 };
       raw.push({ ...e, dx: hx, dz: hz }, { ...e, dx: -hx, dz: -hz });
       hasEngine = true;
-      // A street's strip begins beyond the bed's edge, where its centre line crosses it.
+      // A street's strip begins beyond the bed's edge, where its roadway's near corner clears it by 0.3 m. A leg that runs away from the highway
+      // starts that far from where it stands (its reference point is the cluster's middle, not always on the centre line, and a street that meets
+      // the highway at a sharp angle beside another street is in a cluster whose middle is a good way off it).
+      const nx = -hz * side;
+      const nz = hx * side;
       for (const l of raw) {
         if (l.engine) continue;
         const sinPhi = Math.max(Math.abs(l.dx * hz - l.dz * hx), 0.05);
         const cosPhi = Math.abs(l.dx * hx + l.dz * hz);
-        l.from = Math.max(l.from, (ROAD_BED_HALF + l.half * cosPhi + 0.3) / sinPhi);
+        const away = l.dx * nx + l.dz * nz;
+        if (away > 0.05) {
+          const stand = (l.x - cx) * nx + (l.z - cz) * nz;
+          l.from = Math.max(l.from, (ROAD_BED_HALF + l.half * cosPhi + 0.3 - stand) / away);
+        } else l.from = Math.max(l.from, (ROAD_BED_HALF + l.half * cosPhi + 0.3) / sinPhi);
       }
     }
     // Two streets that cross within about 26 degrees (the seam's sharpest crossings) lie one along the other for dozens of metres: the lesser is
@@ -400,7 +440,7 @@ export function findJunctions(inp: JunctionInput): Junction[] {
         }
       }
       if (legs.length < 2) return null;
-      solved = solveJunction(legs, radiusOf(legs));
+      solved = solveWith(legs, false);
       // A leg shorter than its mouth is a stub the pavement covers.
       const short = legs.findIndex((l, i) => !l.engine && (solved as Solved).mouth[i]! > l.to - MIN_STRIP * 0.5 && l.to - l.from < (solved as Solved).mouth[i]! + MIN_STRIP);
       if (short >= 0 && legs.length > 2) {
@@ -411,8 +451,9 @@ export function findJunctions(inp: JunctionInput): Junction[] {
       if (!again) break;
     }
     if (solved === null || legs.length < 2) return null;
-    // The angle between the two heaviest streets (the sine of their angle off square), and what a crossing within 60 degrees does: the lesser
-    // street's nearer leg (every street leg on the highway) is closed with a planter, and the pavement is solved again without it.
+    // The angle between the two heaviest streets (the sine of their angle off square), and what a crossing of two town streets within 60 degrees does:
+    // the lesser street's nearer leg is closed with a planter, and the pavement is solved again without it. A street that meets the highway is never
+    // closed for its angle: it runs on and joins, with an acute corner.
     const top = legs.slice().sort((p, q) => weight(q.kind) - weight(p.kind) || p.street - q.street);
     const first = top[0] as RawLeg;
     const second = top.find((l) => l.street !== first.street) ?? first;
@@ -422,19 +463,63 @@ export function findJunctions(inp: JunctionInput): Junction[] {
     const skew = cuts.length > 0 ? Math.max(angle, PARALLEL_COS + 0.001) : angle;
     const wasLegs = legs.length;
     const shutLegs: RawLeg[] = [];
-    if (angle > SHARP_SKEW && angle < 0.995 && legs.length >= 3) {
-      const minor = legs.filter((l) => !l.engine && l.street !== first.street && (hasEngine ? true : weight(l.kind) <= weight(first.kind)));
+    if (angle > SHARP_SKEW && angle < 0.995 && legs.length >= 3 && !hasEngine) {
+      const minor = legs.filter((l) => !l.engine && l.street !== first.street && weight(l.kind) <= weight(first.kind));
       const nearer = minor.sort((p, q) => p.to - q.to || p.street - q.street)[0];
-      const pick = hasEngine ? legs.filter((l) => !l.engine) : nearer === undefined ? [] : [nearer];
+      const pick = nearer === undefined ? [] : [nearer];
       if (pick.length > 0) {
         shutLegs.push(...pick);
         legs = legs.filter((l) => !pick.includes(l));
-        solved = solveJunction(legs, radiusOf(legs));
+        solved = solveWith(legs, false);
       }
     }
     // A closed leg's strip begins where its curbs leave the pavement that is left.
-    const shaped = legs.map((l, i) => ({ ...l, mouth: (solved as Solved).mouth[i] as number, bandLeft: (solved as Solved).bandLeft[i] as number, bandRight: (solved as Solved).bandRight[i] as number }));
+    let shaped = legs.map((l, i) => ({ ...l, mouth: (solved as Solved).mouth[i] as number, bandLeft: (solved as Solved).bandLeft[i] as number, bandRight: (solved as Solved).bandRight[i] as number }));
     let poly = shaped.length >= 2 ? pavementPolygon(shaped, (solved as Solved).corners) : [];
+    // Where the highway is in the junction, an acute corner that cannot take its return (two streets that meet each other near the highway, each at a
+    // sharp angle to it, leave no room for both returns on the one edge) has none: the curbs meet at a point on the highway's edge, as a plain corner does.
+    if (hasEngine && legs.length >= 3 && (poly.length < 3 || !isSimple(poly))) {
+      solved = solveWith(legs, true);
+      shaped = legs.map((l, i) => ({ ...l, mouth: (solved as Solved).mouth[i] as number, bandLeft: (solved as Solved).bandLeft[i] as number, bandRight: (solved as Solved).bandRight[i] as number }));
+      poly = pavementPolygon(shaped, (solved as Solved).corners);
+    }
+    // Where even that leaves two streets' near curbs crossing one another (two streets that cross each other a few metres from the highway, each
+    // meeting it at a sharp angle: the wider street's pavement takes in the other's mouth on the edge), the lesser street is the one closed with
+    // a planter, as at any crossing within 60 degrees, and the pavement is solved again without it; the street whose closing leaves a simple pavement
+    // is the one closed, the lesser first.
+    const resolve = (): void => {
+      solved = solveWith(legs, false);
+      shaped = legs.map((l, i) => ({ ...l, mouth: (solved as Solved).mouth[i] as number, bandLeft: (solved as Solved).bandLeft[i] as number, bandRight: (solved as Solved).bandRight[i] as number }));
+      poly = pavementPolygon(shaped, (solved as Solved).corners);
+      if (!isSimple(poly)) {
+        solved = solveWith(legs, true);
+        shaped = legs.map((l, i) => ({ ...l, mouth: (solved as Solved).mouth[i] as number, bandLeft: (solved as Solved).bandLeft[i] as number, bandRight: (solved as Solved).bandRight[i] as number }));
+        poly = pavementPolygon(shaped, (solved as Solved).corners);
+      }
+    };
+    for (let guard = 0; guard < 6 && hasEngine && legs.length >= 4 && !isSimple(poly); guard++) {
+      const keep = legs;
+      const streetIds: number[] = [];
+      for (const l of legs.slice().sort((p, q) => weight(p.kind) - weight(q.kind) || q.street - p.street)) if (!l.engine && !streetIds.includes(l.street)) streetIds.push(l.street);
+      if (streetIds.length < 2) break;
+      let done = false;
+      for (const id of streetIds) {
+        legs = keep.filter((l) => l.street !== id || l.engine);
+        resolve();
+        if (isSimple(poly)) {
+          shutLegs.push(...keep.filter((l) => !l.engine && l.street === id));
+          done = true;
+          break;
+        }
+      }
+      if (!done) {
+        // No one street's closing is enough: the lesser is closed and the next round looks again.
+        const id = streetIds[0] as number;
+        legs = keep.filter((l) => l.street !== id || l.engine);
+        shutLegs.push(...keep.filter((l) => !l.engine && l.street === id));
+        resolve();
+      }
+    }
     // A through street left alone has no pavement of its own: its roadway is the rectangle along it.
     if (poly.length < 3 && shaped.length === 2) {
       const t = shaped[0] as (typeof shaped)[number];

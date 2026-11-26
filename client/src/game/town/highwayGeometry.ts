@@ -13,18 +13,26 @@
  * - **The marks**, in the town's own style (`streetGeometry.ts`): a double yellow centre line, broken across the roadway of each street that meets
  *   the highway, and a white line at the edge of each lane (3.5 m from the centre, where the engine's asphalt ends), broken across each meeting's opening
  *   in the curb. The highway is kept up, so its paint is faded and dirtied by a roll of its own per 8 m and none of it is worn through. There is no
- *   crosswalk or stop line on the highway itself: the side streets keep theirs.
+ *   stop line on the highway itself: the side streets keep theirs. A crosswalk the plan marks across the highway (`marked` on its leg: at the junctions of the
+ *   core) is laid here as a ladder of bars across the bed, in the size of any other crosswalk's, on the paving at the lift of the streets' marks, and the centre
+ *   line and the lane's two edge lines are broken across it.
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { clamp01, hashN, smooth } from "./groundNoise.js";
 import { RANK, type Over } from "./groundSurfaces.js";
 import { BED_STEP, bedIndex, bedTile } from "./highwayBed.js";
+import { CROSSWALK_WIDTH } from "../../sim/town/junctions.js";
+import { onLeg } from "../../sim/town/junctionShape.js";
+import { RAIL_BED_HALF } from "../../sim/town/rail.js";
+import { spurOf } from "../../sim/town/railSpur.js";
+import { BAR_MARGIN, BAR_WIDTH, barOffsets } from "./junctionPaint.js";
 import { worldJunctions, type WJunction } from "./junctionWorld.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 import { ASPHALT, PAINT_WHITE, PAINT_YELLOW } from "./palette.js";
 import { LINE_WIDTH, MARK_OVER, ROADWAY_LIFT, asphaltOf } from "./streetGeometry.js";
-import { clipLine, type P2, type Surface } from "./surface.js";
+import { clipLine, shareArea, subtractConvex, type P2, type Surface } from "./surface.js";
 import type { TownGround } from "./townTypes.js";
+import type { Vec } from "../../sim/town/types.js";
 
 /** How far the strip runs past the outermost meeting of a street with the highway, measured along the highway's centre line, metres. */
 export const HIGHWAY_LEAD = 25;
@@ -43,51 +51,109 @@ export type StripEnd = { readonly x: number; readonly z: number; readonly tx: nu
 /** Where a junction's pavement meets the bed, on one side of it: the edge's two ends (`a` the lesser z) and the side (-1 seaward, 1 inland). */
 export type BedContact = { readonly junction: number; readonly side: 1 | -1; readonly a: P2; readonly b: P2 };
 
-/** What is drawn of the highway: its ends, the meetings along it and the lengths of centre line the streets' roadways cross, each as a range of z. */
+/** A crosswalk the plan marks across the highway: its bars (each a quad) and the range of z they lie over. */
+export type HighwayCrosswalk = { readonly junction: number; readonly bars: readonly (readonly P2[])[]; readonly z: readonly [number, number] };
+
+/** What is drawn of the highway: its ends, the meetings along it, the lengths of centre line the streets' roadways cross, each as a range of z, and its crosswalks. */
 export type HighwayStrip = {
   readonly start: StripEnd;
   readonly end: StripEnd;
   readonly contacts: readonly BedContact[];
   readonly crossings: readonly (readonly [number, number])[];
+  readonly crosswalks: readonly HighwayCrosswalk[];
 };
 
-/** The highway's engine edge of a paved junction: the polygon's corners on the leg's line, from its least z to its greatest. */
-function contactOf(g: TownGround, j: WJunction): BedContact | null {
-  const e = j.legs.find((l) => l.engine);
-  if (e === undefined || j.polygon.length < 3) return null;
-  const on = j.polygon.filter((p) => Math.abs((p.x - e.x) * -e.dz + (p.z - e.z) * e.dx) < 1e-5);
-  if (on.length < 2) return null;
-  let lo = on[0]!;
-  let hi = on[0]!;
-  for (const p of on) {
-    if (p.z < lo.z) lo = p;
-    if (p.z > hi.z) hi = p;
+/**
+ * The crosswalks a junction's plan marks across the highway: on each of its edge legs that is `marked`, a ladder of bars across the bed, on the side of the bed
+ * away from the streets, beginning where the leg's mouth is (as the ladder of a street's leg does).
+ */
+function crosswalksOf(g: TownGround, j: WJunction): HighwayCrosswalk[] {
+  const out: HighwayCrosswalk[] = [];
+  const other = j.legs.find((m) => !m.engine);
+  for (const l of j.legs) {
+    if (!l.engine || !l.marked) continue;
+    const side = other === undefined ? 1 : other.dx * -l.dz + other.dz * l.dx > 0 ? -1 : 1;
+    const a = BAR_MARGIN;
+    const b = ROAD_BED_HALF * 2 - BAR_MARGIN;
+    const t0 = side > 0 ? a : -b;
+    const t1 = side > 0 ? b : -a;
+    // The leg's line is the bed's edge at the leg's reference point only: the highway bends away from it along the leg, so the bars are laid in the bed's own frame,
+    // each a stretch of the centre line `CROSSWALK_WIDTH` long from where the leg's mouth is, between its offsets across the bed.
+    const es = l.x - g.roadX(l.z) < 0 ? -1 : 1;
+    const z0 = onLeg(l, l.mouth, 0).z;
+    const z1 = zAlong(g, z0, (l.dz > 0 ? 1 : -1) * CROSSWALK_WIDTH);
+    const bars = barOffsets(t0, t1).map((t): P2[] => {
+      // How far each side of the bar lies from the bed's edge (t is to the leg's left, so a negative t is the same distance the other way).
+      const near = side > 0 ? t : -(t + BAR_WIDTH);
+      const far = near + BAR_WIDTH;
+      const uA = es * (ROAD_BED_HALF - near);
+      const uB = es * (ROAD_BED_HALF - far);
+      return [[g.roadX(z0) + uA, z0], [g.roadX(z1) + uA, z1], [g.roadX(z1) + uB, z1], [g.roadX(z0) + uB, z0]];
+    });
+    const zs = bars.flatMap((q) => q.map((v) => v[1]));
+    out.push({ junction: j.id, bars, z: [Math.min(...zs), Math.max(...zs)] });
   }
-  if (!(hi.z - lo.z > 0.5)) return null;
-  const side = (lo.x + hi.x) / 2 - g.roadX((lo.z + hi.z) / 2) < 0 ? -1 : 1;
-  return { junction: j.id, side, a: [lo.x, lo.z], b: [hi.x, hi.z] };
+  return out;
 }
 
-/** Where the roadway of the street at a junction crosses the centre line: the least and greatest z of its two edges' meetings with it. */
-function crossingOf(g: TownGround, j: WJunction): [number, number] | null {
-  const l = j.legs.find((m) => !m.engine);
-  if (l === undefined) return null;
-  const nx = -l.dz;
-  const nz = l.dx;
-  const zs: number[] = [];
-  for (const off of [-l.half, l.half]) {
-    let t = 0;
-    for (let k = 0; k < 12; k++) {
-      const z = l.z + l.dz * t + nz * off;
-      const f = l.x + l.dx * t + nx * off - g.roadX(z);
-      const slope = (g.roadX(z + 0.5) - g.roadX(z - 0.5)) / 1;
-      const df = l.dx - slope * l.dz;
-      if (Math.abs(df) < 1e-6) break;
-      t -= f / df;
+/**
+ * Where a paved junction's pavement lies along the highway's engine edge: each stretch of its outline that runs along the edge, from its least z to its greatest.
+ * One street meeting the highway has one; two that meet it close together, with a corner of lot between them, have two.
+ */
+function contactsOf(g: TownGround, j: WJunction): BedContact[] {
+  const e = j.legs.find((l) => l.engine);
+  if (e === undefined || j.polygon.length < 3) return [];
+  const poly = j.polygon;
+  const n = poly.length;
+  const on = poly.map((p) => Math.abs((p.x - e.x) * -e.dz + (p.z - e.z) * e.dx) < 1e-5);
+  const start = on.findIndex((o) => !o);
+  if (start < 0) return [];
+  const out: BedContact[] = [];
+  let run: Vec[] = [];
+  const close = (): void => {
+    if (run.length >= 2) {
+      let lo = run[0]!;
+      let hi = run[0]!;
+      for (const p of run) {
+        if (p.z < lo.z) lo = p;
+        if (p.z > hi.z) hi = p;
+      }
+      if (hi.z - lo.z > 0.5) out.push({ junction: j.id, side: (lo.x + hi.x) / 2 - g.roadX((lo.z + hi.z) / 2) < 0 ? -1 : 1, a: [lo.x, lo.z], b: [hi.x, hi.z] });
     }
-    zs.push(l.z + l.dz * t + nz * off);
+    run = [];
+  };
+  for (let k = 1; k <= n; k++) {
+    const i = (start + k) % n;
+    if (on[i]) run.push(poly[i] as Vec);
+    else close();
   }
-  return [Math.min(...(zs as [number, number])), Math.max(...(zs as [number, number]))];
+  close();
+  return out;
+}
+
+/** Where the roadway of each street at a junction crosses the centre line: the least and greatest z of its two edges' meetings with it. */
+function crossingsOf(g: TownGround, j: WJunction): [number, number][] {
+  const out: [number, number][] = [];
+  for (const l of j.legs) {
+    if (l.engine) continue;
+    const nx = -l.dz;
+    const nz = l.dx;
+    const zs: number[] = [];
+    for (const off of [-l.half, l.half]) {
+      let t = 0;
+      for (let k = 0; k < 12; k++) {
+        const z = l.z + l.dz * t + nz * off;
+        const f = l.x + l.dx * t + nx * off - g.roadX(z);
+        const slope = (g.roadX(z + 0.5) - g.roadX(z - 0.5)) / 1;
+        const df = l.dx - slope * l.dz;
+        if (Math.abs(df) < 1e-6) break;
+        t -= f / df;
+      }
+      zs.push(l.z + l.dz * t + nz * off);
+    }
+    out.push([Math.min(...(zs as [number, number])), Math.max(...(zs as [number, number]))]);
+  }
+  return out;
 }
 
 /** The centre line's direction at z, as a unit vector (tx, tz) with tz positive. */
@@ -136,18 +202,42 @@ function endAt(g: TownGround, z: number): StripEnd {
 export function highwayStrip(g: TownGround, junctions: readonly WJunction[] = worldJunctions(g)): HighwayStrip | null {
   const contacts: BedContact[] = [];
   const crossings: [number, number][] = [];
+  const crosswalks: HighwayCrosswalk[] = [];
   for (const j of junctions) {
     if (j.kind !== "highway") continue;
-    const c = contactOf(g, j);
-    if (c === null) continue;
-    contacts.push(c);
-    const x = crossingOf(g, j);
-    if (x !== null) crossings.push(x);
+    const cs = contactsOf(g, j);
+    if (cs.length === 0) continue;
+    contacts.push(...cs);
+    crossings.push(...crossingsOf(g, j));
+    crosswalks.push(...crosswalksOf(g, j));
   }
   if (contacts.length === 0) return null;
   const lo = Math.min(...contacts.map((c) => c.a[1]));
   const hi = Math.max(...contacts.map((c) => c.b[1]));
-  return { start: endAt(g, zAlong(g, lo, -HIGHWAY_LEAD)), end: endAt(g, zAlong(g, hi, HIGHWAY_LEAD)), contacts, crossings };
+  return { start: endAt(g, zAlong(g, lo, -HIGHWAY_LEAD)), end: endAt(g, zAlong(g, hi, HIGHWAY_LEAD)), contacts, crossings, crosswalks };
+}
+
+/** The ground the town's spur lies over where it crosses or runs along the highway's bed: its bed's whole width, as quads between its points, within reach of the bed. */
+function spurGround(g: TownGround): P2[][] {
+  const track = spurOf(g.seed);
+  if (track === null) return [];
+  const out: P2[][] = [];
+  const pts = track.points;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1] as { x: number; z: number };
+    const b = pts[i] as { x: number; z: number };
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 1e-9) continue;
+    const nx = (-dz / len) * RAIL_BED_HALF;
+    const nz = (dx / len) * RAIL_BED_HALF;
+    // Only where it comes within the bed (a metre's slack).
+    const near = (q: { x: number; z: number }): number => Math.abs(q.x - g.roadX(q.z));
+    if (Math.min(near(a), near(b)) > ROAD_BED_HALF + RAIL_BED_HALF + len + 1) continue;
+    out.push([[a.x - nx, a.z - nz], [b.x - nx, b.z - nz], [b.x + nx, b.z + nz], [a.x + nx, a.z + nz]]);
+  }
+  return out;
 }
 
 /** The x of the centre line's chord on bed tile `tile` at z. */
@@ -163,8 +253,13 @@ function centreOn(tile: readonly P2[], z: number): number {
  * tile's edge and the pavement's. The pavement takes them in.
  */
 export function bedFillers(g: TownGround, j: WJunction): P2[][] {
-  const c = contactOf(g, j);
-  if (c === null) return [];
+  const out: P2[][] = [];
+  for (const c of contactsOf(g, j)) out.push(...fillersOf(g, c));
+  return out.filter((p) => Math.abs(areaOf(p)) > 1e-6);
+}
+
+/** The ground between one contact's pavement edge and the bed. */
+function fillersOf(g: TownGround, c: BedContact): P2[][] {
   const out: P2[][] = [];
   const lineX = (z: number): number => c.a[0] + ((z - c.a[1]) * (c.b[0] - c.a[0])) / (c.b[1] - c.a[1]);
   for (let i = bedIndex(c.a[1]); i <= bedIndex(c.b[1]); i++) {
@@ -186,7 +281,7 @@ export function bedFillers(g: TownGround, j: WJunction): P2[][] {
       out.push(da > 0 ? [[edge(za), za], cross, [lineX(za), za]] : [cross, [edge(zb), zb], [lineX(zb), zb]]);
     }
   }
-  return out.filter((p) => Math.abs(areaOf(p)) > 1e-6);
+  return out;
 }
 
 const areaOf = (p: readonly P2[]): number => {
@@ -234,16 +329,22 @@ export function highwayGeometry(g: TownGround, surf: Surface, junctions: readonl
     const a = clipLine(poly, [start.x, start.z], [start.x + start.tz, start.z - start.tx], true);
     return a.length < 3 ? [] : clipLine(a, [end.x, end.z], [end.x + end.tz, end.z - end.tx], false);
   };
+  // The spur's bed is left its own ground where the track crosses the highway: the town's paving and its marks are cut off it, so that no two faces lie there.
+  const spur = spurGround(g);
   const lay = (poly: readonly P2[], lift: number, colour: Rgb, o: Over): void => {
     const piece = between(poly);
-    if (piece.length >= 3 && Math.abs(areaOf(piece)) > 1e-6) surf.pave(piece, lift, colour, o);
+    if (piece.length < 3 || Math.abs(areaOf(piece)) <= 1e-6) return;
+    let pieces: P2[][] = [piece.slice()];
+    for (const q of spur) pieces = pieces.flatMap((r) => (shareArea(r, q, 1e-4) ? subtractConvex(r, q) : [r]));
+    for (const r of pieces) if (r.length >= 3 && Math.abs(areaOf(r)) > 1e-6) surf.pave(r, lift, colour, o);
   };
 
   const first = bedIndex(Math.min(start.left[1], start.right[1])) - 1;
   const last = bedIndex(Math.max(end.left[1], end.right[1])) + 1;
   // Where each mark is broken: the centre line across the roadways that meet the highway, an edge line across the opening of each pavement on its side.
-  const centreBreaks = strip.crossings;
-  const edgeBreaks = (side: 1 | -1): [number, number][] => strip.contacts.filter((c) => c.side === side).map((c): [number, number] => [c.a[1], c.b[1]]);
+  const walkBreaks = strip.crosswalks.map((c): [number, number] => [c.z[0], c.z[1]]);
+  const centreBreaks = [...strip.crossings, ...walkBreaks];
+  const edgeBreaks = (side: 1 | -1): [number, number][] => [...strip.contacts.filter((c) => c.side === side).map((c): [number, number] => [c.a[1], c.b[1]]), ...walkBreaks];
   const lift = ROADWAY_LIFT + MARK_OVER;
   /** A mark's look: the asphalt's grain under the paint's colour, faded by a roll of its own per stretch of the highway and dirtied where it has faded. */
   const look = (colour: Rgb, z: number, line: number): { c: Rgb; over: Over } => {
@@ -267,6 +368,13 @@ export function highwayGeometry(g: TownGround, surf: Surface, junctions: readonl
         const { c, over: o } = look(m.colour, za, line);
         lay(quad, lift, c, o);
       }
+    });
+  }
+  // The crosswalks, at the lift of the streets' marks and their rank: the paint of a ladder on the paving, faded as the lines are.
+  for (const w of strip.crosswalks) {
+    w.bars.forEach((bar, i) => {
+      const { c, over: o } = look(PAINT_WHITE, (w.z[0] + w.z[1]) / 2, 8 + i);
+      lay(bar, lift, c, o);
     });
   }
 }

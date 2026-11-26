@@ -23,6 +23,11 @@ import { streetChannelD, streetLiftD, streetLowerD, withStreets } from "../../sr
  * world's identity.
  *
  * A digest that moves means the arithmetic moved. Put the arithmetic back; never the digest.
+ *
+ * The one other thing that moves a digest is the plan itself: the streets are cut into the ground, so a change of plan
+ * (`TOWN_GEN` raised) that moves a street or a junction's pavement moves the ground under it. Then, and only with no
+ * change to any file of the ground's arithmetic, the worlds whose plan moved are pinned again. (Plan 24 opened the
+ * streets that were shut at the highway: world 20261121's three were taken again, worlds 1 and 6 stood.)
  */
 
 const SEEDS = [20261121, 1, 6];
@@ -185,14 +190,14 @@ const PINNED: Record<string, string> = {
   "hooks:20261121": "ca6cb03f0f345312/360000",
   "hooks:6": "12d6749702cac598/360000",
   "town:1": "a9dd0d10d83af95a/1880000",
-  "town:20261121": "8433fd179a61a1c4/1880000",
+  "town:20261121": "b698a76dabea4a63/1880000",
   "town:6": "20a7eabc602ebbb2/1880000",
   "walked:1": "a8ec5139d3952625/180000",
-  "walked:20261121": "00961a0075ff1db7/180000",
+  "walked:20261121": "b6fdc8fb8bee45a8/180000",
   "walked:6": "ac79788bd20460cb/180000",
   windows: "89b5a4c96dc02509/800000",
   "world:1": "08bfb89bb2d4d2ab/240000",
-  "world:20261121": "a30d02b9d405512c/240000",
+  "world:20261121": "7e7022212e703c86/240000",
   "world:6": "b8cc32f8065fb906/240000",
 };
 
