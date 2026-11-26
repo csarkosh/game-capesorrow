@@ -377,7 +377,25 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const under = (surface: Surface | undefined): Fx | undefined =>
     surface === undefined ? undefined : { back: { colour: SOFFIT, surface: { layer: "planks_weathered", frame: surface.frame, tint: [0.85, 0.85, 0.85], shade: SOFFIT_SKY } } };
   const edgeTrim: Rgb = scaled(b.material === "wood" ? vary([0.6, 0.6, 0.56], b.id, 9) : scaled(roofColour, 0.75), vacant ? 0.8 : 1);
-  const edgeBoard = (p: Vec3, q: Vec3, hint: Vec3): void => out.poly([p, q, [q[0], q[1] - ROOF_EDGE, q[2]], [p[0], p[1] - ROOF_EDGE, p[2]]], hint, edgeTrim, "painted", { back: true });
+  // A board has a thickness: its inner face stands 3 cm in from its outer one. Two roofs that meet edge to edge (attached buildings a pair of
+  // eaves apart) would otherwise have one's outer face and the other's inner face in one plane, looking the same way.
+  // Where another building stands against the wall a board's end reaches past (`blockedWalls`: within 0.7 m, a pair of eaves), the two
+  // roofs' overhangs run into each other, and their boards along one line would lie in one plane: the board stops at its own wall there.
+  const shut = blockedWalls(planCtx);
+  const shutToward = (dx: number, dz: number): boolean => walls.some((w, k) => shut[k] === true && w.nx * dx + w.nz * dz > 0.9);
+  const edgeBoard = (p0: Vec3, q0: Vec3, hint: Vec3): void => {
+    const hx = q0[0] - p0[0];
+    const hz = q0[2] - p0[2];
+    const run = Math.sqrt(hx * hx + hz * hz);
+    const along = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const trim = run > 2 * EAVE + 0.1;
+    const p = trim && shutToward(-hx / run, -hz / run) ? along(p0, q0, EAVE / run) : p0;
+    const q = trim && shutToward(hx / run, hz / run) ? along(q0, p0, EAVE / run) : q0;
+    out.poly([p, q, [q[0], q[1] - ROOF_EDGE, q[2]], [p[0], p[1] - ROOF_EDGE, p[2]]], hint, edgeTrim, "painted");
+    const pi: Vec3 = [p[0] - hint[0] * 0.03, p[1], p[2] - hint[2] * 0.03];
+    const qi: Vec3 = [q[0] - hint[0] * 0.03, q[1], q[2] - hint[2] * 0.03];
+    out.poly([qi, pi, [pi[0], pi[1] - ROOF_EDGE, pi[2]], [qi[0], qi[1] - ROOF_EDGE, qi[2]]], [-hint[0], 0, -hint[2]], scaled(edgeTrim, 0.7), "painted");
+  };
   if (roofKind === "flat") {
     const inset = 0.3;
     out.poly([P(-L + inset, -S + inset, H), P(L - inset, -S + inset, H), P(L - inset, S - inset, H), P(-L + inset, S - inset, H)], [0, 1, 0], roofColour, roofSurface(groundFrame(g.anchor)));
