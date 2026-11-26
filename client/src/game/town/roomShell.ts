@@ -47,6 +47,8 @@ export type RoomIn = {
   readonly past: readonly PastTenant[];
   readonly vacantSince: number | null;
   readonly door: { readonly s: number; readonly width: number };
+  /** How much deeper than 7 cm the unit's glass stands in its wall (the deeper openings of a masonry front: `glassOffOf`, `windowGeometry.ts`); what hangs in the window (`sillThings`) moves in with it. None given is 0. */
+  readonly glassIn?: number;
 };
 
 /** A surface: the layer it is painted on (null for flat colour), its colour, and the gain that lifts a dark scanned picture to that colour. */

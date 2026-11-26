@@ -43,6 +43,8 @@ export type Ctx = {
   readonly cut?: number;
   /** The building's era, for what is old in the room. */
   readonly era: number;
+  /** How much deeper than 7 cm the glass stands in its wall, metres: what hangs in the window stands that much further in (`RoomIn.glassIn`). */
+  readonly glassIn: number;
   n: number;
   /** Where the chairs stand, so that two tables do not both put one in a place. */
   readonly chairs: [number, number][];

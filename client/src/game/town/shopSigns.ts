@@ -17,12 +17,13 @@
  * Authored, not researched: every size, the glow strengths, the sag and the loose corner of a banner, the colours (`signStyle.ts`).
  */
 import { withMat } from "./materials.js";
-import { standOff } from "./faceLedger.js";
+import { isClear, standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
 import { blockOfLot, signColours } from "./accents.js";
 import { hoursCode, unitHours, wrapHour, type Hours } from "./hours.js";
 import { xp, type Xf } from "./roomGeometry.js";
+import { glassOffOf, isMasonry } from "./windowGeometry.js";
 import type { Building, BuildingUse, Sign, Unit } from "../../sim/town/types.js";
 import type { Detail, SignAtlasLike, SignSpec, TownGround } from "./townTypes.js";
 
@@ -38,6 +39,12 @@ export type SignIn = {
   readonly wallTop: number;
   readonly detail: Detail;
 };
+
+/** Where a shop window's glass stood before the deeper reveals of a masonry wall (7 cm in): the offsets below that hang in the window are set from it. */
+const GLASS_OF_OLD = -0.07;
+
+/** How much further in than before a building's windows have their glass (0 on the low tier and in a thin wall, where it stands where it always did): what hangs in the window moves with it, so none is left in front of the glass or across it. */
+const glassShift = (i: SignIn): number => glassOffOf(i.detail === "full", isMasonry(i.b.material)) - GLASS_OF_OLD;
 
 /** Where a sign stands: a point on the wall or the ground, the outward normal and the viewer's right. */
 type Pl = { x: number; z: number; nx: number; nz: number; rx: number; rz: number; free: boolean };
@@ -140,7 +147,7 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     default: h = 0.5 + nLines * 0.2; w = Math.min(2.4, textWidth(lines, 0.2) + 0.2); break;
   }
   // Lettering on the glass stays inside the opening it is on (it is on the pane, not on the wall beside it); on an opening that is boarded or bricked up it is on the boards or the brick.
-  let glassOff = -0.015;
+  let glassOff = -0.015 + glassShift(i);
   if (unit !== null && (sign.kind === "glass" || sign.kind === "open" || sign.kind === "lease")) {
     const o = unit.openings.find((q) => sign.place.s >= Math.min(q.s0, q.s1) - 0.05 && sign.place.s <= Math.max(q.s0, q.s1) + 0.05);
     if (o !== undefined) {
@@ -283,8 +290,8 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     }
     case "open": {
       // Hung in the glass on two cords: a small box with its tubes.
-      obox(0, y - h / 2, w, h, -0.18, -0.14, [0.05, 0.05, 0.06]);
-      quad(0, y - h / 2, w, h, -0.11);
+      obox(0, y - h / 2, w, h, -0.18 + glassShift(i), -0.14 + glassShift(i), [0.05, 0.05, 0.06]);
+      quad(0, y - h / 2, w, h, -0.11 + glassShift(i));
       break;
     }
     case "lease": {
@@ -302,9 +309,13 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
         quad(0, top - h + 0.04, w - 0.08, h - 0.08, -0.08, true);
       } else {
         const y0 = y - h / 2;
-        // The board's front stands where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`), and the lettering 3 cm in front of that.
+        // The board's front stands where no face of the wall's is within 2.45 cm of it, and so does the lettering 3 cm in front of that (a deep sill or lintel on the wall is a face at a plane the lettering could land on, and would push the board's own front onto it).
         const bw = (w + 0.12) / 2;
-        const front = 0.13 + standOff(pl.nx, pl.nz, pl.x - pl.rx * bw + pl.nx * 0.13, pl.z - pl.rz * bw + pl.nz * 0.13, pl.x + pl.rx * bw + pl.nx * 0.13, pl.z + pl.rz * bw + pl.nz * 0.13, y0 - 0.04, y0 + h + 0.04);
+        const spot = (at: number): boolean => isClear(pl.nx, pl.nz, pl.x - pl.rx * bw + pl.nx * at, pl.z - pl.rz * bw + pl.nz * at, pl.x + pl.rx * bw + pl.nx * at, pl.z + pl.rz * bw + pl.nz * at, y0 - 0.04, y0 + h + 0.04);
+        let front = 0.13;
+        for (let tries = 0; tries < 8 && !(spot(front) && spot(front + 0.03)); tries++) front += 0.03;
+        // (Noted as laid, as the board's front.)
+        front += standOff(pl.nx, pl.nz, pl.x - pl.rx * bw + pl.nx * front, pl.z - pl.rz * bw + pl.nz * front, pl.x + pl.rx * bw + pl.nx * front, pl.z + pl.rz * bw + pl.nz * front, y0 - 0.04, y0 + h + 0.04);
         const off = quad(0, y0, w, h, front + 0.03, false, { ww: w + 0.12, hh: h + 0.08, y0: y0 - 0.04, d: 0.03 });
         obox(0, y0 - 0.04, w + 0.12, h + 0.08, 0, off - 0.03, ink, scaled(ink, 1.4));
       }
@@ -383,7 +394,7 @@ function windowLife(i: SignIn): void {
       const y0 = i.floorY + o.sill + 0.12 + r(5 + k * 5) * Math.max(0.05, o.head - o.sill - hh - 0.35);
       const lines = NOTICES[Math.floor(r(6 + k * 5) * NOTICES.length) % NOTICES.length] as readonly string[];
       const faded = vacant ? 0.3 + r(7 + k) * 0.3 : 0.55 + r(7 + k) * 0.4;
-      paint(cx, y0, ww, hh, boarded || o.cover === "boarded" ? 0.09 : -0.015, lines, seed + k * 31, PAPER_COLOURS[Math.floor(r(8 + k * 5) * PAPER_COLOURS.length) % PAPER_COLOURS.length] as [number, number, number], [30, 30, 36], faded, (r(9 + k * 5) - 0.5) * 0.12);
+      paint(cx, y0, ww, hh, boarded || o.cover === "boarded" ? 0.09 : -0.015 + glassShift(i), lines, seed + k * 31, PAPER_COLOURS[Math.floor(r(8 + k * 5) * PAPER_COLOURS.length) % PAPER_COLOURS.length] as [number, number, number], [30, 30, 36], faded, (r(9 + k * 5) - 0.5) * 0.12);
     }
     if (boarded || openings.length === 0) continue;
     // A sticker or two by the door, at the height of a hand.
