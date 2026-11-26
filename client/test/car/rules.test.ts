@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
+import type { GroundField } from "@csarkosh/engine/sim/ground";
 import type { InputCommand } from "@csarkosh/engine/sim/core";
 import { addPlayer, applyInput, removePlayer, tickPlayers } from "@csarkosh/engine/sim/tick";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv } from "../../src/sim/car/body.js";
@@ -9,10 +10,11 @@ import { SEAT_HEIGHT, doorNear, doorPlace, seatFor, seatPlace } from "../../src/
 import { carStart, groundCar, newCar } from "../../src/sim/car/start.js";
 import { surfaceAt } from "../../src/sim/car/surface.js";
 import {
-  CAR_LENGTH, CAR_WIDTH, DOOR_REACH, ENTER_TICKS, INTERACT_BIT, LAMP_BIT, LEAVE_SPEED, LEAVE_TICKS, SPEED_CAP, TOP_SPEED,
+  CAR_LENGTH, CAR_WIDTH, DOOR_REACH, ENTER_TICKS, INTERACT_BIT, LAMP_BIT, LEAVE_SPEED, LEAVE_TICKS, WADE,
 } from "../../src/sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, PAVED, SEATED, type Car } from "../../src/sim/car/types.js";
 import { HULL_RADIUS } from "../../src/sim/town/hull.js";
+import { bearingU } from "../../src/sim/town/bearings.js";
 import { constrainCircle } from "../../src/sim/town/solid.js";
 import { townStart } from "../../src/sim/town/start.js";
 import { WALK_RULES } from "../../src/sim.js";
@@ -323,6 +325,122 @@ describe("getting in and out", () => {
   });
 });
 
+/**
+ * A car at rest on the town's ground with the left side of its body 0.7 m from a building's long wall, so that the left
+ * doors' places lie inside the wall's reach of the hull, chosen from the plan before anyone moves: the wall is long
+ * enough for the car, the car's three circles touch nothing, and the right doors' places are free of buildings and props.
+ */
+function besideWall(car: Car): boolean {
+  const plan = planFor(seed);
+  const vel = { x: 0, y: 0, z: 0 };
+  for (const b of plan.buildings) {
+    if (b.kind === "pier" || b.halfAlong < 5) continue;
+    const u = bearingU(b.bearing);
+    const cx = anchor.x + b.centre.x;
+    const cz = anchor.z + b.centre.z;
+    for (const side of [-1, 1]) {
+      // The wall's outward normal, and the car lying along the wall with the wall on its left (its right is the normal).
+      const nx = u.z * side;
+      const nz = -u.x * side;
+      const gap = CAR_WIDTH / 2 + 0.5 + 0.2;
+      car.x = cx + nx * (b.halfAcross + gap);
+      car.z = cz + nz * (b.halfAcross + gap);
+      car.hx = -nz;
+      car.hz = nx;
+      car.speed = 0;
+      groundCar(world.ground, car);
+      let free = true;
+      for (const along of CAR_CIRCLES) {
+        const pos = { x: car.x + car.hx * along, y: 0, z: car.z + car.hz * along };
+        if (constrainCircle(seed, pos, vel, CAR_RADIUS)) free = false;
+      }
+      const d = { x: 0, z: 0 };
+      for (const seat of [0, 2]) {
+        doorPlace(car, seat, d);
+        // The left doors: inside the wall's reach.
+        const pos = { x: d.x, y: 0, z: d.z };
+        if (!constrainCircle(seed, pos, vel, HULL_RADIUS)) free = false;
+      }
+      for (const seat of [1, 3]) {
+        doorPlace(car, seat, d);
+        const pos = { x: d.x, y: 0, z: d.z };
+        if (constrainCircle(seed, pos, vel, HULL_RADIUS)) free = false;
+      }
+      if (free) return true;
+    }
+  }
+  return false;
+}
+
+describe("a door beside a wall or over water", () => {
+  it("keeps the player seated when a building's wall blocks one side and a car the other", () => {
+    const car = reset();
+    expect(besideWall(car)).toBe(true);
+    const p = getIn(car, 1);
+    parkedBeside(car, 2, CAR_WIDTH / 2 + 0.5 + CAR_WIDTH / 2);
+    carPressed(world, p, INTERACT_BIT);
+    expect(p.ride).toEqual({ car: 1, seat: 0, phase: SEATED, ticks: 0 });
+  });
+
+  it("gets out on the side away from the wall when only the wall side is blocked", () => {
+    const car = reset();
+    expect(besideWall(car)).toBe(true);
+    const p = getIn(car, 1);
+    carPressed(world, p, INTERACT_BIT);
+    expect(p.ride.phase).toBe(LEAVING);
+    tick(LEAVE_TICKS);
+    expect(p.ride.phase).toBe(FOOT);
+    const d = { x: 0, z: 0 };
+    doorPlace(car, 1, d);
+    expect(p.pos.x).toBeCloseTo(d.x, 9);
+    expect(p.pos.z).toBeCloseTo(d.z, 9);
+  });
+
+  /** The ground with a trench on the car's left, deep under a sea level that leaves the right side dry; put back after `body`. */
+  function withTrenchOnTheLeft(car: Car, body: () => void): void {
+    const was = { ground: world.ground, level: world.waterLevel };
+    const base = ground;
+    const edge = car.x - 0.5;
+    world.ground = Object.create(base, { heightAt: { value: (x: number, z: number): number => base.heightAt(x, z) - (x < edge ? 3 : 0) } }) as GroundField;
+    world.waterLevel = car.y - 1;
+    try {
+      body();
+    } finally {
+      world.ground = was.ground;
+      world.waterLevel = was.level;
+    }
+  }
+
+  it("does not stand a player in water deeper than wading: out by the dry side, and not at all when that is blocked", () => {
+    const car = reset();
+    onHighway(car);
+    const p = getIn(car, 0);
+    // The car heads +z, so its left is -x.
+    const left = { x: 0, z: 0 };
+    const right = { x: 0, z: 0 };
+    doorPlace(car, 0, left);
+    doorPlace(car, 1, right);
+    expect(left.x).toBeLessThan(car.x);
+    withTrenchOnTheLeft(car, () => {
+      expect((world.waterLevel as number) - groundOf(world).heightAt(left.x, left.z)).toBeGreaterThan(WADE);
+      expect((world.waterLevel as number) - groundOf(world).heightAt(right.x, right.z)).toBeLessThan(WADE);
+      carPressed(world, p, INTERACT_BIT);
+      expect(p.ride.phase).toBe(LEAVING);
+      tick(LEAVE_TICKS);
+      expect(p.ride.phase).toBe(FOOT);
+      doorPlace(car, 1, right);
+      expect([p.pos.x, p.pos.z]).toEqual([right.x, right.z]);
+    });
+    // Back in, with the dry side now taken by a car: the player stays seated.
+    const q = getIn(car, 1);
+    withTrenchOnTheLeft(car, () => {
+      parkedBeside(car, 2, CAR_WIDTH / 2 + 0.5 + CAR_WIDTH / 2);
+      carPressed(world, q, INTERACT_BIT);
+      expect(q.ride.phase).toBe(SEATED);
+    });
+  });
+});
+
 describe("riding", () => {
   it("drives the car with the driver's commands and carries a passenger with it", () => {
     const car = reset();
@@ -335,7 +453,8 @@ describe("riding", () => {
     expect([driver.ride.seat, passenger.ride.seat]).toEqual([0, 1]);
     const z0 = car.z;
     tickWith(180, driver, { moveZ: 1 });
-    expect(car.speed).toBeGreaterThan(0.8 * Math.min(TOP_SPEED[PAVED] as number, SPEED_CAP));
+    // Bounds that three seconds from rest meet at every cap from 10 m/s up.
+    expect(car.speed).toBeGreaterThan(8);
     expect(car.z).toBeGreaterThan(z0 + 10);
     const seat = { x: 0, y: 0, z: 0 };
     for (const [p, s] of [[driver, 0], [passenger, 1]] as const) {
@@ -380,6 +499,46 @@ describe("riding", () => {
     const two = run(false);
     expect(one.car).toEqual(two.car);
     expect(one.car.z).toBeGreaterThan(one.afterOne);
+  });
+
+  it("lets a passenger out beside the car when it presses at rest", () => {
+    const car = reset();
+    onHighway(car);
+    getIn(car, 0);
+    const passenger = getIn(car, 1);
+    expect(passenger.ride.seat).toBe(1);
+    carPressed(world, passenger, INTERACT_BIT);
+    expect(passenger.ride.phase).toBe(LEAVING);
+    tick(LEAVE_TICKS);
+    expect(passenger.ride.phase).toBe(FOOT);
+    expect(car.seats[1]).toBe(0);
+    const d = { x: 0, z: 0 };
+    doorPlace(car, 1, d);
+    expect(passenger.pos.x).toBeCloseTo(d.x, 9);
+    expect(passenger.pos.z).toBeCloseTo(d.z, 9);
+    expect(outside(car, passenger.pos.x, passenger.pos.z)).toBeGreaterThanOrEqual(HULL_RADIUS);
+  });
+
+  it("carries a passenger getting out with the car if the driver drives off, and keeps it seated", () => {
+    const car = reset();
+    onHighway(car);
+    const driver = getIn(car, 0);
+    const passenger = getIn(car, 1);
+    carPressed(world, passenger, INTERACT_BIT);
+    expect(passenger.ride.phase).toBe(LEAVING);
+    const z0 = car.z;
+    const seat = { x: 0, y: 0, z: 0 };
+    for (let i = 0; i < LEAVE_TICKS; i++) {
+      tickWith(1, driver, { moveZ: 1 });
+      expect(Math.hypot(passenger.pos.x - car.x, passenger.pos.z - car.z), `tick ${i}`).toBeLessThan(1.5);
+      // It rides in its seat, not where the car was when it pressed.
+      seatPlace(car, 1, seat);
+      expect(passenger.pos, `tick ${i}`).toEqual(seat);
+    }
+    expect(car.z).toBeGreaterThan(z0 + 1);
+    expect(Math.abs(car.speed)).toBeGreaterThanOrEqual(LEAVE_SPEED);
+    expect(passenger.ride).toEqual({ car: 1, seat: 1, phase: SEATED, ticks: 0 });
+    expect(car.seats[1]).toBe(passenger.id);
   });
 
   it("flips the lamps for the driver's press and no one else's", () => {

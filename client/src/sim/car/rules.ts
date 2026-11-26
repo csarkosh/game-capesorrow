@@ -65,13 +65,13 @@ function seatIn(car: Car, seat: number, p: Rider): void {
   p.grounded = true;
 }
 
-/** Places every seated rider of the car at their seat. */
+/** Places every rider of the car who is in a seat, seated or getting out, at their seat: one getting out rides with the car until it is out. */
 function seatRiders(world: RiderWorld, car: Car): void {
   for (let seat = 0; seat < 4; seat++) {
     const id = car.seats[seat] as number;
     if (id === 0) continue;
     const p = world.state.players.get(id);
-    if (p !== undefined && p.ride.phase === SEATED && p.ride.car === car.id && p.ride.seat === seat) seatIn(car, seat, p);
+    if (p !== undefined && (p.ride.phase === SEATED || p.ride.phase === LEAVING) && p.ride.car === car.id && p.ride.seat === seat) seatIn(car, seat, p);
   }
 }
 
@@ -173,7 +173,7 @@ export function carPressed(world: RiderWorld, p: Rider, bits: number): void {
 
 /**
  * The host's step, after every player has moved, for each car: a seat whose player has left the game is emptied; a player
- * getting in or out counts down, and is seated or put on foot at a free door; a car with no seated driver is held at rest
+ * getting in or out counts down, and is seated, or put on foot at a free door if the car is under `LEAVE_SPEED` (else it stays seated); a car with no seated driver is held at rest
  * (the handbrake, no throttle); and every seated rider is put at their seat.
  */
 export function carHostStep(world: RiderWorld): void {
@@ -197,14 +197,14 @@ export function carHostStep(world: RiderWorld): void {
       } else if (p.ride.phase === LEAVING) {
         p.ride.ticks--;
         if (p.ride.ticks <= 0) {
-          if (freeDoor(world, car, seat)) {
+          if (abs(car.speed) < LEAVE_SPEED && freeDoor(world, car, seat)) {
             p.pos = { x: DOOR.x, y: heightAt(world, DOOR.x, DOOR.z) + PLAYER_HALF.y, z: DOOR.z };
             p.vel = { x: 0, y: 0, z: 0 };
             p.grounded = true;
             p.ride = newRide();
             car.seats[seat] = 0;
           } else {
-            // Nowhere to stand: still in the seat.
+            // The car is moving again, or there is nowhere to stand: still in the seat.
             p.ride.ticks = 0;
             p.ride.phase = SEATED;
           }

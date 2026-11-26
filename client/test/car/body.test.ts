@@ -205,7 +205,6 @@ describe("the car among the town's solids", () => {
 
   it("slides along a wall it meets at a shallow angle, keeping most of its speed", () => {
     const angle = 8 * Math.PI / 180;
-    const ENTRY_SPEED = 14;
     const long = buildings.filter((r) => Math.max(r.hu, r.hv) > 20);
     expect(long.length).toBeGreaterThan(0);
     let tried = 0;
@@ -226,14 +225,14 @@ describe("the car among the town's solids", () => {
         const sz = r.cz - wz * half + nz * (depth + 2) - wz * 6;
         const hx = wx * Math.cos(angle) - nx * Math.sin(angle);
         const hz = wz * Math.cos(angle) - nz * Math.sin(angle);
-        const c = carAt(sx, sz, hx, hz, ENTRY_SPEED);
+        const c = carAt(sx, sz, hx, hz, 14);
         // A paved start and a clear line along the wall, so the wall is the only thing met.
         if (carEnv(world, c).grip < GRIP[PAVED]!) continue;
         if (!lineClear(sx, sz, wx, wz, 2 * half, 1.2 + 0, r)) continue;
         tried++;
         drive(c, full, 1.2);
         if (gapTo(r, c) < 0.05 && gapTo(r, c) > -1e-6) {
-          expect(c.speed).toBeGreaterThan(0.57 * Math.min(ENTRY_SPEED, SPEED_CAP));
+          expect(c.speed).toBeGreaterThan(8);
           expect(deepest(c)).toBeLessThan(1e-6);
           return;
         }
@@ -653,8 +652,9 @@ describe("the car on the ground, the rails and the water", () => {
     const z = anchor.z + 5000;
     const c = carAt(roadCenterX(seed, z), z, 0, 1);
     drive(c, full, 3);
-    expect(c.speed).toBeGreaterThan(0.8 * Math.min(TOP_SPEED[PAVED]!, SPEED_CAP));
-    expect(c.z).toBeGreaterThan(z + 0.5 * 3 * Math.min(TOP_SPEED[PAVED]!, SPEED_CAP));
+    // Bounds that three seconds from rest meet at every cap from 10 m/s up (the speed gathered rises with the cap).
+    expect(c.speed).toBeGreaterThan(8);
+    expect(c.z).toBeGreaterThan(z + 15);
     expect(c.x).toBeCloseTo(roadCenterX(seed, z), 3);
   });
 });
