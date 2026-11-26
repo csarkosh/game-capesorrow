@@ -39,6 +39,7 @@ import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { peopleFor, personWorld } from "./people.js";
+import { outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
 import { RANK_UNITS, emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
@@ -171,6 +172,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             if (lampList.count > 0 || lampsLit) {
               lampsLit = lampList.count > 0;
               writeLamps(ready, lampList);
+              people?.setLamps(lampList, litGainAt(hour));
               for (const m of textured) markMaterialUboDirty(m);
             }
           }
@@ -279,7 +281,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       people = createPeopleParts(
         { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
-        peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person) })),
+        [
+          ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false })),
+          ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true })),
+        ],
       );
       people.setHour(shownHour);
 

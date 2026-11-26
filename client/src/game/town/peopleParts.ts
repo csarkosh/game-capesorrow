@@ -10,19 +10,27 @@
  *   models' matrices and clip parameters and shown; a quarter second in which the set has not changed writes nothing.
  * - **They wear the town's air, and are darker than the open sky would make them**, since they stand indoors (`dress`).
  */
-import type { EngineContext, MaterialPlugin, SceneContext } from "@babylonjs/lite";
+import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { loadSkinnedModel, type SkinClock, type SkinnedModel } from "@csarkosh/engine/game/lite/skinnedModels";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams } from "@csarkosh/engine/game/skinInstances";
 import manifest from "../../../assets/models/people.json" with { type: "json" };
-import { isOpen } from "./hours.js";
-import { PERSON_MODELS, type Person, type PersonModel, type PersonWorld } from "./people.js";
+import { isOpen, type Hours } from "./hours.js";
+import { PERSON_MODELS, type Activity, type PersonModel, type PersonSeat, type PersonWorld } from "./people.js";
+import type { LampList } from "./lampLight.js";
+import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
 
 /** How far from the eye a person is drawn (m), and on the low tier. */
 export const PEOPLE_REACH = 60;
 export const PEOPLE_REACH_LOW = 35;
+/** The same for the people outside, who are seen along a whole street (and on the low tier). */
+export const OUTDOOR_REACH = 110;
+export const OUTDOOR_REACH_LOW = 60;
+/** A person outside is shown or hidden only farther than this from the eye, or out of the view (half the width of it, radians, which is wider than any view the game has). */
+export const NO_POP_DISTANCE = 35;
+export const OUT_OF_VIEW = (80 * Math.PI) / 180;
 /** How often the set drawn is worked out again, seconds. */
 export const PEOPLE_STEP = 0.25;
 
@@ -43,12 +51,26 @@ export type PeoplePartsHost = {
   readonly air: () => MaterialPlugin;
   readonly clock: SkinClock;
   readonly uploads: FrameUploads;
-  readonly eye: { readonly x: number; readonly y: number; readonly z: number };
+  /** The eye and the way it looks (yaw 0 faces +z, growing toward +x). */
+  readonly eye: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number };
   readonly low: boolean;
 };
 
-/** A person with the place they stand at in the world. */
-export type PlacedPerson = { readonly person: Person; readonly at: PersonWorld };
+/** What a body needs of a person: the model, the clip, the seat, and how they vary. A person of a room (`people.ts`) and one outside (`outdoorPeople.ts`) both are. */
+export type Body = {
+  readonly model: PersonModel;
+  readonly activity: Activity;
+  readonly seat: PersonSeat | null;
+  readonly scale: number;
+  readonly offset: number;
+  readonly rate: number;
+};
+
+/**
+ * A person with the place they stand at in the world. `hours`: the hours they are shown. A person of a room (`outdoor` false) is shown at the hour
+ * as it is (their unit's opening hours; null: always). A person outside (`outdoor`) changes only out of sight (`mayChange`).
+ */
+export type PlacedPerson = { readonly person: Body; readonly at: PersonWorld; readonly hours: Hours | null; readonly outdoor: boolean };
 
 export type PeopleParts = {
   /** Begins loading the models the people use. Once. */
@@ -57,6 +79,8 @@ export type PeopleParts = {
   step(dt: number): void;
   /** The hour of day, 0 to 24: who is shown is worked out again at once when it moves. */
   setHour(hour: number): void;
+  /** The lamps nearest the eye, and the hour's glow gain: the light the people take (`peopleLight.ts`). */
+  setLamps(list: LampList, glow: number): void;
   /** Models landed, and the people shown now. */
   stats(): { models: number; shown: number };
   /** Resolves once every model has landed (or failed). */
@@ -70,6 +94,9 @@ type Batch = {
   model: SkinnedModel | null;
   /** The people shown, as indices into `people`, in the order they are written. */
   shown: number[];
+  /** For each person, whether they are shown (a person outside keeps what they were until they change out of sight) and whether that has been decided at all. */
+  on: Uint8Array;
+  decided: Uint8Array;
 };
 
 /** The file's size in the manifest, counted as uploaded once its model has landed. */
@@ -77,17 +104,33 @@ function bytesOf(id: string): number {
   return manifest.people.find((p) => p.id === id)?.bytes ?? 0;
 }
 
+/**
+ * Whether a person at (`dx`, `dz`) from the eye (squared distance `d2`), the eye looking along `yaw`, may be shown or hidden without being seen to
+ * pop: when they are farther than `NO_POP_DISTANCE`, or behind or beside the view (the way the eye looks is known, its width is taken as the widest
+ * the game has). A person who has not changed waits, so a smoker outstays closing by a minute if you stand and watch them.
+ */
+export function mayChange(dx: number, dz: number, d2: number, yaw: number): boolean {
+  if (d2 > NO_POP_DISTANCE * NO_POP_DISTANCE) return true;
+  const d = Math.sqrt(d2);
+  if (d < 1e-6) return false;
+  return (dx * Math.sin(yaw) + dz * Math.cos(yaw)) / d < Math.cos(OUT_OF_VIEW);
+}
+
 export function createPeopleParts(host: PeoplePartsHost, placed: readonly PlacedPerson[]): PeopleParts {
   const batches = new Map<PersonModel, Batch>();
   for (const id of PERSON_MODELS) {
     // A chair is not drawn on the low tier, so nobody sits there.
-    const people = placed.filter((p) => p.person.model === id && !(host.low && p.person.seat !== null));
-    if (people.length > 0) batches.set(id, { id, people, model: null, shown: [] });
+    const people = placed.filter((p) => p.person.model === id && !(host.low && !p.outdoor && p.person.seat !== null));
+    if (people.length > 0) batches.set(id, { id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length) });
   }
   const loads = new AbortController();
   const missing = new Set<string>();
   const orders = createDrawOrders(DRAW_ORDER.bodies);
   const reach = host.low ? PEOPLE_REACH_LOW : PEOPLE_REACH;
+  const outReach = host.low ? OUTDOOR_REACH_LOW : OUTDOOR_REACH;
+  // The lamps' light on the bodies: one record, the materials of every model read it.
+  const lamps = emptyPeopleLamps();
+  const dressed: PbrMaterialProps[] = [];
   let pending = 0;
   let landed = 0;
   let began = false;
@@ -122,7 +165,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           const base = part.material.baseColorFactor ?? [1, 1, 1, 1];
           part.material.baseColorFactor = [base[0] * INDOOR_DARKEN, base[1] * INDOOR_DARKEN, base[2] * INDOOR_DARKEN, base[3]];
           part.material.usePhysicalLightFalloff = true;
-          part.material.plugins = [host.air()];
+          part.material.plugins = [host.air(), peopleLampPlugin(lamps)];
+          dressed.push(part.material);
           orders.take(part.material);
           part.mesh.renderOrder = orders.of(part.material) ?? DRAW_ORDER.bodies;
           return true;
@@ -166,6 +210,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       folds = host.clock.folds;
       const eye = host.eye;
       const reach2 = reach * reach;
+      const outReach2 = outReach * outReach;
       for (const batch of batches.values()) {
         const model = batch.model;
         if (model === null) continue;
@@ -173,7 +218,21 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         for (const [i, p] of batch.people.entries()) {
           const dx = p.at.x - eye.x;
           const dz = p.at.z - eye.z;
-          if (dx * dx + dz * dz <= reach2 && (p.person.hours === null || isOpen(p.person.hours, hour))) next.push(i);
+          const d2 = dx * dx + dz * dz;
+          if (!p.outdoor) {
+            if (d2 <= reach2 && (p.hours === null || isOpen(p.hours, hour))) next.push(i);
+            continue;
+          }
+          const inReach = d2 <= outReach2;
+          const want = inReach && (p.hours === null || isOpen(p.hours, hour));
+          if (batch.decided[i] === 0) {
+            batch.decided[i] = 1;
+            batch.on[i] = want ? 1 : 0;
+          } else if (want !== (batch.on[i] === 1)) {
+            // Beyond the reach no one sees them; within it, a change waits until they are far or out of the view.
+            if (!inReach || mayChange(dx, dz, d2, eye.yaw)) batch.on[i] = want ? 1 : 0;
+          }
+          if (batch.on[i] === 1) next.push(i);
         }
         const same = next.length === batch.shown.length && next.every((v, k) => v === batch.shown[k]);
         if (same && !refold) continue;
@@ -215,6 +274,10 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       if (next === hour) return;
       hour = next;
       since = PEOPLE_STEP;
+    },
+    setLamps(list, glow) {
+      writePeopleLamps(lamps, list, glow);
+      for (const m of dressed) markMaterialUboDirty(m);
     },
     stats() {
       let shown = 0;
