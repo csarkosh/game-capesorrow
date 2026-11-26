@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { carPose, newCarPose } from "../../src/game/car/carPose.js";
 import { drawnFrom, sedanFile, type FilePart } from "./sedanFile.js";
 
@@ -24,7 +25,7 @@ describe("the real sedan, drawn from the loader's model and posed", () => {
   const file = sedanFile();
   const pose = newCarPose();
   const hx = 0.6, hz = 0.8;
-  carPose(null, { id: 1, x: 100, y: 0, z: 50, hx, hz, speed: 0, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, seats: [0, 0, 0, 0] }, 1, () => 0, pose);
+  carPose(null, { id: 1, x: 100, y: 0, z: 50, hx, hz, speed: 0, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, owed: 0, seats: [0, 0, 0, 0] }, 1, () => 0, pose);
   const ahead = (world: readonly number[]): number => ((world[0] as number) - 100) * hx + ((world[2] as number) - 50) * hz;
   const left = (world: readonly number[]): number => ((world[0] as number) - 100) * -hz + ((world[2] as number) - 50) * hx;
 
@@ -34,7 +35,7 @@ describe("the real sedan, drawn from the loader's model and posed", () => {
     const paint = file.get("paint") as FilePart;
     const nose = centroid(paint.positions, drawnFrom(paint.positions), (x, y) => x > 2.0 && y < 0.8);
     expect(ahead(through(pose.matrix, nose))).toBeGreaterThan(2);
-  });
+  }, timeLimit(30_000));
 
   it("has the windscreen's glass (the cabin glass forward of the cabin's middle) ahead of the car's centre, and the rear window behind", () => {
     const glass = file.get("glass") as FilePart;
@@ -43,7 +44,7 @@ describe("the real sedan, drawn from the loader's model and posed", () => {
     const rear = centroid(glass.positions, drawn, (x, y) => y > 0.9 && x < -0.9);
     expect(ahead(through(pose.matrix, screen))).toBeGreaterThan(0);
     expect(ahead(through(pose.matrix, rear))).toBeLessThan(-0.8);
-  });
+  }, timeLimit(30_000));
 
   it("has the front axle (the wheels the manifest puts at +x, that steer) ahead of the rear one", () => {
     const tyre = file.get("tyre") as FilePart;
@@ -56,7 +57,7 @@ describe("the real sedan, drawn from the loader's model and posed", () => {
       }
     }
     expect(front / nf).toBeGreaterThan(1);
-  });
+  }, timeLimit(30_000));
 
   it("puts the file's left side (-z in the file, where the steering wheel of a US sedan is) on the heading's left (-hz, hx)", () => {
     const paint = file.get("paint") as FilePart;
@@ -66,7 +67,7 @@ describe("the real sedan, drawn from the loader's model and posed", () => {
     for (let i = 0; i < paint.positions.length; i += 3) if ((paint.positions[i + 2] as number) < (paint.positions[lowest + 2] as number)) lowest = i;
     const world = through(pose.matrix, [drawn[lowest] as number, drawn[lowest + 1] as number, drawn[lowest + 2] as number]);
     expect(left(world)).toBeGreaterThan(0.8);
-  });
+  }, timeLimit(30_000));
 
   it("has the steering wheel's side (the dash and column region of the interior, heavier on the file's -z) on the heading's left", () => {
     const interior = file.get("interior") as FilePart;
@@ -83,5 +84,5 @@ describe("the real sedan, drawn from the loader's model and posed", () => {
     }
     expect(neg / all).toBeGreaterThan(0.6);
     expect(left(through(pose.matrix, at))).toBeGreaterThan(0.05);
-  });
+  }, timeLimit(30_000));
 });

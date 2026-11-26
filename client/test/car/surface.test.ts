@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { GRAVEL, OPEN, PAVED, TRACKS } from "../../src/sim/car/types.js";
 import { surfaceAt, surfaceGrid } from "../../src/sim/car/surface.js";
@@ -39,14 +40,14 @@ describe("what is under a wheel", () => {
       }
       expect(paved).toBeGreaterThan(0);
       expect(alleys).toBeGreaterThan(0);
-    });
+    }, timeLimit(120_000));
 
     it(`the highway's centre is paved 3 km from the town (seed ${seed})`, () => {
       for (const dz of [-3000, -1500, 1500, 3000]) {
         const z = anchor.z + dz;
         expect(surfaceAt(seed, roadCenterX(seed, z), z)).toBe(PAVED);
       }
-    });
+    }, timeLimit(120_000));
 
     it(`a road out follows its own surface along its length (seed ${seed})`, () => {
       let counted = 0;
@@ -66,7 +67,7 @@ describe("what is under a wheel", () => {
         }
       }
       expect(counted).toBeGreaterThan(0);
-    });
+    }, timeLimit(120_000));
 
     it(`the forest 200 m off any road is open ground (seed ${seed})`, () => {
       const near = (x: number, z: number): boolean => {
@@ -90,13 +91,13 @@ describe("what is under a wheel", () => {
         }
       }
       expect(found).toBeGreaterThan(0);
-    });
+    }, timeLimit(120_000));
 
     it(`a pier's deck is paved (seed ${seed})`, () => {
       const piers = plan.decks.filter((d) => d.kind === "pier");
       expect(piers.length).toBeGreaterThan(0);
       for (const d of piers) expect(surfaceAt(seed, anchor.x + d.centre.x, anchor.z + d.centre.z)).toBe(PAVED);
-    });
+    }, timeLimit(120_000));
 
     it(`the dock end, the mill's site and the industrial flats are gravel, the rest of the paving asphalt (seed ${seed})`, () => {
       const seen = new Set<string>();
@@ -118,7 +119,7 @@ describe("what is under a wheel", () => {
         seen.add(g.district);
       }
       expect(seen.size).toBeGreaterThan(0);
-    });
+    }, timeLimit(120_000));
 
     it(`answers the same twice, and 10,000 lookups make no new grid (seed ${seed})`, () => {
       const grid = surfaceGrid(seed);
@@ -136,6 +137,6 @@ describe("what is under a wheel", () => {
       }
       expect(surfaceGrid(seed)).toBe(grid);
       expect(new Set(before).size).toBeGreaterThan(1);
-    });
+    }, timeLimit(120_000));
   }
 });

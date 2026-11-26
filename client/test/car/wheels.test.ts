@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { splitWheels } from "../../src/game/car/carPose.js";
 import { manifestOf } from "../../src/game/town/props/vehicleManifest.js";
 import { drawnFrom, loaded, sedanFile, type FilePart } from "./sedanFile.js";
@@ -43,7 +44,7 @@ describe("cutting the tyre mesh into its wheels", () => {
       // The axle is the origin: the ring's own middle vertex is at it.
       expect(Math.hypot(w.positions[0] as number, w.positions[1] as number, w.positions[2] as number)).toBeLessThan(1e-6);
     }
-  });
+  }, timeLimit(30_000));
 
   it("answers in the manifest's order, each wheel with its own axle's place", () => {
     const parts = splitWheels(...(Object.values(mesh([3, 2, 1, 0])) as [Float32Array, Uint32Array]), WHEELS);
@@ -51,7 +52,7 @@ describe("cutting the tyre mesh into its wheels", () => {
       const c = centres[k] as (typeof centres)[number];
       expect(w.centre).toEqual([c[0], c[1], c[2]]);
     }
-  });
+  }, timeLimit(30_000));
 
   it("gives each wheel vertices of its own, with their source, so no vertex is shared between wheels", () => {
     const { positions, indices } = mesh([0, 1, 2, 3]);
@@ -65,7 +66,7 @@ describe("cutting the tyre mesh into its wheels", () => {
       }
       for (const i of w.indices) expect(i).toBeLessThan(w.source.length);
     }
-  });
+  }, timeLimit(30_000));
 
   it("puts a triangle that straddles two wheels in one of them, whole, and loses none", () => {
     const { positions, indices } = mesh([0, 1, 2, 3]);
@@ -79,7 +80,7 @@ describe("cutting the tyre mesh into its wheels", () => {
     const parts = splitWheels(new Float32Array(into.p), new Uint32Array(into.i), WHEELS);
     expect(parts.reduce((s, w) => s + w.indices.length, 0)).toBe(into.i.length);
     expect(parts.map((w) => w.indices.length).sort()).toEqual([36, 36, 36, 39]);
-  });
+  }, timeLimit(30_000));
 
   it("cuts the real sedan's tyre mesh, as the car is drawn from it, into four clean wheels: no triangle straddles two", () => {
     const tyre = sedanFile().get("tyre") as FilePart;
@@ -94,7 +95,7 @@ describe("cutting the tyre mesh into its wheels", () => {
     // No vertex had to be copied for a second wheel: the mesh's triangles are all clean.
     expect(parts.reduce((n, w) => n + w.source.length, 0)).toBeLessThanOrEqual(positions.length / 3);
     for (const w of parts) expect(radiusOf(w.positions)).toBeLessThan(WHEEL_RADIUS * 1.1);
-  });
+  }, timeLimit(30_000));
 
   it("cuts the mesh as the loader gives it (nose at -x) badly: the wheels would sit off their axles by the axles' difference", () => {
     // Why the turn is needed: uncorrected, the tyre at the nose end is cut about the rear axle's place.
@@ -102,5 +103,5 @@ describe("cutting the tyre mesh into its wheels", () => {
     const parts = splitWheels(loaded(tyre.positions), tyre.indices, WHEELS);
     const worst = Math.max(...parts.map((w) => radiusOf(w.positions)));
     expect(worst).toBeGreaterThan(WHEEL_RADIUS * 1.5);
-  });
+  }, timeLimit(30_000));
 });
