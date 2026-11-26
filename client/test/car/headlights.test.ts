@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LAMP_INTENSITY } from "@csarkosh/engine/game/lampParams";
-import { HEADLIGHT_AHEAD, HEADLIGHT_DROP, HEADLIGHT_GAIN, HEADLIGHT_RANGE, HEADLIGHT_STATE, HEADLIGHT_UP, lightHeadlights, litFor, placeHeadlights } from "../../src/game/car/headlights.js";
+import { HEADLIGHT_AHEAD, HEADLIGHT_DROP, HEADLIGHT_GAIN, HEADLIGHT_RANGE, HEADLIGHT_STATE, HEADLIGHT_UP, headlightsFor, lightHeadlights, litFor, placeHeadlights } from "../../src/game/car/headlights.js";
 import { newCarPose } from "../../src/game/car/carPose.js";
 import { FOOT, LEAVING, SEATED } from "../../src/sim/car/types.js";
 
@@ -70,12 +70,43 @@ describe("how bright the headlights are", () => {
     expect(Object.isFrozen(HEADLIGHT_STATE) && Object.isFrozen(HEADLIGHT_STATE.colour)).toBe(true);
   });
 
-  it("light the road 12 m ahead, from 0.65 m up, several times over what the stock lamp did, by the lamp's own reckoning (intensity times height over distance cubed)", () => {
-    const road = (intensity: number, ahead: number): number => (intensity * HEADLIGHT_UP) / Math.pow(ahead * ahead + HEADLIGHT_UP * HEADLIGHT_UP, 1.5);
-    expect(road(HEADLIGHT_STATE.intensity, 12) / road(LAMP_INTENSITY, 12)).toBeCloseTo(HEADLIGHT_GAIN, 10);
-    expect(HEADLIGHT_GAIN).toBeGreaterThanOrEqual(4);
-    // The warm white of a car's lamps: red over green over blue, none above 1.
-    const { r, g, b } = HEADLIGHT_STATE.colour;
-    expect(r >= g && g >= b && r <= 1 && b > 0.5).toBe(true);
+  it("are the engine's intensity times the gain, in a warm white", () => {
+    expect(HEADLIGHT_STATE.intensity).toBe(LAMP_INTENSITY * HEADLIGHT_GAIN);
+    expect(HEADLIGHT_STATE.colour).toEqual({ r: 1, g: 0.95, b: 0.84 });
+  });
+});
+
+describe("when the frame's lamp becomes the headlights", () => {
+  const stock = Object.freeze({ intensity: LAMP_INTENSITY, colour: { r: 1, g: 0.92, b: 0.78 } });
+  const frame = (on: boolean): { at: ReturnType<typeof lampAt>; lit: { on: boolean; state: typeof stock } } => ({ at: lampAt(), lit: { on, state: stock } });
+  const pose = poseOf(10, 3, 20, 0, 1);
+  const seat = (seatNo: number, phase: 0 | 1 | 2 | 3): { car: number; seat: number; phase: 0 | 1 | 2 | 3; ticks: number } => ({ car: 1, seat: seatNo, phase, ticks: 0 });
+
+  it("lights and places them for a seated driver and for a passenger, with the lamp on", () => {
+    for (const seatNo of [0, 1, 3]) {
+      const lamp = frame(true);
+      headlightsFor(lamp, seat(seatNo, SEATED), pose);
+      expect(lamp.lit.state).toBe(HEADLIGHT_STATE);
+      expect(lamp.at.z).toBe(20 + HEADLIGHT_AHEAD);
+      expect(lamp.at.range).toBe(HEADLIGHT_RANGE);
+    }
+  });
+
+  it("leaves the lamp as the engine placed it when it is off, or the player is on foot, getting in or out, or the car has no pose", () => {
+    const cases: [boolean, ReturnType<typeof seat> | undefined, typeof pose | null][] = [
+      [false, seat(0, SEATED), pose],
+      [true, undefined, pose],
+      [true, seat(0, FOOT), pose],
+      [true, seat(0, 1), pose],
+      [true, seat(0, LEAVING), pose],
+      [true, seat(0, SEATED), null],
+    ];
+    for (const [on, ride, p] of cases) {
+      const lamp = frame(on);
+      headlightsFor(lamp, ride, p);
+      expect(lamp.lit.state).toBe(stock);
+      expect(lamp.at).toEqual(lampAt());
+      expect(lamp.lit.on).toBe(on);
+    }
   });
 });

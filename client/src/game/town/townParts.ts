@@ -41,7 +41,7 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { groundAt } from "./props/kit.js";
 import { createCarParts, type CarParts } from "../car/carParts.js";
 import { carDebug, type CarDebug, type CarDebugSource, type LampSeen } from "../car/carDebug.js";
-import { lightHeadlights, litFor } from "../car/headlights.js";
+import { headlightsFor, litFor } from "../car/headlights.js";
 import { promptShown, voiceShown } from "../car/side.js";
 import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { townSolids } from "../../sim/town/solid.js";
@@ -437,10 +437,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     lamp(lamp) {
       base.side.lamp(lamp);
       const ride = held.players.get(held.localId)?.ride;
-      if (lamp.lit.on && ride !== undefined && ride.phase === SEATED) {
-        const drawn = car?.pose(ride.car) ?? null;
-        if (drawn !== null) lightHeadlights(lamp, drawn);
-      }
+      headlightsFor(lamp, ride, ride === undefined || ride.phase !== SEATED ? null : (car?.pose(ride.car) ?? null));
       lampSeen.on = lamp.lit.on;
       lampSeen.x = lamp.at.x;
       lampSeen.y = lamp.at.y;

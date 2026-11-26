@@ -42,6 +42,15 @@ export function lightHeadlights(lamp: RenderLamp, pose: { x: number; y: number; 
   lamp.lit.state = HEADLIGHT_STATE;
 }
 
+/**
+ * The frame's lamp, once the engine has placed it: where the lamp is lit (the engine's own `lampOn`, which is the car's lights for a seated player) and the
+ * local player is seated in a car that is drawn (driver or passenger), it becomes the headlights. Otherwise the lamp is left exactly as the engine placed it.
+ */
+export function headlightsFor(lamp: RenderLamp, ride: Ride | undefined, pose: { x: number; y: number; z: number; hx: number; hz: number } | null): void {
+  if (!lamp.lit.on || ride === undefined || ride.phase !== SEATED || pose === null) return;
+  lightHeadlights(lamp, pose);
+}
+
 /** Whether the lamp is the car's, and lit: the player is seated in a car (any seat) whose lights are on. */
 export function litFor(ride: Ride | undefined, car: { lights: boolean } | null): boolean {
   return ride !== undefined && ride.phase === SEATED && car !== null && car.lights;
