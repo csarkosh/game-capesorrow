@@ -6,7 +6,7 @@
  * (paved, gravel or two wheel tracks); inside a paved ground polygon (gravel on the dock end, the mill's site and the
  * industrial flats, else paved); otherwise open ground.
  *
- * Where a paved and a gravel street meet, paved wins. A uniform grid of `SURFACE_CELL` m over the town's streets, roads
+ * Where a paved and a gravel street meet, paved wins. A uniform grid of `SOLID_CELL` m (the buildings' grid, which this one is made by) over the town's streets, roads
  * and polygons, made once per world seed and kept in a top-level cache, names what lies near a place, so a lookup
  * touches one cell.
  *
@@ -18,7 +18,7 @@ import { deckTopAt } from "../town/decks.js";
 import { pavedGround } from "../town/pavedGround.js";
 import { planFor } from "../town/planFor.js";
 import { siteFor } from "../town/siteFor.js";
-import { gridOf, type TownSolids } from "../town/solid.js";
+import { gridOf, SOLID_CELL, type TownSolids } from "../town/solid.js";
 import type { RoadSurface } from "../town/types.js";
 import { GRAVEL, OPEN, PAVED, TRACKS, type Surface } from "./types.js";
 
@@ -26,9 +26,6 @@ const abs = Math.abs;
 const min = Math.min;
 const max = Math.max;
 const floor = Math.floor;
-
-/** The grid's cell, metres. */
-export const SURFACE_CELL = 16;
 
 /** Numbers a street takes in `streets`: its ends (x, z, x, z), half its roadway, and 1 when it is gravel. */
 const S = 6;
@@ -84,7 +81,8 @@ function makeGrid(worldSeed: number): SurfaceGrid {
 
   const streetList = plan.streets.filter((st) => st.kind !== "stair" && st.kind !== "rail");
   const streets = new Float64Array(streetList.length * S);
-  streetList.forEach((st, i) => {
+  for (let i = 0; i < streetList.length; i++) {
+    const st = streetList[i] as (typeof streetList)[number];
     const o = i * S;
     streets[o] = anchor.x + st.a.x;
     streets[o + 1] = anchor.z + st.a.z;
@@ -93,7 +91,7 @@ function makeGrid(worldSeed: number): SurfaceGrid {
     streets[o + 4] = st.roadway / 2;
     streets[o + 5] = st.kind === "alley" ? 1 : 0;
     reach(streets[o] as number, streets[o + 1] as number, streets[o + 2] as number, streets[o + 3] as number, st.roadway / 2);
-  });
+  }
 
   let nSegs = 0;
   for (const road of plan.roads) nSegs += max(0, road.points.length - 1);
@@ -123,7 +121,8 @@ function makeGrid(worldSeed: number): SurfaceGrid {
   for (const g of paved) nv += g.polygon.length;
   const verts = new Float64Array(nv * 2);
   let v = 0;
-  paved.forEach((g, i) => {
+  for (let i = 0; i < paved.length; i++) {
+    const g = paved[i] as (typeof paved)[number];
     polyStart[i] = v;
     polyGravel[i] = g.district === "dock" || g.district === "mill" || g.district === "industrial" ? 1 : 0;
     let lowX = Infinity;
@@ -140,7 +139,7 @@ function makeGrid(worldSeed: number): SurfaceGrid {
       v++;
     }
     reach(lowX, lowZ, highX, highZ, 0);
-  });
+  }
   polyStart[paved.length] = v;
 
   const n = lows.length;
@@ -172,8 +171,8 @@ export function surfaceAt(worldSeed: number, x: number, z: number): Surface {
   if (deckTopAt(worldSeed, x, z) !== null) return PAVED;
   if (abs(x - roadCenterX(worldSeed, z)) <= ROAD_BED_HALF) return PAVED;
   const g = surfaceGrid(worldSeed);
-  const c = floor((x - g.x0) / SURFACE_CELL);
-  const r = floor((z - g.z0) / SURFACE_CELL);
+  const c = floor((x - g.x0) / SOLID_CELL);
+  const r = floor((z - g.z0) / SOLID_CELL);
   if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) return OPEN;
   const cell = r * g.cols + c;
   const from = g.start[cell] as number;
