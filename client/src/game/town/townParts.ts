@@ -40,6 +40,7 @@ import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { groundAt } from "./props/kit.js";
 import { createCarParts, type CarParts } from "../car/carParts.js";
+import { carDebug, type CarDebug, type CarDebugSource } from "../car/carDebug.js";
 import { SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
@@ -134,6 +135,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let vehicles: VehicleParts | null = null;
   // The car the players drive (`../car/carParts.ts`): made with the town, loaded once it stands, posed from the state's cars each frame.
   let car: CarParts | null = null;
+  // The state the last frame was handed, for the console's reading of the car (`__capeCar`).
+  let lastState: ReturnType<CarDebugSource["state"]> = null;
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
   let people: PeopleParts | null = null;
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
@@ -278,6 +281,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
 
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
+      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => lastState, pose: (id) => car?.pose(id) ?? null });
       const plan = ground.plan;
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
@@ -350,6 +354,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
     begin(state, localId, alpha, dt) {
       base.side.begin(state, localId, alpha, dt);
+      lastState = { cars: (state as { cars?: readonly Car[] }).cars ?? NO_CARS, localId, players: state.players as unknown as NonNullable<typeof lastState>["players"] };
       const me = state.players.get(localId) as { ride?: Ride } | undefined;
       const driven = me?.ride?.phase === SEATED && me.ride.seat === 0 ? me.ride.car : 0;
       car?.frame((state as { cars?: readonly Car[] }).cars ?? NO_CARS, state.tick, alpha, dt, driven);
@@ -402,6 +407,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       vehicles = null;
       car?.dispose();
       car = null;
+      lastState = null;
+      delete (globalThis as { __capeCar?: CarDebug }).__capeCar;
       people?.dispose();
       people = null;
       lamps = [];
