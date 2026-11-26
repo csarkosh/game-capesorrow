@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../../src/game/words.js";
 import { CAR_COMMANDS, NO_ROOM_AFTER, NO_ROOM_SHOWN, createCapeSide, lineFor, litBy, newClickWatch, promptFor, promptShown, watchClick } from "../../src/game/car/side.js";
 import { WALK_SIDE } from "../../src/game.js";
+import { carVoice } from "../../src/game/car/carSound.js";
 import { voiceShown } from "../../src/game/car/side.js";
 import type { WalkState, Walker } from "../../src/sim.js";
 import { newRide } from "../../src/sim/car/rules.js";
@@ -112,8 +113,9 @@ describe("the click that changes nothing", () => {
   });
 });
 
-type Said = { prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number } | null)[]; thuds: number[]; doors: number };
+type Said = { prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null)[]; thuds: number[]; doors: number };
 /** A page's host with the parts the car's side reads, and a record of what it was told. */
+const heard = { hz: 0, engine: 0, tyres: 0 };
 function pageHost(touch: boolean): { host: never; said: Said; world: { current: unknown } } {
   const said: Said = { prompt: [], flash: [], down: 0, up: 0, voice: [], thuds: [], doors: 0 };
   const world = { current: null as unknown };
@@ -121,7 +123,7 @@ function pageHost(touch: boolean): { host: never; said: Said; world: { current: 
     base: { hour: 12 }, appliedHour: 12, appliedWeather: {}, renderer: { setView: () => undefined },
     touchStart: touch,
     touchModel: { interactDown: () => said.down++, interactUp: () => said.up++ },
-    ambient: { car: (s: { speed: number; throttle: number; surface: number; distance: number } | null) => said.voice.push(s === null ? null : { ...s }), thud: (v: number) => said.thuds.push(v), door: () => said.doors++ },
+    ambient: { voice: () => heard, car: (s: { speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null) => { if (s !== null) carVoice(s.speed, s.throttle, s.surface as 0, s.distance, s.driven, heard); said.voice.push(s === null ? null : { ...s }); }, thud: (v: number) => said.thuds.push(v), door: () => said.doors++ },
     hud: { setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
     get activeWorld() { return world.current; },
   };
@@ -247,8 +249,8 @@ describe("the car's half of a session", () => {
       const { host, said } = pageHost(false);
       const side = createCapeSide(host, WALK_SIDE);
       const me = walker(0, 0);
-      const near = car({ id: 1, x: 12, z: 5, speed: 7, controls: { throttle: 1, turn: 0, handbrake: false } });
-      const far = car({ id: 2, x: 60, z: 0, speed: 20 });
+      const near = car({ id: 1, x: 12, z: 5, speed: 7, seats: [9, 0, 0, 0], controls: { throttle: 1, turn: 0, handbrake: false } });
+      const far = car({ id: 2, x: 60, z: 0, speed: 20, seats: [8, 0, 0, 0] });
       side.afterSync(undefined as never, at(1, [far, near], [me]), 7, me, null);
       const fed = said.voice.at(-1);
       expect(fed?.speed).toBe(7);
@@ -256,9 +258,36 @@ describe("the car's half of a session", () => {
       expect(fed?.distance).toBeCloseTo(13, 6);
       expect(voiceShown()).toMatchObject({ distance: fed?.distance, surface: fed?.surface });
       expect(voiceShown()?.engine).toBeGreaterThan(0);
-      side.afterSync(undefined as never, at(2, [car({ id: 2, x: 90, z: 0 })], [me]), 7, me, null);
+      side.afterSync(undefined as never, at(2, [car({ id: 2, x: 90, z: 0, seats: [8, 0, 0, 0] })], [me]), 7, me, null);
       expect(said.voice.at(-1)).toBeNull();
       expect(voiceShown()).toBeNull();
+    });
+
+    it("hears a car with a driver at rest idle, and an empty one silent or only rolling", () => {
+      const { host, said } = pageHost(false);
+      const side = createCapeSide(host, WALK_SIDE);
+      const me = walker(0, 0);
+      const feed = (tick: number, c: Car[]): void => side.afterSync(undefined as never, at(tick, c, [me]), 7, me, null);
+      feed(1, [car({ x: 5, z: 0, speed: 0, seats: [9, 0, 0, 0] })]);
+      expect(said.voice.at(-1)?.driven).toBe(true);
+      expect(voiceShown()?.engine).toBeGreaterThan(0);
+      feed(2, [car({ x: 5, z: 0, speed: 0 })]);
+      expect(said.voice.at(-1)).toBeNull();
+      expect(voiceShown()).toBeNull();
+      feed(3, [car({ x: 5, z: 0, speed: 5 })]);
+      expect(said.voice.at(-1)?.driven).toBe(false);
+      expect(voiceShown()?.engine).toBe(0);
+      expect(voiceShown()?.tyres).toBeGreaterThan(0);
+    });
+
+    it("chooses a far car with a driver over a near empty one at rest", () => {
+      const { host, said } = pageHost(false);
+      const side = createCapeSide(host, WALK_SIDE);
+      const me = walker(0, 0);
+      const empty = car({ id: 1, x: 5, z: 0 });
+      const driven = car({ id: 2, x: 50, z: 0, seats: [9, 0, 0, 0] });
+      side.afterSync(undefined as never, at(1, [empty, driven], [me]), 7, me, null);
+      expect(said.voice.at(-1)?.distance).toBe(50);
     });
 
     it("hears the local player's own place, so a seated driver's car is beside them", () => {

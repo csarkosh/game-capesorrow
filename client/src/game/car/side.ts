@@ -13,7 +13,7 @@ import { doorNear, seatFor } from "../../sim/car/seats.js";
 import { INTERACT_BIT, LEAVE_SPEED } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
-import { HEARD_WITHIN, earshot, carVoice, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
+import { HEARD_WITHIN, earshot, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
 
 type CapeSide = SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient>;
@@ -127,7 +127,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   // What each car was at the last frame that saw it, for the thud; and the local player's ride at that frame, for the door. Cleared with the world.
   const marks = new Map<number, CarMark>();
   let lastPhase = -1;
-  const feed = { speed: 0, throttle: 0, surface: 0 as Surface, distance: 0 };
+  const feed = { speed: 0, throttle: 0, surface: 0 as Surface, distance: 0, driven: false };
+  const now_: CarMark = { tick: 0, x: 0, z: 0, speed: 0 };
   const forget = (): void => {
     marks.clear();
     lastPhase = -1;
@@ -149,7 +150,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
     let best = HEARD_WITHIN;
     for (let i = 0; i < list.length; i++) {
       const c = list[i] as Car;
-      if (self !== undefined) {
+      if (self !== undefined && (c.seats[0] !== 0 || Math.abs(c.speed) > 0.05)) {
         const d = Math.hypot(c.x - self.pos.x, c.z - self.pos.z);
         if (d < best) {
           best = d;
@@ -161,7 +162,11 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
         marks.set(c.id, { tick: state.tick, x: c.x, z: c.z, speed: c.speed });
         continue;
       }
-      const hit = thudStrength(m, { tick: state.tick, x: c.x, z: c.z, speed: c.speed });
+      now_.tick = state.tick;
+      now_.x = c.x;
+      now_.z = c.z;
+      now_.speed = c.speed;
+      const hit = thudStrength(m, now_);
       if (hit > 0 && self !== undefined) {
         const heard = earshot(Math.hypot(c.x - self.pos.x, c.z - self.pos.z));
         if (heard > 0) audio.thud(hit * heard);
@@ -181,14 +186,15 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       feed.throttle = nearest.controls.throttle;
       feed.surface = surfaceAt(seed, nearest.x, nearest.z);
       feed.distance = best;
-      const v = carVoice(feed.speed, feed.throttle, feed.surface, feed.distance);
+      feed.driven = nearest.seats[0] !== 0;
+      audio.car(feed);
+      const v = audio.voice();
       voice.hz = v.hz;
       voice.engine = v.engine;
       voice.tyres = v.tyres;
       voice.surface = feed.surface;
       voice.distance = best;
       voiceOn = true;
-      audio.car(feed);
     }
     const phase = self === undefined ? -1 : self.ride.phase;
     if (lastPhase >= 0 && phase >= 0 && (phase === FOOT) !== (lastPhase === FOOT)) audio.door();

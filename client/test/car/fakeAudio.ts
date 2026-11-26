@@ -2,20 +2,29 @@
  * The smallest AudioContext the car's sound can run on: it counts the nodes made, started, stopped, connected and disconnected, and
  * keeps every value set on each parameter, in the order set, with the time it was set for.
  */
-export type Call = { at: number; value: number; kind: "set" | "target" | "ramp" };
+export type Call = { at: number; value: number; kind: "set" | "target" | "ramp"; constant?: number };
 
 export class FakeParam {
-  value = 0;
+    private held = 0;
   readonly calls: Call[] = [];
+  /** How many bare `.value =` assignments the parameter has had, so a test can tell them from smoothed changes. */
+  bare = 0;
   constructor(public readonly clock: { now: number }, value = 0) {
-    this.value = value;
+    this.held = value;
+  }
+  get value(): number {
+    return this.held;
+  }
+  set value(v: number) {
+    this.held = v;
+    this.bare++;
   }
   setValueAtTime(value: number, at: number): this {
     this.calls.push({ at, value, kind: "set" });
     return this;
   }
-  setTargetAtTime(value: number, at: number): this {
-    this.calls.push({ at, value, kind: "target" });
+  setTargetAtTime(value: number, at: number, constant: number): this {
+    this.calls.push({ at, value, kind: "target", constant });
     return this;
   }
   linearRampToValueAtTime(value: number, at: number): this {

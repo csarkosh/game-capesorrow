@@ -34,6 +34,20 @@ describe("the car's voice", () => {
     expect(carVoice(30, 1, GRAVEL, 0).tyres).toBeLessThanOrEqual(1);
   });
 
+  it("has no engine in a car with nobody at the wheel, and tyres only while it rolls", () => {
+    expect(carVoice(0, 0, PAVED, 0, false).engine).toBe(0);
+    expect(carVoice(5, 0, PAVED, 0, false)).toMatchObject({ engine: 0 });
+    expect(carVoice(5, 0, PAVED, 0, false).tyres).toBeGreaterThan(0);
+    expect(carVoice(0, 0, PAVED, 0, false).tyres).toBe(0);
+    expect(carVoice(0, 0, PAVED, 0, true).engine).toBeGreaterThan(0);
+  });
+
+  it("writes into the record it is given and returns it", () => {
+    const out = { hz: 0, engine: 0, tyres: 0 };
+    expect(carVoice(8, 1, GRAVEL, 3, true, out)).toBe(out);
+    expect(out).toEqual(carVoice(8, 1, GRAVEL, 3));
+  });
+
   it("falls with distance and is silent past 80 m", () => {
     expect(carVoice(20, 1, PAVED, 81)).toMatchObject({ engine: 0, tyres: 0 });
     expect(carVoice(20, 1, PAVED, HEARD_WITHIN)).toMatchObject({ engine: 0, tyres: 0 });
@@ -100,7 +114,7 @@ describe("the car's graph", () => {
   it("makes nothing before unlock, and ignores the voice's calls then", () => {
     const { side, api } = carSound();
     expect(() => {
-      api.car({ speed: 10, throttle: 1, surface: PAVED, distance: 3 });
+      api.car({ speed: 10, throttle: 1, surface: PAVED, distance: 3, driven: true });
       api.thud(1);
       api.door();
     }).not.toThrow();
@@ -129,7 +143,7 @@ describe("the car's graph", () => {
   it("follows the voice, smoothed, without making a node per call, and never starts a source again", () => {
     const { ctx, api, bus } = rig();
     const made = ctx.nodes.length, started = ctx.starts;
-    const feed = { speed: 20, throttle: 1, surface: GRAVEL as 1, distance: 4 };
+    const feed = { speed: 20, throttle: 1, surface: GRAVEL as 1, distance: 4, driven: true };
     for (let i = 0; i < 50; i++) {
       ctx.now += 0.016;
       api.car(feed);
@@ -145,9 +159,30 @@ describe("the car's graph", () => {
     for (const n of ctx.nodes) for (const c of [...n.gain.calls, ...n.frequency.calls]) expect(c.kind).not.toBe("set");
   });
 
+  it("works the voice out into one record, the same one every frame, with no bare change of a running parameter", () => {
+    const { ctx, api } = rig();
+    const bare = ctx.nodes.map((n) => [n.gain.bare, n.frequency.bare, n.detune.bare, n.Q.bare]);
+    const first = api.voice();
+    for (let i = 0; i < 100; i++) {
+      ctx.now += 0.016;
+      api.car({ speed: i % 30, throttle: 1, surface: GRAVEL, distance: 4, driven: true });
+      expect(api.voice()).toBe(first);
+    }
+    expect(first).toEqual(carVoice(99 % 30, 1, GRAVEL, 4));
+    expect(ctx.nodes.map((n) => [n.gain.bare, n.frequency.bare, n.detune.bare, n.Q.bare])).toEqual(bare);
+  });
+
+  it("eases every change over the time constant chosen", () => {
+    const { ctx, api } = rig();
+    api.car({ speed: 10, throttle: 1, surface: PAVED, distance: 2, driven: true });
+    const targets = ctx.nodes.flatMap((n) => [...n.gain.calls, ...n.frequency.calls]).filter((c) => c.kind === "target");
+    expect(targets.length).toBeGreaterThan(0);
+    for (const c of targets) expect(c.constant).toBe(0.06);
+  });
+
   it("keeps the engine and the tyres well under full scale at their loudest", () => {
     const { ctx, api, bus } = rig();
-    api.car({ speed: 30, throttle: 1, surface: GRAVEL, distance: 0 });
+    api.car({ speed: 30, throttle: 1, surface: GRAVEL, distance: 0, driven: true });
     ctx.now += 0.3;
     // The loudest path from each source to the bus: the gains along it multiplied (a saw and the noise are at most 1 before them).
     const best = (n: FakeNode): number => {
@@ -163,7 +198,7 @@ describe("the car's graph", () => {
 
   it("falls silent when the page stops feeding it", () => {
     const { ctx, api, bus } = rig();
-    api.car({ speed: 20, throttle: 1, surface: PAVED, distance: 2 });
+    api.car({ speed: 20, throttle: 1, surface: PAVED, distance: 2, driven: true });
     expect(Math.max(...voices(ctx, bus).map((g) => g.gain.target()))).toBeGreaterThan(0);
     ctx.now += 5;
     expect(Math.max(...voices(ctx, bus).map((g) => g.gain.target()))).toBe(0);
@@ -171,7 +206,7 @@ describe("the car's graph", () => {
 
   it("falls silent when given no car", () => {
     const { ctx, api, bus } = rig();
-    api.car({ speed: 20, throttle: 1, surface: PAVED, distance: 2 });
+    api.car({ speed: 20, throttle: 1, surface: PAVED, distance: 2, driven: true });
     api.car(null);
     expect(Math.max(...voices(ctx, bus).map((g) => g.gain.target()))).toBe(0);
   });
@@ -213,7 +248,7 @@ describe("the car's graph", () => {
       expect(n.disconnected).toBeGreaterThan(0);
     }
     const made = ctx.nodes.length;
-    api.car({ speed: 10, throttle: 1, surface: PAVED, distance: 1 });
+    api.car({ speed: 10, throttle: 1, surface: PAVED, distance: 1, driven: true });
     api.thud(1);
     api.door();
     expect(ctx.nodes.length).toBe(made);

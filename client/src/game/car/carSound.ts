@@ -9,7 +9,7 @@
  *   looped noise -- band-pass (by surface) -- tyre gain (<= 0.12) ------------------------+-- the world's bus
  *   a thud or a door: noise -- low-pass -- envelope gain (<= 0.3 and 0.16) ---------------/
  * The two saws and the noise start once and run at zero gain until the car is heard. The engine and the tyres together peak at 0.27 of
- * full scale; with a thud on top, 0.57.
+ * full scale; with a thud and a door on top, 0.73.
  */
 import type { SoundGame, SoundHost } from "@csarkosh/engine/game/ambientAudio";
 import { TICK_DT } from "@csarkosh/engine/sim/constants";
@@ -17,12 +17,17 @@ import { PAVED, type Surface } from "../../sim/car/types.js";
 
 export type CarSoundApi = {
   /** The nearest car as it sounds now (every frame), or null when there is none within earshot. */
-  car(s: { speed: number; throttle: number; surface: Surface; distance: number } | null): void;
+  car(s: { speed: number; throttle: number; surface: Surface; distance: number; driven: boolean } | null): void;
   /** A hard stop, 0 to 1. */
   thud(strength: number): void;
   /** A door. */
   door(): void;
+  /** The voice the last `car(...)` worked out: one record, written in place, for a measuring tool to read. */
+  voice(): VoiceRecord;
 };
+
+/** The note's pitch (Hz) and the levels of the engine and the tyres, 0 to 1. */
+export type VoiceRecord = { hz: number; engine: number; tyres: number };
 
 /** How far a car is heard, metres. */
 export const HEARD_WITHIN = 80;
@@ -52,8 +57,11 @@ export function earshot(distance: number): number {
   return distance >= HEARD_WITHIN ? 0 : (1 - Math.max(distance, 0) / HEARD_WITHIN) ** 2;
 }
 
-/** The engine note's pitch (Hz) and the levels of the engine and the tyres, 0 to 1, for a moment of driving. */
-export function carVoice(speed: number, throttle: number, surface: Surface, distance: number): { hz: number; engine: number; tyres: number } {
+/**
+ * The engine note's pitch (Hz) and the levels of the engine and the tyres, 0 to 1, for a moment of driving. A car with nobody at the wheel
+ * (`driven` false) has no engine running; its tyres sound while it rolls. Written into `out` when given (so a frame allocates nothing).
+ */
+export function carVoice(speed: number, throttle: number, surface: Surface, distance: number, driven = true, out: VoiceRecord = { hz: 0, engine: 0, tyres: 0 }): VoiceRecord {
   const v = Math.abs(speed);
   const gear = v >= (GEAR_SPEEDS[1] as number) ? 2 : v >= (GEAR_SPEEDS[0] as number) ? 1 : 0;
   const lo = gear === 0 ? 0 : (GEAR_SPEEDS[gear - 1] as number);
@@ -63,9 +71,12 @@ export function carVoice(speed: number, throttle: number, surface: Surface, dist
   const hz = IDLE_HZ + (TOP_HZ - IDLE_HZ) * f;
   const near = earshot(distance);
   const load = Math.min(Math.abs(throttle), 1);
-  const engine = (0.3 + 0.7 * load) * (0.6 + 0.4 * f) * near;
+  const engine = driven ? (0.3 + 0.7 * load) * (0.6 + 0.4 * f) * near : 0;
   const tyres = Math.min(Math.min(v / TYRE_FULL, 1) * (TYRE_SURFACE[surface] as number), 1) * near;
-  return { hz, engine, tyres };
+  out.hz = hz;
+  out.engine = engine;
+  out.tyres = tyres;
+  return out;
 }
 
 /** What a car was at the last frame that saw it: the tick, its place and its speed. */
@@ -214,8 +225,16 @@ export const carSound: SoundGame<CarSoundApi> = () => {
     },
   };
 
+  const heard: VoiceRecord = { hz: IDLE_HZ, engine: 0, tyres: 0 };
   const api: CarSoundApi = {
+    voice: () => heard,
     car(s) {
+      if (s === null) {
+        heard.engine = 0;
+        heard.tyres = 0;
+      } else {
+        carVoice(s.speed, s.throttle, s.surface, s.distance, s.driven, heard);
+      }
       if (g === null) return;
       const now = g.host.ctx.currentTime;
       if (s === null) {
@@ -223,7 +242,7 @@ export const carSound: SoundGame<CarSoundApi> = () => {
         follow(g.tyres.gain, now, 0, null);
         return;
       }
-      const v = carVoice(s.speed, s.throttle, s.surface, s.distance);
+      const v = heard;
       follow(g.saw.frequency, now, v.hz, null);
       follow(g.fifth.frequency, now, v.hz * 1.5, null);
       follow(g.engine.gain, now, v.engine * ENGINE_PEAK, 0);
