@@ -12,6 +12,8 @@ import { siteFor } from "../town/siteFor.js";
 import { constrainCircle } from "../town/solid.js";
 import { withStreets } from "../town/streetField.js";
 import { CAR_CIRCLES, CAR_RADIUS, wheelPoints } from "./body.js";
+import { HULL_RADIUS } from "../town/hull.js";
+import { CAR_LENGTH, CAR_WIDTH } from "./tuning.js";
 import type { Car } from "./types.js";
 
 const abs = Math.abs;
@@ -33,8 +35,14 @@ const WHEELS = new Float64Array(8);
 const POS = { x: 0, y: 0, z: 0 };
 const VEL = { x: 0, y: 0, z: 0 };
 
-/** Whether the car's three circles at (x, z) heading (hx, hz) touch no building and no prop. */
-function clear(seed: number, x: number, z: number, hx: number, hz: number): boolean {
+/** Whether the car's three circles at (x, z) heading (hx, hz) touch no building and no prop, and its footprint stays a hull's radius from the spawn at (spawnX, spawnZ). */
+function clear(seed: number, x: number, z: number, hx: number, hz: number, spawnX: number, spawnZ: number): boolean {
+  // The spawn in the car's own axes: along the heading, and to the right of it ((hz, -hx)).
+  const dx = spawnX - x;
+  const dz = spawnZ - z;
+  const eu = max(0, abs(dx * hx + dz * hz) - CAR_LENGTH / 2);
+  const ev = max(0, abs(dx * hz - dz * hx) - CAR_WIDTH / 2);
+  if (eu * eu + ev * ev < HULL_RADIUS * HULL_RADIUS) return false;
   for (let i = 0; i < 3; i++) {
     const along = CAR_CIRCLES[i] as number;
     POS.x = x + hx * along;
@@ -52,7 +60,7 @@ function clear(seed: number, x: number, z: number, hx: number, hz: number): bool
  * Where the car starts, in the world: at the curb nearest the plan's spawn. It lies along the nearest street of kind main,
  * street or avenue, 1.2 m inside the curb on the spawn's side, facing so that the curb is on its right. The places tried are
  * along the street from the spawn's foot, at 0, +6.5, -6.5, +13, -13 ... to 78 m either way: the first where the car's three
- * circles touch no building and no prop. If none, the spawn's foot on the street's centre line.
+ * circles touch no building and no prop and whose footprint stays a hull's radius from the spawn. If none, the spawn's foot on the street's centre line.
  */
 export function carStart(seed: number): { x: number; z: number; hx: number; hz: number } {
   const { anchor } = siteFor(seed);
@@ -102,7 +110,7 @@ export function carStart(seed: number): { x: number; z: number; hx: number; hz: 
     if (s < 0 || s > bestLen) continue;
     const x = anchor.x + st.a.x + dx * s + nx * inset;
     const z = anchor.z + st.a.z + dz * s + nz * inset;
-    if (clear(seed, x, z, hx, hz)) return { x, z, hx, hz };
+    if (clear(seed, x, z, hx, hz, anchor.x + spawn.x, anchor.z + spawn.z)) return { x, z, hx, hz };
   }
   return { x: anchor.x + footX, z: anchor.z + footZ, hx, hz };
 }
@@ -121,7 +129,7 @@ export function newCar(seed: number, id: number): Car {
   const at = carStart(seed);
   const car: Car = {
     id, x: at.x, y: 0, z: at.z, hx: at.hx, hz: at.hz, speed: 0, slip: 0, steer: 0,
-    controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, seats: [0, 0, 0, 0],
+    controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, owed: 0, seats: [0, 0, 0, 0],
   };
   groundCar(walkGround(seed), car);
   return car;

@@ -13,6 +13,7 @@ import {
 import { cloneVec3 } from "@csarkosh/engine/sim/core";
 import { carPressed, newRide } from "./sim/car/rules.js";
 import { seatPlace } from "./sim/car/seats.js";
+import { OWED_MAX } from "./sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "./sim/car/types.js";
 import { WALK_RULES, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
@@ -26,8 +27,12 @@ export type WalkSnapshot = { tick: number; lastProcessedInput: number; players: 
 const HEAD_BYTES = 1 + 4 + 4 + 1;
 /** An id, a place, a velocity, a yaw, a pitch, whether the player stands, and the ride: a car's id, a seat (signed), a phase and its ticks. */
 export const MOVER_BYTES = 2 + 12 + 6 + 2 + 1 + 1 + 4;
-/** A car: an id, a place, a heading, a speed and a slip, the steer, the throttle and the turn, a flags byte and four seats. */
-export const CAR_BYTES = 1 + 12 + 4 + 4 + 2 + 2 + 1 + 8;
+/**
+ * A car, at the offsets from its start: the id (0), the place (1 to 12), the heading (13 to 16), the speed and the slip
+ * (17 to 20), the steer (21 to 22), the throttle (23) and the turn (24), a flags byte (25), four seats (26 to 33), and the
+ * steps owed to the driver's late commands (34), 0 to `OWED_MAX`.
+ */
+export const CAR_BYTES = 1 + 12 + 4 + 4 + 2 + 2 + 1 + 8 + 1;
 
 const HEADING_SCALE = 32767;
 const SPEED_SCALE = 256;
@@ -100,6 +105,7 @@ export function encodeWalkSnapshot(snapshot: WalkSnapshot): ArrayBuffer {
     view.setInt8(o + 24, Math.round(clamp(c.controls.turn * CONTROL_SCALE, -127, 127)));
     view.setUint8(o + 25, (c.controls.handbrake ? 1 : 0) | (c.lights ? 2 : 0));
     for (let s = 0; s < 4; s++) view.setUint16(o + 26 + s * 2, c.seats[s] as number, true);
+    view.setUint8(o + 34, c.owed);
     o += CAR_BYTES;
   }
   return buffer;
@@ -137,10 +143,12 @@ export function decodeWalkSnapshot(buffer: ArrayBuffer): WalkSnapshot {
     let hz = view.getInt16(o + 15, true) / HEADING_SCALE;
     // The heading is a unit vector; the wire's rounding is taken out of its length.
     const length = Math.sqrt(hx * hx + hz * hz);
-    if (length > 0) {
-      hx /= length;
-      hz /= length;
-    }
+    // A car of no heading cannot be driven or drawn: only a broken host sends one.
+    if (!(length > 0)) throw new Error("a snapshot of the game with a car of no heading");
+    hx /= length;
+    hz /= length;
+    const owed = view.getUint8(o + 34);
+    if (owed > OWED_MAX) throw new Error("a snapshot of the game with a car owed more than it may be");
     const flags = view.getUint8(o + 25);
     cars.push({
       id: view.getUint8(o),
@@ -154,6 +162,7 @@ export function decodeWalkSnapshot(buffer: ArrayBuffer): WalkSnapshot {
       steer: view.getInt16(o + 21, true) / HEADING_SCALE,
       controls: { throttle: view.getInt8(o + 23) / CONTROL_SCALE, turn: view.getInt8(o + 24) / CONTROL_SCALE, handbrake: (flags & 1) !== 0 },
       lights: (flags & 2) !== 0,
+      owed,
       seats: [view.getUint16(o + 26, true), view.getUint16(o + 28, true), view.getUint16(o + 30, true), view.getUint16(o + 32, true)],
     });
     o += CAR_BYTES;

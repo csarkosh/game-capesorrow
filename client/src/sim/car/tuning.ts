@@ -30,5 +30,11 @@ export const SLIP_DECAY = 3, HANDBRAKE_GRIP = 0.35, GRAVITY = 9.8, CLIMB_MAX = 0
 /** Water depth (m) at which the car stops; ticks to get in and out; how near a door a player must be (m); the most speed (m/s) a car may have for a player to get out. */
 export const WADE = 0.3, ENTER_TICKS = 60, LEAVE_TICKS = 36, DOOR_REACH = 1.2, LEAVE_SPEED = 2;
 
+/** The most driving steps (a tenth of a second) the car takes ahead of a driver's commands, on host ticks that have none; it bounds how far a late command can lag and how long a silent driver's last controls are kept. Past it the car brakes. */
+export const OWED_MAX = 6;
+
+/** How far the walker's feet may be from the car's wheel plane for a door to be used, metres. */
+export const DOOR_HEIGHT = 1;
+
 /** The bits of a player's input that ask to use the car and to switch its lamps. */
 export const INTERACT_BIT = 16, LAMP_BIT = 32;

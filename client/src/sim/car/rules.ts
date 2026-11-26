@@ -13,17 +13,18 @@ import { MoveButton, type InputCommand, type Vec3 } from "@csarkosh/engine/sim/c
 import type { Forest } from "@csarkosh/engine/sim/forest";
 import type { PlayerCore, SimState, SimWorld } from "@csarkosh/engine/sim/tick";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
-import { constrainRails } from "../town/decks.js";
+import { constrainRails, RAIL_JOIN } from "../town/decks.js";
 import { HULL_RADIUS } from "../town/hull.js";
 import { constrainTrestle } from "../town/railDeck.js";
 import { constrainCircle, pushOut, STRIDE, type TownSolids } from "../town/solid.js";
 import { driveCar } from "./body.js";
-import { doorNear, doorPlace, seatFor, seatPlace } from "./seats.js";
+import { boardSeat, doorPlace, seatPlace } from "./seats.js";
 import { carStart, groundCar } from "./start.js";
-import { CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, INTERACT_BIT, LAMP_BIT, LEAVE_SPEED, LEAVE_TICKS, WADE } from "./tuning.js";
+import { CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, INTERACT_BIT, LAMP_BIT, LEAVE_SPEED, LEAVE_TICKS, OWED_MAX, WADE } from "./tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type CarControls, type Ride } from "./types.js";
 
 const abs = Math.abs;
+const min = Math.min;
 
 /** A player with a place in a car, or none. */
 export type Rider = PlayerCore & { ride: Ride };
@@ -76,8 +77,11 @@ function seatRiders(world: RiderWorld, car: Car): void {
 }
 
 /**
- * The engine's move, for a seated player: the driver's commands drive the car (a standing command, one with the sequence
- * number of the last command taken, repeats the car's last controls), and every seated player is placed at their seat.
+ * The engine's move, for a seated player: the driver's commands drive the car, and every seated player is placed at their seat.
+ * A standing command (one with the sequence number of the last command taken: the host has none fresh from the driver this
+ * tick) steps the car on its last controls, or on the brake once `OWED_MAX` such steps are owed, and adds one to `car.owed`.
+ * The fresh command that comes later is then not stepped again: it sets the controls and pays one back. So a driver's N
+ * commands step the car N times, however the ticks fell, and a driver gone silent is braked to rest.
  * Answers false for a player not seated, so the engine walks them.
  */
 export function carMove(world: RiderWorld, p: Rider, cmd: InputCommand): boolean {
@@ -89,7 +93,12 @@ export function carMove(world: RiderWorld, p: Rider, cmd: InputCommand): boolean
   }
   if (p.ride.seat === 0) {
     if (cmd.seq === p.lastProcessedInput) {
-      driveCar(world, car, car.controls);
+      driveCar(world, car, car.owed < OWED_MAX ? car.controls : STILL);
+      car.owed = min(car.owed + 1, OWED_MAX);
+    } else if (car.owed > 0) {
+      // Stepped in advance, on a tick that had no command: the controls are taken and the step is not.
+      car.owed--;
+      car.controls = { throttle: cmd.moveZ, turn: cmd.moveX, handbrake: (cmd.buttons & MoveButton.Jump) !== 0 };
     } else {
       driveCar(world, car, { throttle: cmd.moveZ, turn: cmd.moveX, handbrake: (cmd.buttons & MoveButton.Jump) !== 0 });
     }
@@ -99,9 +108,10 @@ export function carMove(world: RiderWorld, p: Rider, cmd: InputCommand): boolean
   return true;
 }
 
-/** Whether a walker's hull can stand at (x, z): clear of every building, prop and car and every rail, in no more than wading depth of water, on the ground (decks are part of it). */
-function standFree(world: RiderWorld, x: number, z: number): boolean {
+/** Whether a walker's hull can stand at (x, z) beside a car at height `carY`: on ground within `RAIL_JOIN` of it (decks are part of the ground), clear of every building, prop and car and every rail, in no more than wading depth of water. */
+function standFree(world: RiderWorld, x: number, z: number, carY: number): boolean {
   const seed = world.forest.seed;
+  if (abs(heightAt(world, x, z) - carY) > RAIL_JOIN) return false;
   SPOT.x = x;
   SPOT.y = heightAt(world, x, z) + PLAYER_HALF.y;
   SPOT.z = z;
@@ -135,14 +145,14 @@ function carBox(car: Car): void {
 function freeDoor(world: RiderWorld, car: Car, seat: number): boolean {
   for (let k = 0; k < 2; k++) {
     doorPlace(car, k === 0 ? seat : seat ^ 1, DOOR);
-    if (standFree(world, DOOR.x, DOOR.z)) return true;
+    if (standFree(world, DOOR.x, DOOR.z, car.y)) return true;
   }
   return false;
 }
 
 /**
  * A press, on the host. The lamp bit from a seated driver flips the car's lamps. The interact bit from a player on foot at a
- * door takes the seat at once, so two players on one tick cannot share it, and the player starts getting in. From a seated
+ * door takes the seat at once, so two players on one tick cannot share it, and the player starts getting in, if the car is under `LEAVE_SPEED` and the player's feet are within `DOOR_HEIGHT` of its wheels' plane. From a seated
  * player in a car under `LEAVE_SPEED` it starts getting out, if the seat's door or the one across is free: if neither is, nothing changes.
  */
 export function carPressed(world: RiderWorld, p: Rider, bits: number): void {
@@ -155,11 +165,10 @@ export function carPressed(world: RiderWorld, p: Rider, bits: number): void {
     const cars = world.state.cars;
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i] as Car;
-      const door = doorNear(car, p.pos.x, p.pos.z);
-      if (door < 0) continue;
-      const seat = seatFor(car, door);
+      const seat = boardSeat(car, p.pos);
       if (seat < 0) continue;
       car.seats[seat] = p.id;
+      if (seat === 0) car.owed = 0;
       p.ride = { car: car.id, seat, phase: ENTERING, ticks: ENTER_TICKS };
       return;
     }
@@ -186,6 +195,7 @@ export function carHostStep(world: RiderWorld): void {
       const p = world.state.players.get(id);
       if (p === undefined) {
         car.seats[seat] = 0;
+        if (seat === 0) car.owed = 0;
         continue;
       }
       if (p.ride.phase === ENTERING) {
@@ -203,6 +213,7 @@ export function carHostStep(world: RiderWorld): void {
             p.grounded = true;
             p.ride = newRide();
             car.seats[seat] = 0;
+            if (seat === 0) car.owed = 0;
           } else {
             // The car is moving again, or there is nowhere to stand: still in the seat.
             p.ride.ticks = 0;
@@ -212,7 +223,10 @@ export function carHostStep(world: RiderWorld): void {
       }
     }
     const driver = car.seats[0] === 0 ? undefined : world.state.players.get(car.seats[0] as number);
-    if (driver === undefined || driver.ride.phase !== SEATED) driveCar(world, car, STILL);
+    if (driver === undefined || driver.ride.phase !== SEATED) {
+      car.owed = 0;
+      driveCar(world, car, STILL);
+    }
     seatRiders(world, car);
   }
 }
@@ -240,6 +254,7 @@ export function returnCar(world: RiderWorld, id: number): void {
   car.steer = 0;
   car.controls = { throttle: 0, turn: 0, handbrake: false };
   car.lights = false;
+  car.owed = 0;
   groundCar(world.ground, car);
   for (let seat = 0; seat < 4; seat++) {
     const pid = car.seats[seat] as number;
@@ -251,7 +266,7 @@ export function returnCar(world: RiderWorld, id: number): void {
     let found = false;
     for (let k = 0; k < 4 && !found; k++) {
       doorPlace(car, seat ^ k, DOOR);
-      found = standFree(world, DOOR.x, DOOR.z);
+      found = standFree(world, DOOR.x, DOOR.z, car.y);
     }
     if (!found) doorPlace(car, seat, DOOR);
     p.pos = { x: DOOR.x, y: heightAt(world, DOOR.x, DOOR.z) + PLAYER_HALF.y, z: DOOR.z };

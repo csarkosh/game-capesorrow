@@ -32,7 +32,10 @@ function toward(value: number, target: number, amount: number): number {
   return value < target ? min(value + amount, target) : max(value - amount, target);
 }
 
-/** One tick of the car on its own: controls, speed, steering, heading, place. Mutates `car`. Reads no world. */
+/**
+ * One tick of the car on its own: controls, speed, steering, heading, place. Mutates `car`. Reads no world.
+ * Precondition: `env.top` is above 0 (the smallest top is the reverse's or the surfaces' own, never 0), and the heading is a unit vector.
+ */
 export function stepCar(car: Car, controls: CarControls, env: CarEnv): void {
   const dt = TICK_DT;
   const t = controls.throttle;
@@ -86,8 +89,14 @@ export function stepCar(car: Car, controls: CarControls, env: CarEnv): void {
   let hx = car.hx + rightX * turnRate * dt;
   let hz = car.hz + rightZ * turnRate * dt;
   const length = sqrt(hx * hx + hz * hz);
-  hx /= length;
-  hz /= length;
+  if (length > 0) {
+    hx /= length;
+    hz /= length;
+  } else {
+    // A car of no heading (which the wire refuses) is turned to +x rather than to NaN.
+    hx = 1;
+    hz = 0;
+  }
   car.hx = hx;
   car.hz = hz;
   car.x += (hx * speed + rightX * car.slip) * dt;

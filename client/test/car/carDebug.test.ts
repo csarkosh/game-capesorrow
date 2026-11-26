@@ -4,7 +4,7 @@ import { newCarPose } from "../../src/game/car/carPose.js";
 import { doorPlace } from "../../src/sim/car/seats.js";
 import { SEATED, type Car, type Ride } from "../../src/sim/car/types.js";
 
-const car: Car = { id: 1, x: 5, y: 1, z: 7, hx: 0, hz: 1, speed: 3, slip: 0, steer: 0.2, controls: { throttle: 1, turn: 0, handbrake: false }, lights: true, seats: [9, 0, 0, 0] };
+const car: Car = { id: 1, x: 5, y: 1, z: 7, hx: 0, hz: 1, speed: 3, slip: 0, steer: 0.2, controls: { throttle: 1, turn: 0, handbrake: false }, lights: true, owed: 0, seats: [9, 0, 0, 0] };
 const pose = newCarPose();
 Object.assign(pose, { id: 1, x: 5, y: 1.1, z: 7, hx: 0, hz: 1, speed: 3, steer: 0.2, lights: true, driver: 9 });
 const players = new Map([[9, { pos: { x: 5, y: 1.6, z: 7 }, yaw: 0.5, pitch: -0.1, ride: { car: 1, seat: 0, phase: SEATED, ticks: 4 } as Ride }]]);

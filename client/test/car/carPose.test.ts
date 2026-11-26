@@ -4,7 +4,7 @@ import type { Car } from "../../src/sim/car/types.js";
 import { carPose, halfTurnAboutY, newCarPose, rollAfter, wheelMatrix, type CarPose } from "../../src/game/car/carPose.js";
 
 function car(over: Partial<Car> = {}): Car {
-  return { id: 1, x: 10, y: 0, z: 20, hx: 1, hz: 0, speed: 0, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, seats: [0, 0, 0, 0], ...over };
+  return { id: 1, x: 10, y: 0, z: 20, hx: 1, hz: 0, speed: 0, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, owed: 0, seats: [0, 0, 0, 0], ...over };
 }
 
 const flat = (h: number) => (): number => h;
@@ -100,6 +100,14 @@ describe("the car's pose", () => {
   it("draws the newer car where the two are a teleport apart", () => {
     const p = posed(car({ x: 500 }), flat(0), car({ x: 0 }), 0.5);
     expect(p.x).toBe(500);
+  });
+
+  it("draws a car of no heading along +x, with every number of its pose finite", () => {
+    const p = posed(car({ hx: 0, hz: 0 }), flat(0));
+    expect([p.hx, p.hz]).toEqual([1, 0]);
+    for (const v of p.matrix) expect(Number.isFinite(v)).toBe(true);
+    const between = posed(car({ x: 0, hx: 0, hz: 0 }), flat(0), car({ x: 1, hx: 0, hz: 0 }), 0.5);
+    expect([between.hx, between.hz]).toEqual([1, 0]);
   });
 
   it("carries the car's id, lights and driver", () => {

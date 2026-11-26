@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import "../../src/terrain.js";
 import { createClientSession } from "@csarkosh/engine/net/client";
 import { FakeNetwork } from "@csarkosh/engine/net/fakeNetwork";
 import { createHostSession } from "@csarkosh/engine/net/host";
-import { PERFECT_NETWORK } from "@csarkosh/engine/net/transport";
+import { PERFECT_NETWORK, type NetworkConditions } from "@csarkosh/engine/net/transport";
 import { TICK_DT } from "@csarkosh/engine/sim/constants";
 import type { InputCommand } from "@csarkosh/engine/sim/core";
 import { createForest } from "@csarkosh/engine/sim/forest";
@@ -15,7 +16,7 @@ import {
 import { WALK_RULES, createWalkWorld, type WalkWorld } from "../../src/sim.js";
 import { seatPlace, doorPlace } from "../../src/sim/car/seats.js";
 import { groundCar } from "../../src/sim/car/start.js";
-import { ENTER_TICKS, INTERACT_BIT, WHEELBASE } from "../../src/sim/car/tuning.js";
+import { ENTER_TICKS, INTERACT_BIT, OWED_MAX, SPEED_CAP, WHEELBASE } from "../../src/sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "../../src/sim/car/types.js";
 import { siteFor } from "../townWorld/world.js";
 
@@ -31,7 +32,7 @@ const mover = (id: number, r: Ride, x = 0): WalkMover => ({
 });
 const aCar = (id: number, more: Partial<Car> = {}): Car => ({
   id, x: 100.25, y: 2.5, z: -300.5, hx: 0.6, hz: 0.8, speed: 27.3, slip: -1.5, steer: 0.31,
-  controls: { throttle: 1, turn: -0.5, handbrake: true }, lights: true, seats: [3, 0, 4, 0], ...more,
+  controls: { throttle: 1, turn: -0.5, handbrake: true }, lights: true, owed: 0, seats: [3, 0, 4, 0], ...more,
 });
 
 const snap: WalkSnapshot = {
@@ -57,7 +58,7 @@ describe("the car on the wire", () => {
     expect([car.x, car.y, car.z]).toEqual([100.25, 2.5, -300.5]);
     expect((back.players[0] as WalkMover).ride).toEqual({ car: 1, seat: 0, phase: SEATED, ticks: 0 });
     expect((back.players[1] as WalkMover).ride).toEqual({ car: 1, seat: 2, phase: ENTERING, ticks: 41 });
-  });
+  }, timeLimit(60_000));
 
   it("carries the flags apart, a rider on foot as no ride and a reverse speed", () => {
     const shot: WalkSnapshot = {
@@ -70,10 +71,10 @@ describe("the car on the wire", () => {
     const [a, b] = back.cars as [Car, Car];
     expect([a.id, a.speed, a.controls.handbrake, a.lights]).toEqual([2, -6, false, true]);
     expect([b.id, b.controls.handbrake, b.lights]).toEqual([3, true, false]);
-  });
+  }, timeLimit(60_000));
 
-  it("is laid out as designed: the mover is 28 bytes and the car 34, the car's fields at their offsets", () => {
-    expect([MOVER_BYTES, CAR_BYTES, WALK_PROTOCOL]).toEqual([28, 34, 2]);
+  it("is laid out as designed: the mover is 28 bytes and the car 35, the car's fields at their offsets", () => {
+    expect([MOVER_BYTES, CAR_BYTES, WALK_PROTOCOL]).toEqual([28, 35, 2]);
     const bytes = encodeWalkSnapshot(snap);
     const v = new DataView(bytes);
     const mover1 = 10 + MOVER_BYTES;
@@ -93,8 +94,33 @@ describe("the car on the wire", () => {
     expect(v.getInt8(c + 24)).toBe(Math.round(-0.5 * 127));
     expect(v.getUint8(c + 25)).toBe(3);
     expect([v.getUint16(c + 26, true), v.getUint16(c + 28, true), v.getUint16(c + 30, true), v.getUint16(c + 32, true)]).toEqual([3, 0, 4, 0]);
+    // The steps owed to the driver's late commands are the car's last byte.
+    expect(v.getUint8(c + 34)).toBe(0);
+    expect(new DataView(encodeWalkSnapshot({ ...snap, cars: [aCar(1, { owed: OWED_MAX })] })).getUint8(c + 34)).toBe(OWED_MAX);
     expect(bytes.byteLength).toBe(countAt + 1 + CAR_BYTES);
-  });
+  }, timeLimit(60_000));
+
+  it("carries the steps owed, and refuses more than the most a car may owe", () => {
+    for (const owed of [0, 1, 3, OWED_MAX]) {
+      const back = decodeWalkSnapshot(encodeWalkSnapshot({ ...snap, cars: [aCar(1, { owed })] }));
+      expect((back.cars[0] as Car).owed).toBe(owed);
+    }
+    const bytes = encodeWalkSnapshot(snap);
+    new DataView(bytes).setUint8(10 + 2 * MOVER_BYTES + 1 + 34, OWED_MAX + 1);
+    expect(() => decodeWalkSnapshot(bytes)).toThrow(/owed/);
+  }, timeLimit(60_000));
+
+  it("refuses a car with no heading, since it could be neither driven nor drawn", () => {
+    const bytes = encodeWalkSnapshot(snap);
+    const v = new DataView(bytes);
+    const c = 10 + 2 * MOVER_BYTES + 1;
+    v.setInt16(c + 13, 0, true);
+    v.setInt16(c + 15, 0, true);
+    expect(() => decodeWalkSnapshot(bytes)).toThrow(/heading/);
+    // One axis of it zero is a heading along the other.
+    v.setInt16(c + 15, 32767, true);
+    expect(decodeWalkSnapshot(bytes).cars[0]).toMatchObject({ hx: 0, hz: 1 });
+  }, timeLimit(60_000));
 
   it("a snapshot with no car and one with five players are the right lengths", () => {
     const none = encodeWalkSnapshot({ ...snap, players: [], cars: [] });
@@ -105,7 +131,7 @@ describe("the car on the wire", () => {
     expect(decodeWalkSnapshot(five).players.length).toBe(5);
     const two = encodeWalkSnapshot({ ...snap, cars: [aCar(1), aCar(2)] });
     expect(two.byteLength).toBe(10 + 2 * MOVER_BYTES + 1 + 2 * CAR_BYTES);
-  });
+  }, timeLimit(60_000));
 
   /** The snapshot's bytes with one mover's ride written over: car, seat, phase. */
   function withRide(index: number, car: number, seat: number, phase: number): ArrayBuffer {
@@ -130,7 +156,7 @@ describe("the car on the wire", () => {
     expect(decodeWalkSnapshot(withRide(1, 2, 0, SEATED)).players.length).toBe(2);
     expect(decodeWalkSnapshot(withRide(1, 1, 0, FOOT)).players[1]?.ride).toEqual({ car: 0, seat: 0, phase: FOOT, ticks: 0 });
     expect((decodeWalkSnapshot(encodeWalkSnapshot(snap)).players[0] as WalkMover).ride.phase).toBe(SEATED);
-  });
+  }, timeLimit(60_000));
 
   it("refuses a buffer a byte short, a byte long, and one that stops short of its cars", () => {
     const buf = encodeWalkSnapshot(snap);
@@ -139,7 +165,7 @@ describe("the car on the wire", () => {
     long.set(new Uint8Array(buf));
     expect(() => decodeWalkSnapshot(long.buffer)).toThrow(/wrong length/);
     expect(() => decodeWalkSnapshot(buf.slice(0, 10 + 2 * MOVER_BYTES))).toThrow();
-  });
+  }, timeLimit(60_000));
 });
 
 /** A host's world and a joined client's predicted world, each with the player 1 and the car on an open stretch of the highway. */
@@ -226,7 +252,7 @@ describe("a joined driver's replay", () => {
     expect(Math.abs(me.pos.z - there.pos.z)).toBeLessThanOrEqual(bound + 1e-4);
     expect(me.ride).toEqual(there.ride);
     expect(predicted.state.tick).toBe(host.state.tick);
-  });
+  }, timeLimit(60_000));
 
   it("is exact when corrected from the host's own state, so the wire's rounding is all that differs", () => {
     const { host, predicted, at200 } = hostRun();
@@ -237,7 +263,26 @@ describe("a joined driver's replay", () => {
     expect(car.z).toBeCloseTo(hostCar.z, 9);
     expect(car.speed).toBeCloseTo(hostCar.speed, 9);
     expect(car.hx).toBeCloseTo(hostCar.hx, 12);
-  });
+  }, timeLimit(60_000));
+
+  it("swallows the commands the host stepped for in advance: corrected from a snapshot whose car is owed a step, the replay lands where the host does", () => {
+    // The host's tick 151 has no command from the driver; the command comes on the next tick, and the commands after it on the ones after.
+    const host = pair().host;
+    const empty = 150;
+    for (let i = 0; i < empty; i++) tickPlayers(host, new Map([[1, commands[i] as InputCommand]]), WALK_RULES);
+    tickPlayers(host, new Map(), WALK_RULES);
+    const snapshot = WALK.snapshot(host, empty);
+    expect((snapshot.cars[0] as Car).owed).toBe(1);
+    for (let i = empty; i < commands.length; i++) tickPlayers(host, new Map([[1, commands[i] as InputCommand]]), WALK_RULES);
+    const { predicted } = pair();
+    reconcile(predicted, snapshot, commands);
+    expect(predicted.state.cars[0]).toEqual(host.state.cars[0]);
+    expect((predicted.state.players.get(1) as Walkerlike).pos).toEqual((host.state.players.get(1) as Walkerlike).pos);
+    // Without the debt the replay would take one step more than the host did.
+    const { predicted: naive } = pair();
+    reconcile(naive, { ...snapshot, cars: [{ ...(snapshot.cars[0] as Car), owed: 0 }] }, commands);
+    expect((naive.state.cars[0] as Car).z).toBeGreaterThan((host.state.cars[0] as Car).z);
+  }, timeLimit(60_000));
 
   it("takes copies of the snapshot's car and ride, so a replay leaves the snapshot as it was", () => {
     const { predicted, at200 } = hostRun();
@@ -249,7 +294,7 @@ describe("a joined driver's replay", () => {
     expect((predicted.state.cars[0] as Car).seats).not.toBe((wire.cars[0] as Car).seats);
     expect((predicted.state.cars[0] as Car).controls).not.toBe((wire.cars[0] as Car).controls);
     expect((predicted.state.players.get(1) as Walkerlike).ride).not.toBe((wire.players[0] as WalkMover).ride);
-  });
+  }, timeLimit(60_000));
 
   it("leaves a car and a ride that agree", () => {
     const { predicted, at200 } = hostRun();
@@ -258,7 +303,7 @@ describe("a joined driver's replay", () => {
     const car = predicted.state.cars.find((c) => c.id === me.ride.car) as Car;
     expect(car.seats[me.ride.seat]).toBe(1);
     expect(me.ride.phase).toBe(SEATED);
-  });
+  }, timeLimit(60_000));
 });
 
 type Walkerlike = { pos: { x: number; y: number; z: number }; ride: Ride };
@@ -277,13 +322,13 @@ describe("the car's blend and the view", () => {
     expect(car.seats).toEqual([3, 0, 4, 0]);
     expect(car.seats).not.toBe((b.cars[0] as Car).seats);
     expect(mid.tick).toBe(14);
-  });
+  }, timeLimit(60_000));
 
   it("takes a car that was not in the earlier snapshot as it is, and the ride from the later", () => {
     const mid = WALK.blend({ ...a, cars: [] }, { ...b, players: [mover(3, ride(1, 0, ENTERING, 7))] }, 0.5);
     expect((mid.cars[0] as Car).x).toBe(8);
     expect((mid.players[0] as WalkMover).ride).toEqual(ride(1, 0, ENTERING, 7));
-  });
+  }, timeLimit(60_000));
 
   function viewWorld(localSeat: number): WalkWorld {
     const world = createWalkWorld(forest, false);
@@ -305,7 +350,7 @@ describe("the car's blend and the view", () => {
     expect(frame.cars.find((c) => c.id === mine.id)).toBe(mine);
     expect(frame.cars.find((c) => c.id === 2)).toEqual(other);
     expect(frame.players.get(1)).toBe(world.state.players.get(1));
-  });
+  }, timeLimit(60_000));
 
   it("draws an entering or leaving driver's car from the snapshots, since the predicted world does not step it then", () => {
     for (const phase of [ENTERING, LEAVING] as const) {
@@ -318,13 +363,13 @@ describe("the car's blend and the view", () => {
       expect(car).not.toBe(world.state.cars[0]);
       expect([car.x, car.z]).toEqual([321, 654]);
     }
-  });
+  }, timeLimit(60_000));
 
   it("takes the predicted car for a seated driver even when the snapshot has not yet the player at the wheel", () => {
     const world = viewWorld(0);
     const between: WalkSnapshot = { tick: 12, lastProcessedInput: 0, players: [], cars: [aCar(1, { x: 321, z: 654, seats: [0, 0, 0, 0] })] };
     expect(WALK.view(world, 1, between, between).cars[0]).toBe(world.state.cars[0]);
-  });
+  }, timeLimit(60_000));
 
   it("draws the world's own cars before a snapshot has come, and the others' rides from the snapshot", () => {
     const world = viewWorld(0);
@@ -334,7 +379,7 @@ describe("the car's blend and the view", () => {
     expect(frame.players.get(8)?.ride).toEqual(ride(2, 0, SEATED));
     expect(frame.players.get(8)?.ride).not.toBe((between.players[1] as WalkMover).ride);
     expect(frame.players.get(1)).toBe(world.state.players.get(1));
-  });
+  }, timeLimit(60_000));
 
   it("treats a rider of a car that is not there as on foot, in the view and in the correction", () => {
     const world = viewWorld(0);
@@ -346,7 +391,7 @@ describe("the car's blend and the view", () => {
     expect(local.ride).toEqual(ride(0, 0, FOOT));
     WALK.correct(world, local as never, mover(1, ride(1, 0, ENTERING, 9)), { ...between, players: [] });
     expect(local.ride).toEqual(ride(1, 0, ENTERING, 9));
-  });
+  }, timeLimit(60_000));
 
   it("draws a passenger in the snapshot's car, seated in it, not in the predicted world's", () => {
     const world = viewWorld(1);
@@ -361,12 +406,12 @@ describe("the car's blend and the view", () => {
     const me = frame.players.get(1) as Walkerlike;
     expect([me.pos.x, me.pos.y, me.pos.z]).toEqual([seat.x, seat.y, seat.z]);
     expect(me.ride).toEqual(ride(1, 1, SEATED));
-  });
+  }, timeLimit(60_000));
 });
 
 describe("two peers over the engine's own sessions", () => {
-  function party(prepare: (host: WalkWorld) => void = () => undefined) {
-    const net = new FakeNetwork(PERFECT_NETWORK, 7);
+  function party(prepare: (host: WalkWorld) => void = () => undefined, conditions: NetworkConditions = PERFECT_NETWORK) {
+    const net = new FakeNetwork(conditions, 7);
     const [hostSide, clientSide] = net.createPair();
     const hostWorld = createWalkWorld(forest, true);
     prepare(hostWorld);
@@ -408,7 +453,7 @@ describe("two peers over the engine's own sessions", () => {
     expect(seen.seats).toEqual([0, 1, 0, 0]);
     expect(seen.lights).toBe(true);
     expect(p.client.world.state.cars[0]?.seats).toEqual([0, 1, 0, 0]);
-  });
+  }, timeLimit(60_000));
 
   it("the driver gets in over the wire: the press reaches the host, the client sees ENTERING and then SEATED through snapshots", () => {
     const p = party();
@@ -439,5 +484,46 @@ describe("two peers over the engine's own sessions", () => {
     const tickTravel = Math.max(Math.abs(hostCar.speed), 1) * TICK_DT;
     expect(Math.hypot(mine.x - hostCar.x, mine.z - hostCar.z)).toBeLessThanOrEqual(2 * tickTravel);
     expect(p.client.stats.lastPredictionError).toBeLessThanOrEqual(tickTravel);
-  });
+  }, timeLimit(60_000));
+  it("keeps a joined driver's car where the host's is over a network with latency and jitter", () => {
+    // 60 ms each way with 40 ms of jitter: the host's ticks often have no command from the driver, and often two at once.
+    const p = party((host) => {
+      const start = host.state.cars[0] as Car;
+      start.x = roadCenterX(SEED, anchor.z + 5000);
+      start.z = anchor.z + 5000;
+      start.hx = 0;
+      start.hz = 1;
+      groundCar(host.ground, start);
+    }, { latencyMs: 60, jitterMs: 40, lossRate: 0 });
+    const car = p.host.world.state.cars[0] as Car;
+    const door = { x: 0, z: 0 };
+    doorPlace(car, 0, door);
+    const there = p.host.world.state.players.get(p.peer) as { pos: { x: number; y: number; z: number } };
+    there.pos = { x: door.x, y: (p.host.world.ground?.heightAt(door.x, door.z) ?? 0) + 0.9, z: door.z };
+    p.play(10, (t) => cmd(t + 1));
+    p.play(1, () => cmd(11, { buttons: INTERACT_BIT }));
+    p.play(ENTER_TICKS + 40, (t) => cmd(12 + t));
+    expect(p.host.world.state.players.get(p.peer)?.ride.phase).toBe(SEATED);
+    expect(p.client.localPlayer()?.ride.phase).toBe(SEATED);
+    // Throttle, a bend, a lift and a bend back: the controls change while commands are late.
+    const drive = (t: number): InputCommand => cmd(1000 + t, t < 200 ? { moveZ: 1 } : t < 260 ? { moveZ: 1, moveX: 0.15 } : t < 300 ? { moveZ: 0.2 } : t < 360 ? { moveZ: 1, moveX: -0.15 } : { moveZ: 1 });
+    let worst = 0;
+    let owedSeen = 0;
+    for (let t = 0; t < 500; t++) {
+      p.play(1, () => drive(t));
+      worst = Math.max(worst, p.client.stats.lastPredictionError);
+      owedSeen = Math.max(owedSeen, (p.host.world.state.cars[0] as Car).owed);
+    }
+    const hostCar = p.host.world.state.cars[0] as Car;
+    expect(hostCar.speed).toBeGreaterThan(1);
+    // The host did step ahead of late commands (the jitter is a test of the debt), and never past what a tenth of a second allows.
+    expect(owedSeen).toBeGreaterThan(0);
+    expect(owedSeen).toBeLessThanOrEqual(OWED_MAX);
+    // A correction moves the predicted player by what the wire's rounding and a command's controls arriving a tick after the host
+    // stepped on the last ones can differ by: well under two ticks of travel at the car's top speed here. Without the debt each
+    // empty host tick put the car a whole tick of travel further on than the client's, and the error grew with every one: the same run
+    // without it measured 0.46 m, and with it 0.010 m.
+    const twoTicks = 2 * SPEED_CAP * TICK_DT;
+    expect(worst).toBeLessThan(twoTicks);
+  }, timeLimit(60_000));
 });

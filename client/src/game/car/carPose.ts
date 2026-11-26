@@ -42,6 +42,11 @@ export function carPose(before: Car | null, now: Car, alpha: number, groundAt: (
   if (len < 1e-6) {
     hx = now.hx;
     hz = now.hz;
+    // A car of no heading at all (the simulation refuses one off the wire) is drawn along +x, not as NaN.
+    if (Math.hypot(hx, hz) < 1e-6) {
+      hx = 1;
+      hz = 0;
+    }
   } else {
     hx /= len;
     hz /= len;

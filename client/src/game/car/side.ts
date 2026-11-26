@@ -9,7 +9,7 @@ import type { WalkClient, WalkHost, WalkRenderer } from "../../game.js";
 import type { WalkHud } from "../../hud.js";
 import { returnCar } from "../../sim/car/rules.js";
 import { surfaceAt } from "../../sim/car/surface.js";
-import { doorNear, seatFor } from "../../sim/car/seats.js";
+import { boardSeat } from "../../sim/car/seats.js";
 import { INTERACT_BIT, LEAVE_SPEED } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
@@ -40,8 +40,7 @@ export function promptFor(self: Walker | undefined, cars: readonly Car[]): strin
   if (ride.phase === FOOT) {
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i] as Car;
-      const door = doorNear(car, self.pos.x, self.pos.z);
-      if (door >= 0 && seatFor(car, door) >= 0) return GET_IN;
+      if (boardSeat(car, self.pos) >= 0) return GET_IN;
     }
     return null;
   }

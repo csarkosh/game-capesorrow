@@ -26,6 +26,8 @@ export type Car = {
   /** The controls last taken. */
   controls: CarControls;
   lights: boolean;
+  /** The driver's commands the car has already stepped for in advance, taken in its place when they arrive: 0 to `OWED_MAX`. */
+  owed: number;
   /** Player ids by seat, 0 for empty; seat 0 drives. */
   seats: [number, number, number, number];
 };

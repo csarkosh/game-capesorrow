@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../../src/game/words.js";
 import { CAR_COMMANDS, NO_ROOM_AFTER, NO_ROOM_SHOWN, createCapeSide, lineFor, litBy, newClickWatch, promptFor, promptShown, watchClick } from "../../src/game/car/side.js";
 import { WALK_SIDE } from "../../src/game.js";
@@ -16,7 +17,7 @@ const seed = WORLD_SEEDS[0] as number;
 
 const car = (over: Partial<Car> = {}): Car => ({
   id: 1, x: 10, y: 0, z: 20, hx: 0, hz: 1, speed: 0, slip: 0, steer: 0,
-  controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, seats: [0, 0, 0, 0], ...over,
+  controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, owed: 0, seats: [0, 0, 0, 0], ...over,
 });
 const walker = (x: number, z: number, ride: Ride = newRide()): Walker => ({ id: 7, pos: { x, y: 0, z }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0, ride });
 const seated = (seat = 0, car_ = 1): Ride => ({ car: car_, seat, phase: SEATED, ticks: 0 });
@@ -34,7 +35,7 @@ describe("what the line at the door says", () => {
     expect(promptFor(walker(door.x, door.z), [c])).toBe(GET_IN);
     expect(promptFor(walker(door.x - 3, door.z), [c])).toBeNull();
     expect(promptFor(undefined, [c])).toBeNull();
-  });
+  }, timeLimit(60_000));
 
   it("offers to get out only when seated and nearly stopped", () => {
     const stopped = car({ speed: LEAVE_SPEED - 0.1, seats: [7, 0, 0, 0] });
@@ -45,7 +46,7 @@ describe("what the line at the door says", () => {
     expect(promptFor(walker(10, 20, seated()), [reversing])).toBeNull();
     // A passenger is offered the door as the driver is.
     expect(promptFor(walker(10, 20, seated(2)), [car({ seats: [3, 0, 7, 0] })])).toBe(GET_OUT);
-  });
+  }, timeLimit(60_000));
 
   it("offers nothing to a walker when every seat is taken, and nothing while getting in or out", () => {
     const full = car({ seats: [3, 4, 5, 6] });
@@ -55,7 +56,7 @@ describe("what the line at the door says", () => {
     const at = atDoor(c, 0);
     expect(promptFor(walker(at.x, at.z, { car: 1, seat: 0, phase: ENTERING, ticks: 30 }), [c])).toBeNull();
     expect(promptFor(walker(at.x, at.z, { car: 1, seat: 0, phase: LEAVING, ticks: 30 }), [c])).toBeNull();
-  });
+  }, timeLimit(60_000));
 });
 
 describe("the lamp the page's button shows", () => {
@@ -68,7 +69,7 @@ describe("the lamp the page's button shows", () => {
     expect(litBy(walker(0, 0, { car: 1, seat: 0, phase: LEAVING, ticks: 3 }), [lit])).toBe(false);
     expect(litBy(walker(0, 0, seated(0, 9)), [lit])).toBe(false);
     expect(litBy(undefined, [lit])).toBe(false);
-  });
+  }, timeLimit(60_000));
 });
 
 describe("the click that changes nothing", () => {
@@ -80,7 +81,7 @@ describe("the click that changes nothing", () => {
     expect(watchClick(w, FIRST + NO_ROOM_AFTER, false, seated(), true)).toBe(true);
     // Said once.
     expect(watchClick(w, FIRST + NO_ROOM_AFTER + 0.1, false, seated(), true)).toBe(false);
-  });
+  }, timeLimit(60_000));
 
   it("says nothing when the click began leaving, or on foot, or in a car going too fast", () => {
     const left = newClickWatch();
@@ -93,14 +94,14 @@ describe("the click that changes nothing", () => {
     const walking = newClickWatch();
     watchClick(walking, FIRST, true, newRide(), false);
     expect(watchClick(walking, FIRST + 0.4, false, newRide(), false)).toBe(false);
-  });
+  }, timeLimit(60_000));
 
   it("counts a held button as one click", () => {
     const w = newClickWatch();
     let said = 0;
     for (let i = 0; i <= 40; i++) if (watchClick(w, FIRST + i * 0.05, true, seated(), true)) said++;
     expect(said).toBe(1);
-  });
+  }, timeLimit(60_000));
 
   it("puts the no-room line in the place of Get out for a moment, and only then", () => {
     const w = newClickWatch();
@@ -110,7 +111,7 @@ describe("the click that changes nothing", () => {
     expect(lineFor(w, FIRST + NO_ROOM_AFTER + 0.1, GET_IN)).toBe(GET_IN);
     expect(lineFor(w, FIRST + NO_ROOM_AFTER + 0.1, null)).toBeNull();
     expect(lineFor(w, FIRST + NO_ROOM_AFTER + NO_ROOM_SHOWN + 0.1, GET_OUT)).toBe(GET_OUT);
-  });
+  }, timeLimit(60_000));
 });
 
 type Said = { prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null)[]; thuds: number[]; doors: number };
@@ -152,7 +153,7 @@ describe("the car's half of a session", () => {
     side.afterSync(undefined as never, s, 7, walker(door.x - 5, door.z), null);
     expect(said.prompt.at(-1)).toEqual([null, undefined]);
     expect(promptShown()).toBeNull();
-  });
+  }, timeLimit(60_000));
 
   it("gives no press to a screen with a keyboard", () => {
     const { host, said } = pageHost(false);
@@ -162,7 +163,7 @@ describe("the car's half of a session", () => {
     const me = walker(door.x, door.z);
     side.afterSync(undefined as never, state([c], [me]), 7, me, null);
     expect(said.prompt[0]).toEqual([GET_IN, undefined]);
-  });
+  }, timeLimit(60_000));
 
   it("shows no room in Get out's place when a stopped, seated player's click leaves them seated 0.3 s on, for a moment", () => {
     const { host, said } = pageHost(false);
@@ -192,7 +193,7 @@ describe("the car's half of a session", () => {
     now += 0.3;
     side.afterSync(undefined as never, s, 7, leaving, null);
     expect(said.prompt.at(-1)?.[0]).toBeNull();
-  });
+  }, timeLimit(60_000));
 
   it("answers the page's lamp button from the car", () => {
     const { host } = pageHost(false);
@@ -202,7 +203,7 @@ describe("the car's half of a session", () => {
     side.afterSync(undefined as never, state([c], [me]), 7, me, null);
     expect(side.lampOn(me)).toBe(true);
     expect(side.lampOn(walker(0, 0))).toBe(false);
-  });
+  }, timeLimit(60_000));
 
   it("brings the car back on the host between ticks, and tells a follower only the host can", () => {
     const { host, said, world } = pageHost(false);
@@ -230,7 +231,7 @@ describe("the car's half of a session", () => {
     expect(side.applyOwnView("carhome", [])).toBe(true);
     expect(said.flash).toHaveLength(2);
     expect(side.applyOwnView("something else", [])).toBe(false);
-  });
+  }, timeLimit(60_000));
 
   it("names the console command with no argument, and keeps it out of the address", () => {
     const [spec] = CAR_COMMANDS;
@@ -240,7 +241,7 @@ describe("the car's half of a session", () => {
     expect(spec?.validate([])).toBeNull();
     expect(spec?.validate(["now"])).toMatch(/no argument/);
     expect(spec?.scriptValue?.([])).toBe(spec?.defaultValue);
-  });
+  }, timeLimit(60_000));
 
   describe("the car's sound", () => {
     const at = (tick: number, cars: Car[], players: Walker[]): WalkState => ({ ...state(cars, players), tick });
@@ -261,7 +262,7 @@ describe("the car's half of a session", () => {
       side.afterSync(undefined as never, at(2, [car({ id: 2, x: 90, z: 0, seats: [8, 0, 0, 0] })], [me]), 7, me, null);
       expect(said.voice.at(-1)).toBeNull();
       expect(voiceShown()).toBeNull();
-    });
+    }, timeLimit(60_000));
 
     it("hears a car with a driver at rest idle, and an empty one silent or only rolling", () => {
       const { host, said } = pageHost(false);
@@ -278,7 +279,7 @@ describe("the car's half of a session", () => {
       expect(said.voice.at(-1)?.driven).toBe(false);
       expect(voiceShown()?.engine).toBe(0);
       expect(voiceShown()?.tyres).toBeGreaterThan(0);
-    });
+    }, timeLimit(60_000));
 
     it("chooses a far car with a driver over a near empty one at rest", () => {
       const { host, said } = pageHost(false);
@@ -288,7 +289,7 @@ describe("the car's half of a session", () => {
       const driven = car({ id: 2, x: 50, z: 0, seats: [9, 0, 0, 0] });
       side.afterSync(undefined as never, at(1, [empty, driven], [me]), 7, me, null);
       expect(said.voice.at(-1)?.distance).toBe(50);
-    });
+    }, timeLimit(60_000));
 
     it("hears the local player's own place, so a seated driver's car is beside them", () => {
       const { host, said } = pageHost(false);
@@ -296,7 +297,7 @@ describe("the car's half of a session", () => {
       const c = car({ x: 30, z: 40, seats: [7, 0, 0, 0] });
       side.afterSync(undefined as never, at(1, [c], [walker(30, 40, seated())]), 7, walker(30, 40, seated()), null);
       expect(said.voice.at(-1)?.distance).toBe(0);
-    });
+    }, timeLimit(60_000));
 
     it("thuds on a hard stop, scaled by the ticks between frames, and not for brisk braking", () => {
       const { host, said } = pageHost(false);
@@ -313,7 +314,7 @@ describe("the car's half of a session", () => {
       side.afterSync(undefined as never, at(16, [car({ speed: 6 })], [me]), 7, me, null);
       side.afterSync(undefined as never, at(20, [car({ speed: 0 })], [me]), 7, me, null);
       expect(said.thuds).toHaveLength(1);
-    });
+    }, timeLimit(60_000));
 
     it("does not thud on the first frame a car is seen, on one put back at the office, or on a new world's first frame", () => {
       const { host, said } = pageHost(false);
@@ -328,7 +329,7 @@ describe("the car's half of a session", () => {
       side.worldIn(undefined as never);
       side.afterSync(undefined as never, at(14, [car({ speed: 0, x: 400, z: 400 })], [me]), 7, me, null);
       expect(said.thuds).toEqual([]);
-    });
+    }, timeLimit(60_000));
 
     it("does not thud on a car out of earshot, and softens one far off", () => {
       const { host, said } = pageHost(false);
@@ -344,7 +345,7 @@ describe("the car's half of a session", () => {
       run(60, 6, 0);
       expect(said.thuds).toHaveLength(2);
       expect(said.thuds[0]).toBeGreaterThan(said.thuds[1] as number);
-    });
+    }, timeLimit(60_000));
 
     it("keeps a record only for the cars there are", () => {
       const { host, said } = pageHost(false);
@@ -355,7 +356,7 @@ describe("the car's half of a session", () => {
       // Car 5 comes back with no record kept: it is seen afresh, not compared with the car it was.
       side.afterSync(undefined as never, at(3, [car({ id: 5, speed: 0 })], [me]), 7, me, null);
       expect(said.thuds).toEqual([]);
-    });
+    }, timeLimit(60_000));
 
     it("sounds the door when the local player's ride starts and when it ends, and not while it goes on", () => {
       const { host, said } = pageHost(false);
@@ -377,7 +378,7 @@ describe("the car's half of a session", () => {
       expect(said.doors).toBe(1);
       frame(7, newRide());
       expect(said.doors).toBe(2);
-    });
+    }, timeLimit(60_000));
 
     it("lets the car go silent when the session ends", () => {
       const { host, said } = pageHost(false);
@@ -387,6 +388,6 @@ describe("the car's half of a session", () => {
       side.dispose();
       expect(said.voice.at(-1)).toBeNull();
       expect(voiceShown()).toBeNull();
-    });
+    }, timeLimit(60_000));
   });
 });

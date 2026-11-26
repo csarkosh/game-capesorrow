@@ -4,7 +4,8 @@
  *
  * Simulation code: `+ - * /` only.
  */
-import { CAR_WIDTH, DOOR_REACH } from "./tuning.js";
+import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
+import { CAR_WIDTH, DOOR_HEIGHT, DOOR_REACH, LEAVE_SPEED } from "./tuning.js";
 import type { Car } from "./types.js";
 
 /** Each seat's place from the footprint's centre: metres along the heading, and to the right of it (negative is left). */
@@ -62,4 +63,17 @@ export function seatFor(car: Car, door: number): number {
   if (car.seats[0] === 0) return 0;
   if (car.seats[door] === 0) return door;
   return -1;
+}
+
+/**
+ * The seat a walker whose hull centre is `pos` takes by getting in, or -1: the car must be under `LEAVE_SPEED`, the walker's
+ * feet within `DOOR_HEIGHT` of the car's wheels' plane (so not from under a pier the car stands on), and a door within reach
+ * with a seat to take. The host's press and the line at the door both read it.
+ */
+export function boardSeat(car: Car, pos: { x: number; y: number; z: number }): number {
+  if ((car.speed < 0 ? -car.speed : car.speed) >= LEAVE_SPEED) return -1;
+  const dy = pos.y - PLAYER_HALF.y - car.y;
+  if ((dy < 0 ? -dy : dy) > DOOR_HEIGHT) return -1;
+  const door = doorNear(car, pos.x, pos.z);
+  return door < 0 ? -1 : seatFor(car, door);
 }

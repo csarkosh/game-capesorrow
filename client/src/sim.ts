@@ -39,8 +39,8 @@ export const WALK_RULES: Rules<WalkWorld, Walker> = {
   move: carMove,
   /** The town's buildings are walls: a hull is moved out of them and slides along them (`sim/town/solid.ts`). */
   constrain: (world, pos, vel) => {
-    townConstrain(world, pos, vel);
     constrainByCars(world, pos, vel);
+    townConstrain(world, pos, vel);
   },
   hostStep: (world) => carHostStep(world),
 };

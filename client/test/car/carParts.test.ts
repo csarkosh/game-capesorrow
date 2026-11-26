@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAPACITY, CAR_MODEL, PATCH_ALPHA, PATCH_LIFT, createCarParts, drawnOf, patchGeometry } from "../../src/game/car/carParts.js";
+import { CAPACITY, CAR_MODEL, PATCH_AHEAD_UNITS, PATCH_ALPHA, PATCH_LIFT, createCarParts, drawnOf, patchGeometry } from "../../src/game/car/carParts.js";
+import { SHADE_AHEAD_UNITS } from "../../src/game/town/townParts.js";
 import { manifestOf } from "../../src/game/town/props/vehicleManifest.js";
 import type { Car } from "../../src/sim/car/types.js";
 
 function car(x: number, id = 1): Car {
-  return { id, x, y: 0, z: 0, hx: 1, hz: 0, speed: 10, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, seats: [0, 0, 0, 0] };
+  return { id, x, y: 0, z: 0, hx: 1, hz: 0, speed: 10, slip: 0, steer: 0, controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, owed: 0, seats: [0, 0, 0, 0] };
 }
 
 // The model is never begun: the poses need only the ground.
@@ -139,5 +140,11 @@ describe("the patch under the car", () => {
     for (let v = 1; v <= 8; v++) expect(g.colors[v * 4 + 3]).toBe(1);
     for (let v = 9; v <= 16; v++) expect(g.colors[v * 4 + 3]).toBe(0);
     expect(PATCH_ALPHA).toBeCloseTo(0.9, 6);
+  });
+});
+
+describe("the patch's depth step", () => {
+  it("is the town's own, so the patch sits where the dark at the walls' feet does", () => {
+    expect(PATCH_AHEAD_UNITS).toBe(SHADE_AHEAD_UNITS);
   });
 });
