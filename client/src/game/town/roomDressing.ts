@@ -512,13 +512,19 @@ function ghosts(c: Ctx, r: RoomIn, dw: { s: number; w: number }): void {
   });
 }
 
+/** The type of what follows the depth in a furnishing call (`fbox`, `fcyl`). */
+type AfterDepth<T extends unknown[]> = T extends [unknown, unknown, unknown, ...infer R] ? R : never;
+/** A box and a cylinder in a display window's goods: set from the glass, so their depth `d` is metres behind it as it was, and the glass stands `c.glassIn` deeper in a masonry front than it did. */
+const winBox = (c: Ctx, s: number, d: number, ...r: AfterDepth<Parameters<typeof fbox>>): ReturnType<typeof fbox> => fbox(c, s, d + c.glassIn, ...r);
+const winCyl = (c: Ctx, s: number, d: number, ...r: AfterDepth<Parameters<typeof fcyl>>): ReturnType<typeof fcyl> => fcyl(c, s, d + c.glassIn, ...r);
+
 /** A display window's goods: a low backdrop a little way in, a riser, and the trade's goods across it. */
 function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: number, seed: number): void {
   withMat("painted", () => {
     const t = c.trade;
     const full = c.detail === "full";
     const back: Rgb = pickOf([[0.5, 0.2, 0.17], [0.22, 0.3, 0.4], [0.72, 0.66, 0.52], [0.2, 0.32, 0.22], [0.15, 0.15, 0.17], [0.6, 0.55, 0.45]] as readonly Rgb[], seed, 340);
-    const bd = 0.75;
+    const bd = 0.75 + c.glassIn;
     const bh = Math.min(0.75, (head - sill) * 0.42);
     // The backdrop: a low panel, its foot shaded, with a rail along its top, so the room shows over it.
     const pa = [sa + 0.08, sb - 0.08];
@@ -527,7 +533,7 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
     if (!full) return;
     const mid = (sa + sb) / 2;
     const width = sb - sa - 0.3;
-    fbox(c, mid, 0.5, sill - 0.02, 0.1 + hash01(seed, 799) * 0.07, width / 2, 0.36, AX, [0.3, 0.22, 0.14], [0.42, 0.32, 0.2]);
+    winBox(c, mid, 0.5, sill - 0.02, 0.1 + hash01(seed, 799) * 0.07, width / 2, 0.36, AX, [0.3, 0.22, 0.14], [0.42, 0.32, 0.2]);
     const y0 = sill + 0.12;
     const u = (k: number, n: number): number => sa + 0.15 + ((k + 0.5) * width) / n;
     const n = Math.max(2, Math.floor(width / 0.42));
@@ -538,9 +544,9 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
         for (let k = 0; k < n; k++) {
           const s = u(k, n);
           const kind = (k + Math.floor(hash01(seed, 790) * 3)) % 3;
-          if (kind === 0) { for (let r = 0; r < 3 - (k % 2); r++) for (let q = 0; q <= 2 - r; q++) fcyl(c, s + (q - (2 - r) / 2) * 0.17, 0.5, y0 + r * 0.17, 0.08, 0.16, 6, col(k + r), [0.75, 0.75, 0.72]); }
-          else if (kind === 1) { fbox(c, s, 0.5, y0, 0.2, 0.2, 0.1, AX, [0.7, 0.12, 0.08], [0.78, 0.2, 0.12]); fbox(c, s, 0.5, y0 + 0.2, 0.05, 0.1, 0.04, AX, [0.2, 0.2, 0.2], [0.25, 0.25, 0.25]); }
-          else { fcyl(c, s, 0.5, y0, 0.1, 0.18, 6, [0.5, 0.25, 0.15], [0.2, 0.12, 0.08]); fcyl(c, s, 0.5, y0 + 0.18, 0.12, 0.28, 5, [0.15, 0.4, 0.14], [0.2, 0.5, 0.18], 0.02); }
+          if (kind === 0) { for (let r = 0; r < 3 - (k % 2); r++) for (let q = 0; q <= 2 - r; q++) winCyl(c, s + (q - (2 - r) / 2) * 0.17, 0.5, y0 + r * 0.17, 0.08, 0.16, 6, col(k + r), [0.75, 0.75, 0.72]); }
+          else if (kind === 1) { winBox(c, s, 0.5, y0, 0.2, 0.2, 0.1, AX, [0.7, 0.12, 0.08], [0.78, 0.2, 0.12]); winBox(c, s, 0.5, y0 + 0.2, 0.05, 0.1, 0.04, AX, [0.2, 0.2, 0.2], [0.25, 0.25, 0.25]); }
+          else { winCyl(c, s, 0.5, y0, 0.1, 0.18, 6, [0.5, 0.25, 0.15], [0.2, 0.12, 0.08]); winCyl(c, s, 0.5, y0 + 0.18, 0.12, 0.28, 5, [0.15, 0.4, 0.14], [0.2, 0.5, 0.18], 0.02); }
         }
         break;
       }
@@ -548,10 +554,10 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
         for (let k = 0; k < n; k++) {
           const s = u(k, n);
           const cc = col(k);
-          fbox(c, s, 0.5, y0, 0.16, (width / n) * 0.42, 0.14, AX, [0.5, 0.36, 0.2], [0.42, 0.3, 0.16]);
-          if (t === "bakery") fbox(c, s, 0.5, y0 + 0.16, 0.12, (width / n) * 0.36, 0.1, AX, cc, scaled(cc, 1.2), BAKED, false);
-          else for (let q = 0; q < 3; q++) fcyl(c, s + (q - 1) * 0.1, 0.5, y0 + 0.16, 0.06, 0.1 + hash01(seed + k + q, 791) * 0.08, 6, cc, scaled(cc, 1.15), 0.045);
-          if (t === "liquor store" || t === "grocery") fcyl(c, s, 0.62, y0 + 0.16, 0.05, 0.34, 6, pickOf([[0.1, 0.3, 0.12], [0.35, 0.2, 0.08], [0.6, 0.1, 0.1]] as readonly Rgb[], seed + k, 792), [0.7, 0.7, 0.65], 0.03);
+          winBox(c, s, 0.5, y0, 0.16, (width / n) * 0.42, 0.14, AX, [0.5, 0.36, 0.2], [0.42, 0.3, 0.16]);
+          if (t === "bakery") winBox(c, s, 0.5, y0 + 0.16, 0.12, (width / n) * 0.36, 0.1, AX, cc, scaled(cc, 1.2), BAKED, false);
+          else for (let q = 0; q < 3; q++) winCyl(c, s + (q - 1) * 0.1, 0.5, y0 + 0.16, 0.06, 0.1 + hash01(seed + k + q, 791) * 0.08, 6, cc, scaled(cc, 1.15), 0.045);
+          if (t === "liquor store" || t === "grocery") winCyl(c, s, 0.62, y0 + 0.16, 0.05, 0.34, 6, pickOf([[0.1, 0.3, 0.12], [0.35, 0.2, 0.08], [0.6, 0.1, 0.1]] as readonly Rgb[], seed + k, 792), [0.7, 0.7, 0.65], 0.03);
         }
         break;
       }
@@ -561,9 +567,9 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
           const s = u(k, m);
           const cc = col(k + 7);
           // A mannequin: legs, a torso in the colour of the season, a head.
-          fcyl(c, s, 0.5, y0, 0.07, 0.55, 5, [0.7, 0.68, 0.64], [0.7, 0.68, 0.64], 0.05);
-          fbox(c, s, 0.5, y0 + 0.55, 0.5, 0.17, 0.09, AX, cc, scaled(cc, 1.1));
-          fcyl(c, s, 0.5, y0 + 1.05, 0.06, 0.2, 6, [0.82, 0.8, 0.76], [0.82, 0.8, 0.76], 0.05);
+          winCyl(c, s, 0.5, y0, 0.07, 0.55, 5, [0.7, 0.68, 0.64], [0.7, 0.68, 0.64], 0.05);
+          winBox(c, s, 0.5, y0 + 0.55, 0.5, 0.17, 0.09, AX, cc, scaled(cc, 1.1));
+          winCyl(c, s, 0.5, y0 + 1.05, 0.06, 0.2, 6, [0.82, 0.8, 0.76], [0.82, 0.8, 0.76], 0.05);
         }
         break;
       }
@@ -571,7 +577,7 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
         for (let k = 0; k < n * 2; k++) {
           const cc = col(k + 2);
           const s = sa + 0.15 + ((k + 0.5) * width) / (n * 2);
-          fbox(c, s, 0.5, y0 + (k % 3) * 0.02, 0.22 + hash01(seed + k, 793) * 0.12, (width / (n * 2)) * 0.4, 0.07, AX, cc, scaled(cc, 1.2), BAKED, false);
+          winBox(c, s, 0.5, y0 + (k % 3) * 0.02, 0.22 + hash01(seed + k, 793) * 0.12, (width / (n * 2)) * 0.4, 0.07, AX, cc, scaled(cc, 1.2), BAKED, false);
         }
         break;
       }
@@ -581,33 +587,33 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
           if (s > sb - 0.1) break;
           withMat("rope", () => c.out.prism(((): [number, number, number] => wallPointFrame(c, s, 0.45, y0))(), wallPointFrame(c, s + 0.12, 0.62, y0 + 1.0 + hash01(seed + k, 794) * 0.3), 0.012, 4, [0.2, 0.17, 0.1]));
         }
-        fbox(c, mid - width * 0.28, 0.5, y0, 0.2, 0.2, 0.12, AX, [0.14, 0.4, 0.2], [0.2, 0.5, 0.26]);
-        fcyl(c, mid + width * 0.25, 0.5, y0, 0.14, 0.28, 8, [0.8, 0.15, 0.1], [0.9, 0.9, 0.88]);
+        winBox(c, mid - width * 0.28, 0.5, y0, 0.2, 0.2, 0.12, AX, [0.14, 0.4, 0.2], [0.2, 0.5, 0.26]);
+        winCyl(c, mid + width * 0.25, 0.5, y0, 0.14, 0.28, 8, [0.8, 0.15, 0.1], [0.9, 0.9, 0.88]);
         break;
       }
       case "pharmacy": {
-        for (let k = 0; k < n; k++) for (let r = 0; r < 3 - (k % 2); r++) fbox(c, u(k, n), 0.5, y0 + r * 0.14, 0.13, 0.12 - r * 0.02, 0.07, AX, col(k + r), scaled(col(k + r), 1.15), BAKED, false);
+        for (let k = 0; k < n; k++) for (let r = 0; r < 3 - (k % 2); r++) winBox(c, u(k, n), 0.5, y0 + r * 0.14, 0.13, 0.12 - r * 0.02, 0.07, AX, col(k + r), scaled(col(k + r), 1.15), BAKED, false);
         break;
       }
       case "jeweler": case "gallery": case "gift shop": case "antiques": {
         for (let k = 0; k < n; k++) {
           const s = u(k, n);
           const cc = col(k);
-          if (t === "jeweler") { fbox(c, s, 0.5, y0, 0.16 + (k % 3) * 0.06, 0.07, 0.07, AX, [0.07, 0.06, 0.08], [0.1, 0.09, 0.12]); fbox(c, s, 0.5, y0 + 0.2 + (k % 3) * 0.06, 0.03, 0.05, 0.05, AX, [0.9, 0.78, 0.35], [1, 0.9, 0.5]); }
+          if (t === "jeweler") { winBox(c, s, 0.5, y0, 0.16 + (k % 3) * 0.06, 0.07, 0.07, AX, [0.07, 0.06, 0.08], [0.1, 0.09, 0.12]); winBox(c, s, 0.5, y0 + 0.2 + (k % 3) * 0.06, 0.03, 0.05, 0.05, AX, [0.9, 0.78, 0.35], [1, 0.9, 0.5]); }
           else if (t === "gallery") {
             // A frame and its canvas, no wider than the window's share of each: in a narrow window two stood in one plane, over each other.
             const half = Math.min(0.17, width / n / 2 - 0.015);
-            fbox(c, s, 0.52, y0, 0.45 + (k % 2) * 0.12, half, 0.02, AX, [0.15, 0.12, 0.1], cc);
-            fbox(c, s, 0.45, y0 + 0.05, 0.3, Math.max(0.02, half - 0.04), 0.015, AX, cc, scaled(cc, 1.1), BAKED, false);
+            winBox(c, s, 0.52, y0, 0.45 + (k % 2) * 0.12, half, 0.02, AX, [0.15, 0.12, 0.1], cc);
+            winBox(c, s, 0.45, y0 + 0.05, 0.3, Math.max(0.02, half - 0.04), 0.015, AX, cc, scaled(cc, 1.1), BAKED, false);
           }
-          else { fcyl(c, s, 0.5, y0, 0.09, 0.2 + hash01(seed + k, 795) * 0.2, 6, cc, scaled(cc, 1.2), 0.06); }
+          else { winCyl(c, s, 0.5, y0, 0.09, 0.2 + hash01(seed + k, 795) * 0.2, 6, cc, scaled(cc, 1.2), 0.06); }
         }
         break;
       }
       default: {
         for (let k = 0; k < n; k++) {
           const hgt = 0.2 + hash01(seed * 5 + k, 341) * 0.45;
-          fbox(c, u(k, n), 0.5, y0, hgt, (width / n) * 0.35, 0.12, AX, col(k), scaled(col(k), 1.15), BAKED, false);
+          winBox(c, u(k, n), 0.5, y0, hgt, (width / n) * 0.35, 0.12, AX, col(k), scaled(col(k), 1.15), BAKED, false);
         }
       }
     }

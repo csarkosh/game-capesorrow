@@ -16,7 +16,7 @@
  */
 import type { Building, BuildingUse, LandmarkRole, Material } from "../../sim/town/types.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
+import { CASING_HEAD_OUT, pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { isClear, noteFace } from "./faceLedger.js";
 import { agingOf } from "./buildingWear.js";
 import { withMat, type MatName, type MatRef } from "./materials.js";
@@ -74,6 +74,12 @@ export function wallMatOf(material: Material): MatName {
   }
 }
 
+/** How far a house's corner boards stand out of the siding, in metres (6 cm). */
+const CORNER_BOARD_OUT = 0.06;
+/** A corner board reaches 10 cm along its own wall from the corner. The one at a wall's far end also wraps round the corner by its own thickness, so its end is flush with the face of the next wall's board; that one (at its wall's start) butts against the wrapped board's back, so the two never share a top. */
+const CORNER_BOARD_IN = 0.1;
+const CORNER_BOARD_WRAP = CORNER_BOARD_OUT;
+
 const SIDINGS: readonly Rgb[] = [[0.5, 0.49, 0.45], [0.38, 0.17, 0.12], [0.2, 0.28, 0.36], [0.42, 0.37, 0.25], [0.18, 0.27, 0.2], [0.62, 0.6, 0.55]];
 
 export function partsGeometry(i: PartsIn): void {
@@ -116,8 +122,8 @@ function housePart(i: PartsIn, full: boolean): void {
     i.refs.forEach((w, wk) => {
       // A board on a wall sees the sky its wall sees: darker under the eave (`skyShade.ts`).
       const painted = skyOf(i, wk, "painted");
-      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim, undefined, painted);
-      wbox(out, w, w.length - 0.1, w.length + 0.07, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim, undefined, painted);
+      wbox(out, w, 0, CORNER_BOARD_IN, floorY + 0.15, i.wallTop, 0, CORNER_BOARD_OUT, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim, undefined, painted, false, true);
+      wbox(out, w, w.length - CORNER_BOARD_IN, w.length + CORNER_BOARD_WRAP, floorY + 0.15, i.wallTop, 0, CORNER_BOARD_OUT, trim, trim, undefined, painted);
     });
   }
   // Steps and a porch at the front door.
@@ -144,8 +150,8 @@ function housePart(i: PartsIn, full: boolean): void {
       const gs = s1 - s0 > 1.7 ? Math.max(s0 + 0.8, Math.min(s1 - 0.8, sw)) : (s0 + s1) / 2;
       const gap = Math.min(0.55, (s1 - s0) / 2 - 0.2);
       if (closed) {
-        // (Its walls stand clear of the house door's casing behind them.)
-        wbox(out, front, s0, s1, floor + 0.05, top - 0.05, 0.045, pd, scaled(roof, 0.9), scaled(roof, 0.9), undefined, "boards");
+        // (Its walls stand clear of the house door's casing behind them: on the full tier, 3 cm out from the casing's deepest board, the head.)
+        wbox(out, front, s0, s1, floor + 0.05, top - 0.05, CASING_HEAD_OUT + 0.03, pd, scaled(roof, 0.9), scaled(roof, 0.9), undefined, "boards");
         // Its own door, on its front: a leaf of boards with a panel and a pull, standing out of the wall with its edges.
         const leaf = pickOf([[0.16, 0.09, 0.05], [0.12, 0.2, 0.15], [0.3, 0.1, 0.08], [0.4, 0.36, 0.3]] as readonly Rgb[], b.id, 534);
         const dh = Math.min(2.0, top - 0.2 - floor);
