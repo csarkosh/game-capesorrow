@@ -125,6 +125,15 @@ function patchGeometry(): { positions: Float32Array; normals: Float32Array; indi
   return { positions: new Float32Array(positions), normals, indices: Uint32Array.from(indices), colors: new Float32Array(colors) };
 }
 
+/**
+ * Where a car goes among the drawn, given how many are drawn already: the next place while there is room, the last place for the car the
+ * local player drives when there is none (so it is always drawn, whatever its place in the state), and -1 for a car left out.
+ */
+export function slotFor(filled: number, capacity: number, driven: boolean): number {
+  if (filled < capacity) return filled;
+  return driven ? capacity - 1 : -1;
+}
+
 export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z: number): number; ahead(units: number, slope?: number): MaterialPlugin }): CarParts {
   const entries = new Map<number, Entry>();
   let stamp = 0;
@@ -325,7 +334,9 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
       carPose(before, c, a, host.groundAt, e.pose);
       e.roll = rollAfter(e.roll, e.pose.speed, dt);
       // Every car is posed, whatever the count, for the camera's sake; only the first `CAPACITY` are drawn.
-      if (drawn.length < CAPACITY) drawn.push(e);
+      const slot = slotFor(drawn.length, CAPACITY, c.id === driven);
+      if (slot === drawn.length) drawn.push(e);
+      else if (slot >= 0) drawn[slot] = e;
     }
     for (const [id, e] of entries) if (e.stamp !== stamp) entries.delete(id);
     if (ready) write(drawn.length);

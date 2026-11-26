@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCarParts } from "../../src/game/car/carParts.js";
+import { CAPACITY, createCarParts, slotFor } from "../../src/game/car/carParts.js";
 import type { Car } from "../../src/sim/car/types.js";
 
 function car(x: number, id = 1): Car {
@@ -48,6 +48,13 @@ describe("the car's frames", () => {
     p.frame(cars, 1, 0, 0.016, 6);
     expect(p.pose(6)?.x).toBe(77);
     expect(p.pose(5)).not.toBeNull();
+  });
+
+  it("gives the driven car a place among the drawn however late it comes", () => {
+    expect(slotFor(0, CAPACITY, false)).toBe(0);
+    expect(slotFor(CAPACITY - 1, CAPACITY, false)).toBe(CAPACITY - 1);
+    expect(slotFor(CAPACITY, CAPACITY, false)).toBe(-1);
+    expect(slotFor(CAPACITY, CAPACITY, true)).toBe(CAPACITY - 1);
   });
 
   it("answers null for a car the frame does not have, and poses without the model", () => {
