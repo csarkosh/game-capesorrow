@@ -57,4 +57,26 @@ describe("the lamp list", () => {
     fillLamps([lamp(10)], 0, 1.6, 0, 18.14 - 0.5 + 8 / 15, list);
     expect(list.col[3] as number).toBeCloseTo(0.5, 1);
   });
+
+  it("lights a shop's lamp only while its unit is open and it is dark, and never pops one in or out of the list", () => {
+    const shop: Lamp = { ...lamp(10), hours: { open: 9, close: 21 } };
+    const list = emptyLampList();
+    // Dark and shut (23:00), and open but light (12:00): nothing.
+    fillLamps([shop], 0, 1.6, 0, 23, list);
+    expect(list.count).toBe(0);
+    fillLamps([shop], 0, 1.6, 0, 12, list);
+    expect(list.count).toBe(0);
+    // Dark and open (20:00): lit; the shop shutting at 21:00 takes its light down over the hour's fade, to nothing.
+    fillLamps([shop], 0, 1.6, 0, 20, list);
+    expect(list.count).toBe(1);
+    expect(list.col[3] as number).toBeGreaterThan(0.9);
+    fillLamps([shop], 0, 1.6, 0, 21, list);
+    expect(list.col[3] as number).toBeCloseTo(0.5, 1);
+    // A crowd of open shops: the list keeps the nearest and the one at the cut-off is at no strength.
+    const shops: Lamp[] = [];
+    for (let i = 0; i < 40; i++) shops.push({ ...lamp(3 + i * 2), hours: { open: 9, close: 23 } });
+    fillLamps(shops, 0, 1.6, 0, 20, list);
+    expect(list.count).toBe(MAX_LAMPS);
+    expect(list.col[(list.count - 1) * 4 + 3] as number).toBeLessThan(0.2);
+  });
 });

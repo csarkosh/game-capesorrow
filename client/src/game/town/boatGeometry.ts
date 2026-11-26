@@ -10,11 +10,14 @@
  *   boom and a furled sail; pleasure boats a cabin with a windscreen.
  * - **State**: working boats are painted; a derelict lists a few degrees, is faded, and has lost its poles, pots, drum and most
  *   of its mast; a sunk one lies with its deck under the water and only its wheelhouse above it.
+ * - **A lit cabin**: about one working boat in four (not a skiff or a sailboat) has its wheelhouse windows lit in the evening, by a night code that
+ *   goes off at the crew's bedtime (`boatCabin`); `props/lamps.ts` lists a small lamp at the cabin for the light it throws.
  * Boats do not move: there is no bobbing.
  */
 import { hash01, greyed, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { withMat, type MatName } from "./materials.js";
 import { GLASS } from "./palette.js";
+import { nightCode } from "./hours.js";
 import type { Boat } from "../../sim/town/types.js";
 
 /** Hull colours, picked by a boat's colour index. */
@@ -50,6 +53,21 @@ function freeboard(b: Boat): number {
   return b.kind === "skiff" ? 0.5 : b.kind === "sailboat" ? 0.9 : 0.05 * b.length + 0.4;
 }
 
+/** The warm colour of a lit cabin window. */
+export const CABIN_LIGHT: Rgb = [1, 0.8, 0.5];
+/** How far along the hull (0 stern, 1 bow) each kind's wheelhouse is, for the light a lit cabin throws. A skiff and a sailboat have no cabin lit. */
+const HOUSE_AT: Partial<Record<Boat["kind"], number>> = { troller: 0.42, gillnetter: 0.4, crabber: 0.72, tug: 0.45, pleasure: 0.48 };
+
+/**
+ * About one working boat in four has a lit cabin in the evening: its wheelhouse windows glow from dusk until the crew's bedtime (between 21:00 and 23:00,
+ * its own). Returns the glow's night code and where the cabin is along the hull, or null for a boat that is dark.
+ */
+export function boatCabin(b: Boat): { code: number; along: number } | null {
+  const along = HOUSE_AT[b.kind];
+  if (along === undefined || b.state !== "working" || hash01(b.id, 33) >= 0.25) return null;
+  return { code: nightCode(6 + Math.floor(hash01(b.id, 34) * 8), 4 + Math.floor(hash01(b.id, 35) * 8)), along };
+}
+
 export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boat): void {
   const hx = b.heading.x;
   const hz = b.heading.z;
@@ -69,6 +87,7 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
     const rz = ly * fr.sinR + lz * fr.cosR;
     return [fr.hx * lx + fr.ax * rz, ry, fr.hz * lx + fr.az * rz];
   };
+  const cabin = boatCabin(b);
   const derelict = b.state !== "working";
   const base = HULL_COLOURS[b.colour % HULL_COLOURS.length] as Rgb;
   const hull: Rgb = derelict ? scaled(greyed(base, 0.7), 0.75) : base;
@@ -138,16 +157,18 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
     const wy1 = deckY + y1 * 0.85;
     const eps = 0.02;
     const lenH = x1 - x0;
+    const glass = (fn: () => void): void => (cabin === null ? fn() : m.withHours(cabin.code, () => m.withGlow(0.9, fn)));
+    const pane = cabin === null ? GLASS : CABIN_LIGHT;
     for (const sgn of [-1, 1]) {
       const n = Math.max(1, Math.round(lenH / 1.1));
       for (let k = 0; k < n; k++) {
         const a = x0 + (lenH * (k + 0.15)) / n;
         const e = x0 + (lenH * (k + 0.85)) / n;
-        m.poly([c(a, wy0, sgn * (half + eps)), c(e, wy0, sgn * (half + eps)), c(e, wy1, sgn * (half + eps)), c(a, wy1, sgn * (half + eps))], D(0, 0, sgn), GLASS, "painted");
+        glass(() => m.poly([c(a, wy0, sgn * (half + eps)), c(e, wy0, sgn * (half + eps)), c(e, wy1, sgn * (half + eps)), c(a, wy1, sgn * (half + eps))], D(0, 0, sgn), pane, "painted"));
       }
     }
-    m.poly([c(x1 + eps, wy0, -half + 0.12), c(x1 + eps, wy0, half - 0.12), c(x1 + eps, wy1, half - 0.12), c(x1 + eps, wy1, -half + 0.12)], D(1, 0, 0), GLASS, "painted");
-    m.poly([c(x0 - eps, wy0, -half + 0.12), c(x0 - eps, wy0, half - 0.12), c(x0 - eps, wy1, half - 0.12), c(x0 - eps, wy1, -half + 0.12)], D(-1, 0, 0), GLASS, "painted");
+    glass(() => m.poly([c(x1 + eps, wy0, -half + 0.12), c(x1 + eps, wy0, half - 0.12), c(x1 + eps, wy1, half - 0.12), c(x1 + eps, wy1, -half + 0.12)], D(1, 0, 0), pane, "painted"));
+    glass(() => m.poly([c(x0 - eps, wy0, -half + 0.12), c(x0 - eps, wy0, half - 0.12), c(x0 - eps, wy1, half - 0.12), c(x0 - eps, wy1, -half + 0.12)], D(-1, 0, 0), pane, "painted"));
   };
   const stick = (p0: Vec3, p1: Vec3, r: number, colour: Rgb, sides = 4, mat: MatName = "wood"): void => withMat(mat, () => m.prism(p0, p1, r, sides, colour, colour));
   const gear = !derelict;

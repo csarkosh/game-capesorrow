@@ -44,6 +44,7 @@ import { standInGeometry } from "./props/vehicleStandIn.js";
 import { RANK_UNITS, emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
+import { daylightAt, litGainAt } from "../../look.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
@@ -154,6 +155,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           shownHour = hour;
           if (ready !== null) {
             ready.townHour[0] = hour;
+            ready.townGlow[0] = litGainAt(hour);
+            ready.townDay[0] = daylightAt(hour);
             for (const m of textured) markMaterialUboDirty(m);
           }
           people?.setHour(hour);
@@ -199,6 +202,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const low = host.tier === "low";
       ready = emptyTownReady();
       ready.townHour[0] = shownHour;
+      ready.townGlow[0] = litGainAt(shownHour);
+      ready.townDay[0] = daylightAt(shownHour);
       const readied = ready;
       try {
         textures = createTownTextures(engine, low, loading.signal, (filled) => {

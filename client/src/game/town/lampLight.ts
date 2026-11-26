@@ -3,7 +3,7 @@
  * few lamps to the eye, in a fixed list the material reads (`townMaterial.ts`, `townLampCode`). Pure: no engine, no DOM.
  *
  * A lamp is where its lens is, its colour, its range (metres, where its light has gone), its strength (how bright, 1 for a street lamp)
- * and its night code (`hours.ts`: when it is on). Each frame `fillLamps` takes the `MAX_LAMPS` lit lamps nearest the eye, and writes for
+ * and its night code (`hours.ts`: when it is on); a shop's window light also has its unit's hours, and is lit only while the unit is open. Each frame `fillLamps` takes the `MAX_LAMPS` lit lamps nearest the eye, and writes for
  * each its position and range, its colour and its strength times how lit its code is at the hour.
  *
  * A lamp never pops in or out of the list. A lamp that is not in the nearest `MAX_LAMPS` is one the eye has not come near; as the eye moves a
@@ -11,7 +11,7 @@
  * distance from the eye nears the cut-off, and the cut-off is the lesser of `LAMP_REACH` and the distance of the first lit lamp that did not
  * make the list: the one that comes in is at the cut-off, at strength 0, and the one that goes out leaves the same way.
  */
-import { nightShare } from "./hours.js";
+import { nightShare, openShare, type Hours } from "./hours.js";
 
 /** The most lamps a frame lights the town by. */
 export const MAX_LAMPS = 24;
@@ -33,7 +33,15 @@ export type Lamp = {
   readonly strength: number;
   /** The lamp's night code (`nightCode`): when it is on. */
   readonly code: number;
+  /** A shop's window light is on only while its unit is open: its share is the unit's `openShare` times the night code's. Absent for every other lamp. */
+  readonly hours?: Hours;
 };
+
+/** How lit a lamp is at `hour`: its night code's share, times the unit's open share when it has hours. */
+export function lampShare(l: Lamp, hour: number): number {
+  const night = nightShare(l.code, hour);
+  return l.hours === undefined || night <= 0 ? night : night * openShare(l.hours, hour);
+}
 
 /** What the material is written from: `pos` is x, y, z and range of each lamp, `col` its colour and its strength now; the first `count` are used. */
 export type LampList = { readonly pos: Float32Array; readonly col: Float32Array; count: number };
@@ -61,7 +69,7 @@ export function fillLamps(lamps: readonly Lamp[], ex: number, ey: number, ez: nu
     const dz = l.z - ez;
     const d2 = dx * dx + dz * dz + (l.y - ey) * (l.y - ey);
     if (d2 >= reach2) continue;
-    const share = nightShare(l.code, hour);
+    const share = lampShare(l, hour);
     if (share > 0) view.push({ i, d: Math.sqrt(d2), share });
   }
   view.sort((a, b) => a.d - b.d);
