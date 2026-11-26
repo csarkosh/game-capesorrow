@@ -5,8 +5,8 @@
 You are a detective who investigates paranormal reports across the Pacific Northwest, in an open, procedurally
 generated coastal Washington. It is part PNW life and detective sim, part supernatural horror.
 
-**In development.** So far the game is a title page and a generated port town to walk through; there is no case to
-investigate yet. It is played in the browser at
+**In development.** So far the game is a title page, a generated port town to walk through and one car to drive; there is
+no case to investigate yet. It is played in the browser at
 [games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow), where the page says as much above Play until there is something to
 play.
 
@@ -20,9 +20,13 @@ npm run dev
 ```
 
 `npm run dev` starts the game's development server and the dev client together, and serves the title page at
-<http://localhost:5174/>. Press Play: you start at the door of the FBI office in a port town generated
-on the engine's coast, with its streets, buildings, quay and piers to walk through (the buildings are walls). That is all
-there is to do yet. Two browser tabs can join each other through the dev server.
+<http://localhost:5174/>. Press Play: you start at the door of the FBI office in a port town generated on the engine's
+coast, with its streets, buildings, quay and piers to walk through (the buildings are walls). There is a car at the curb
+near the office. Walk up to a door and click to get in; the first to the car sits at the wheel, and another player takes
+a seat beside. Drive with W, A, S and D (forward, left, back for brake and reverse, right) and hold Space for the
+handbrake; F turns the lights on and off. It will not go faster than 10 m/s yet. Click again to get out once it is
+nearly stopped and there is room beside it. Typing `/carhome` in the command bar puts the car back at the office (only
+the host can). That is all there is to do yet. Two browser tabs can join each other through the dev server.
 
 The towns the game generates can be looked at as maps at <http://localhost:5174/town.html> (a contact sheet of twelve is at
 `/town.html?sheet=12&from=1`). That page is for development and is not part of the build.
