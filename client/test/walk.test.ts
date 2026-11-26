@@ -12,6 +12,7 @@ import { activeTerrainVariant, elevationSampleAt } from "@csarkosh/engine/sim/te
 import { addPlayer } from "@csarkosh/engine/sim/tick";
 import { MOVER_BYTES, WALK, WALK_PROTOCOL, decodeWalkSnapshot, encodeWalkSnapshot, type WalkSnapshot } from "../src/net.js";
 import { WALK_RULES, createWalkWorld } from "../src/sim.js";
+import { newCar } from "../src/sim/car/start.js";
 import { townStart } from "../src/sim/town/start.js";
 
 /**
@@ -41,7 +42,7 @@ describe("the empty game's world", () => {
     expect(a.pos.y).toBeCloseTo(ground + PLAYER_HALF.y, 9);
     expect(ground).toBeGreaterThan((host.waterLevel ?? -Infinity) + 2 - 1e-9);
     expect([a.id, a.yaw, a.pitch, a.grounded, a.lastProcessedInput]).toEqual([1, townStart(SEED).yaw, 0, false, 0]);
-    expect(host.state).toEqual({ tick: 0, players: new Map([[1, a]]), nextEntityId: 2, rngSeed: SEED | 0 });
+    expect(host.state).toEqual({ tick: 0, players: new Map([[1, a]]), nextEntityId: 2, rngSeed: SEED | 0, cars: [newCar(SEED, 1)] });
   });
 });
 

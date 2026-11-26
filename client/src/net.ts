@@ -12,6 +12,7 @@ import {
   MessageType, dequantizePitch, dequantizePosition, dequantizeYaw, quantizePitch, quantizePosition, quantizeVelocity, quantizeYaw,
 } from "@csarkosh/engine/net/wire";
 import { cloneVec3 } from "@csarkosh/engine/sim/core";
+import { newRide } from "./sim/car/rules.js";
 import { WALK_RULES, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
 /** What two ends of the empty game must share to walk together. */
@@ -100,10 +101,10 @@ export const WALK: NetGame<WalkWorld, Walker, WalkSnapshot, WalkState, never> = 
     // The others stand where the blended pair has them; the local player is the predicted world's own.
     for (const p of between?.players ?? []) {
       if (p.id === localId) continue;
-      players.set(p.id, { id: p.id, pos: cloneVec3(p.pos), vel: cloneVec3(p.vel), yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, lastProcessedInput: 0 });
+      players.set(p.id, { id: p.id, pos: cloneVec3(p.pos), vel: cloneVec3(p.vel), yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, lastProcessedInput: 0, ride: newRide() });
     }
     const local = world.state.players.get(localId);
     if (local !== undefined) players.set(localId, local);
-    return { tick: world.state.tick, players, nextEntityId: world.state.nextEntityId, rngSeed: world.state.rngSeed };
+    return { tick: world.state.tick, players, nextEntityId: world.state.nextEntityId, rngSeed: world.state.rngSeed, cars: world.state.cars };
   },
 };
