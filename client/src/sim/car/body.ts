@@ -5,7 +5,7 @@
  * client's replay of past ticks.
  *
  * The car's footprint is three circles along its axis. Each is moved out of the town's solids (`constrainCircle`), out of
- * the forest's boxes that stand as walls, and held by the harbour's rails and the trestles' guard rails; a push moves
+ * the forest's boxes that stand as walls, and held by the harbour's rails and the trestles' guard rails at the circle's own radius; a push moves
  * the whole car and takes the part of its velocity that points into the wall. A box whose top stands no more than
  * `CURB` over the ground at the circle is driven over, and so is one that begins above the car's roof.
  *
@@ -158,8 +158,8 @@ function settleCircle(world: CarWorld, seed: number, roof: number): boolean {
   for (let i = 0; i < near.length; i++) {
     if (pushBox(world, near[i] as Aabb, roof)) moved = true;
   }
-  if (constrainRails(seed, POS, VEL)) moved = true;
-  if (constrainTrestle(seed, POS, VEL)) moved = true;
+  if (constrainRails(seed, POS, VEL, CAR_RADIUS)) moved = true;
+  if (constrainTrestle(seed, POS, VEL, undefined, CAR_RADIUS)) moved = true;
   return moved;
 }
 

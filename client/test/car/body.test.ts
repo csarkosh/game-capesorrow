@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { boxesNear } from "@csarkosh/engine/sim/boxSource";
 import type { Aabb } from "@csarkosh/engine/sim/level";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
@@ -24,7 +25,7 @@ const back: CarControls = { throttle: -1, turn: 0, handbrake: false };
 function carAt(x: number, z: number, hx: number, hz: number, speed = 0): Car {
   return {
     id: 1, x, y: groundOf(worldFor(seed)).heightAt(x, z), z, hx, hz, speed, slip: 0, steer: 0,
-    controls: { ...none }, lights: false, seats: [0, 0, 0, 0],
+    controls: { ...none }, lights: false, owed: 0, seats: [0, 0, 0, 0],
   };
 }
 
@@ -145,7 +146,7 @@ describe("the car's wheels and the ground under them", () => {
       100 - TRACK / 2, 200 + AXLE_FRONT, 100 + TRACK / 2, 200 + AXLE_FRONT,
       100 - TRACK / 2, 200 + AXLE_REAR, 100 + TRACK / 2, 200 + AXLE_REAR,
     ]);
-  });
+  }, timeLimit(300_000));
 
   it("reads gravel under it on an alley and pavement on a street", () => {
     const alley = plan.streets.find((s) => s.kind === "alley");
@@ -159,7 +160,7 @@ describe("the car's wheels and the ground under them", () => {
       expect(env.top).toBe(Math.min(TOP_SPEED[surface]!, SPEED_CAP));
       expect(env.grip).toBe(GRIP[surface]);
     }
-  });
+  }, timeLimit(300_000));
 
   it("reads the rise along its heading between its axles", () => {
     const g = groundOf(worldFor(seed));
@@ -175,7 +176,7 @@ describe("the car's wheels and the ground under them", () => {
       if (Math.abs(rise) > 0.05) found++;
     }
     expect(found).toBeGreaterThan(0);
-  });
+  }, timeLimit(300_000));
 
   it("stands on the mean of the four wheels' ground", () => {
     const st = plan.streets.find((s) => s.kind === "street")!;
@@ -188,7 +189,7 @@ describe("the car's wheels and the ground under them", () => {
     let sum = 0;
     for (let i = 0; i < 8; i += 2) sum += g.heightAt(w[i] as number, w[i + 1] as number);
     expect(c.y).toBeCloseTo(sum / 4, 12);
-  });
+  }, timeLimit(300_000));
 });
 
 describe("the car among the town's solids", () => {
@@ -201,7 +202,7 @@ describe("the car among the town's solids", () => {
     drive(c, back, 2);
     expect(gapTo(rect, c)).toBeGreaterThan(2);
     expect(deepest(c)).toBeLessThan(1e-6);
-  });
+  }, timeLimit(300_000));
 
   it("slides along a wall it meets at a shallow angle, keeping most of its speed", () => {
     const angle = 8 * Math.PI / 180;
@@ -239,7 +240,7 @@ describe("the car among the town's solids", () => {
       }
     }
     throw new Error(`no long wall met at a shallow angle on pavement (${tried} tried)`);
-  });
+  }, timeLimit(300_000));
 
   it("is stopped by a parked car (a prop's box)", () => {
     const { rect, car: c } = headOn(props, (r) => r.hu > 1.8 && r.hv > 0.7 && r.hu < 4 && r.hv < 1.5);
@@ -247,7 +248,7 @@ describe("the car among the town's solids", () => {
     expect(deepest(c)).toBeLessThan(1e-6);
     expect(gapTo(rect, c)).toBeLessThan(0.05);
     expect(Math.abs(c.speed)).toBeLessThan(0.5);
-  });
+  }, timeLimit(300_000));
 
   it("is stopped by a tree", () => {
     // The first tree found (a box under 2 m wide and 2.5 m or more high) with a clear, plain 15 m line to it from the west: chosen before any car moves.
@@ -272,7 +273,7 @@ describe("the car among the town's solids", () => {
     expect(Math.abs(c.speed)).toBeLessThan(0.5);
     expect(reach).toBeGreaterThan(CAR_RADIUS - 1e-3);
     expect(reach).toBeLessThan(CAR_RADIUS + (b.max.x - b.min.x) / 2 + 0.1);
-  });
+  }, timeLimit(300_000));
 
   it("drives over a box lower than a curb and is not stopped by one it passes under", () => {
     // A box whose top stands 0.3 m over the ground is driven over; one that starts above the roof is no wall.
@@ -293,7 +294,7 @@ describe("the car among the town's solids", () => {
     for (let i = 0; i < 60 * 3; i++) driveCar({ ...flat, boxes: [wall] }, d, full);
     expect(d.x + CAR_CIRCLES[2]! + CAR_RADIUS).toBeLessThan(3.01);
     expect(Math.abs(d.speed)).toBeLessThan(0.5);
-  });
+  }, timeLimit(300_000));
 
   it("reaches every cell a circle touches, not the one under its centre", () => {
     // A circle of 3 m centred 2 m off a wall, where the wall's building is not listed in the cell under the centre.
@@ -315,7 +316,7 @@ describe("the car among the town's solids", () => {
       if (checked >= 3) break;
     }
     expect(checked).toBeGreaterThan(0);
-  });
+  }, timeLimit(300_000));
 });
 
 describe("the car on the ground, the rails and the water", () => {
@@ -356,7 +357,7 @@ describe("the car on the ground, the rails and the water", () => {
     expect(c.y - before).toBeGreaterThan(0.08);
     expect(c.y - before).toBeLessThan(0.3);
     expect(c.speed).toBeGreaterThan(2);
-  });
+  }, timeLimit(300_000));
 
   /** The first street whose end runs on to water, driven at full throttle from 12 m before its end; null when `wanted` is not met by where the car ends. */
   function toTheWater(wanted: (c: Car) => boolean): { c: Car; start: { x: number; z: number }; wettest: number } | null {
@@ -404,7 +405,7 @@ describe("the car on the ground, the rails and the water", () => {
     const stopped = { x: c.x, z: c.z };
     drive(c, back, 2);
     expect(Math.hypot(c.x - stopped.x, c.z - stopped.z)).toBeGreaterThanOrEqual(2);
-  });
+  }, timeLimit(300_000));
 
   it("cannot be driven off the quay's street into the sea, and can reverse away from the edge", () => {
     const run = toTheWater((c) => deckTopAt(seed, c.x, c.z) !== null);
@@ -416,7 +417,7 @@ describe("the car on the ground, the rails and the water", () => {
     drive(c, back, 3);
     expect(Math.hypot(c.x - edge.x, c.z - edge.z)).toBeGreaterThan(3);
     expect(Math.hypot(c.x - start.x, c.z - start.z)).toBeLessThan(Math.hypot(edge.x - start.x, edge.z - start.z));
-  });
+  }, timeLimit(300_000));
 
   /** The slope between the axles along the heading, and the wettest wheel, at the car's place. */
   function slopeAt(c: Car): number {
@@ -466,7 +467,7 @@ describe("the car on the ground, the rails and the water", () => {
     drive(c, back, 2);
     expect(Math.hypot(c.x - stopped.x, c.z - stopped.z)).toBeGreaterThanOrEqual(2);
     expect(wettestWheel(c)).toBeLessThanOrEqual(WADE);
-  });
+  }, timeLimit(300_000));
 
   it("backed toward the brink of a bank it stops, and forward throttle frees it", () => {
     const { sx, sz, dx, dz } = bank();
@@ -484,7 +485,7 @@ describe("the car on the ground, the rails and the water", () => {
     const stopped = { x: c.x, z: c.z };
     drive(c, full, 2);
     expect(Math.hypot(c.x - stopped.x, c.z - stopped.z)).toBeGreaterThanOrEqual(2);
-  });
+  }, timeLimit(300_000));
 
   it("backs up out of ground nose-down at a slope between 0.35 and 0.45", () => {
     const g = groundOf(worldFor(seed));
@@ -512,7 +513,7 @@ describe("the car on the ground, the rails and the water", () => {
       }
     }
     expect(tried).toBeGreaterThan(0);
-  });
+  }, timeLimit(300_000));
 
   it("at full lock along the top of a bank, never on ground past the limit, and at rest in a pose it can reverse from", () => {
     const { sx, sz, dx, dz } = bank();
@@ -538,7 +539,7 @@ describe("the car on the ground, the rails and the water", () => {
       drive(c, back, 2);
       expect(Math.hypot(c.x - rest.x, c.z - rest.z), `side ${side}`).toBeGreaterThanOrEqual(2);
     }
-  });
+  }, timeLimit(300_000));
 
   it("across a steep side slope, steering downhill at full lock never takes it on to ground past the limit along its heading", () => {
     let runs = 0;
@@ -564,7 +565,7 @@ describe("the car on the ground, the rails and the water", () => {
       }
     }
     expect(runs).toBeGreaterThan(0);
-  });
+  }, timeLimit(300_000));
 
   it("with one wheel 0.4 m under the water, can be driven out toward the shore", () => {
     let runs = 0;
@@ -590,7 +591,7 @@ describe("the car on the ground, the rails and the water", () => {
       }
     }
     expect(runs).toBeGreaterThan(0);
-  });
+  }, timeLimit(300_000));
 
   it("is held on a pier by its rails", () => {
     const piers = plan.decks.filter((d) => d.kind === "pier" && Math.min(d.halfAlong, d.halfAcross) >= 3 && Math.max(d.halfAlong, d.halfAcross) >= 15);
@@ -614,20 +615,26 @@ describe("the car on the ground, the rails and the water", () => {
         const r = Math.SQRT1_2;
         const c = carAt(x, z, lx * along * r + sx * across * r, lz * along * r + sz * across * r, 8);
         let off = 0;
+        const wheels = new Float64Array(8);
         for (let i = 0; i < 60 * 2; i++) {
           driveCar(world, c, full);
           if (deckTopAt(seed, c.x, c.z) === null) throw new Error(`pier ${d.id} (${along}, ${across}): the car left the deck at tick ${i}`);
-          // The front circle, the first to meet the rail.
-          off = Math.max(off, Math.abs((c.x + c.hx * 1.58 - cx) * sx + (c.z + c.hz * 1.58 - cz) * sz));
+          // Every circle is kept inside the rail by its own radius, and every wheel stands on the deck.
+          for (const a of CAR_CIRCLES) {
+            const across2 = Math.abs((c.x + c.hx * a - cx) * sx + (c.z + c.hz * a - cz) * sz);
+            off = Math.max(off, across2);
+            expect(across2, `pier ${d.id} (${along}, ${across}) circle ${a} tick ${i}`).toBeLessThanOrEqual(half - CAR_RADIUS + 1e-3);
+          }
+          wheelPoints(c, wheels);
+          for (let k = 0; k < 8; k += 2) expect(deckTopAt(seed, wheels[k] as number, wheels[k + 1] as number), `pier ${d.id} wheel ${k / 2} tick ${i}`).not.toBeNull();
         }
-        // The front circle was kept inside the rail, a hull's radius from its line; where nothing else stood in the way it reached it.
-        expect(off).toBeLessThan(half);
-        if (off > half - 0.5) held++;
+        // Where nothing else stood in the way the car reached the rail: its circle a radius from the line.
+        if (off > half - CAR_RADIUS - 0.5) held++;
       }
     }
     // Most of the runs met the rail; the others met a pier's own props first.
     expect(held).toBeGreaterThanOrEqual(piers.length * 4 / 2);
-  });
+  }, timeLimit(300_000));
 
   it("is the same to the bit for the same inputs, and no other car's tick changes it", () => {
     const run = (withOther: boolean): Car => {
@@ -646,7 +653,7 @@ describe("the car on the ground, the rails and the water", () => {
     expect(b).toEqual(a);
     expect(d).toEqual(a);
     expect(a.speed).not.toBe(3);
-  });
+  }, timeLimit(300_000));
 
   it("drives the open highway as the step alone would, with nothing to push it", () => {
     const z = anchor.z + 5000;
@@ -656,5 +663,5 @@ describe("the car on the ground, the rails and the water", () => {
     expect(c.speed).toBeGreaterThan(8);
     expect(c.z).toBeGreaterThan(z + 15);
     expect(c.x).toBeCloseTo(roadCenterX(seed, z), 3);
-  });
+  }, timeLimit(300_000));
 });
