@@ -48,7 +48,13 @@ export const PATCH_AHEAD_UNITS = 120 + 16 * RANK_UNITS;
 /** Where among the opaque draws the car's materials stand: past the parked vehicles' places, which run on from the shell's first. */
 const OWN_PLACE = 600;
 /** The patch's height over the wheels' plane, m. */
-const PATCH_LIFT = 0.03;
+export const PATCH_LIFT = 0.03;
+/**
+ * How dark the patch is at its fullest: the parked cars' patch is wear laid over the ground, 0.9 at most (`vehicleGeometry.ts`), full to about
+ * two thirds of the way to its rim and none at it. The dark's colour is near black, a little over the mud layer's under the parked cars' tint.
+ */
+export const PATCH_ALPHA = 0.9;
+const PATCH_COLOUR: [number, number, number] = [0.03, 0.03, 0.035];
 
 export type CarParts = {
   /** Begins loading the model. Once, after the town stands. */
@@ -96,13 +102,16 @@ function copyInto(to: Car, from: Car): void {
   for (let i = 0; i < 4; i++) to.seats[i] = from.seats[i] as number;
 }
 
-/** The dark patch under the car: an octagon lying on the wheels' plane, opaque at its middle and clear at its rim, as the parked cars' is. */
-function patchGeometry(): { positions: Float32Array; normals: Float32Array; indices: Uint32Array; colors: Float32Array } {
+/**
+ * The dark patch under the car: the parked cars' eight-cornered patch, inset from the footprint by 0.3 m at the ends and 0.22 m at the sides,
+ * lying on the wheels' plane. Its alpha (`PATCH_ALPHA` at most, in the material) is full from its middle to just over half way to its rim, then falls to none at the rim.
+ */
+export function patchGeometry(): { positions: Float32Array; normals: Float32Array; indices: Uint32Array; colors: Float32Array } {
   const f = manifestOf(CAR_MODEL).footprint;
   const hl = f.length / 2 - 0.3;
   const hw = f.width / 2 - 0.22;
   const ring: [number, number][] = [[hl, hw * 0.6], [hl * 0.8, hw], [-hl * 0.8, hw], [-hl, hw * 0.6], [-hl, -hw * 0.6], [-hl * 0.8, -hw], [hl * 0.8, -hw], [hl, -hw * 0.6]];
-  const rings = [{ scale: 0.55, alpha: 0.85 }, { scale: 1, alpha: 0 }];
+  const rings = [{ scale: 0.55, alpha: 1 }, { scale: 1, alpha: 0 }];
   const positions: number[] = [0, PATCH_LIFT, 0];
   const colors: number[] = [1, 1, 1, 1];
   for (const r of rings) {
@@ -252,7 +261,7 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
       // The dark under the body, a see-through patch ordered where the town's dark at the walls' feet is, a place before the lettering and the glass.
       const g = patchGeometry();
       const mesh = createMeshFromData(host.engine, "car.patch", g.positions, g.normals, g.indices, undefined, undefined, undefined, g.colors);
-      const material = createPbrMaterial({ baseColorFactor: [0.01, 0.01, 0.012, 0.6], metallicFactor: 0, roughnessFactor: 1, alphaBlend: true, doubleSided: true, usePhysicalLightFalloff: true });
+      const material = createPbrMaterial({ baseColorFactor: [...PATCH_COLOUR, PATCH_ALPHA], metallicFactor: 0, roughnessFactor: 1, alphaBlend: true, doubleSided: true, usePhysicalLightFalloff: true });
       material.plugins = [baseColourPlugin(), host.ahead(PATCH_AHEAD_UNITS, 0), host.air()];
       mesh.material = material;
       mesh.renderOrder = SEE_THROUGH_ORDER.carShadow;

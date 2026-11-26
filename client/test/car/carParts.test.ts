@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAPACITY, createCarParts, drawnOf } from "../../src/game/car/carParts.js";
+import { CAPACITY, CAR_MODEL, PATCH_ALPHA, PATCH_LIFT, createCarParts, drawnOf, patchGeometry } from "../../src/game/car/carParts.js";
+import { manifestOf } from "../../src/game/town/props/vehicleManifest.js";
 import type { Car } from "../../src/sim/car/types.js";
 
 function car(x: number, id = 1): Car {
@@ -100,5 +101,43 @@ describe("the car's frames", () => {
     p.frame([car(0)], 3, 0, 0.1, 0);
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe("the patch under the car", () => {
+  const g = patchGeometry();
+  const at = (v: number): [number, number, number] => [g.positions[v * 3] as number, g.positions[v * 3 + 1] as number, g.positions[v * 3 + 2] as number];
+  const vertices = g.positions.length / 3;
+
+  it("lies PATCH_LIFT over the wheels' plane, inside the footprint like the parked cars' patch", () => {
+    const f = manifestOf(CAR_MODEL).footprint;
+    let hl = 0;
+    let hw = 0;
+    for (let v = 0; v < vertices; v++) {
+      const [x, y, z] = at(v);
+      expect(y).toBeCloseTo(PATCH_LIFT, 6);
+      hl = Math.max(hl, Math.abs(x));
+      hw = Math.max(hw, Math.abs(z));
+    }
+    expect(hl).toBeCloseTo(f.length / 2 - 0.3, 6);
+    expect(hw).toBeCloseTo(f.width / 2 - 0.22, 6);
+  });
+
+  it("is wound with every face up and carries an up normal on each vertex", () => {
+    for (let t = 0; t < g.indices.length; t += 3) {
+      const [a, b, c] = [at(g.indices[t] as number), at(g.indices[t + 1] as number), at(g.indices[t + 2] as number)];
+      const u = [b[0] - a[0], b[2] - a[2]];
+      const w = [c[0] - a[0], c[2] - a[2]];
+      expect((u[1] as number) * (w[0] as number) - (u[0] as number) * (w[1] as number)).toBeGreaterThan(0);
+    }
+    for (let v = 0; v < vertices; v++) expect(g.normals[v * 3 + 1]).toBe(1);
+  });
+
+  it("is full dark from the middle to the inner ring and clear at the rim", () => {
+    expect(g.colors.length).toBe(vertices * 4);
+    expect(g.colors[3]).toBe(1);
+    for (let v = 1; v <= 8; v++) expect(g.colors[v * 4 + 3]).toBe(1);
+    for (let v = 9; v <= 16; v++) expect(g.colors[v * 4 + 3]).toBe(0);
+    expect(PATCH_ALPHA).toBeCloseTo(0.9, 6);
   });
 });
