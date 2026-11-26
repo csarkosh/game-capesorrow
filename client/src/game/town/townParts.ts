@@ -38,6 +38,9 @@ import { createPaintSurface, paintRequest } from "./signPaint.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
+import { groundAt } from "./props/kit.js";
+import { createCarParts, type CarParts } from "../car/carParts.js";
+import { SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { peopleFor, personWorld } from "./people.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
@@ -66,6 +69,9 @@ export const FLAT_AHEAD_SLOPE = 0;
 export const HAZE_ORDER = SEE_THROUGH_ORDER.lettering - 1;
 /** Where the lettering stands on a tier whose glass writes its whole pixel (`townBlur.ts`): after the glass. */
 export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
+
+/** The state of a game that has no cars. */
+const NO_CARS: readonly Car[] = [];
 
 /** How far the hour moves before the materials are written again (a hundredth of an hour). */
 const HOUR_STEP = 0.01;
@@ -126,6 +132,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let rail: RailStream | null = null;
   // The parked vehicles that stand as real models (`props/vehicleParts.ts`), on the tiers above low: loaded once the town's geometry is made.
   let vehicles: VehicleParts | null = null;
+  // The car the players drive (`../car/carParts.ts`): made with the town, loaded once it stands, posed from the state's cars each frame.
+  let car: CarParts | null = null;
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
   let people: PeopleParts | null = null;
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
@@ -269,6 +277,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
       }
 
+      car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       const plan = ground.plan;
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
@@ -331,11 +340,19 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         building = false;
         // The town stands; now the vehicles' files are asked for, and each lands when it has.
         vehicles?.begin();
+        car?.begin();
         people?.begin();
       }
 
       building = true;
       host.jobs.begin(owner, build(), false, "town");
+    },
+
+    begin(state, localId, alpha, dt) {
+      base.side.begin(state, localId, alpha, dt);
+      const me = state.players.get(localId) as { ride?: Ride } | undefined;
+      const driven = me?.ride?.phase === SEATED && me.ride.seat === 0 ? me.ride.car : 0;
+      car?.frame((state as { cars?: readonly Car[] }).cars ?? NO_CARS, state.tick, alpha, dt, driven);
     },
 
     bodies(dt, lamp) {
@@ -347,6 +364,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       base.side.seen(planes, cover);
       rail?.seen(planes);
       vehicles?.seen(planes);
+      car?.seen(planes);
       leaner.step();
       for (const m of made) {
         let want = inView(planes, m);
@@ -382,6 +400,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       rail = null;
       vehicles?.dispose();
       vehicles = null;
+      car?.dispose();
+      car = null;
       people?.dispose();
       people = null;
       lamps = [];
