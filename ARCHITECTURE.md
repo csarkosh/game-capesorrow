@@ -149,7 +149,7 @@ indices), with no renderer, so the builders are tested as pure functions:
 - **Buildings** (`buildingGeometry.ts` and the files it calls; see "Buildings from the plan", below): shells on the plan's oriented rectangles (on sloping ground the floor is the highest ground under the footprint and the walls run down to the lowest; a front on a slope is entered at the sidewalk's height), roofs by kind (flat with a parapet, gable, hip, shed; the oldest wooden gables sag at the ridge), walls cut around their openings, fronts, rooms, windows, signs and parts from the plan's `uses`, vacant buildings dull and boarded, ruins roofless and broken at the top, and one touch for each landmark (a flagpole and portico for the FBI office, a steeple, an open tower on legs for the refuge, a mill's stack). Colour comes from the material and the building's id; no random call is made.
 - **The quay** (`quayGeometry.ts`): along each wet stretch an apron (a deck) and a straight wall a hand's width beyond its edge, so the bank is hidden: timber cribwork under a timber cap, or, where a fire after 1921 took the waterfront, steel sheet piling under a concrete cap (`plan.quay.wall`), with wales or a corrugated face, fender piles every 6 m, ladders every 40 m and bollards every 15 m.
 - **Decks and rails** (`pileGeometry.ts`): each deck of `plan.decks` with its top at exactly the height the walking uses, a skirt, and piles for piers and sheds; a timber bull rail with posts along every edge the simulation holds a walker back from.
-- **Parked vehicles as models** (full tier; `tools/models/build.py`, `client/assets/models/`, `game/town/props/vehicle*.ts`). Twelve files (`vehicle.<id>.glb`, 11 MB in all) and a manifest (`vehicles.json`: footprint, wheels' contact points, roles) are written from the downloaded sources: each baked to one frame (metres, +x the front, on y = 0 at the tyres), joined into one mesh a role (`paint`, `glass`, `lamp`, `plate`, `tyre`, `under`, `interior`, or `body` for the worn ones), the paint a colour with no texture. The plan gives each vehicle its model (`sim/town/port/props/vehicleModels.ts`, from its kind, state, load, age and seed; a camper has none) and its box is the model's footprint, so the walker's box is the file's own; the room planned for a kind in `tuning.ts` is the largest of its models. `vehicleFleet.ts` stands each on the plane fitted through its four wheels' ground contacts, `vehicleLook.ts` gives it a paint from a table of dull period colours, grime, dust and (for derelicts and project cars) algae, `vehicleMaterial.ts` wears that by instance, and `vehicleParts.ts` loads the files once the town's geometry is made, one patient job a model, and draws a model's roles as thin instances culled each frame to the view and 160 m. The contact patch under each stays in the town's flat layer; a model that fails to load is left out. The low tier, campers and trailers stay code-built.
+- **Parked vehicles as models** (full tier; `tools/models/build.py`, `client/assets/models/`, `game/town/props/vehicle*.ts`). Twelve files (`vehicle.<id>.glb`, 11 MB in all) and a manifest (`vehicles.json`: footprint, wheels' contact points, roles) are written from the downloaded sources: each baked to one frame (metres, +x the front, on y = 0 at the tyres), joined into one mesh a role (`paint`, `glass`, `lamp`, `plate`, `tyre`, `under`, `interior`, or `body` for the worn ones), the paint a colour with no texture. The plan gives each vehicle its model (`sim/town/port/props/vehicleModels.ts`, from its kind, state, load, age and seed; a camper has none) and its box is the model's footprint, so the walker's box is the file's own; the room planned for a kind in `tuning.ts` is the largest of its models. `vehicleFleet.ts` stands each on the plane fitted through its four wheels' ground contacts, `vehicleLook.ts` gives it a paint from a table of dull period colours, grime, dust and (for derelicts and project cars) algae, `vehicleMaterial.ts` wears that by instance, and `vehicleParts.ts` loads the files once the town's geometry is made, one patient job a model, and draws a model's roles as thin instances culled each frame to the view and 160 m. The contact patch under each stays in the town's flat layer; a model that fails to load is left out. The low tier, campers and trailers stay code-built. The engine's loader hands every model back mirrored in x; the car that is driven has its parts turned half a circle about up to answer that (see "The car"), and the parked vehicles' parts are not turned.
 - **Props** (`game/town/props/`, drawn after the harbour, as a generator of slices): vehicles are lofted through stations from the rear bumper to the nose (a smooth-shaded `MeshBuilder.grid`; the wheel arches cut by raising the lower edge of the stations over each wheel; side glass and screens as the town's see-through effect over a dark cabin with seats you can make out; wheels in the arches; bumpers, lamps, mirrors, door seams), in the roof-bitumen layer (the smoothest of the town's layers) tinted by the paint, with rust at the arches and sills of old ones, grime low on the body, a faded roof and bonnet, and algae at the seals of one that has not moved; a work vehicle carries its gear, a project car stands on blocks under a tarp, a derelict sits low on flat tyres. Boats are lofted hulls on trailers (aluminium skiff in the sheet-metal layer, fibreglass runabout), some under a tarp, some with weeds through the trailer. Poles are tapered timbers of the weathered-boards layer; wires are three-sided tubes wider than a real wire, hung in a parabola. Fences follow the ground post by post; chain-link is a faint see-through sheet with rails and posts, because a mesh of wires would shimmer. Each vehicle has a dark patch of ground under it (the scene has no shadow). The low tier lofts through the shape's own stations, draws three vehicles in five with no interior, mirrors or seams, thinner poles and wires, no service drops, and fewer fences and gear.
 - **Boats and the harbour's things** (`boatGeometry.ts`, `harbourGeometry.ts`): hulls lofted through six stations with a sheer line, wheelhouses with dark windows and the kind's gear; piles, boom sticks and logs, the jack ladder, the burner, the yard's stacks, silos, containers and cars, the barge, and the lights.
 - **Batches** (`townGeometry.ts`): by cells of 128 m, one set of arrays for what lies flat and one for what stands, built as a generator of slices the engine's scheduler spreads over frames, so no frame stalls on the town.
@@ -271,7 +271,7 @@ The railroad's main line runs the whole coast, beside the highway on its seaward
 One car can be driven: a sedan that stands at the curb of the street nearest the FBI office's door. `carStart(seed)`
 (`client/src/sim/car/start.ts`) finds it, a pure function of the world's seed like the town's start: the nearest street
 of kind main, street or avenue to the plan's spawn, then the first place along it, at 0, +6.5, -6.5, +13 m and so on to
-78 m either way, where the car's three circles touch no building and no prop. The car lies 1.2 m inside the curb on the
+78 m either way, where the car's three circles touch no building and no prop and its footprint stays a hull's radius from the spawn. The car lies 1.2 m inside the curb on the
 spawn's side with the curb on its right; if no place is free it stands at the spawn's foot on the street's centre line.
 The world holds the cars in `state.cars` (`createWalkWorld` makes one, with id 1), and the wire, the rules and the
 drawing all take a list, though the game has one.
@@ -293,14 +293,23 @@ the engine runs a player's move on the host, on a client's own predicted copy of
 the commands the host has not yet acknowledged, the car's step runs there too. A joined player's driving is therefore
 predicted at once and replayed on a correction, never waited for from the host; this is why `driveCar` is a pure
 function of the world's seed and the car, and why nothing under `sim/car/` reads a clock, a random number or a
-collection's order. A command that repeats the sequence number of the last one taken (the engine's standing command)
-steps the car again from its last controls. `carHostStep` and `carPressed` run on the host alone.
+collection's order. `carHostStep` and `carPressed` run on the host alone.
+
+A host tick that has no fresh command from a joined driver passes the engine's standing command (one with the sequence
+number of the last one taken), and the car steps on it as a walker does, on the driver's last controls. The car records that it did: `owed`, a count from 0 to `OWED_MAX` (6, a tenth of a
+second) of steps taken in advance. The command that comes late is fresh, and while the car is owed a step it only sets the
+controls and pays one back, without stepping again. So a driver's N commands step the car N times however the ticks fell,
+and the host's car and the client's prediction come to the same place. A client's replay of its unacknowledged commands
+swallows the same steps, because `owed` is part of the car it is corrected to. Once the car is owed `OWED_MAX` steps a
+silent driver's car is braked (the handbrake, no throttle) instead of repeating the last controls, so a driver whose tab has gone to
+the background leaves a car that comes to rest and stays there; when commands come again, at most `OWED_MAX` are swallowed
+and then the car answers. A new driver, or none, owes nothing.
 
 ### The state and the ride
 
 A `Car` (`sim/car/types.ts`) holds its place on the wheels' plane (`x`, `y`, `z`), its heading as a unit vector (`hx`,
 `hz`), its speed along the heading and its slip to the right of it, the steering as a tangent, the controls last taken,
-its lights, and four seats holding a player's id or 0. Seat 0 is the driver's (front left), 1 the front right, 2 and 3
+its lights, the steps it owes (`owed`, above) and four seats holding a player's id or 0. Seat 0 is the driver's (front left), 1 the front right, 2 and 3
 the rear.
 
 A player carries a `Ride` beside the engine's record (`Walker` is the engine's `PlayerCore` with a `ride`): the car's
@@ -355,22 +364,30 @@ is one whole tick: the environment, `stepCar`, then each circle is moved out of 
 town's buildings and props are pushed out of by `constrainCircle` (`sim/town/solid.ts`), which reads every grid cell the
 circle reaches and so meets what a circle wider than a walker's hull overlaps; the forest's boxes that stand as walls
 (its trees) are pushed out of as boxes, and the harbour's rails and the railroad's trestle guard rails hold the car as
-they hold a walker. A push moves the whole car and takes the part of its velocity that points into the wall. A box whose
+they hold a walker, each circle at its own radius (`constrainRails` and `constrainTrestle` take the hull's radius, which is
+the walker's by default), so the body stops at a rail and the outer wheels stay on the deck. A push moves the whole car and takes the part of its velocity that points into the wall. A box whose
 top is no more than 0.35 m over the ground at the circle is driven over, and so is one that begins above the car's roof.
 
 Two rules undo the tick whole: a move that leaves a wheel deeper in water than `WADE` (0.3 m) and deeper than the
 deepest wheel was where the tick began, and a move on to ground steeper than the climb limit along the heading, in
 either direction, and steeper than where the tick began. The car is then put back as the tick found it, at rest, so a
 car somewhere it should not be can always move toward gentler ground or shallower water. The car's height is the mean of
-its wheels' ground. Walkers are pushed out of every car's footprint (`constrainByCars`, a rotated rectangle) after the
-town's own `constrain`; a car is not stopped by a walker.
+its wheels' ground. Walkers are pushed out of every car's footprint (`constrainByCars`, a rotated rectangle) first, and then
+the town's own `constrain` (the props, then the walls) puts them out of whatever they were pushed into, as props are
+pushed out before walls: a walker pinned by a moving car against a wall ends the tick outside the wall. A car is not
+stopped by a walker.
 
 ### Seats, doors, getting in and out
 
 A door is the place 0.5 m outside the body beside a seat (`sim/car/seats.ts`); a walker within 1.2 m of one can use it.
-Getting in takes the driver's seat if it is empty, else the seat of the door used, else nothing. Getting in takes 60
+Getting in takes the driver's seat if it is empty, else the seat of the door used, else nothing, and needs the car under
+2 m/s (`LEAVE_SPEED`) and the walker's feet within 1 m (`DOOR_HEIGHT`) of the car's wheels' plane, so no one gets in from
+under a pier the car stands on, and no one gets in beside a moving car and is carried off from the door (`boardSeat`; the
+line at the door reads the same function, so it offers a seat only where a press would take one). Getting in takes 60
 ticks, getting out 36. Getting out needs the car under 2 m/s and a free place to stand at the seat's own door or the one
-across: clear of buildings, props, cars and rails and in no more than wading water.
+across: clear of buildings, props, cars and rails, in no more than wading water, and on ground within 0.6 m (`RAIL_JOIN`,
+the decks' own join) of the car's height, so a car beside a railed deck edge puts its rider out on the deck, or keeps
+them seated, and never on the ground metres below.
 
 The host alone decides these (`carPressed`, `carHostStep`, from the engine's `pressed` and `hostStep`). A press of the
 interact bit on foot at a door takes the seat that tick, so two players cannot share one; the countdown, the completion
@@ -383,16 +400,17 @@ to stand, they stay seated.
 
 `net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 2. A snapshot is a header (the message type, the tick,
 the last input taken and the count of players, 10 bytes), the players (28 bytes each: the engine's id, place, velocity,
-look and grounded flag, then the ride: a car's id, a seat, a phase and its ticks), a count of cars and the cars (34
-bytes each: the id, the place, the heading as two 16-bit integers, the speed, the slip and the steer, the throttle and
-turn as bytes, a flags byte for the handbrake and the lights, and the four seats). Headings are made unit vectors again
-after they are read.
+look and grounded flag, then the ride: a car's id, a seat, a phase and its ticks), a count of cars and the cars (35
+bytes each, at these offsets: the id 0, the place 1 to 12, the heading as two 16-bit integers 13 to 16, the speed and the
+slip 17 to 20, the steer 21 to 22, the throttle 23 and the turn 24 as bytes, a flags byte for the handbrake and the lights
+25, the four seats 26 to 33, and the steps the car owes 34). Headings are made unit vectors again after they are read.
 
 The host's snapshot is the truth the client is corrected to: `correct` sets the local player's ride and replaces every
 car of the predicted world with the snapshot's, and the client's replay of its unacknowledged commands then drives the
 car as the host did. A snapshot comes from another machine, so a read checks what it takes in (`decodeWalkSnapshot`):
 the length must be exact, a ride's phase must be one of the four, a rider must name a car and one of four seats, and no
-two riders may hold one seat; a snapshot that fails throws. A rider whose car the snapshot does not hold is on foot. For
+two riders may hold one seat, a car's heading must not be zero and the steps it owes must not pass `OWED_MAX`; a snapshot
+that fails throws. A rider whose car the snapshot does not hold is on foot. For
 drawing, `blend` blends the cars between two snapshots (the place, and the heading made a unit vector again), and `view`
 gives the car the local player drives from the predicted world, every other car from the blended pair, and puts a
 passenger at their seat in the car as it is drawn.
@@ -421,7 +439,8 @@ into the seat, which follows the ride's countdown at a bounded rate, so getting 
 refused leave eases back.
 
 It is stopped short of what it would pass through: a building, a prop's box that is at least 0.6 m across, another car,
-and the ground (it stays 0.4 m over it). It goes in at once and comes back out at 4 m/s, and never nearer than 1.5 m to
+and the drawn ground (a sample of the sweep under the ground, with 0.1 m to spare, is blocked, so a crest between the
+camera and the car pulls it in; and it stays 0.4 m over the ground where it stands). It goes in at once and comes back out at 4 m/s, and never nearer than 1.5 m to
 the aim point.
 
 ### The lamp
@@ -466,11 +485,6 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
 - The "no room to get out" line is decided by a timer on the player's own machine, so it can show wrongly to a joined
   player on a slow link, before the host's answer has come back.
 - `?cmd=carhome` in the address does nothing; the command typed in the command bar works.
-- On a host tick with no command from a joined driver the car takes a step from its last controls, and the late command
-  steps it again, so under jitter the host's car can run a step ahead and the driver is corrected.
-- The parked vehicles' parts (`vehicleParts.ts`) take the loader's model as it comes, with no half turn.
-- A passenger can get into a moving car; it is held at the door until it is seated, and then put in the seat wherever
-  the car has gone.
 
 ## The title page
 
