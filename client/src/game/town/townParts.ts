@@ -41,6 +41,8 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { groundAt } from "./props/kit.js";
 import { createCarParts, type CarParts } from "../car/carParts.js";
 import { carDebug, type CarDebug, type CarDebugSource } from "../car/carDebug.js";
+import { litFor, placeHeadlights } from "../car/headlights.js";
+import { promptShown } from "../car/side.js";
 import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { townSolids } from "../../sim/town/solid.js";
 import { propSolids } from "../../sim/town/propSolid.js";
@@ -149,6 +151,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   const chaseShot = { fov: 0 as number | null, centre: { x: 0, z: 0 }, coverAtEye: false };
   const chaseSeen = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 0, seated: 0, pulled: 0 };
   let chasing = false;
+  // The one lamp as the last frame wrote it, for the console's reading (`__capeCar.lamp()`).
+  const lampSeen = { on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1 };
+  let lampWritten = false;
   // How far into the seat the camera is shown: the ride's own value followed at a bounded rate, so a refused leave eases back out.
   let shownSeat = 0;
   let chasedCar = 0;
@@ -307,7 +312,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
 
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
-      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null) });
+      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, lamp: () => (lampWritten ? lampSeen : null) });
       const plan = ground.plan;
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
@@ -421,6 +426,29 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       chaseSeen.seated = seated;
       chaseSeen.pulled = chase.back;
       return chaseShot;
+    },
+
+    // The lamp is the car's while the local player is seated in a car with its lights on, and off when that car's lights are off; on foot, as the engine has it.
+    lampOn(local) {
+      const ride = (local as { ride?: Ride }).ride;
+      return litFor(ride, ride === undefined ? null : (car?.pose(ride.car) ?? null));
+    },
+
+    lamp(lamp) {
+      base.side.lamp(lamp);
+      const ride = held.players.get(held.localId)?.ride;
+      if (lamp.lit.on && ride !== undefined && ride.phase === SEATED) {
+        const drawn = car?.pose(ride.car) ?? null;
+        if (drawn !== null) placeHeadlights(drawn, lamp.at);
+      }
+      lampSeen.on = lamp.lit.on;
+      lampSeen.x = lamp.at.x;
+      lampSeen.y = lamp.at.y;
+      lampSeen.z = lamp.at.z;
+      lampSeen.dx = lamp.at.dx;
+      lampSeen.dy = lamp.at.dy;
+      lampSeen.dz = lamp.at.dz;
+      lampWritten = true;
     },
 
     bodies(dt, lamp) {

@@ -11,12 +11,14 @@
 import { createAmbientAudio, noGameSound, type AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
 import type { NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLiteRenderer } from "@csarkosh/engine/game/lite/renderer";
+import { registerCommands } from "@csarkosh/engine/game/commands";
 import type { ModeList } from "@csarkosh/engine/game/modeList";
 import type { WorldRenderer } from "@csarkosh/engine/game/rendererTypes";
 import type { SessionGame, SessionHost, SessionSide } from "@csarkosh/engine/game/sessionGame";
 import { createClientSession, type ClientSession } from "@csarkosh/engine/net/client";
 import { createHostSession, type HostSession } from "@csarkosh/engine/net/host";
 import yard from "../levels/yard.json" with { type: "json" };
+import { CAR_COMMANDS, createCapeSide } from "./game/car/side.js";
 import { startClock, stepClock } from "./game/dayClock.js";
 import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
@@ -25,6 +27,9 @@ import { WALK, type WalkSnapshot } from "./net.js";
 import { INTERACT_BIT, LAMP_BIT } from "./sim/car/tuning.js";
 import { townStart } from "./sim/town/start.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
+
+// The console's own command, `carhome`, is the game's: known to the bar and to an address before any world stands.
+registerCommands(CAR_COMMANDS);
 
 export type WalkRenderer = WorldRenderer<WalkState> & NoPartsApi;
 export type WalkHost = HostSession<WalkWorld, never>;
@@ -105,7 +110,7 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),
   audio: () => createAmbientAudio(noGameSound),
   hud: createWalkHud,
-  side: walkSide,
+  side: (host) => createCapeSide(host, walkSide(host)),
   host: (_level, _seed, clock, o) => createHostSession(WALK, createWalkWorld(o.forest, true), clock, { levelId: o.forest.levelId, hostPeerId: o.hostPeerId }),
   join: (_level, _seed, transport, clock, o) => createClientSession(WALK, createWalkWorld(o.forest, false), transport, clock, { expectedLevelId: o.expectedLevelId }),
 };

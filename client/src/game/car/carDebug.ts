@@ -11,10 +11,14 @@ export type CarDebug = {
   cars(): { id: number; x: number; y: number; z: number; hx: number; hz: number; speed: number; steer: number; lights: boolean; driver: number; seats: number[] }[];
   /** The local player as this frame's state has it, or null before there is one. */
   self(): { x: number; y: number; z: number; yaw: number; pitch: number; ride: { car: number; seat: number; phase: number; ticks: number } } | null;
-  /** Where a walker stands to use each seat's door of a car (seat 0 is the driver's), or an empty list for an unknown car. */
   /** The camera as the last frame wrote it while the local player is in the car (its place, yaw, pitch, lens and how far into the seat, 0 to 1, and how far from the aim point it stood: `CHASE_BACK` when nothing was in the way), or null. */
   camera(): { x: number; y: number; z: number; yaw: number; pitch: number; fov: number; seated: number; pulled: number } | null;
+  /** Where a walker stands to use each seat's door of a car (seat 0 is the driver's), or an empty list for an unknown car. */
   doors(id: number): { x: number; z: number }[];
+  /** The line the door shows now, or null. */
+  prompt(): string | null;
+  /** The one lamp as the last frame wrote it: whether it is on, its place and its direction (a unit vector), or null before a frame has. */
+  lamp(): { on: boolean; x: number; y: number; z: number; dx: number; dy: number; dz: number } | null;
 };
 
 /** What the answers are built from: the state as the last frame had it, and the poses the car's part holds. */
@@ -23,6 +27,10 @@ export type CarDebugSource = {
   pose(id: number): CarPose | null;
   /** The camera's last written record, or null when it is the walker's own. */
   camera?(): { x: number; y: number; z: number; yaw: number; pitch: number; fov: number; seated: number; pulled: number } | null;
+  /** The line the door shows. */
+  prompt?(): string | null;
+  /** The lamp as the last frame wrote it, or null before there is one. */
+  lamp?(): { on: boolean; x: number; y: number; z: number; dx: number; dy: number; dz: number } | null;
 };
 
 export function carDebug(source: CarDebugSource): CarDebug {
@@ -48,6 +56,11 @@ export function carDebug(source: CarDebugSource): CarDebug {
     camera() {
       const c = source.camera?.() ?? null;
       return c === null ? null : { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch, fov: c.fov, seated: c.seated, pulled: c.pulled };
+    },
+    prompt: () => source.prompt?.() ?? null,
+    lamp() {
+      const l = source.lamp?.() ?? null;
+      return l === null ? null : { on: l.on, x: l.x, y: l.y, z: l.z, dx: l.dx, dy: l.dy, dz: l.dz };
     },
     doors(id) {
       const car = source.state()?.cars.find((c) => c.id === id);

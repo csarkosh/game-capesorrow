@@ -11,10 +11,13 @@ const STYLE = `
 .walk-hud .line { position: absolute; left: 0; right: 0; text-align: center; text-shadow: 0 1px 2px #000; }
 .walk-hud .status { top: 46%; }
 .walk-hud .flash { bottom: 12%; }
+.walk-hud .prompt { top: 56%; }
+.walk-hud .prompt.pressable { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; padding: 10px 0; }
 .walk-hud button { position: absolute; top: 12px; right: 12px; pointer-events: auto; font: inherit; color: inherit; background: #0008; border: 1px solid #fff4; border-radius: 4px; padding: 4px 10px; }
 `;
 
-export type WalkHud = PageHud;
+/** The page's HUD with a line at a car's door: the line, or none, and what a press of it does (a touch player's interact). */
+export type WalkHud = PageHud & { setPrompt(line: string | null, press?: { down(): void; up(): void }): void };
 
 /** A line of status alone, for a start's waits and its failure. */
 export function createStatusLine(container: HTMLElement): { setStatus(line: string | null): void; dispose(): void } {
@@ -35,7 +38,24 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
   pause.type = "button";
   pause.hidden = true;
   pause.addEventListener("click", () => hooks?.onPause());
-  root.append(status, flash, pause);
+  const prompt = document.createElement("div");
+  prompt.className = "line prompt";
+  // A press of the line is the interact's: down on the pointer's going down, up on its going up or being taken.
+  let press: { down(): void; up(): void } | null = null;
+  let pressing = false;
+  const release = (): void => {
+    if (!pressing) return;
+    pressing = false;
+    press?.up();
+  };
+  prompt.addEventListener("pointerdown", (e) => {
+    if (press === null || pressing) return;
+    e.preventDefault();
+    pressing = true;
+    press.down();
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave"]) prompt.addEventListener(type, release);
+  root.append(status, flash, prompt, pause);
   container.append(style, root);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   return {
@@ -49,6 +69,13 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
         flash.textContent = "";
         flashTimer = null;
       }, ms);
+    },
+    setPrompt(line, next) {
+      // A line that goes while it is held lets go first.
+      if (line === null || next === undefined) release();
+      press = line === null ? null : (next ?? null);
+      prompt.textContent = line ?? "";
+      prompt.classList.toggle("pressable", press !== null);
     },
     // The empty game carries no lamp, so there is no hint of one to show.
     setLamp: () => undefined,

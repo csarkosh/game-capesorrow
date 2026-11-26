@@ -36,4 +36,17 @@ describe("the title page's words", () => {
       expect(text, name).not.toContain("Cape Sorrow");
     }
   });
+
+  it("say the door's lines, and the car's, as the player reads them", () => {
+    expect([words.GET_IN, words.GET_OUT, words.NO_ROOM_TO_GET_OUT, words.CAR_RETURNED, words.HOST_RETURNS_CAR]).toEqual([
+      "Click to get in",
+      "Click to get out",
+      "No room to get out here",
+      "The car is back at the office.",
+      "Only the host can bring the car back.",
+    ]);
+    for (const name of ["hud.ts", "game/car/side.ts"]) {
+      for (const word of [words.GET_IN, words.GET_OUT, words.NO_ROOM_TO_GET_OUT, words.CAR_RETURNED, words.HOST_RETURNS_CAR]) expect(code(name), `${name}: ${word}`).not.toContain(word);
+    }
+  });
 });

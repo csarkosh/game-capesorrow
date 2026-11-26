@@ -56,4 +56,19 @@ describe("the car's reading for measuring tools", () => {
     expect(none.self()).toBeNull();
     expect(none.doors(1)).toEqual([]);
   });
+
+  it("answers the line the door shows, and the lamp as the last frame wrote it, each as a copy", () => {
+    const seen = { on: true, x: 1, y: 2, z: 3, dx: 0, dy: -0.08, dz: 1 };
+    let line: string | null = "Click to get in";
+    const withBoth = carDebug({ state: () => null, pose: () => null, prompt: () => line, lamp: () => seen });
+    expect(withBoth.prompt()).toBe("Click to get in");
+    const a = withBoth.lamp();
+    expect(a).toEqual(seen);
+    (a as { x: number }).x = 99;
+    expect(withBoth.lamp()?.x).toBe(1);
+    line = null;
+    expect(withBoth.prompt()).toBeNull();
+    const neither = carDebug({ state: () => null, pose: () => null });
+    expect([neither.prompt(), neither.lamp()]).toEqual([null, null]);
+  });
 });
