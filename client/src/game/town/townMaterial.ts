@@ -72,6 +72,7 @@ import {
 } from "./hours.js";
 import { MAX_LAMPS, type LampList } from "./lampLight.js";
 import { SURFACE_PACKED_BYTES } from "./surfacePack.js";
+import { PAINT_RANKS } from "./paint.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
 import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
@@ -486,6 +487,22 @@ export const RANKS = 6;
 /** The vertex stage's line for a ranked material: the rank rides in the float a flat vertex leaves unused (`townWear`.w, float 11), so it adds no attribute and no draw. */
 export const RANK_CODE = `out.clipPos.z+=${(RANK_UNITS / 2 ** 24).toExponential(6)}*${TOWN_WEAR_ATTRIBUTE}.w*out.clipPos.w;`;
 
+/**
+ * The depth steps between one rank of paint on a standing face and the next (`paint.ts`): paint lies flush on its face, 2 mm a rank off it, and a rank
+ * is drawn this many steps further ahead in the vertex stage, so the order holds at every distance, as the flat ground's does. Two steps are 2.4 cm
+ * at 100 m (a step is z * z / (0.05 * 2^24) m), which is under the 6 cm a piece of trim stands proud of its wall, so a rank-1 sheet is never drawn
+ * through trim that lies over its wall's plane.
+ */
+export const PAINT_UNITS = 2;
+
+/**
+ * The vertex stage's line for a material that is not the flat ground's: a vertex's rank of paint rides in the alpha of its colour as `1 - rank / PAINT_RANKS`
+ * (1 for everything that is not paint, which then moves by nothing), so a rank is `(1 - a) * PAINT_RANKS` and the clip depth is moved by
+ * `PAINT_UNITS * PAINT_RANKS / 2^24` of the clip w for each unit of `1 - a`: the same form and sign as `RANK_CODE`. Every mesh the plugin is on has a colour a vertex.
+ */
+export const PAINT_K = (PAINT_UNITS * PAINT_RANKS) / 2 ** 24;
+export const PAINT_CODE = `out.clipPos.z+=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;`;
+
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
 export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
   const definitions = townDefinitions(low);
@@ -498,7 +515,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getCustomCode: (stage) =>
       stage === "fragment"
         ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_LIGHT: TOWN_LIGHT_CODE, CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
-        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX, CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : ""}` },
+        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX, CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE}` },
     getVertexAttributes: () => [
       // Twelve 16-bit floats a vertex (`surfacePack.ts`): the shader reads them as the 32-bit floats they stand for.
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float16x4", stride: SURFACE_PACKED_BYTES, offset: 0 },

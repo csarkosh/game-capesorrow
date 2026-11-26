@@ -65,3 +65,31 @@ export function standOff(nx: number, nz: number, xa: number, za: number, xb: num
   noteFace(nx, nz, xa, za, xb, zb, y0, y1, dir * push);
   return push;
 }
+
+/** How far a board may stand off a wall and still be one that paint is laid on (`faceUnder`): plywood over a window stands 6 cm, trim up to 8, and a step more where the ledger moved it. */
+export const BOARD_REACH = 0.12;
+
+/**
+ * How far out of the plane through (xa, za) and (xb, zb) (the wall's own, with its normal (nx, nz)) the outermost face that is noted over the place stands, for
+ * paint that is to lie on it (a sign painted over the plywood on a window lies on the plywood, not on the wall behind it): 0 where there is none, and no
+ * face counts that stands within 2.45 cm of the plane (the wall's own) or farther than `reach` out. Paint is itself no face of the ledger.
+ */
+export function faceUnder(nx: number, nz: number, xa: number, za: number, xb: number, zb: number, y0: number, y1: number, reach = BOARD_REACH): number {
+  const d = nx * xa + nz * za;
+  const ta = -nz * xa + nx * za;
+  const tb = -nz * xb + nx * zb;
+  const t0 = Math.min(ta, tb);
+  const t1 = Math.max(ta, tb);
+  const lo = Math.min(y0, y1);
+  const hi = Math.max(y0, y1);
+  let out = 0;
+  for (let k = Math.floor(d / 0.05) - 1; k <= Math.floor((d + reach) / 0.05) + 1; k++) {
+    const list = LEDGER.get(key(nx, nz, k));
+    if (list === undefined) continue;
+    for (const f of list) {
+      const off = f.d - d;
+      if (off > NEAR && off <= reach && off > out && f.t0 < t1 - 1e-4 && t0 < f.t1 - 1e-4 && f.y0 < hi - 1e-4 && lo < f.y1 - 1e-4) out = off;
+    }
+  }
+  return out;
+}

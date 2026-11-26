@@ -5,7 +5,7 @@
  *   crack), block (a few blocks stained, mortar lines), brick (with a vent) or post and pier with a skirt of boards that are not level, one of them
  *   missing on a house that has been let go, showing dark underneath. Dirt splashes up it from the ground and algae climbs it, each in columns of
  *   different heights, more on the shaded side and on the neglected houses. Every piece follows the ground at its foot (the walls run down to the lowest
- *   ground, so on a slope the foundation shows more at the low end). All of it stands 3 cm or more off the face behind it, in layers.
+ *   ground, so on a slope the foundation shows more at the low end). All of it is paint lying flush on the foundation's face, in ranks (`L`).
  * - **Things at the seam**: one to three a house, mostly at the sides and the back: a hose and its bib, a downspout's splash block with a pipe leading
  *   across the lawn, a stack of firewood, a ladder or a wheelbarrow leaning on the wall, a bucket, a pile of boards, and a crawl-space hatch. Never the
  *   same set on neighbours (a roll of the house's id).
@@ -14,6 +14,7 @@
  */
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import { isClear } from "./faceLedger.js";
+import { paintOff } from "./paint.js";
 import { wat, type WallRef } from "./buildingKit.js";
 import { neglectOf, seamHouses, type HouseSeam } from "./houseSeam.js";
 import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
@@ -26,8 +27,10 @@ const CONCRETE: Rgb = [0.3, 0.3, 0.28];
 const BRICK: Rgb = [0.2, 0.14, 0.12];
 const WOOD: Rgb = [0.3, 0.25, 0.19];
 const DARK: Rgb = [0.025, 0.025, 0.03];
-/** The layers a foundation's marks stand in, metres past the foundation's own face: 3 cm apart. */
-const L = { base: 0.03, line: 0.06, algae: 0.09, mud: 0.12 } as const;
+/** How far a crawl-space hatch's frame stands off the foundation's face, metres: a real thing, not paint (its door is a step, 3 cm, further out). */
+const HATCH_OFF = 0.03;
+/** The ranks of paint a foundation's marks are in (`paint.ts`), over the foundation's own face and one over the next: the stretches of its pours and the skirt's dark, then the lines (courses, cracks, the vent, a skirt's boards), then algae, then the splash of mud. They lie flush, 2 mm a rank. */
+const L = { base: 1, line: 2, algae: 3, mud: 4 } as const;
 
 type Kind = "concrete" | "block" | "brick" | "pier";
 
@@ -128,18 +131,19 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
     if (neighbourAt(g, b, w) || h.added?.k === k) return;
     const key = b.id * 41 + k;
     const fo = h.foundOff[k] as number;
-    const Lk = { base: fo + L.base, line: fo + L.line, algae: fo + L.algae, mud: fo + L.mud };
+    /** How far out a rank of paint lies from the foundation's face. */
+    const lie = (rank: number): number => fo + paintOff(rank);
     const north = w.nz > 0.3;
     // A column of the foundation from `s0` to `s1`, over the ground at its feet, up to `y1` (or less), off the wall `off`.
     // The foundation stops at the front door, where the steps or the porch stand (`buildingParts.ts`): so does everything on it.
     const gap: [number, number] | null = k === h.frontAt && h.door !== null ? [h.door.s - h.door.half, h.door.s + h.door.half] : null;
     const inGap = (a: number, e: number): boolean => gap !== null && a < gap[1] && e > gap[0];
-    const col = (s0: number, s1: number, off: number, colour: Rgb, hMax = 9, tilt = 0, mat: MatRef = "concrete"): boolean => {
+    const col = (s0: number, s1: number, rank: number, colour: Rgb, hMax = 9, tilt = 0, mat: MatRef = "concrete"): boolean => {
       if (gap !== null && inGap(s0, s1)) {
         // Cut at the door: what is left of it on either side.
         let any = false;
-        if (gap[0] - s0 > 0.1) any = col(s0, gap[0], off, colour, hMax, tilt, mat) || any;
-        if (s1 - gap[1] > 0.1) any = col(gap[1], s1, off, colour, hMax, tilt, mat) || any;
+        if (gap[0] - s0 > 0.1) any = col(s0, gap[0], rank, colour, hMax, tilt, mat) || any;
+        if (s1 - gap[1] > 0.1) any = col(gap[1], s1, rank, colour, hMax, tilt, mat) || any;
         return any;
       }
       const ya = groundAt(g, w, s0) - 0.03;
@@ -154,7 +158,8 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       void t0;
       // At the wall's foot it sees the sky the wall sees there (`skyShade.ts`): darkest at the ground.
       const sky = h.shade[k];
-      out.poly([wat(w, s0, ya, off), wat(w, s1, yb, off), wat(w, s1, tb, off), wat(w, s0, ta, off)], [w.nx, 0, w.nz], colour, sky === undefined ? mat : typeof mat === "string" ? { mat, shade: sky } : { ...mat, shade: sky });
+      const off = lie(rank);
+      out.poly([wat(w, s0, ya, off), wat(w, s1, yb, off), wat(w, s1, tb, off), wat(w, s0, ta, off)], [w.nx, 0, w.nz], colour, sky === undefined ? mat : typeof mat === "string" ? { mat, shade: sky } : { ...mat, shade: sky }, { paint: rank });
       return true;
     };
     // The tops over the ground at both feet: at least this, or the wall's foundation does not show here at all.
@@ -167,7 +172,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
     }
     if (kind === "pier") {
       // The skirt: a dark gap over the whole wall, boards on it, none quite level, one gone on a house that has been let go.
-      col(-0.05, w.length + 0.05, Lk.base, DARK, 9, 0, "soil");
+      col(-0.05, w.length + 0.05, L.base, DARK, 9, 0, "soil");
       let missing = false;
       for (let i = 0; i + 1 < stretches.length; i++) {
         const s0 = (stretches[i] as number) + 0.02 + 0.03 * hash01(key, 1200 + i);
@@ -178,7 +183,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
           continue;
         }
         const tone = 0.6 + 0.5 * hash01(key, 1500 + i);
-        col(s0, s1, Lk.line, scaled(WOOD, tone), Math.max(0.12, exposed(s0) - 0.14 * hash01(key, 1650 + i)), 0.12 * (hash01(key, 1600 + i) - 0.5), "wood");
+        col(s0, s1, L.line, scaled(WOOD, tone), Math.max(0.12, exposed(s0) - 0.14 * hash01(key, 1650 + i)), 0.12 * (hash01(key, 1600 + i) - 0.5), "wood");
       }
       void exposed;
     } else {
@@ -188,7 +193,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
         const s1 = stretches[i + 1] as number;
         const tone = kind === "brick" ? 0.8 + 0.4 * hash01(key, 1700 + i) : 0.84 + 0.26 * hash01(key, 1700 + i);
         const tint: Rgb = [base[0] * tone * (0.96 + 0.08 * hash01(key, 1750 + i)), base[1] * tone, base[2] * tone * (0.94 + 0.1 * hash01(key, 1760 + i))];
-        col(s0, s1, Lk.base, tint, 9, 0, kind === "brick" ? "brick" : kind === "block" ? "formed" : "concrete");
+        col(s0, s1, L.base, tint, 9, 0, kind === "brick" ? "brick" : kind === "block" ? "formed" : "concrete");
       }
       // Courses and form lines: thin dark lines along the whole wall, in runs with gaps, each at its own height over the ground.
       const lineColour = scaled(base, kind === "brick" ? 1.9 : 0.55);
@@ -204,7 +209,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
           const y0a = groundAt(g, w, a) + 0.1 + 0.15 * c + 0.012 * hash01(key + c, 2050 + i);
           const y0b = groundAt(g, w, s1) + 0.1 + 0.15 * c + 0.012 * hash01(key + c, 2060 + i);
           if (y0a + 0.02 > top || y0b + 0.02 > top || inGap(a, s1)) continue;
-          out.poly([wat(w, a, y0a, Lk.line), wat(w, s1, y0b, Lk.line), wat(w, s1, y0b + 0.014, Lk.line), wat(w, a, y0a + 0.014, Lk.line)], [w.nx, 0, w.nz], lineColour, "brick");
+          out.poly([wat(w, a, y0a, lie(L.line)), wat(w, s1, y0b, lie(L.line)), wat(w, s1, y0b + 0.014, lie(L.line)), wat(w, a, y0a + 0.014, lie(L.line))], [w.nx, 0, w.nz], lineColour, "brick", { paint: L.line });
         }
       }
       if (kind === "concrete" && hash01(key, 2100) < 0.55) {
@@ -215,7 +220,7 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
           const ds = (hash01(key, 2110 + i) - 0.5) * 0.14;
           const dy = 0.05 + 0.04 * hash01(key, 2120 + i);
           if (y - dy < groundAt(g, w, s) + 0.02 || inGap(s - 0.1, s + 0.1)) break;
-          out.poly([wat(w, s, y, Lk.line), wat(w, s + ds, y - dy, Lk.line), wat(w, s + ds + 0.012, y - dy, Lk.line), wat(w, s + 0.012, y, Lk.line)], [w.nx, 0, w.nz], [0.05, 0.05, 0.05], "concrete");
+          out.poly([wat(w, s, y, lie(L.line)), wat(w, s + ds, y - dy, lie(L.line)), wat(w, s + ds + 0.012, y - dy, lie(L.line)), wat(w, s + 0.012, y, lie(L.line))], [w.nx, 0, w.nz], [0.05, 0.05, 0.05], "concrete", { paint: L.line });
           s += ds;
           y -= dy;
         }
@@ -224,19 +229,19 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
         // A vent: a dark grille a hand above the ground.
         const vs = w.length * (0.2 + 0.6 * hash01(key, 2200));
         const g0 = groundAt(g, w, vs);
-        if (top - g0 > 0.35 && !inGap(vs, vs + 0.4)) out.poly([wat(w, vs, g0 + 0.17, Lk.line), wat(w, vs + 0.4, g0 + 0.17, Lk.line), wat(w, vs + 0.4, g0 + 0.33, Lk.line), wat(w, vs, g0 + 0.33, Lk.line)], [w.nx, 0, w.nz], [0.04, 0.04, 0.04], "steel");
+        if (top - g0 > 0.35 && !inGap(vs, vs + 0.4)) out.poly([wat(w, vs, g0 + 0.17, lie(L.line)), wat(w, vs + 0.4, g0 + 0.17, lie(L.line)), wat(w, vs + 0.4, g0 + 0.33, lie(L.line)), wat(w, vs, g0 + 0.33, lie(L.line))], [w.nx, 0, w.nz], [0.04, 0.04, 0.04], "steel", { paint: L.line });
       }
     }
     // Algae climbs the foundation in uneven columns on the shaded walls and the neglected, and the splash of mud goes up from the ground, higher in some places than others.
     const algae = clamp01((north ? 0.5 : 0.1) + 0.35 * neg);
     for (let s = 0, i = 0; s < w.length - 0.1; i++) {
       const s1 = Math.min(w.length, s + 1.4 + 1.4 * hash01(key, 2300 + i));
-      if (hash01(key, 2350 + i) < algae) col(s, s1, Lk.algae, scaled([0.2, 0.28, 0.13], 0.7 + 0.5 * hash01(key, 2360 + i)), 0.1 + 0.95 * hash01(key, 2370 + i) * (0.45 + 0.55 * algae), 0, "plant");
+      if (hash01(key, 2350 + i) < algae) col(s, s1, L.algae, scaled([0.2, 0.28, 0.13], 0.7 + 0.5 * hash01(key, 2360 + i)), 0.1 + 0.95 * hash01(key, 2370 + i) * (0.45 + 0.55 * algae), 0, "plant");
       s = s1;
     }
     for (let s = 0, i = 0; s < w.length - 0.1; i++) {
       const s1 = Math.min(w.length, s + 0.9 + 1.4 * hash01(key, 2400 + i));
-      if (hash01(key, 2430 + i) < 0.5) col(s, s1, Lk.mud, scaled([0.14, 0.12, 0.1], 0.7 + 0.5 * hash01(key, 2410 + i)), 0.06 + 0.3 * hash01(key, 2420 + i) * (0.6 + 0.9 * neg), 0, "soil");
+      if (hash01(key, 2430 + i) < 0.5) col(s, s1, L.mud, scaled([0.14, 0.12, 0.1], 0.7 + 0.5 * hash01(key, 2410 + i)), 0.06 + 0.3 * hash01(key, 2420 + i) * (0.6 + 0.9 * neg), 0, "soil");
       s = s1;
     }
   });
@@ -250,8 +255,8 @@ function foundation(g: TownGround, h: HouseSeam, out: MeshBuilder, neg: number):
       const y0 = g0 + 0.03;
       const y1 = y0 + 0.4;
       h.occupied.push({ k: hk, s0: s - 0.3, s1: s + 0.95 });
-      // Beyond the mud and algae columns, so as its own layer: 3 cm further out.
-      const o = (h.foundOff[hk] as number) + 0.15;
+      // A real frame and door over the foundation's paint, so as its own layer: 3 cm and then 6 cm off the foundation's face.
+      const o = (h.foundOff[hk] as number) + HATCH_OFF;
       out.poly([wat(w, s - 0.04, y0 - 0.04, o), wat(w, s + 0.64, y0 - 0.04, o), wat(w, s + 0.64, y1 + 0.04, o), wat(w, s - 0.04, y1 + 0.04, o)], [w.nx, 0, w.nz], [0.34, 0.33, 0.3], "painted");
       out.poly([wat(w, s, y0, o + 0.03), wat(w, s + 0.6, y0, o + 0.03), wat(w, s + 0.6, y1, o + 0.03), wat(w, s, y1, o + 0.03)], [w.nx, 0, w.nz], [0.2, 0.17, 0.12], "boards");
     }
