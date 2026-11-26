@@ -21,7 +21,7 @@ import { accentOf, blockOfLot } from "./accents.js";
 import { cutWall, doorIn, pairedDoors, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { planFront } from "./frontGeometry.js";
 import type { Xf } from "./roomGeometry.js";
-import { drawWindow, type WinCtx } from "./windowGeometry.js";
+import { drawWindow, isMasonry, type WinCtx } from "./windowGeometry.js";
 import { NEVER_CODE, PORCH, PORCH_GLOW, isHome, looseWindowCode, porchCode, windowCodes } from "./windowNight.js";
 import type { Detail, FillReport, TownGround } from "./townTypes.js";
 import type { Surface } from "./townSurface.js";
@@ -128,7 +128,7 @@ export function planWalls(c: PlanCtx): WallPlan[] {
   const storeys = Math.max(1, b.storeys);
   const fh = (wallTop - floorY) / storeys;
   const old = b.era < 1940;
-  const ctxW: WinCtx = { ...(c.report === undefined ? {} : { report: c.report }), out, glass, detail, id: b.id, era: b.era, surface: c.surfaceOf, trim: old ? [0.55, 0.52, 0.46] : [0.68, 0.68, 0.65], wall: c.wall };
+  const ctxW: WinCtx = { ...(c.report === undefined ? {} : { report: c.report }), out, glass, detail, id: b.id, era: b.era, surface: c.surfaceOf, trim: old ? [0.55, 0.52, 0.46] : [0.68, 0.68, 0.65], wall: c.wall, masonry: isMasonry(b.material) };
   const front = walls[c.frontAt] as WallRef;
   const groundAt = (w: WallRef, s: number): number => c.g.heightAt(w.ax + w.tx * s, w.az + w.tz * s);
   const units = use !== undefined && use.units.length > 0 && c.xf !== null;
@@ -230,7 +230,7 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
       if (church) pairedDoors(out, w, hole, 0.16, col, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
       else {
         // The leaf fills its hole, and the reveal runs to it: nothing is seen round a door or past it.
-        const o = doorIn(out, w, hole, 0.16, col, "boards", scaled(c.wall, 0.8), [0.4, 0.4, 0.38], undefined, ctxW.trim);
+        const o = doorIn(out, w, hole, 0.16, col, "boards", scaled(c.wall, 0.8), [0.4, 0.4, 0.38], undefined, ctxW.trim, ctxW.detail === "full");
         // A panel below, and a light above it: glass over a blind or the dark of the hall, so nothing is seen through it.
         wquad(out, w, hole.s0 + 0.15, hole.y0 + 0.2, hole.s1 - 0.15, hole.y0 + 0.85, o + 0.03, scaled(col, 0.82), "boards");
         const blind = hash01(b.id, 487) < 0.5;
@@ -366,7 +366,7 @@ function houseWindows(c: PlanCtx, plans: WallPlan[], blocked: boolean[], ctxW: W
       const col = other ? pickOf([[0.45, 0.45, 0.43], [0.62, 0.62, 0.6], [0.2, 0.25, 0.3]] as readonly Rgb[], b.id, 492) : doorColour(c, b.id, 493);
       // The leaf fills its hole, and the reveal runs to it: nothing is seen round the door or past it. A later owner's door is painted steel; the house's own is boards.
       const leafMat = other ? "painted" : "boards";
-      const o = doorIn(out, w, hole, 0.1, col, leafMat, scaled(c.wall, 0.8), [0.4, 0.38, 0.34], undefined, ctxW.trim);
+      const o = doorIn(out, w, hole, 0.1, col, leafMat, scaled(c.wall, 0.8), [0.4, 0.38, 0.34], undefined, ctxW.trim, ctxW.detail === "full");
       wquad(out, w, hole.s0 + 0.12, hole.y0 + 0.2, hole.s1 - 0.12, hole.y0 + 0.9, o + 0.03, scaled(col, 0.72), leafMat);
       if (other) wquad(out, w, hole.s0 + 0.12, hole.y0 + 1.2, hole.s1 - 0.12, hole.y0 + 1.9, o + 0.03, scaled(col, 0.72), leafMat);
       else {
