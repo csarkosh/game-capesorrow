@@ -32,3 +32,12 @@ export const paintOff = (rank: number): number => PAINT_STEP * rank;
  * turns with the door that stands where it does. The paint's depth step it would get is taken back there.
  */
 export const DOOR_ALPHA = 0.02;
+
+/**
+ * The alpha a vertex of a thing a car knocks down carries (`meshBuilder.ts`, `withKnock`): between a door's leaf's and the least a rank of paint has
+ * (1/16), so the vertex stage knows it falls with the thing that stands where it does (`townMaterial.ts`, `KNOCK_VERTEX`). Such a vertex carries no
+ * paint: what these things are made of is told apart in space.
+ */
+export const KNOCK_ALPHA = 0.05;
+/** The band of alpha that is a knocked thing's: over a leaf's, under every paint's. */
+export const KNOCK_OVER = 0.04, KNOCK_UNDER = 0.058;

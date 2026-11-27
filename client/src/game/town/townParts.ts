@@ -60,7 +60,13 @@ import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { MAX_DOORS, RANK_UNITS, emptyTownReady, townSurfacePlugin, writeDoors, writeLamps, type TownReady } from "./townMaterial.js";
+import { MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady } from "./townMaterial.js";
+import { fallenBy, knockMoves, newKnocked, stepKnocked } from "./knocked.js";
+import { MARKS_MOST, markMatrices, newStruck, rockOf, shoveMove, stepStruck, struckMoves, struckSolids } from "./struck.js";
+import { createDamageParts, type DamageParts } from "./damageParts.js";
+import type { CarPose } from "../car/carPose.js";
+import type { Vehicle } from "../../sim/town/types.js";
+import { knockablesFor } from "../../sim/town/knockables.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
 import { daylightAt, litGainAt } from "../../look.js";
@@ -216,6 +222,51 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   };
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
   let shownHour = 12;
+  // What the cars have knocked down and is not standing now (`knocked.ts`), what they have struck that does not give way (`struck.ts`: the marks left
+  // and the things shoved), the cars both are worked out from, and whether anything was written moved last frame.
+  const knocked = newKnocked();
+  const struck = newStruck();
+  const knockCars: CarPose[] = [];
+  const knockList: KnockMove[] = [];
+  let knockedDown = false;
+  // The marks of damage, drawn (`damageParts.ts`), and the parked vehicles drawn moved as models last frame, to be put back when their shove is over.
+  let damage: DamageParts | null = null;
+  const markBuffer = new Float32Array(MARKS_MOST * 16);
+  const shoveMatrix = new Float32Array(16);
+  let movedModels: Vehicle[] = [];
+  let movedNow: Vehicle[] = [];
+  /** The things the frame's cars run into go down or are shoved and marked, the ones whose time is up are put back, and the vertex stage, the vehicles' models and the marks are told. */
+  const layDown = (cars: readonly Car[], dt: number): void => {
+    if (ready === null || drawnGround === null || car === null) return;
+    knockCars.length = 0;
+    for (const c of cars) {
+      const p = car.pose(c.id);
+      if (p !== null) knockCars.push(p);
+    }
+    const ground = drawnGround;
+    const solids = struckSolids(worldSeed);
+    stepKnocked(knocked, knockablesFor(worldSeed), knockCars, dt, (k) => ground(k.x, k.z));
+    stepStruck(struck, solids, knockCars, dt);
+    // A parked vehicle that is a model is moved by its own matrix; one that is part of the town's batches, and a dumpster, by the vertex stage.
+    movedNow.length = 0;
+    for (const s of struck.shoves) {
+      const solid = solids[s.solid];
+      if (solid === undefined || solid.vehicle === null || vehicles === null) continue;
+      vehicles.moved(solid.vehicle, knockMatrix(shoveMove(s, solid), shoveMatrix));
+      movedNow.push(solid.vehicle);
+    }
+    for (const v of movedModels) if (!movedNow.includes(v)) vehicles?.moved(v, null);
+    const spare = movedModels;
+    movedModels = movedNow;
+    movedNow = spare;
+    damage?.frame(markBuffer, markMatrices(struck, solids, markBuffer));
+    const moving = knocked.list.length > 0 || struck.shoves.length > 0;
+    if (!moving && !knockedDown) return;
+    knockList.length = 0;
+    writeKnocked(ready, struckMoves(struck, solids, knockMoves(knocked, knockList)));
+    knockedDown = moving;
+    for (const m of textured) markMaterialUboDirty(m);
+  };
   let ready: TownReady | null = null;
   // Every lamp the town has (once the town's plan is known), the nearest lit ones to the eye as the materials were last written, and where the eye and the hour then were.
   let lamps: readonly Lamp[] = [];
@@ -379,7 +430,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
 
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
-      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null) });
+      damage = createDamageParts({ engine, scene, air, ahead });
+      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
       const plan = ground.plan;
       inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads });
       lamps = lampSites(ground);
@@ -497,6 +549,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const me = state.players.get(localId) as { ride?: Ride } | undefined;
       const driven = me?.ride?.phase === SEATED && me.ride.seat === 0 ? me.ride.car : 0;
       car?.frame((state as { cars?: readonly Car[] }).cars ?? NO_CARS, state.tick, alpha, dt, driven);
+      layDown(held.cars, dt);
       // Where the local player is by the rooms: the room is built or let go, the people and the town follow.
       const by = (me as { inside?: Inside } | undefined)?.inside;
       inside?.frame(by);
@@ -638,6 +691,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       shownSeat = 0;
       viewKeys.dispose();
       cineOn = false;
+      knocked.list.length = 0;
+      struck.marks.length = 0;
+      struck.shoves.length = 0;
+      struck.seen.length = 0;
+      movedModels.length = 0;
+      damage?.dispose();
+      damage = null;
+      knockedDown = false;
       drawnGround = null;
       held.cars = NO_CARS;
       held.players = new Map();

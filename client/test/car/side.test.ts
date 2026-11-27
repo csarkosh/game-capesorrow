@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../../src/game/words.js";
-import { CAR_COMMANDS, NO_ROOM_AFTER, NO_ROOM_SHOWN, createCapeSide, lineFor, litBy, newClickWatch, promptFor, promptShown, watchClick } from "../../src/game/car/side.js";
+import { CAR_COMMANDS, NO_ROOM_AFTER, NO_ROOM_SHOWN, createCapeSide, knockLoudness, lineFor, litBy, newClickWatch, promptFor, promptShown, watchClick } from "../../src/game/car/side.js";
+import { knockablesFor, type Knockable } from "../../src/sim/town/knockables.js";
 import { WALK_SIDE } from "../../src/game.js";
 import { carVoice } from "../../src/game/car/carSound.js";
 import { voiceShown } from "../../src/game/car/side.js";
@@ -331,6 +332,29 @@ describe("the car's half of a session", () => {
       side.afterSync(undefined as never, at(14, [car({ speed: 0, x: 400, z: 400 })], [me]), 7, me, null);
       expect(said.thuds).toEqual([]);
     }, timeLimit(60_000));
+
+    it("thuds when a moving car comes to touch a thing that gives way, once, louder the faster it goes, and not for a car that stands on it", () => {
+      // With no world handed in, the town is the state's own seed's (1, in these states).
+      const sign = knockablesFor(1).list.find((k) => k.kind === "stop") as Knockable;
+      const { host, said } = pageHost(false);
+      const side = createCapeSide(host, WALK_SIDE);
+      const me = walker(sign.x, sign.z);
+      // Coming at the post along +z, 4 m short of it: nothing yet.
+      side.afterSync(undefined as never, at(10, [car({ x: sign.x, z: sign.z - 4, speed: 8 })], [me]), 7, me, null);
+      expect(said.thuds).toEqual([]);
+      // On it: heard, as loud as its speed makes it, at no distance.
+      side.afterSync(undefined as never, at(11, [car({ x: sign.x, z: sign.z - 2, speed: 8 })], [me]), 7, me, null);
+      expect(said.thuds).toEqual([knockLoudness(8)]);
+      // Still on it, and going on: nothing more.
+      side.afterSync(undefined as never, at(12, [car({ x: sign.x, z: sign.z - 1, speed: 8 })], [me]), 7, me, null);
+      side.afterSync(undefined as never, at(13, [car({ x: sign.x, z: sign.z + 6, speed: 8 })], [me]), 7, me, null);
+      expect(said.thuds).toHaveLength(1);
+      // Rolled on to it at a crawl: no hit.
+      side.afterSync(undefined as never, at(14, [car({ x: sign.x, z: sign.z + 2, speed: -0.3 })], [me]), 7, me, null);
+      expect(said.thuds).toHaveLength(1);
+      expect(knockLoudness(20)).toBeGreaterThan(knockLoudness(2));
+      expect(knockLoudness(200)).toBe(1);
+    }, timeLimit(120_000));
 
     it("does not thud on a car out of earshot, and softens one far off", () => {
       const { host, said } = pageHost(false);

@@ -444,6 +444,78 @@ the town's own `constrain` (the props, then the walls) puts them out of whatever
 pushed out before walls: a walker pinned by a moving car against a wall ends the tick outside the wall. A car is not
 stopped by a walker.
 
+### What gives way
+
+Some of what stands in the town is not a wall to the car: the signs at the junctions (STOP, DEAD END, PAVEMENT ENDS and
+the street-name blades, but not the sign on a planter), a sidewalk's trash cans that stand, its newspaper boxes, its
+sign posts and its benches, the wheeled carts that stand, the drums, the stacks of pallets, and the mailboxes, on a
+post or in a cluster. `knockablesFor(seed)` (`sim/town/knockables.ts`) lists them for a town, each a point in the world
+with a radius (0.1 to 0.34 m) or, for the long ones (a bench, a stack of pallets, a cluster of mailboxes), the oriented
+box the props' solids hold of it, and a place in the list that is its id, in a fixed order (the signs, then the
+furniture, the bins and the mailboxes, each in the plan's order), with a grid of 16 m cells over them. Where the
+junctions' signs stand is one list, `junctionSigns` (`sim/town/junctionSigns.ts`), that the drawing builds each sign
+from and the knockables are read from, so the two cannot disagree. A hydrant, a planter, a dumpster, a parked vehicle,
+a utility pole and everything larger stop the car as before.
+
+The car is not pushed out of one. The carts, drums, pallets, benches and mailboxes are boxes of the props' solids, which
+a walker is still held out of; the car's own grid of solids (`carPropSolids`, `propSolid.ts`) leaves them out. On the
+tick the car's body (its rectangle, against a round thing's circle or a long thing's box) comes to touch one it did not
+touch as the tick began, and the car is going 0.5 m/s or more over the ground, it is slowed (`knockCar`,
+`sim/car/knock.ts`, the last thing `driveCar` does before it stands the car on the ground): it keeps a share of its
+speed and loses a little more, along its heading and across it alike, so a hit throws its line no way but back.
+
+| What | Share of the speed taken | And then (m/s) |
+|---|---|---|
+| a bench | 0.18 | 0.9 |
+| a cluster of mailboxes | 0.15 | 0.8 |
+| a stack of pallets | 0.14 | 0.7 |
+| a junction's sign | 0.12 | 0.6 |
+| a sidewalk's sign post, a newspaper box, a drum | 0.10 | 0.5 |
+| a mailbox on a post | 0.08 | 0.4 |
+| a trash can | 0.06 | 0.3 |
+| a wheeled cart | 0.05 | 0.25 |
+
+The rule keeps nothing. The hit is read from the car as the tick found it and as the tick leaves it, so `driveCar` is
+still a pure function of the world's seed and the car, the same on the host, in a client's prediction and in its
+replay, and nothing was added to the wire. What it does not keep is whether the thing still stands: a car that comes
+back over what it knocked down is slowed again.
+
+That the thing lies down is the drawing's (`game/town/knocked.ts`), worked out each frame on each screen from the cars
+as they are drawn: a thing a moving car's body touches goes down away from the car (along its velocity, turned outward
+by the side of the car it was met on), tipping over its own edge in 0.42 s (a long thing over whichever of its edges is
+toward the fall), lies for 12 s, and stands back up over 0.9 s, but not while a car is on it. No more than eight are
+down at once; one more, and the one that has lain longest stands at once. A hit is heard as a thud, louder the faster
+the car (`side.ts`).
+
+### What is struck
+
+A building, a dumpster and a parked vehicle stop the car as they always did, and the simulation keeps nothing of the
+blow. What is left to see is the drawing's (`game/town/struck.ts`), worked out each frame on each screen as what is
+knocked down is. A car that loses more speed over the ground than its brakes could take (22 m/s^2), while one of its
+three circles is within 0.15 m of a solid's face that it was moving into, has struck it; a stop that is drawn over two
+frames or three is added up and lands once, as hard as the whole of it, and under 0.6 m/s lost is no blow.
+
+- **A mark.** Where the car touched, 0.55 m over the ground its wheels stand on and 3 cm off the face, a mark of damage
+  is left: a dark bruise with pale cracks running out of it, the pale scrape of the bumper across it and a scatter of
+  pale chips, 0.9 m across for the least blow to 1.8 m for 8 m/s lost. It lasts 25 s and then closes up over 1.5 s; no
+  more than sixteen show at once. The marks are one small see-through mesh drawn as thin instances
+  (`game/town/damageParts.ts`), each laid flat on the face that was struck.
+- **A shove.** A dumpster or a parked vehicle is also moved: slid the way the car was going, 2 cm for each m/s lost, no
+  more than 12 cm in a blow and 30 cm in all, and rocked, leaning away from the blow by up to 4 degrees and back, dying
+  out in about a second. It stays where it was pushed for 25 s and is then eased back over 2 s to where the world has
+  it, since the simulation's box of it never moved. The marks on it move with it. No more than four are shoved at once.
+
+### How the town's batches move
+
+The things that give way, the dumpsters and the parked vehicles that are built as geometry are part of the town's
+batches, which are not rebuilt. As a door's leaf is, each is laid with a tag in its vertices' colour alpha (`withKnock`,
+`KNOCK_ALPHA` 0.05, between a leaf's and the least a rank of paint has), and the town's vertex stage (`KNOCK_VERTEX`,
+`townMaterial.ts`) moves a tagged vertex that stands in a moved thing's box: it is turned about the horizontal line
+through the edge the thing leans over, at the ground, and then slid, by uniforms the frame writes (`writeKnocked`: up to
+twelve things, a knocked one's fall or a shoved one's rock and slide). `knockMatrix` is the same arithmetic as a matrix,
+for what the stage does not draw: a parked vehicle that is a model is drawn moved by its own instance matrix
+(`VehicleParts.moved`), and a mark on a shoved thing is carried by it.
+
 ### Seats, doors, getting in and out
 
 A door is the place 0.5 m outside the body beside a seat (`sim/car/seats.ts`); a walker within 1.2 m of one can use it.
@@ -563,7 +635,7 @@ can say it, and a joined player is told so.
 ### For measuring tools
 
 While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with copies, never the game's own records:
-`cars()` (each car as it was drawn), `self()` (the local player and ride), `camera()` (with the cinematic shot held, 0 for the chase), `doors(id)`, `prompt()`, `lamp()`
+`cars()` (each car as it was drawn), `self()` (the local player and ride), `camera()` (with the cinematic shot held, 0 for the chase), `knocked()` (the things this screen draws lying knocked down now, each with the angle it has fallen by and how long ago it was hit), `struck()` (the blows so far, the marks of damage that show and the things that stand shoved), `doors(id)`, `prompt()`, `lamp()`
 (the one lamp as the last frame wrote it) and `sound()`.
 
 ### The car's limits
@@ -577,6 +649,18 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
   slide at full lock, the handbrake's throw, the recovery), and driven only at the 10 m/s the cap allows.
 - The view's keys (C and V) are the keyboard's: a touch player has no look behind and no cinematic view.
 - A wall met at a steep angle stops the car until it is steered or reversed; no hit turns the car.
+- What a car knocks down, shoves or marks is drawn by each screen from what it sees: it is not in the world's state, so
+  a player who joins later sees it as it was built, a walker is not stopped by a fallen sign or can (and is still
+  stopped by a fallen cart, bench or mailbox, as by a standing one), and the car is slowed again by a thing it runs
+  over while it lies there. A renderer that is made again (a window resized) stands everything up and clears the marks.
+- A thing falls as one stiff piece and lies where it fell: nothing rolls, bends, breaks apart or is carried along by
+  the car. Two things that stand within one another's box move together (under one tagged vertex in twenty-five is in
+  two boxes: a cart against a parked car, a can beside a bench).
+- A shoved dumpster or vehicle is moved on the screen only: the box the car is stopped by stays where the world has it,
+  up to 30 cm from what is drawn, until the thing is eased back.
+- A mark is flat, on the box of what was struck: on a vehicle it stands a little off a curved body, and on a wall it
+  may lie over a window or a door as over brick. Trees, utility poles, fences and the harbour's rails take no mark.
+- On the low tier a newspaper box and a sidewalk's sign post are not drawn, and still slow the car.
 - The camera's sweep treats a building as a column to the sky and a prop's box as a column 4 m over the ground (they
   carry no heights), so a low bin or wall pulls it in as a tall one would.
 - There is one lamp: only the local player's own car lights the road for that player, and the lights of other cars are

@@ -3,6 +3,9 @@
  * frame: vehicles, trailers, fence runs, poles, bins, mailboxes, the heavy gear) in the world, on the same grid and pushed out of by
  * the same rule, with the same hull. A parked vehicle the ground cannot hold (`parked.ts`) has no box. Called from `townConstrain`, in its passes. A box is a column from the ground to the sky, like a building.
  *
+ * A car is held out of the same boxes but those of the things it knocks down (`knockables.ts`: a cart, a drum, a mailbox on a post), which
+ * a walker is still held out of: `carPropSolids` is the grid without them.
+ *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only; the cache is only a lookup.
  */
 import { gridOf, pushOut, SOLID_CELL, STRIDE, type TownSolids } from "./solid.js";
@@ -10,19 +13,45 @@ import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
 import { absentVehicles, isVehicleBox } from "./parked.js";
+import { isKnockableBox, knockablesFor } from "./knockables.js";
+import type { Box } from "./types.js";
 
 type PropGrid = Omit<TownSolids, "ids"> & { readonly full: TownSolids };
 
 const SOLIDS = new Map<number, PropGrid>();
+const CAR_SOLIDS = new Map<number, PropGrid>();
 
 /** The props' solids of a world seed's town, made once. */
 export function propSolids(worldSeed: number): PropGrid {
   let made = SOLIDS.get(worldSeed);
   if (made === undefined) {
+    made = gridFor(worldSeed, standingBoxes(worldSeed));
+    SOLIDS.set(worldSeed, made);
+  }
+  return made;
+}
+
+/** The props' solids a car is held out of, made once: all of them but the boxes of what it knocks down. */
+export function carPropSolids(worldSeed: number): PropGrid {
+  let made = CAR_SOLIDS.get(worldSeed);
+  if (made === undefined) {
+    const knocked = knockablesFor(worldSeed).list;
+    made = gridFor(worldSeed, standingBoxes(worldSeed).filter((b) => !isKnockableBox(b, knocked)));
+    CAR_SOLIDS.set(worldSeed, made);
+  }
+  return made;
+}
+
+/** The plan's solid boxes that are in the world: a parked vehicle the ground cannot hold is not (`parked.ts`), and neither is its box. */
+function standingBoxes(worldSeed: number): Box[] {
+  const absent = absentVehicles(worldSeed);
+  return planFor(worldSeed).props.solids.filter((b) => !absent.some((v) => isVehicleBox(b, v)));
+}
+
+/** The grid over boxes of the plan's frame, in the world. */
+function gridFor(worldSeed: number, boxes: readonly Box[]): PropGrid {
+  {
     const { anchor } = siteFor(worldSeed);
-    // A parked vehicle the ground cannot hold is not in the world (`parked.ts`), and neither is its box.
-    const absent = absentVehicles(worldSeed);
-    const boxes = planFor(worldSeed).props.solids.filter((b) => !absent.some((v) => isVehicleBox(b, v)));
     const n = boxes.length;
     const rects = new Float64Array(n * STRIDE);
     const lowX = new Float64Array(n);
@@ -48,10 +77,8 @@ export function propSolids(worldSeed: number): PropGrid {
       highZ[i] = cz + ez;
     }
     const grid = gridOf(rects, n, lowX, highX, lowZ, highZ);
-    made = { ...grid, full: { ids: [], ...grid } };
-    SOLIDS.set(worldSeed, made);
+    return { ...grid, full: { ids: [], ...grid } };
   }
-  return made;
 }
 
 /** Moves a hull of `radius` (the player's by default) out of every prop box of its cell it overlaps. Returns whether it moved. */

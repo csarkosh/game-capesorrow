@@ -3,7 +3,8 @@
  * standing layer and, for glass, the blended one) and the tier. A generator, so the engine's scheduler can slice it between props.
  */
 import type { Detail, TownGround } from "../townTypes.js";
-import type { MeshBuilder } from "../meshBuilder.js";
+import { withKnock, type MeshBuilder } from "../meshBuilder.js";
+import { binKnock, furnitureKnock, mailboxKnock } from "../../../sim/town/knockables.js";
 import { bearingU, bearingV } from "../../../sim/town/bearings.js";
 import { standingVehicles } from "../../../sim/town/parked.js";
 import { fenceGeometry, type PostBook } from "./fenceGeometry.js";
@@ -15,6 +16,12 @@ import { binGeometry, gearGeometry, mailboxGeometry } from "./yardPropGeometry.j
 
 type Sink = (x: number, z: number) => MeshBuilder;
 export type PropSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat: Sink; /** The see-through layer of the dark under a vehicle: not on the low tier. */ readonly shade?: Sink };
+
+/** Runs `fn`, tagged as a thing a car knocks down when `knocks`. */
+function tagged(knocks: boolean, fn: () => void): void {
+  if (knocks) withKnock(fn);
+  else fn();
+}
 
 export function* propsGeometry(g: TownGround, sinks: PropSinks, detail: Detail, slice: () => boolean): Generator<void, void, void> {
   const p = g.plan.props;
@@ -56,10 +63,12 @@ export function* propsGeometry(g: TownGround, sinks: PropSinks, detail: Detail, 
     fenceGeometry(g, sinks, f, detail, posts, atWall);
     if (slice()) yield;
   }
-  for (const b of p.bins) binGeometry(g, world.solid, b, detail);
-  for (const mb of p.mailboxes) mailboxGeometry(g, world.solid, mb, detail);
+  // What a car knocks down (`sim/town/knockables.ts`) is laid tagged, so the vertex stage can lay it over.
+  // A dumpster is tagged too: it is not knocked down, but a car that strikes it shoves it (`struck.ts`), by the same stage.
+  for (const b of p.bins) tagged(binKnock(b) !== null || b.kind === "dumpster", () => binGeometry(g, world.solid, b, detail));
+  for (const mb of p.mailboxes) tagged(mailboxKnock(mb) !== null, () => mailboxGeometry(g, world.solid, mb, detail));
   for (const o of p.gear) gearGeometry(g, world.solid, o, detail);
-  for (const o of p.furniture) furnitureGeometry(g, world.solid, o, detail);
+  for (const o of p.furniture) tagged(furnitureKnock(o) !== null, () => furnitureGeometry(g, world.solid, o, detail));
   yield;
   if (detail !== "low") for (const o of p.litter) litterGeometry(g, world.solid, o);
 }
