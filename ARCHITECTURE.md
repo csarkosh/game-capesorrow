@@ -352,7 +352,7 @@ and then the car answers. A new driver, or none, owes nothing.
 ### The state and the ride
 
 A `Car` (`sim/car/types.ts`) holds its place on the wheels' plane (`x`, `y`, `z`), its heading as a unit vector (`hx`,
-`hz`), its speed along the heading and its slip to the right of it, the steering as a tangent, the controls last taken,
+`hz`), its velocity as its speed along the heading and its slip to the right of it, the steering as a tangent, the controls last taken,
 its lights, the steps it owes (`owed`, above) and four seats holding a player's id or 0. Seat 0 is the driver's (front left), 1 the front right, 2 and 3
 the rear.
 
@@ -367,10 +367,29 @@ the wheels' plane.
 top speed, a grip and the slope along the heading). The car is a single-track (bicycle) model. The heading is a unit
 vector turned by adding its right-hand perpendicular times the turn rate and making it a unit vector again, so there is
 no trigonometry and no angle is held; the front wheels' angle is the tangent `steer`, which the driver's turn input sets
-as a target (the lock, 0.625, falls to half at 14 m/s and the wheels turn to it at 2.2 per second and return at 3.5) and
-the turn rate is `speed * steer / WHEELBASE`. When the sideways demand of that turn (`speed * turn rate`) passes the
-grip, the turn is held to what the grip allows and the excess goes into `slip`, which carries the car outward and decays
-at a rate proportional to the surface's grip. The handbrake brakes and leaves 0.35 of the grip.
+as a target (the lock, 0.625, falls to half at 14 m/s over the ground and the wheels turn to it at 2.2 per second and
+return at 3.5) and the turn rate is `speed * steer / WHEELBASE`.
+
+The car's velocity is its own. A turn of the heading leaves the velocity where it pointed (it is taken apart again
+along the new heading and across it), and the tyres then take the sideways part away at the rate the grip allows. While
+the grip can take all of it the car goes where it points, keeps its speed, and `slip` is 0. A turn that asks for more
+sideways acceleration than the grip turns the nose by the grip's share and by 0.16 of the excess (`YAW_FOLLOW`), the
+rear cannot hold that, and the car slides with its nose inside its path: the slide a car is steered into. Four rules
+shape it:
+
+- **Sliding tyres hold less.** The grip falls to 0.8 of itself (`SLIDE_GRIP`) as the slide grows to 3 m/s
+  (`SLIDE_FULL`), and the rear's by a further quarter at full throttle (`POWER_SLIDE`), so a slide is easier to keep
+  than to start and the throttle holds it.
+- **The handbrake lets the rear go.** It leaves the rear 0.35 of its grip, the car pivots on its front wheels (the turn
+  rate is 1.2 times the bicycle's, and the nose follows 0.45 of the excess), and it brakes at 4.5 m/s^2: the car is
+  thrown round, tail out.
+- **The steering helps.** Above 3 m/s forward, and with the handbrake off, the front wheels are turned toward where the
+  car is going by 1.5 times the slide's tangent (the slip over the speed; `COUNTER_STEER`), by no more than a tangent of
+  0.25 and by as much as the ground's grip is of the pavement's. This is what holds a steered-into slide small (about 9
+  degrees at full lock at 10 m/s on pavement, 7 at 20 and 4 at 30), what brings a slide straight when the wheel is let
+  go (within a second and a half of a handbrake turn at any speed), and why the car is looser on gravel.
+- **A slide gives no speed.** The lock is narrowed by the speed over the ground, not along the heading, so a slide that
+  turns the car's speed sideways opens no lock; and with no throttle the speed over the ground only falls.
 
 Along the heading the engine gives up to `ACCEL` (6.7 m/s^2) times the throttle, falling to nothing at the surface's top
 speed; the brake takes 9, a car at rest in reverse gathers 5 m/s^2 to 6 m/s, and rolling resistance 1.2. Over a
@@ -425,7 +444,7 @@ stopped by a walker.
 
 A door is the place 0.5 m outside the body beside a seat (`sim/car/seats.ts`); a walker within 1.2 m of one can use it.
 Getting in takes the driver's seat if it is empty, else the seat of the door used, else nothing, and needs the car under
-2 m/s (`LEAVE_SPEED`) and the walker's feet within 1 m (`DOOR_HEIGHT`) of the car's wheels' plane, so no one gets in from
+2 m/s over the ground, along its heading and sliding across it (`LEAVE_SPEED`, `slowForDoors`), and the walker's feet within 1 m (`DOOR_HEIGHT`) of the car's wheels' plane, so no one gets in from
 under a pier the car stands on, and no one gets in beside a moving car and is carried off from the door (`boardSeat`; the
 line at the door reads the same function, so it offers a seat only where a press would take one). Getting in takes 60
 ticks, getting out 36. Getting out needs the car under 2 m/s and a free place to stand at the seat's own door or the one
@@ -468,7 +487,14 @@ the sedan's nose at the tail, so the car is drawn from the model's vertices turn
 (`halfTurnAboutY`, `carPose.ts`); the manifest's wheel places hold after it. The `tyre` mesh is cut into four wheels by
 the manifest's wheel centres (`splitWheels`), so each rolls with the speed and the front pair turns with the steering.
 The body is stood on the plane fitted through the drawn ground under its four wheels and raised by whatever the worst
-wheel is sunk under it. The car the local player drives is drawn `alpha` of the way between the last two ticks, as the
+wheel is sunk under it. The simulation's car is rigid, and the body that is drawn rides on springs over it
+(`bodySway.ts`): how the car's velocity changed since the last frame is the acceleration the body felt, whose part
+along the heading pitches it (the nose dips under the brake, 2.3 degrees at 9 m/s^2, and lifts under the engine) and
+whose part across rolls it (out of a turn, 4.3 degrees at the pavement's grip), and the rise and fall of the wheels'
+height carries it up and down after them, slower back up than down. The roll and the pitch are underdamped, so a car
+that stops short nods once; a change of velocity too sudden to be the tyres' (over 22 m/s^2) is a hit, and throws the
+body toward what it struck. Only the body's meshes are moved: the wheels and the dark patch stay on the ground, and
+nothing the rules read changes. The car the local player drives is drawn `alpha` of the way between the last two ticks, as the
 eye is, so car and camera move as one; a car further than a jump from its last place is not blended. A dark patch of the
 ground's under the car is a see-through mesh drawn where the town's own dark at the walls' feet is. A model that does
 not load leaves no car drawn and one warning, and the camera follows all the same.
@@ -478,14 +504,34 @@ not load leaves no car drawn and one warning, and the camera follows all the sam
 While the local player is in the car (getting in, seated or getting out) the eye is `stepChase` (`chaseCamera.ts`): a
 chase view 3.25 m behind and 1.95 m over the car at rest, aimed 1.5 m over it, on a point that trails the car at a rate
 and snaps to it where the car jumps. The mouse looks around it; after two seconds without the mouse it eases back behind
-the car. The lens widens with speed. The camera eases between the walker's eye and the chase over how far the player is
+the car. The camera eases between the walker's eye and the chase over how far the player is
 into the seat, which follows the ride's countdown at a bounded rate, so getting in and out is a smooth move and a
 refused leave eases back.
+
+"Behind" is behind where the car is going, part of the way. In a slide the velocity points to one side of the nose, and
+the camera comes round toward it by 0.55 of that angle, so the car is seen turned in the frame and the road it slides
+along stays ahead. A car that has backed for 0.7 s is followed from its nose, looking the way it goes, until it goes
+forward or has stood for 0.6 s. C, held, turns the view half a circle at once. The speed over the ground, as a share of
+the fastest the car goes (`CHASE_FAST`, the lesser of the pavement's top speed and `SPEED_CAP`) and eased over about
+half a second, widens the lens by up to 0.15 rad and stands the camera up to 0.7 m further back. A fall in speed too
+sudden for the brakes (over 22 m/s^2) is a hit and shakes the view for about half a second.
 
 It is stopped short of what it would pass through: a building, a prop's box that is at least 0.6 m across, another car,
 and the drawn ground (a sample of the sweep under the ground, with 0.1 m to spare, is blocked, so a crest between the
 camera and the car pulls it in; and it stays 0.4 m over the ground where it stands). It goes in at once and comes back out at 4 m/s, and never nearer than 1.5 m to
 the aim point.
+
+V switches the cinematic view on and off for a seated player (`cineCamera.ts`, `viewKeys.ts`): a run of shots cut from
+one to the next, with the chase stepped under it so the view comes back to a camera already behind the car. A roadside
+camera stands still ahead of the car (12 m and 1.5 s of its travel, to 60 m), beside its line, low or at head height or
+on a pole, turns to follow it and holds it at one size by its lens (0.3 rad while it is far, to 1 as it passes), until
+the car is 26 m past, out of sight for 0.3 s, or 7 s are up. Between roadside shots come one fixed low beside a front
+wheel looking forward, one from above and behind (which stands only where no building is in the way), and one ahead of
+the car looking back; a car that stands is turned round slowly; and where nothing else stands, a low shot behind the
+car, drawn in as the chase is. Every shot reads the chase's own `blocked`, so none stands in a building, a vehicle or
+the ground and none looks at the car through one. The run is drawn from the count of cuts, so it is the same for the
+same drive. The keys are the screen's own and no part of the command the simulation is sent: they are read only while
+the pointer is locked to the game and not typed into a field, and a touch player has neither.
 
 ### The lamp
 
@@ -497,7 +543,8 @@ switch the lights when the player drives; the button reads lit while the car's l
 ### The sound
 
 `carSound.ts` is the game's part of the engine's audio bus: an engine note (three gears over 0 to 30 m/s), tyre noise
-whose colour follows the surface under the car, a thud when a car's speed falls hard in one tick, and a door when a
+whose colour follows the surface under the car and which rises to its loudest and brightest as the car slides (5 m/s
+sideways), a thud when a car's speed over the ground falls hard in one tick, and a door when a
 player gets in or out, all synthesised, on the bus the page's mute, hush and muffle already reach. The nearest car
 within 80 m that has a driver or is moving is the one heard; a car with nobody at the wheel has tyres and no engine.
 
@@ -512,14 +559,19 @@ can say it, and a joined player is told so.
 ### For measuring tools
 
 While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with copies, never the game's own records:
-`cars()` (each car as it was drawn), `self()` (the local player and ride), `camera()`, `doors(id)`, `prompt()`, `lamp()`
+`cars()` (each car as it was drawn), `self()` (the local player and ride), `camera()` (with the cinematic shot held, 0 for the chase), `doors(id)`, `prompt()`, `lamp()`
 (the one lamp as the last frame wrote it) and `sound()`.
 
 ### The car's limits
 
 - The top speed is held to 10 m/s (`SPEED_CAP`) because the streamed world does not keep up with a faster eye; the
   designed speeds stay in the table for when it does.
-- The car's body is rigid: on a curb it tilts and a wheel can hang in the air; there is no suspension.
+- The car that is simulated is rigid: on a curb it tilts and a wheel can hang in the air. The suspension is drawn
+  only (the body leans and rides over wheels that stay where the rigid car has them), and the wheels do not travel in
+  their arches.
+- The handling was tuned by its numbers at 10, 20 and 30 m/s (`client/test/car/step.test.ts` holds the shape: the small
+  slide at full lock, the handbrake's throw, the recovery), and driven only at the 10 m/s the cap allows.
+- The view's keys (C and V) are the keyboard's: a touch player has no look behind and no cinematic view.
 - A wall met at a steep angle stops the car until it is steered or reversed; no hit turns the car.
 - The camera's sweep treats a building as a column to the sky and a prop's box as a column 4 m over the ground (they
   carry no heights), so a low bin or wall pulls it in as a tall one would.

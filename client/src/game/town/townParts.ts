@@ -48,6 +48,8 @@ import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
 import { townSolids } from "../../sim/town/solid.js";
 import { propSolids } from "../../sim/town/propSolid.js";
 import { BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, newChase, seatStep, seatTarget, stepChase, underGround } from "../car/chaseCamera.js";
+import { NO_SHOT, newCine, stepCine } from "../car/cineCamera.js";
+import { createViewKeys, type KeyTarget } from "../car/viewKeys.js";
 import { peopleFor, personWorld } from "./people.js";
 import { openDowntownUnits, outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleShade } from "./peopleShade.js";
@@ -161,9 +163,16 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   // for each world (this part is made again) and starts over whenever the player is on foot or rides another car; a car that jumps is snapped to.
   const chase = newChase();
   const chaseEye = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
-  const chaseLook = { yaw: 0, pitch: 0 };
+  const chaseLook = { yaw: 0, pitch: 0, behind: false };
   const chaseShot = { fov: 0 as number | null, centre: { x: 0, z: 0 }, coverAtEye: false };
-  const chaseSeen = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 0, seated: 0, pulled: 0 };
+  const chaseSeen = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 0, seated: 0, pulled: 0, shot: NO_SHOT };
+  // The view's own keys (`../car/viewKeys.ts`): C looks behind, V is the cinematic view (`../car/cineCamera.ts`), which is cut to and from and
+  // is the seated player's only: on foot it is off again. The chase is stepped under it all the while, so the view comes back to a camera
+  // that is already behind the car.
+  const viewKeys = createViewKeys(typeof window === "undefined" ? null : (window as unknown as KeyTarget), () => typeof document !== "undefined" && document.pointerLockElement !== null);
+  const cine = newCine();
+  let cineOn = false;
+  const cinePose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
   let chasing = false;
   // The one lamp as the last frame wrote it, for the console's reading (`__capeCar.lamp()`).
   const lampSeen: LampSeen = { on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, angle: 0, range: 0, intensity: 0, r: 0, g: 0, b: 0 };
@@ -491,6 +500,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         chase.started = false;
         chasing = false;
         shownSeat = 0;
+        viewKeys.cineOff();
+        cineOn = false;
         return base.side.shot(seconds, pose, local, state, localId, alpha);
       }
       if (ride.car !== chasedCar) chase.started = false;
@@ -500,8 +511,20 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       Object.assign(chaseEye, pose);
       chaseLook.yaw = local.yaw;
       chaseLook.pitch = local.pitch;
+      chaseLook.behind = viewKeys.behind();
       const widen = stepChase(chase, drawn, chaseLook, seated, dt, blocked, drawnGround, chaseEye, pose);
       chaseShot.fov = host.lens.fov + widen;
+      // The cinematic view, for a player who is in the seat: it begins with a cut and ends with one.
+      const wasCine = cineOn;
+      cineOn = viewKeys.cine() && ride.phase === SEATED && seated >= 1;
+      if (cineOn) {
+        if (!wasCine) cine.shot = NO_SHOT;
+        chaseShot.fov = stepCine(cine, drawn, dt, blocked, drawnGround, cinePose);
+        Object.assign(pose, cinePose);
+      } else if (ride.phase !== SEATED) {
+        viewKeys.cineOff();
+      }
+      chaseSeen.shot = cineOn ? cine.shot : NO_SHOT;
       chaseShot.centre.x = drawn.x;
       chaseShot.centre.z = drawn.z;
       chasing = true;
@@ -599,6 +622,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       chasing = false;
       chase.started = false;
       shownSeat = 0;
+      viewKeys.dispose();
+      cineOn = false;
       drawnGround = null;
       held.cars = NO_CARS;
       held.players = new Map();

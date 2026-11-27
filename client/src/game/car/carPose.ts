@@ -18,12 +18,14 @@ import type { ManifestWheel } from "../town/props/vehicleManifest.js";
 export type CarPose = {
   id: number; x: number; y: number; z: number; hx: number; hz: number;
   /** Sixteen floats, column by column: the body stood on the plane through its four wheels' ground contacts. */
-  matrix: Float32Array; steer: number; speed: number; lights: boolean; driver: number;
+  matrix: Float32Array; steer: number; speed: number;
+  /** Sideways, m/s; positive to the right of the heading. */
+  slip: number; lights: boolean; driver: number;
 };
 
 /** A pose to be filled in place, so a frame allocates none. */
 export function newCarPose(): CarPose {
-  return { id: 0, x: 0, y: 0, z: 0, hx: 1, hz: 0, matrix: new Float32Array(16), steer: 0, speed: 0, lights: false, driver: 0 };
+  return { id: 0, x: 0, y: 0, z: 0, hx: 1, hz: 0, matrix: new Float32Array(16), steer: 0, speed: 0, slip: 0, lights: false, driver: 0 };
 }
 
 /**
@@ -58,6 +60,7 @@ export function carPose(before: Car | null, now: Car, alpha: number, groundAt: (
   out.hz = hz;
   out.steer = from.steer + (now.steer - from.steer) * t;
   out.speed = from.speed + (now.speed - from.speed) * t;
+  out.slip = from.slip + (now.slip - from.slip) * t;
   out.lights = now.lights;
   out.driver = now.seats[0];
   stand(x, z, hx, hz, groundAt, out);

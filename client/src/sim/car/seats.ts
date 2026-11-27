@@ -65,13 +65,18 @@ export function seatFor(car: Car, door: number): number {
   return -1;
 }
 
+/** Whether the car is slow enough for a door to be used: its speed over the ground, along its heading and sliding across it, is under `LEAVE_SPEED`. */
+export function slowForDoors(car: Car): boolean {
+  return car.speed * car.speed + car.slip * car.slip < LEAVE_SPEED * LEAVE_SPEED;
+}
+
 /**
  * The seat a walker whose hull centre is `pos` takes by getting in, or -1: the car must be under `LEAVE_SPEED`, the walker's
  * feet within `DOOR_HEIGHT` of the car's wheels' plane (so not from under a pier the car stands on), and a door within reach
  * with a seat to take. The host's press and the line at the door both read it.
  */
 export function boardSeat(car: Car, pos: { x: number; y: number; z: number }): number {
-  if ((car.speed < 0 ? -car.speed : car.speed) >= LEAVE_SPEED) return -1;
+  if (!slowForDoors(car)) return -1;
   const dy = pos.y - PLAYER_HALF.y - car.y;
   if ((dy < 0 ? -dy : dy) > DOOR_HEIGHT) return -1;
   const door = doorNear(car, pos.x, pos.z);
