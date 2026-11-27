@@ -19,8 +19,8 @@ import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "./sim/car/
 import { GOING_IN, GOING_OUT, INSIDE, newInside, OUTSIDE, type Inside } from "./sim/inside/rooms.js";
 import { WALK_RULES, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
-/** What two ends must share to drive and walk together. */
-export const WALK_PROTOCOL = 3;
+/** What two ends must share to drive and walk together: the wire's layout and the rules the step runs by (the car's speed limit by place is one), so an end with other rules is refused at the welcome. */
+export const WALK_PROTOCOL = 4;
 
 export type WalkMover = SnapshotMover & { pitch: number; ride: Ride; inside: Inside };
 export type WalkSnapshot = { tick: number; lastProcessedInput: number; players: WalkMover[]; cars: Car[] };

@@ -28,8 +28,8 @@ describe("a player's place by the rooms on the wire", () => {
     ];
     const bytes = encodeWalkSnapshot(snapOf(players));
     expect(bytes.byteLength).toBe(HEAD + 4 * MOVER_BYTES + 1);
-    expect(WALK_PROTOCOL).toBe(3);
-    expect(WALK.protocolVersion).toBe(3);
+    expect(WALK_PROTOCOL).toBe(4);
+    expect(WALK.protocolVersion).toBe(4);
     const back = decodeWalkSnapshot(bytes);
     expect(back.players.map((p) => p.inside)).toEqual(players.map((p) => p.inside));
     const v = new DataView(bytes);
