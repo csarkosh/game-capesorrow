@@ -49,10 +49,11 @@ import { townSolids } from "../../sim/town/solid.js";
 import { propSolids } from "../../sim/town/propSolid.js";
 import { BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, newChase, seatStep, seatTarget, stepChase, underGround } from "../car/chaseCamera.js";
 import { peopleFor, personWorld } from "./people.js";
-import { outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
+import { openDowntownUnits, outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleShade } from "./peopleShade.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { heldBy, tradeAt } from "./handHeld.js";
+import { walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
 import { RANK_UNITS, emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
@@ -96,6 +97,9 @@ const LAMP_EYE_STEP = 0.25;
 const LOW_LAMPS = 12;
 
 /** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
+/** How long a slice of the walkers' making runs before the frame is given back (milliseconds). */
+const WALK_SLICE_MS = 4;
+
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
   const lo = [Infinity, Infinity, Infinity];
   const hi = [-Infinity, -Infinity, -Infinity];
@@ -177,6 +181,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   };
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
   let people: PeopleParts | null = null;
+  // The people who walk are made a few milliseconds at a time once the town stands, and shown when they are done (`walkerJob`).
+  let walkerList: readonly Walker[] | null = null;
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
   let shownHour = 12;
   let ready: TownReady | null = null;
@@ -336,10 +342,31 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
         ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
       ];
-      // The soft dark under each person shown (`peopleShade.ts`): one draw, written by the people's part with the set it shows; not on the low tier.
-      const shade = low ? undefined : createPeopleShade({ engine, scene, air, ahead, aheadUnits: SHADE_AHEAD_UNITS, order: SHADE_ORDER + 0.5 }, placed.length);
-      people = createPeopleParts({ engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low, ...(shade === undefined ? {} : { shade }) }, placed);
+      const walkCap = walkCapacity(openDowntownUnits(plan));
+      // The soft dark under each person shown (`peopleShade.ts`): one draw, written by the people's part with the set it shows and each frame for the walkers; not on the low tier.
+      const shade = low ? undefined : createPeopleShade({ engine, scene, air, ahead, aheadUnits: SHADE_AHEAD_UNITS, order: SHADE_ORDER + 0.5 }, placed.length + walkCap);
+      people = createPeopleParts(
+        { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low, ...(shade === undefined ? {} : { shade }) },
+        placed,
+        { cap: walkCap, get: () => walkerList, at: (w, hour) => walkerWorld(ground, w, hour) },
+      );
       people.setHour(shownHour);
+      {
+        const job = walkerJob(plan, ground.anchor);
+        const slice = (): void => {
+          if (disposed) return;
+          const until = performance.now() + WALK_SLICE_MS;
+          while (performance.now() < until) {
+            const step = job.next();
+            if (step.done === true) {
+              walkerList = step.value;
+              return;
+            }
+          }
+          setTimeout(slice, 0);
+        };
+        setTimeout(slice, 0);
+      }
 
       function* build(): Slices {
         const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas, through);

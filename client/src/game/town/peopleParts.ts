@@ -16,7 +16,12 @@
  *   drawn by the engine (`dress` says no); each is given a matrix array of its own here, the same size as the bodies' (a thing's instance k is
  *   body k, since the clip a body plays is read by the instance's index), holding the body's own matrix for a body that holds that thing
  *   (`handHeld.ts`) and a matrix that draws nothing for every other.
- * - **A soft dark under each one shown** (`peopleShade.ts`): written with the set a model shows, in one draw for everyone, and let go with the part.
+* - **Walkers** (`walkers.ts`) are bodies of the same models playing `walk`, after the standers in each model's matrices. Where a walker is is a function of
+ *   the hour alone, so their matrices are written every frame they are shown (a few dozen at most), from an hour that runs on between the day clock's
+ *   pushes by the skin clock's own seconds; their clip floats are written once, when the set shown changes: the clip's rate is the speed over the stride
+ *   the model's file says (`walk` in `people.json`), so that a foot planted on the pavement stays where it is. A walker comes out of a door and goes in at
+ *   one in full view: nothing holds them back at the two ends, and they hold nothing.
+ * - **A soft dark under each one shown** (`peopleShade.ts`): written with the set a model shows, in one draw for everyone, and let go with the part. A walker's is written every frame, with its body, under one key of its own for all of them (`walkers`), and taken away the frame the last one is not shown.
  * - **They wear the town's air, and are darker than the open sky would make them**, since they stand indoors (`dress`).
  */
 import { markMaterialUboDirty, setMeshVisible, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
@@ -24,14 +29,16 @@ import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { loadSkinnedModel, type SkinClock, type SkinnedModel, type SkinnedPart } from "@csarkosh/engine/game/lite/skinnedModels";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
-import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams } from "@csarkosh/engine/game/skinInstances";
+import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams, type BakedClip } from "@csarkosh/engine/game/skinInstances";
 import manifest from "../../../assets/models/people.json" with { type: "json" };
-import { isOpen, type Hours } from "./hours.js";
+import { isOpen, wrapHour, type Hours } from "./hours.js";
 import type { Held } from "./handHeld.js";
+import { HOUR_S } from "../dayClock.js";
 import { PERSON_MODELS, type Activity, type PersonModel, type PersonSeat, type PersonWorld } from "./people.js";
+import { alongAt, pathSpeed, type Walker } from "./walkers.js";
 import type { LampList } from "./lampLight.js";
 import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
-import { personShade, type PeopleShade } from "./peopleShade.js";
+import { personShade, type PeopleShade, type ShadePlace } from "./peopleShade.js";
 
 /** How far from the eye a person is drawn (m), and on the low tier. */
 export const PEOPLE_REACH = 60;
@@ -90,6 +97,15 @@ export type PlacedPerson = { readonly person: Body; readonly at: PersonWorld; re
 /** The things the models carry in a hand, by the name of the primitive's material. */
 export const PROP_MATERIALS: ReadonlyMap<string, Exclude<Held, null>> = new Map([["prop.cup", "cup"], ["prop.phone", "phone"]]);
 
+/** The people who walk: the list, and where each is at an hour (null where not walking). */
+export type Walking = {
+  /** The most walkers at once: each model's batch has room for that many. */
+  readonly cap: number;
+  /** The walkers, or null until they have been made (they are a job of the scheduler's, not wanted on the first frame). */
+  readonly get: () => readonly Walker[] | null;
+  readonly at: (w: Walker, hour: number) => PersonWorld | null;
+};
+
 export type PeopleParts = {
   /** Begins loading the models the people use. Once. */
   begin(): void;
@@ -115,6 +131,14 @@ type Batch = {
   /** For each person, whether they are shown (a person outside keeps what they were until they change out of sight) and whether that has been decided at all. */
   on: Uint8Array;
   decided: Uint8Array;
+  /** The walkers of this model, and which are shown now (indices into `walkers`, in the order written after the standers). */
+  walkers: Walker[];
+  walking: number[];
+  /** For each walker: where in the clip they were (clip seconds) at the clock's run `wat`, the clip rate written, and the 5 percent step of their ground speed it was made for. */
+  wphase: Float64Array;
+  wat: Float64Array;
+  wrate: Float64Array;
+  wbin: Float64Array;
   /** The things in the hand: the primitive and the matrices it is drawn with, one for each body of the model (`capacity`). */
   things: { readonly kind: Exclude<Held, null>; readonly part: SkinnedPart; readonly matrices: Float32Array }[];
 };
@@ -136,12 +160,17 @@ export function mayChange(dx: number, dz: number, d2: number, yaw: number): bool
   return (dx * Math.sin(yaw) + dz * Math.cos(yaw)) / d < Math.cos(OUT_OF_VIEW);
 }
 
-export function createPeopleParts(host: PeoplePartsHost, placed: readonly PlacedPerson[]): PeopleParts {
+export function createPeopleParts(host: PeoplePartsHost, placed: readonly PlacedPerson[], walk: Walking = { cap: 0, get: () => [], at: () => null }): PeopleParts {
   const batches = new Map<PersonModel, Batch>();
   for (const id of PERSON_MODELS) {
     // A chair is not drawn on the low tier, so nobody sits there.
     const people = placed.filter((p) => p.person.model === id && !(host.low && !p.outdoor && p.person.seat !== null));
-    if (people.length > 0) batches.set(id, { id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), things: [] });
+    if (people.length > 0 || walk.cap > 0) {
+      batches.set(id, {
+        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [],
+        wphase: new Float64Array(0), wat: new Float64Array(0), wrate: new Float64Array(0), wbin: new Float64Array(0), things: [],
+      });
+    }
   }
   const loads = new AbortController();
   const missing = new Set<string>();
@@ -156,8 +185,9 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   let began = false;
   let disposed = false;
   let since = PEOPLE_STEP;
-  // The hour of day: nobody is shown in a unit that is shut at it.
+  // The hour of day: nobody is shown in a unit that is shut at it. `hourRun` is the clock's run when it was pushed.
   let hour = 12;
+  let hourRun = 0;
   // The clock's folds when the first model lands (it is not read before then).
   let folds = -1;
   let resolveSettled: () => void = () => undefined;
@@ -177,7 +207,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     pending = batches.size;
     for (const batch of batches.values()) {
       void loadSkinnedModel(host.engine, host.scene, modelUrl(`models/${batch.id}.glb`), {
-        capacity: batch.people.length,
+        capacity: batch.people.length + walk.cap,
         clock: host.clock,
         signal: loads.signal,
         // The material keeps the file's own textures and wears the town's air; indoors, so darker than the sky would light it.
@@ -229,22 +259,88 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     }
   }
 
+  /** The clock's whole run, seconds (the skin clock's, which folds). */
+  const runNow = (): number => host.clock.folds * SKIN_CLOCK_FOLD + host.clock.seconds;
+  /** The hour of day now: the last hour pushed, run on by the clock's own seconds since (the day clock pushes only every hundredth of an hour). */
+  const hourNow = (): number => wrapHour(hour + ((runNow() - hourRun) / HOUR_S));
+  // The walkers: the real seconds of a clip cycle and the metres of a stride the file says, for a model.
+  // `stored` is the seconds of the file's walk clip to a second of the movement it holds: 1 where the other clips hold their movement at `CLIP_STORED`.
+  const walkSpec = (id: PersonModel): { stride: number; stored: number } => {
+    const entry = manifest.people.find((p) => p.id === id);
+    return { stride: entry?.walk.stride_m ?? 1.25, stored: entry?.walk.stored ?? 1 };
+  };
+  // Once the walkers have been made, each model's are taken from the list.
+  let walkersMade = walk.cap === 0;
+  let walkShadeDrawn = false;
+
+  /** Writes a walker's clip floats at the rate that matches their ground speed now (speed x the path's, over the stride and size), from where in the clip they are. */
+  function writeWalker(batch: Batch, model: SkinnedModel, i: number, k: number, clip: BakedClip, spec: { stride: number; stored: number }, now: number): void {
+    const w = batch.walkers[i] as Walker;
+    const run = runNow();
+    const bin = Math.round(pathSpeed(w, Math.max(alongAt(w, now), 0)) * 20) / 20;
+    const rate = (w.speed * bin * spec.stored) / (spec.stride * w.scale);
+    // Where they are in the clip now: from the start (their own offset) at the rate they had until now.
+    const phase = batch.wat[i] === -1 ? w.offset * spec.stored : (batch.wphase[i] as number) + (run - (batch.wat[i] as number)) * (batch.wrate[i] as number);
+    const at = ((phase % clip.seconds) + clip.seconds) % clip.seconds;
+    batch.wphase[i] = at;
+    batch.wat[i] = run;
+    batch.wrate[i] = rate;
+    batch.wbin[i] = bin;
+    model.clipParams[k * 8] = -1;
+    writeClipParams(model.clipParams, k, clip, at, rate, host.clock.seconds, true);
+  }
+
   function step(dt: number): void {
     if (disposed) return;
     since += dt;
     if (folds < 0) folds = host.clock.folds;
     const refold = host.clock.folds !== folds;
     let any = false;
-    if (since >= PEOPLE_STEP || refold) {
+    const standerStep = since >= PEOPLE_STEP || refold;
+    if (standerStep) {
       since = 0;
       folds = host.clock.folds;
-      const eye = host.eye;
-      const reach2 = reach * reach;
-      const outReach2 = outReach * outReach;
-      for (const batch of batches.values()) {
-        const model = batch.model;
-        if (model === null) continue;
-        const next: number[] = [];
+    }
+    const eye = host.eye;
+    const reach2 = reach * reach;
+    const outReach2 = outReach * outReach;
+    const now = hourNow();
+    const walkShade: ShadePlace[] = [];
+    if (!walkersMade) {
+      const list = walk.get();
+      if (list !== null) {
+        walkersMade = true;
+        for (const batch of batches.values()) {
+          batch.walkers = list.filter((w) => w.model === batch.id);
+          batch.wphase = new Float64Array(batch.walkers.length);
+          batch.wat = new Float64Array(batch.walkers.length).fill(-1);
+          batch.wrate = new Float64Array(batch.walkers.length);
+          batch.wbin = new Float64Array(batch.walkers.length).fill(-1);
+        }
+      }
+    }
+    for (const batch of batches.values()) {
+      const model = batch.model;
+      if (model === null) continue;
+      // The walkers shown: walking now and within the eye's reach. Looked at every frame, so one is shown the frame they leave a door and hidden the frame they arrive.
+      const wnext: number[] = [];
+      const places: (PersonWorld | null)[] = [];
+      for (const [i, w] of batch.walkers.entries()) {
+        const at = walk.at(w, now);
+        if (at === null) continue;
+        const dx = at.x - eye.x;
+        const dz = at.z - eye.z;
+        if (dx * dx + dz * dz > outReach2) continue;
+        // The batch has room for `walk.cap` walkers at once (the town's ceiling, which the trips keep under): one more is not drawn.
+        if (wnext.length >= walk.cap) break;
+        wnext.push(i);
+        places.push(at);
+      }
+      const wsame = wnext.length === batch.walking.length && wnext.every((v, k) => v === batch.walking[k]);
+      let changed = !wsame;
+      let next = batch.shown;
+      if (standerStep) {
+        next = [];
         for (const [i, p] of batch.people.entries()) {
           const dx = p.at.x - eye.x;
           const dz = p.at.z - eye.z;
@@ -265,10 +361,13 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           if (batch.on[i] === 1) next.push(i);
         }
         const same = next.length === batch.shown.length && next.every((v, k) => v === batch.shown[k]);
-        if (same && !refold) continue;
-        const idle = model.clips.get("idle");
-        if (idle === undefined) continue;
+        if (!same || refold) changed = true;
+      }
+      const idle = model.clips.get("idle");
+      if (idle === undefined) continue;
+      if (changed) {
         batch.shown = next;
+        batch.walking = wnext;
         for (const [k, i] of next.entries()) {
           const { person, at } = batch.people[i] as PlacedPerson;
           // The clip they play: their activity's, or idle (said once) where this model lacks it.
@@ -286,12 +385,19 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           // A fold of the clock writes every body's floats again. Where in the clip a body is now is worked out from the clock's whole run, so a
           // body that was already shown goes on from where it was when the set changes, and does not start again.
           model.clipParams[k * 8] = -1;
-          const run = host.clock.folds * SKIN_CLOCK_FOLD + host.clock.seconds;
+          const run = runNow();
           writeClipParams(model.clipParams, k, clip, ((person.offset + run * person.rate) * CLIP_STORED) % clip.seconds, person.rate * CLIP_STORED, host.clock.seconds, true);
         }
-        model.show(next.length, true, true);
+        // The walkers follow the standers: their clip floats are written once, with a rate that makes the feet keep to the ground (speed = stride x size x rate).
+        const spec = walkSpec(batch.id);
+        const walkClip = model.clips.get("walk");
+        if (walkClip === undefined && wnext.length > 0 && !missing.has(`${batch.id}:walk`)) {
+          missing.add(`${batch.id}:walk`);
+          console.warn(`the person model ${batch.id} has no walk clip; its walkers glide standing idle`);
+        }
+        for (const [q, i] of wnext.entries()) writeWalker(batch, model, i, next.length + q, walkClip ?? idle, spec, now);
         host.shade?.write(batch.id, next.map((i) => personShade(batch.people[i] as PlacedPerson)));
-        // The things: the body's own matrix for a body that holds one, and none that draws for the rest.
+        // The things in the hand: the body's own matrix for a body that holds one, and none that draws for the rest (a walker holds nothing).
         for (const thing of batch.things) {
           let holders = 0;
           for (const [k, i] of next.entries()) {
@@ -301,13 +407,33 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
               holders++;
             } else thing.matrices.fill(0, at, at + 16);
           }
-          setThinInstanceCount(thing.part.mesh, holders > 0 ? next.length : 0);
+          thing.matrices.fill(0, next.length * 16, (next.length + wnext.length) * 16);
+          setThinInstanceCount(thing.part.mesh, holders > 0 ? next.length + wnext.length : 0);
           setMeshVisible(thing.part.mesh, holders > 0);
-          if (holders > 0) host.uploads.count("instances", next.length * 64);
+          if (holders > 0) host.uploads.count("instances", (next.length + wnext.length) * 64);
         }
       }
+      // The walkers' matrices, every frame they are shown; and a walker whose ground speed has moved by a twentieth (a pair's outer one in a bend) has
+      // their clip's rate written again, from where in the clip they are, so that their feet keep to the ground.
+      let reclipped = changed;
+      const walkClip2 = model.clips.get("walk") ?? idle;
+      const spec2 = walkSpec(batch.id);
+      for (const [q, i] of wnext.entries()) {
+        const w = batch.walkers[i] as Walker;
+        const at = places[q] as PersonWorld;
+        writeBodyMatrix(model.matrices, batch.shown.length + q, at.x, at.y, at.z, at.yaw, w.scale);
+        walkShade.push(personShade({ at, person: { seat: null, scale: w.scale } }));
+        if (!changed && Math.abs(Math.round(pathSpeed(w, alongAt(w, now)) * 20) / 20 - (batch.wbin[i] as number)) > 1e-6) {
+          writeWalker(batch, model, i, batch.shown.length + q, walkClip2, spec2, now);
+          reclipped = true;
+        }
+      }
+      if (changed || wnext.length > 0) model.show(batch.shown.length + wnext.length, true, reclipped);
     }
-    for (const batch of batches.values()) if (batch.shown.length > 0) any = true;
+    // The walkers' dark moves with them every frame, under one key for all, and goes the frame the last of them is not shown.
+    if (walkShade.length > 0 || walkShadeDrawn) host.shade?.write("walkers", walkShade);
+    walkShadeDrawn = walkShade.length > 0;
+    for (const batch of batches.values()) if (batch.shown.length > 0 || batch.walking.length > 0) any = true;
     // The shared clock is sent on a frame that shows a body.
     if (any) host.clock.send(host.uploads);
   }
@@ -317,6 +443,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     step,
     setHour(next) {
       if (next === hour) return;
+      hourRun = runNow();
       hour = next;
       since = PEOPLE_STEP;
     },
