@@ -260,15 +260,24 @@ export class MeshBuilder {
   }
   /** True while the leaf of a door that can open is being laid (`withLeaf`): its corners carry `DOOR_ALPHA` as their colour's alpha, which the town's vertex stage reads as "turns with the door". */
   private leaf = false;
+  /**
+   * Where the panes marked `through` (`PaneLook.through`) are laid in place of here: the builder of their own layer, which the glass's builder of a cell is given where the renderer
+   * draws them opaque (`townBlur.ts`). None: they are laid here, with the rest of the glass.
+   */
+  marked: MeshBuilder | null = null;
 
-  /** Runs `fn` with every polygon it lays tagged as a part of a door's leaf (`openDoors.ts`), and puts back the tag it found. */
+  /** Runs `fn` with every polygon it lays tagged as a part of a door's leaf (`openDoors.ts`), and puts back the tag it found. The builder the marked panes go to has it too. */
   withLeaf<T>(fn: () => T): T {
     const before = this.leaf;
+    const mark = this.marked;
+    const markBefore = mark?.leaf ?? false;
     this.leaf = true;
+    if (mark !== null) mark.leaf = true;
     try {
       return fn();
     } finally {
       this.leaf = before;
+      if (mark !== null) mark.leaf = markBefore;
     }
   }
   /** True while the pieces of a polygon cut along its shade's planes are being laid (`poly`): a piece is not cut again. */

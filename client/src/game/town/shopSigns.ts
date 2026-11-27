@@ -40,6 +40,8 @@ export type SignIn = {
   readonly floorY: number;
   readonly wallTop: number;
   readonly detail: Detail;
+  /** The renderer draws a shop's panes opaque with their own depth (`townBlur.ts`): what hangs in the glass is not behind the pane's plane, where it would not be seen. */
+  readonly through?: boolean;
 };
 
 /** Where a shop window's glass stood before the deeper reveals of a masonry wall (7 cm in): the offsets below that hang in the window are set from it. */
@@ -347,7 +349,13 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
       break;
     }
     case "open": {
-      // Hung in the glass on two cords: a small box with its tubes.
+      // Hung in the glass on two cords: a small box with its tubes. Where the pane is drawn opaque with its own depth, what is behind its plane is not seen but through it,
+      // out of focus: the box hangs 2 cm behind the pane, and the lit lettering is laid on the pane's face, 1.2 cm in front of it.
+      if (i.through === true) {
+        obox(0, y - h / 2, w, h, -0.13 + glassShift(i), -0.09 + glassShift(i), [0.05, 0.05, 0.06]);
+        quad(0, y - h / 2, w, h, -0.058 + glassShift(i));
+        break;
+      }
       obox(0, y - h / 2, w, h, -0.18 + glassShift(i), -0.14 + glassShift(i), [0.05, 0.05, 0.06]);
       quad(0, y - h / 2, w, h, -0.11 + glassShift(i));
       break;

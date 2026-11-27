@@ -406,7 +406,8 @@ export function townAlphaCode(low = false): string {
     `let tsSeed=input.${TOWN_VARYING}.z;let tsDirt=input.${TOWN_VARYING}.y;`,
     // A sheet of a room's haze (`roomHaze.ts`, marked by a seed of 2, where a pane's is 0 to 1): one colour, carried in the floats a pane's size and tilt use, and no reflection.
     // The dark at a wall's foot (`footShade.ts`, a seed of 3): one colour as a haze's, covering by the square of how near the wall the pixel is (the sheet's own v), times the building's own depth of it.
-    `if(tsSeed>2.5&&tsSeed<3.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=input.${TOWN_WEAR_VARYING}.w*input.uv.y*input.uv.y;}else if(tsSeed>1.5&&tsSeed<2.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
+    // The opening of a door that swings (`PaneLook.open`, a seed of 6 to 7): no glass at all. It covers nothing and has no colour, so what the blur plugin makes of it is the room as read, with no film, no dirt and no reflection.
+    `if(tsSeed>5.5){townGlassC=vec3<f32>(0.0,0.0,0.0);townGlassA=1.0;alpha=0.0;}else if(tsSeed>2.5&&tsSeed<3.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=input.${TOWN_WEAR_VARYING}.w*input.uv.y*input.uv.y;}else if(tsSeed>1.5&&tsSeed<2.5){townGlassC=input.${TOWN_WEAR_VARYING}.xyz;townGlassA=1.0;alpha=1.0-tsClear;}else{`,
     "let tsVe=normalize(scene.vEyePosition.xyz-input.worldPos);",
     "var tsGn=N;",
     "let tsTg=normalize(vec3<f32>(-tsGn.z,0.0,tsGn.x));",
