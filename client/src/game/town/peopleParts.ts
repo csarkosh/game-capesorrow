@@ -113,6 +113,8 @@ export type PeopleParts = {
   step(dt: number): void;
   /** The hour of day, 0 to 24: who is shown is worked out again at once when it moves. */
   setHour(hour: number): void;
+  /** The hour of day the people are drawn at now (the last hour pushed, run on by the skin clock): the doors that open for the walkers use this one (`openDoors.ts`). */
+  hourNow(): number;
   /** The lamps nearest the eye, and the hour's glow gain: the light the people take (`peopleLight.ts`). */
   setLamps(list: LampList, glow: number): void;
   /** Models landed, and the people shown now. */
@@ -447,6 +449,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       hour = next;
       since = PEOPLE_STEP;
     },
+    hourNow,
     setLamps(list, glow) {
       writePeopleLamps(lamps, list, glow);
       for (const m of dressed) markMaterialUboDirty(m);

@@ -15,7 +15,7 @@
 import { withMat } from "./materials.js";
 import { accentOf, QUIET_FADE } from "./accents.js";
 import { greyed, hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
-import { doorIn, glazed, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { doorIn, glazed, glazedLeaf, leafSlab, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { unitHours } from "./hours.js";
 import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
 import { drawWindow, frameColour, glassOffOf, isMasonry, SILL_OUT, type WinCtx } from "./windowGeometry.js";
@@ -51,6 +51,8 @@ export type FrontIn = {
 };
 
 export type FrontPlan = { readonly holes: Hole[]; draw(): void; /** The lowest the upper storeys' windows may start, metres over the floor. */ readonly groundStoreyTop: number };
+
+import { LEAF_THICK, doorLook as doorLook_, isPair, leafOf } from "./openDoors.js";
 
 const CANVAS: readonly Rgb[] = [[0.5, 0.1, 0.1], [0.12, 0.3, 0.2], [0.14, 0.22, 0.4], [0.62, 0.55, 0.35], [0.3, 0.3, 0.3], [0.65, 0.35, 0.1]];
 const BULKHEAD: readonly Rgb[] = [[0.1, 0.2, 0.14], [0.15, 0.1, 0.08], [0.32, 0.12, 0.1], [0.12, 0.12, 0.13], [0.3, 0.3, 0.28], [0.45, 0.4, 0.3]];
@@ -205,9 +207,43 @@ export function planFront(i: FrontIn): FrontPlan {
       // The leaf fills its hole from edge to edge and from the floor to the head: a kick panel, the glass in its frame over it, and over that a
       // transom or the head's rail. The return of the recess (or the reveal of a flush door) runs exactly to the leaf, so the room is seen
       // through the glass and through nothing else.
-      const o = wquad(out, w, da, floorY, db, floorY + 0.8, -depth, scaled(timber, 0.9), leafMat);
       // The door's glass shows the room as the windows do.
       const doorLook = i.through === true && u.interior.type !== undefined ? { through: true } : {};
+      if (full && u.state === "open" && u.tenant !== null) {
+        // A door a walker goes through opens (`openDoors.ts`): its leaf has a thickness and an inner face, everything on it is tagged as the leaf's, and the vertex
+        // stage turns it about its hinge. A door of one leaf has its hinge on the frame's left or right by a roll and the pull on the other side; a pair of doors
+        // is two leaves, of which the right-hand one (as you go in) opens, hinged at the outer jamb, and the other stays shut.
+        const look = doorLook_(b.id, u.id);
+        const T = LEAF_THICK;
+        const opens = leafOf(u.door, look);
+        const [oa, ob] = ends(opens.s0, opens.s1);
+        const hingeAtLow = opens.hingeLow === (sign > 0);
+        // One leaf's slabs, the glass in two panes, and its pull and push plates: tagged as a leaf that turns, or left as it stands. Returns the outer plane's offset.
+        const leaf = (sa: number, sb: number, turns: boolean, pullLow: boolean): number => {
+          const make = <R>(fn: () => R): R => (turns ? out.withLeaf(() => glass.withLeaf(fn)) : fn());
+          const o1 = make(() => leafSlab(out, w, sa, floorY, sb, floorY + 0.8, -depth, T, scaled(timber, 0.9), leafMat));
+          make(() => {
+            glazedLeaf(out, glass, w, sa, floorY + 0.8, sb, leafTop, o1, T, 0.1, timber, leafMat, doorLook);
+            if (dHead > floorY + 2.3) glazedLeaf(out, glass, w, sa, leafTop, sb, dHead, o1, T, 0.06, timber, leafMat, doorLook);
+            else leafSlab(out, w, sa, leafTop, sb, dHead, o1, T, timber, leafMat);
+            const p0 = pullLow ? sa + 0.14 : sb - 0.18;
+            const p1 = pullLow ? sa + 0.18 : sb - 0.14;
+            wquad(out, w, p0, floorY + 0.95, p1, floorY + 1.1, o1 + 0.03, [0.6, 0.5, 0.2], "steel");
+            wquad(out, w, p0, floorY + 0.95, p1, floorY + 1.1, o1 - T - 0.03, [0.6, 0.5, 0.2], "steel", undefined, true);
+          });
+          return o1;
+        };
+        let o: number;
+        if (isPair(u.door.width)) {
+          // The leaf that opens is the right-hand half as you go in: the frame's higher stations. The other stands shut beside it.
+          const [fa, fb] = ends(u.door.s - u.door.width / 2, u.door.s);
+          o = leaf(oa, ob, true, !hingeAtLow);
+          leaf(fa, fb, false, hingeAtLow);
+        } else o = leaf(da, db, true, !hingeAtLow);
+        reveal(out, w, da, db, floorY, dHead, -o, scaled(i.wall, 0.8), [0.35, 0.34, 0.32], rec > 0 ? i.surface(w) : undefined, "concrete");
+        return;
+      }
+      const o = wquad(out, w, da, floorY, db, floorY + 0.8, -depth, scaled(timber, 0.9), leafMat);
       glazed(out, glass, w, da, floorY + 0.8, db, leafTop, o, 0.1, timber, leafMat, doorLook);
       if (dHead > floorY + 2.3) glazed(out, glass, w, da, leafTop, db, dHead, o, 0.06, timber, leafMat, doorLook);
       else wquad(out, w, da, leafTop, db, dHead, o, timber, leafMat);
