@@ -355,11 +355,11 @@ export type OutdoorPlan = readonly OutdoorPerson[];
 // ---------------------------------------------------------------------------------------------------------------------------------
 // The plan's obstacles, in the plan's frame, made once for a plan.
 
-type Rect = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly hu: number; readonly hv: number };
-type Disc = { readonly x: number; readonly z: number; readonly r: number };
+export type Rect = { readonly cx: number; readonly cz: number; readonly ux: number; readonly uz: number; readonly hu: number; readonly hv: number };
+export type Disc = { readonly x: number; readonly z: number; readonly r: number };
 /** A curb return: the pavement fills the triangle of its two tangent points and the curbs' meeting point, outside the circle the return is round about (whose centre is in the sidewalk's corner). */
 type Fillet = { readonly c: Disc; readonly pts: readonly [{ x: number; z: number }, { x: number; z: number }, { x: number; z: number }] };
-type Seg = {
+export type Seg = {
   readonly street: Street;
   readonly edge: StreetEdge;
   readonly ax: number;
@@ -375,7 +375,7 @@ type Seg = {
 };
 type DoorWay = { readonly building: number; readonly ox: number; readonly oz: number; readonly tx: number; readonly tz: number; readonly nx: number; readonly nz: number; readonly s0: number; readonly s1: number };
 
-type Ground = {
+export type Ground = {
   readonly plan: TownPlan;
   readonly segs: readonly Seg[];
   readonly fillets: readonly Fillet[];
@@ -387,7 +387,7 @@ type Ground = {
   readonly blocks: readonly { readonly block: Block; readonly box: { x0: number; z0: number; x1: number; z1: number } }[];
 };
 
-const rectDist = (r: Rect, x: number, z: number): number => {
+export const rectDist = (r: Rect, x: number, z: number): number => {
   const dx = x - r.cx;
   const dz = z - r.cz;
   const a = dx * r.ux + dz * r.uz;
@@ -403,7 +403,7 @@ function segNear(s: Seg, x: number, z: number): { d: number; s: number } {
 
 const grounds = new WeakMap<TownPlan, Ground>();
 
-function groundOf(plan: TownPlan): Ground {
+export function groundOf(plan: TownPlan): Ground {
   const known = grounds.get(plan);
   if (known !== undefined) return known;
   const segs: Seg[] = plan.streets.map((street) => {
@@ -577,7 +577,7 @@ export function whyNot(plan: TownPlan, x: number, z: number, own = -1, onWalk = 
 // The slots
 
 /** A unit's hours as an interval of the clock: from `lo` and until `hi` (past 24 for a closing after midnight). */
-function span(h: Hours): { lo: number; hi: number } {
+export function span(h: Hours): { lo: number; hi: number } {
   if (h === "always") return { lo: 0, hi: 24 };
   return { lo: h.open, hi: h.close <= h.open ? h.close + 24 : h.close };
 }
