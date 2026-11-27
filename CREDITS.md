@@ -1,6 +1,6 @@
 # Credits
 
-The works of others that Cape Sorrow itself carries: the town's texture sets under `client/assets/textures/`, which `tools/textures/build.py` resizes and re-encodes (the paintable ones are made into neutral detail for the game's paint colours to multiply), and the parked vehicles' models under `client/assets/models/`, which `tools/models/build.py` bakes, joins and shrinks (the eleven under Creative Commons Attribution are credited with what was changed in each), and the five people who stand in the shops, models under `client/assets/models/` listed in `people.json` (each under Creative Commons Attribution, with what was changed). One section to a work, each under its licence, in the shape the Credits screen reads (`client/src/game/credits.ts`). What the game ships of other people's besides comes with the engine it is built on: models, textures and sounds published on Sketchfab, Poly Haven, ambientCG and Freesound, and the libraries the engine draws with. The engine credits each of them in its own `CREDITS.md`, and the game's Credits screen shows that list and this one as one. The asphalt shingle layer is original work, made by the build script, and is not listed.
+The works of others that Cape Sorrow itself carries: the town's texture sets under `client/assets/textures/`, which `tools/textures/build.py` resizes and re-encodes (the paintable ones are made into neutral detail for the game's paint colours to multiply), and the parked vehicles' models under `client/assets/models/`, which `tools/models/build.py` bakes, joins and shrinks (the eleven under Creative Commons Attribution are credited with what was changed in each), and the five people who stand in the shops and the street, models under `client/assets/models/` listed in `people.json` (each under Creative Commons Attribution, with what was changed), with the cup and the phone they hold, whose small shared picture is cut from three CC0 photo textures. One section to a work, each under its licence, in the shape the Credits screen reads (`client/src/game/credits.ts`). What the game ships of other people's besides comes with the engine it is built on: models, textures and sounds published on Sketchfab, Poly Haven, ambientCG and Freesound, and the libraries the engine draws with. The engine credits each of them in its own `CREDITS.md`, and the game's Credits screen shows that list and this one as one. The asphalt shingle layer is original work, made by the build script, and is not listed.
 
 ## town.Bricks097
 
@@ -251,7 +251,7 @@ The works of others that Cape Sorrow itself carries: the town's texture sets und
 - **Author:** Renderpeople
 - **Licence:** CC-BY-4.0
 - **URL:** https://sketchfab.com/3d-models/nathan-animated-003-walking-3d-man-143a2b1ea5eb4385ae90a73657aca3bc
-- **Modified:** rigged, given an idle clip, reduced and re-encoded
+- **Modified:** rigged, given clips of standing and sitting, reduced and re-encoded
 
 ## person.eric
 
@@ -259,7 +259,7 @@ The works of others that Cape Sorrow itself carries: the town's texture sets und
 - **Author:** Renderpeople
 - **Licence:** CC-BY-4.0
 - **URL:** https://sketchfab.com/3d-models/eric-rigged-001-rigged-3d-business-man-a46bc9f67aaa415bb4f3241eef900e7f
-- **Modified:** rigged, given an idle clip, reduced and re-encoded
+- **Modified:** rigged, given clips of standing and sitting, reduced and re-encoded
 
 ## person.sophia
 
@@ -267,7 +267,7 @@ The works of others that Cape Sorrow itself carries: the town's texture sets und
 - **Author:** Renderpeople
 - **Licence:** CC-BY-4.0
 - **URL:** https://sketchfab.com/3d-models/sophia-animated-003-animated-3d-woman-dc448c3be0e74f96a55fb475a13433cf
-- **Modified:** rigged, given an idle clip, reduced and re-encoded
+- **Modified:** rigged, given clips of standing and sitting, reduced and re-encoded
 
 ## person.carla
 
@@ -275,7 +275,7 @@ The works of others that Cape Sorrow itself carries: the town's texture sets und
 - **Author:** Renderpeople
 - **Licence:** CC-BY-4.0
 - **URL:** https://sketchfab.com/3d-models/carla-rigged-001-rigged-3d-business-women-acf520f450d14dd799f98a6fede3edf5
-- **Modified:** rigged, given an idle clip, reduced and re-encoded
+- **Modified:** rigged, given clips of standing and sitting, reduced and re-encoded
 
 ## person.claudia
 
@@ -283,4 +283,28 @@ The works of others that Cape Sorrow itself carries: the town's texture sets und
 - **Author:** Renderpeople
 - **Licence:** CC-BY-4.0
 - **URL:** https://sketchfab.com/3d-models/claudia-rigged-002-3d-rigged-business-women-c659bd0accab47c6bbe390cf822a2b92
-- **Modified:** rigged, given an idle clip, reduced and re-encoded
+- **Modified:** rigged, given clips of standing and sitting, reduced and re-encoded
+
+## hand.Paper002
+
+- **Source:** ambientCG: Paper 002
+- **Author:** Lennart Demes
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/view?id=Paper002
+- **Modified:** the cup's paper and card, cut with two other photo textures into the one small picture the cup and the phone in the people's hands share
+
+## hand.NamaqualandCliff01
+
+- **Source:** Poly Haven: Namaqualand Cliff 01
+- **Author:** Jenelle van Heerden and Rico Cilliers
+- **Licence:** CC0-1.0
+- **URL:** https://polyhaven.com/a/namaqualand_cliff_01
+- **Modified:** the dark plastic of the cup's lid and the phone's case, darkened and cut into the shared picture
+
+## hand.NamaqualandCliff02
+
+- **Source:** Poly Haven: Namaqualand Cliff 02
+- **Author:** Dario Barresi and Rico Cilliers
+- **Licence:** CC0-1.0
+- **URL:** https://polyhaven.com/a/namaqualand_cliff_02
+- **Modified:** the phone's glass, darkened and cut into the shared picture

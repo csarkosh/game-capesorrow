@@ -41,6 +41,7 @@ import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { peopleFor, personWorld } from "./people.js";
 import { outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
+import { heldBy, tradeAt } from "./handHeld.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
 import { RANK_UNITS, emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
@@ -282,8 +283,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       people = createPeopleParts(
         { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
         [
-          ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false })),
-          ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true })),
+          ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
+          ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
         ],
       );
       people.setHour(shownHour);
