@@ -463,7 +463,7 @@ not load leaves no car drawn and one warning, and the camera follows all the sam
 ### The camera
 
 While the local player is in the car (getting in, seated or getting out) the eye is `stepChase` (`chaseCamera.ts`): a
-chase view 6.5 m behind and 2.4 m over the car at rest, aimed 1.5 m over it, on a point that trails the car at a rate
+chase view 3.25 m behind and 1.95 m over the car at rest, aimed 1.5 m over it, on a point that trails the car at a rate
 and snaps to it where the car jumps. The mouse looks around it; after two seconds without the mouse it eases back behind
 the car. The lens widens with speed. The camera eases between the walker's eye and the chase over how far the player is
 into the seat, which follows the ride's countdown at a bounded rate, so getting in and out is a smooth move and a
