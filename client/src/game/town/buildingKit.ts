@@ -169,7 +169,7 @@ export const THROUGH_SEED = 4;
  * A pane of glass in the blended layer: on the wall between two stations and heights, `off` off its face. Each pane has a turn of its own
  * (from where it is, so the same pane is the same every build): neighbouring panes reflect a little differently, as old glass does.
  */
-export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, clear = GLASS_CLEAR, tint: Rgb = GLASS_TINT, look: PaneLook = {}): void {
+export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, clear = GLASS_CLEAR, tint: Rgb = GLASS_TINT, look: PaneLook = {}, inward = false): void {
   const key = Math.round(w.ax * 7 + w.az * 13 + s0 * 101 + y0 * 211 + (s1 - s0) * 31);
   const amp = look.tilt ?? 0.03;
   const seed = hash01(key, 8801);
@@ -178,7 +178,7 @@ export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1:
     tilt: [(hash01(key, 8802) * 2 - 1) * amp, (hash01(key, 8803) * 2 - 1) * amp],
     uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
   };
-  wquad(glass, w, s0, y0, s1, y1, off, tint, undefined, fx, false);
+  wquad(glass, w, s0, y0, s1, y1, off, tint, undefined, fx, inward);
 }
 
 /**
@@ -262,4 +262,32 @@ export function frameBars(out: MeshBuilder, w: WallRef, sa: number, sb: number, 
   wquad(out, w, sa - bar, y1, sb + bar, y1 + bar, off, colour, m);
   wquad(out, w, sa - bar, y0, sa, y1, off, colour, m);
   wquad(out, w, sb, y0, sb + bar, y1, off, colour, m);
+}
+
+/**
+ * A slab of a door's leaf (the leaf swings, so it is seen from its edge and its inner side: `openDoors.ts`): its outer face `off` off the wall as `wquad` lays it
+ * (the ledger may move it), then `thick` behind that the inner face, in the same surface and a shade darker, and its four edges. Returns the outer face's offset.
+ * What is laid is tagged by the builder as a leaf's (`MeshBuilder.withLeaf`) by the caller.
+ */
+export function leafSlab(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, thick: number, colour: Rgb, mat: Surface | MatRef): number {
+  const o = wquad(out, w, s0, y0, s1, y1, off, colour, mat);
+  const i = o - thick;
+  const back = scaled(colour, 0.85);
+  const edge = scaled(colour, 0.7);
+  out.poly([wat(w, s0, y0, i), wat(w, s1, y0, i), wat(w, s1, y1, i), wat(w, s0, y1, i)], [-w.nx, 0, -w.nz], back, mat);
+  out.poly([wat(w, s0, y0, o), wat(w, s0, y0, i), wat(w, s0, y1, i), wat(w, s0, y1, o)], [-w.tx, 0, -w.tz], edge, mat);
+  out.poly([wat(w, s1, y0, o), wat(w, s1, y0, i), wat(w, s1, y1, i), wat(w, s1, y1, o)], [w.tx, 0, w.tz], edge, mat);
+  out.poly([wat(w, s0, y1, o), wat(w, s1, y1, o), wat(w, s1, y1, i), wat(w, s0, y1, i)], [0, 1, 0], edge, mat);
+  out.poly([wat(w, s0, y0, o), wat(w, s1, y0, o), wat(w, s1, y0, i), wat(w, s0, y0, i)], [0, -1, 0], edge, mat);
+  return o;
+}
+
+/** `glazed` for a leaf that swings: four slabs of bars and the glass in two panes, one looking out and one in (so the glass is seen from inside). */
+export function glazedLeaf(out: MeshBuilder, glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, thick: number, bar: number, colour: Rgb, mat: Surface | MatRef, look: PaneLook = {}): void {
+  leafSlab(out, w, s0, y0, s1, y0 + bar, off, thick, colour, mat);
+  leafSlab(out, w, s0, y1 - bar, s1, y1, off, thick, colour, mat);
+  leafSlab(out, w, s0, y0 + bar, s0 + bar, y1 - bar, off, thick, colour, mat);
+  leafSlab(out, w, s1 - bar, y0 + bar, s1, y1 - bar, off, thick, colour, mat);
+  pane(glass, w, s0 + bar, y0 + bar, s1 - bar, y1 - bar, off - 0.01, GLASS_CLEAR, GLASS_TINT, look);
+  pane(glass, w, s0 + bar, y0 + bar, s1 - bar, y1 - bar, off - thick + 0.01, GLASS_CLEAR, GLASS_TINT, look, true);
 }

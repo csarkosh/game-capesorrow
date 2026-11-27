@@ -447,10 +447,14 @@ export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Te
  * many of the lamp list's entries are used (0: none, which is the day); and the list itself, `lampP<i>` (a lamp's x, y, z and range) and `lampC<i>` (its colour and
  * strength), one vec4 each, since a uniform array is not a type the material's buffer takes. `markMaterialUboDirty` after changing any.
  */
-export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townLamps: number[] } & Record<string, number[]>;
+export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townLamps: number[]; townDoors: number[] } & Record<string, number[]>;
 
 export function emptyTownReady(): TownReady {
-  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townLamps: [0] };
+  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townLamps: [0], townDoors: [0] };
+  for (let i = 0; i < MAX_DOORS; i++) {
+    r[`doorA${i}`] = [0, 0, 1, 0];
+    r[`doorB${i}`] = [0, 1, 1, 0];
+  }
   for (let i = 0; i < MAX_LAMPS; i++) {
     r[`lampP${i}`] = [0, 0, 0, 0];
     r[`lampC${i}`] = [0, 0, 0, 0];
@@ -471,7 +475,50 @@ export function writeLamps(ready: TownReady, list: LampList): void {
   }
 }
 
-const READY_FIELDS: readonly UniformField[] = uniformFields(emptyTownReady());
+/**
+ * The doors that are moving now (`openDoors.ts`), up to `MAX_DOORS`, as uniforms the vertex stage reads: `doorA<i>` is the hinge's x and z in the world and the
+ * unit direction along the shut leaf from the hinge (x, z); `doorB<i>` is the unit direction into the room (x, z), the leaf's width and the angle it stands open
+ * at (radians, 0 shut). `townDoors` is how many are used. The vertex stage turns a vertex that is tagged as a leaf's (`DOOR_ALPHA`) and stands in a moving door's
+ * leaf about the hinge's vertical axis by the angle, into the room: what turns is the corner's world matrix, so its normal turns with it, in every material the town draws.
+ */
+export const MAX_DOORS = 10;
+export type DoorMove = { readonly hx: number; readonly hz: number; readonly ux: number; readonly uz: number; readonly nx: number; readonly nz: number; readonly width: number; readonly angle: number };
+
+/** Copies the doors that move now into the uniforms. */
+export function writeDoors(ready: TownReady, moves: readonly DoorMove[]): void {
+  const n = Math.min(moves.length, MAX_DOORS);
+  ready.townDoors[0] = n;
+  for (let i = 0; i < n; i++) {
+    const m = moves[i] as DoorMove;
+    const a = ready[`doorA${i}`] as number[];
+    const b = ready[`doorB${i}`] as number[];
+    a[0] = m.hx; a[1] = m.hz; a[2] = m.ux; a[3] = m.uz;
+    b[0] = m.nx; b[1] = m.nz; b[2] = m.width; b[3] = m.angle;
+  }
+}
+
+/**
+ * The vertex stage's turn of a leaf, at the world matrix (`CUSTOM_VERTEX_UPDATE_WORLDPOS`: before the corner is placed): a vertex tagged by its colour's alpha
+ * finds the moving door whose shut leaf it stands in (along the leaf from the hinge, and a hand either side of its plane) and takes the turn about the hinge.
+ * L = cos I + sin (n u^T - u n^T) in the plane takes u toward n; the matrix is that about the hinge. With no door moving (`townDoors` 0) nothing is read.
+ */
+export const DOOR_VERTEX = [
+  "if(material.townDoors>0.5&&color.a<0.04){",
+  `var dA:array<vec4<f32>,${MAX_DOORS}>;var dB:array<vec4<f32>,${MAX_DOORS}>;`,
+  ...Array.from({ length: MAX_DOORS }, (_, i) => `dA[${i}]=material.doorA${i};dB[${i}]=material.doorB${i};`),
+  "for(var di:i32=0;di<i32(material.townDoors+0.5);di=di+1){",
+  "let da=dA[di];let db=dB[di];let drx=position.x-da.x;let drz=position.z-da.y;",
+  "let dal=drx*da.z+drz*da.w;let dbe=drx*db.x+drz*db.y;",
+  "if(dal>-0.25&&dal<db.z+0.25&&dbe>-0.35&&dbe<0.4){",
+  "let dc=cos(db.w);let ds=sin(db.w);",
+  "let dl10=ds*(da.z*db.y-db.x*da.w);let dl01=ds*(da.w*db.x-db.y*da.z);",
+  "let dtx=da.x-(dc*da.x+dl01*da.y);let dtz=da.y-(dl10*da.x+dc*da.y);",
+  "finalWorld=mat4x4<f32>(vec4<f32>(dc,0.0,dl10,0.0),vec4<f32>(0.0,1.0,0.0,0.0),vec4<f32>(dl01,0.0,dc,0.0),vec4<f32>(dtx,0.0,dtz,1.0))*finalWorld;",
+  "break;}}}",
+].join("");
+
+/** The fields of the buffer: the doors' are read by the vertex stage, the rest by the fragment. */
+const READY_FIELDS: readonly UniformField[] = [...uniformFields(emptyTownReady())].map((f) => (f.name.startsWith("door") || f.name === "townDoors" ? { ...f, visibility: "vertex" as const } : f));
 
 /**
  * The depth steps (of a 24-bit buffer) between one rank of the flat ground and the next: the flat layer is drawn a fixed number of steps ahead of
@@ -502,6 +549,8 @@ export const PAINT_UNITS = 2;
  */
 export const PAINT_K = (PAINT_UNITS * PAINT_RANKS) / 2 ** 24;
 export const PAINT_CODE = `out.clipPos.z+=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;`;
+/** The paint's depth step a leaf's alpha would give it, taken back (`PAINT_CODE` reads every vertex's alpha as a rank of paint): a leaf lies where it stands. */
+export const DOOR_UNPAINT = `if(color.a<0.04){out.clipPos.z-=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;}`;
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
 export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
@@ -515,7 +564,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getCustomCode: (stage) =>
       stage === "fragment"
         ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_LIGHT: TOWN_LIGHT_CODE, CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
-        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX, CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE}` },
+        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX + (ranked ? "" : DOOR_VERTEX), CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE + DOOR_UNPAINT}` },
     getVertexAttributes: () => [
       // Twelve 16-bit floats a vertex (`surfacePack.ts`): the shader reads them as the 32-bit floats they stand for.
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float16x4", stride: SURFACE_PACKED_BYTES, offset: 0 },

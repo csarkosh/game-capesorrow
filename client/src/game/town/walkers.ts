@@ -16,8 +16,8 @@
  * on the other. A trip is the shortest way through it from the foot of one door to the foot of the other. Along a sidewalk the walker keeps to a
  * lane 0.35 m to the right of the middle (so two who meet pass), moved sideways by a small search (`lateral`) where a prop, a pole or a person who stands
  * is in the way, and the whole trip is given up where there is no way round. The polyline's corners are turned over about a metre of path, the walker
- * facing along it; it begins 0.4 m inside the door's plane at the middle of the door and ends the same way, so a walker comes out through the door's leaf
- * and goes in through it (the doors do not open).
+ * facing along it; it begins `depth` m inside the door's plane (0.7 to 1.9 m: as far in as the room's clear floor allows) at the middle of the door and ends the same way; the door
+ * opens for them and shuts behind them (`openDoors.ts`).
  *
  * KEEPING APART. At every instant a walker is clear of every building and every prop's box (`WALK_PROP`), 0.6 m from every stander there at that hour
  * and 0.65 m from every other walker but its partner; a trip that cannot keep all of that is moved in time by its hashes or dropped. No two trips leave one
@@ -25,6 +25,7 @@
  */
 import { HOUR_S } from "../dayClock.js";
 import { hashN } from "./groundNoise.js";
+import { MIN_IN, doorDepth, doorFits, doorWalkS } from "./openDoors.js";
 import { isOpen, unitHours, wrapHour, type Hours } from "./hours.js";
 import {
   REFERENCE_UNITS, groundOf, inRoadway, isDowntown, openDowntownUnits, outdoorPeopleFor, rectDist, standable, stayHolds, type Disc, type Ground, type OutdoorPerson, type Rect, type Seg,
@@ -43,8 +44,8 @@ export const WALKER_CLEAR = 0.65;
 /** How far to the right of the middle of a sidewalk a walker keeps, and how far apart a pair walks (metres). */
 export const LANE = 0.35;
 export const PAIR_SIDE = 0.7;
-/** How far inside the door's plane a trip begins and ends. */
-export const DOOR_IN = 0.4;
+/** The least a trip begins and ends inside the door's plane (a place's own is `doorDepth`, `openDoors.ts`: as far in as the room's clear floor allows, up to 1.9 m), where the door has opened for them. */
+export const DOOR_IN = MIN_IN;
 /** Corners are turned over about this much path on each side of the corner (metres). */
 export const TURN_RADIUS = 1.4;
 /** The distance between the points a path is resampled at. */
@@ -606,6 +607,8 @@ type Place = {
   readonly edge: number;
   readonly s: number;
   readonly perp: number;
+  /** How far inside the door's plane a trip begins and ends here (`doorDepth`). */
+  readonly depth: number;
 };
 
 export type Walker = {
@@ -1009,7 +1012,7 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
       for (const q of places) {
         if (q.id === from.id || !reason.to.includes(q.trade) || !usable(q)) continue;
         const way = wayTo(net, from, reach, q);
-        const length = way.length + from.perp + q.perp + 2 * DOOR_IN;
+        const length = way.length + from.perp + q.perp + from.depth + q.depth;
         if (!Number.isFinite(way.length)) continue;
         if (length < TRIP_LENGTH[0] || length > TRIP_LENGTH[1]) continue;
         if (!isOpen(q.hours, t0 + length / (speed * HOUR_S))) continue;
@@ -1062,7 +1065,7 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
     if (route === null) return null;
     const pair = roll(key, attempt, 5, 72) < 1 / PAIR_ONE_IN;
     const tryPath = (aim: number): { pts: Float32Array; cum: Float32Array; length: number } | null => {
-      const poly: Located[] = [{ x: from.x - from.nx * DOOR_IN, z: from.z - from.nz * DOOR_IN }, { x: from.x, z: from.z }];
+      const poly: Located[] = [{ x: from.x - from.nx * from.depth, z: from.z - from.nz * from.depth }, { x: from.x, z: from.z }];
       let s = from.perp;
       for (const piece of route.pieces) {
         const e = net.edges[piece.e] as Edge;
@@ -1087,7 +1090,7 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
         }
         s += Math.abs(stationAt(e, piece.to) - stationAt(e, piece.from));
       }
-      poly.push({ x: to.x, z: to.z }, { x: to.x - to.nx * DOOR_IN, z: to.z - to.nz * DOOR_IN });
+      poly.push({ x: to.x, z: to.z }, { x: to.x - to.nx * to.depth, z: to.z - to.nz * to.depth });
       const sm = smooth(poly);
       if (sm === null || sm.length < TRIP_LENGTH[0] * 0.8 || sm.length > TRIP_LENGTH[1] * 1.25 || !turnsOk(sm)) return null;
       return sm;
@@ -1246,8 +1249,10 @@ export function placesOf(net: Net): Place[] {
       if (unit.state !== "open" || unit.tenant === null) continue;
       const hours = unitHours(b, unit);
       if (hours === null) continue;
-      const x = fr.origin.x + fr.t.x * unit.door.s;
-      const z = fr.origin.z + fr.t.z * unit.door.s;
+      // The middle of the leaf that opens (a pair of doors opens its right-hand leaf: `openDoors.ts`).
+      const ds = doorWalkS(unit.door);
+      const x = fr.origin.x + fr.t.x * ds;
+      const z = fr.origin.z + fr.t.z * ds;
       // The walk edge nearest in front of the door.
       let best = -1;
       let bestS = 0;
@@ -1267,7 +1272,9 @@ export function placesOf(net: Net): Place[] {
         bestD = d;
       }
       if (best < 0 || !usableEdge(net, net.edges[best] as Edge)) continue;
-      out.push({ id: out.length, building: b, unit, use, trade: unit.tenant.trade, hours, x, z, nx: fr.n.x, nz: fr.n.z, edge: best, s: bestS, perp: bestD });
+      // The door opens into the room, so a room with less clear floor before it than the leaf sweeps has no walkers.
+      if (!doorFits(unit)) continue;
+      out.push({ id: out.length, building: b, unit, use, trade: unit.tenant.trade, hours, x, z, nx: fr.n.x, nz: fr.n.z, edge: best, s: bestS, perp: bestD, depth: doorDepth(unit) });
     }
   }
   return out;
