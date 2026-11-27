@@ -26,3 +26,9 @@ export function paintRank(alpha: number): number {
 
 /** How far out a sheet of paint of `rank` lies from the face it is painted on, metres. */
 export const paintOff = (rank: number): number => PAINT_STEP * rank;
+
+/**
+ * The alpha a vertex of a door's leaf carries (`MeshBuilder.withLeaf`): under every paint rank's (the least is 1/16), so the vertex stage (`townMaterial.ts`) knows it
+ * turns with the door that stands where it does. The paint's depth step it would get is taken back there.
+ */
+export const DOOR_ALPHA = 0.02;

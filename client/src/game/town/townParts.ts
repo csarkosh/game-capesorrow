@@ -52,9 +52,10 @@ import { openDowntownUnits, outdoorPeopleFor, outdoorWorld } from "./outdoorPeop
 import { createPeopleShade } from "./peopleShade.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { heldBy, tradeAt } from "./handHeld.js";
-import { walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
+import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
+import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { RANK_UNITS, emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
+import { MAX_DOORS, RANK_UNITS, emptyTownReady, townSurfacePlugin, writeDoors, writeLamps, type TownReady } from "./townMaterial.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
 import { daylightAt, litGainAt } from "../../look.js";
@@ -180,6 +181,21 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let people: PeopleParts | null = null;
   // The people who walk are made a few milliseconds at a time once the town stands, and shown when they are done (`walkerJob`).
   let walkerList: readonly Walker[] | null = null;
+  // The doors the walkers open (`openDoors.ts`), made with the walkers, and whether any was written moving last frame.
+  let doors: DoorBook | null = null;
+  let doorsMoving = false;
+  /** Writes the doors that are open now, at the hour the people are drawn at, as the vertex stage's uniforms (the ten nearest the eye if more are moving). */
+  const moveDoors = (): void => {
+    if (doors === null || ready === null || people === null) return;
+    const moving = movingDoors(doors, people.hourNow());
+    if (moving.length === 0 && !doorsMoving) return;
+    const eye = host.pose;
+    const near = (m: (typeof moving)[number]): number => (m.hx - eye.x) * (m.hx - eye.x) + (m.hz - eye.z) * (m.hz - eye.z);
+    const list = moving.length > MAX_DOORS ? [...moving].sort((p, q) => near(p) - near(q)).slice(0, MAX_DOORS) : moving;
+    writeDoors(ready, list);
+    doorsMoving = list.length > 0;
+    for (const m of textured) markMaterialUboDirty(m);
+  };
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
   let shownHour = 12;
   let ready: TownReady | null = null;
@@ -342,7 +358,11 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       people = createPeopleParts(
         { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low, ...(shade === undefined ? {} : { shade }) },
         placed,
-        { cap: walkCap, get: () => walkerList, at: (w, hour) => walkerWorld(ground, w, hour) },
+        { cap: walkCap, get: () => walkerList, at: (w, hour) => {
+          const along = alongAt(w, hour);
+          return along >= 0 && doors !== null && hiddenByDoor(doors, w, along, hour) ? null : walkerWorld(ground, w, hour);
+        },
+        },
       );
       people.setHour(shownHour);
       {
@@ -354,6 +374,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             const step = job.next();
             if (step.done === true) {
               walkerList = step.value;
+              doors = low ? null : doorsFor(plan, ground.anchor, walkerList);
               return;
             }
           }
@@ -497,6 +518,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     bodies(dt, lamp) {
       base.side.bodies(dt, lamp);
       people?.step(dt);
+      moveDoors();
     },
 
     seen(planes, cover) {
