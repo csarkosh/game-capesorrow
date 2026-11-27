@@ -1,0 +1,282 @@
+/**
+ * The bar: the tavern's room, as the owner's reference pictures have it, written against the width and depth it is given.
+ *
+ * A long dark-wood bar down the left wall from near the front to two-thirds of the depth, with a foot rail and a row of round wooden stools; behind it a back
+ * bar of shelves full of bottles with two televisions over it. The floor is dark wide planks, the right wall is exposed brick with high-top tables and
+ * stools along it and guitars and posters hung high, lower round tables with chairs in the middle toward the back, and one square concrete column where the
+ * room is 7 m wide or more. Warm bare bulbs hang on strings in rows the length of the room, brightest over the bar. At the back a plastered archway with a shut
+ * door under a sign, a banquette with tables along the wall, and a board with the tavern's name. A bartender stands behind the bar, a few people sit on the stools and at the tables.
+ *
+ * Where the room is narrow the order along it is kept and the repeats dropped (no high-tops under 5.7 m, no column under 7 m, a shorter bar, fewer tables); the bar
+ * starts further in where the street door is near the left wall, and the street door's zone and the way in are reserved so that nothing is put on them.
+ *
+ * Simulation code: the arithmetic of AGENTS.md applies.
+ */
+import { FRONT_WALL, DesignBuilder, cm, onWall, type Design, type Spot } from "../design.js";
+import { arrivalOf } from "../convert.js";
+import { footOf } from "../kinds.js";
+
+const { floor, max, min, round } = Math;
+
+/** What the bar is made from: the unit's own measures in the room's frame (`doorS` from the room's left end), the building's depth less a metre, and its name. */
+export type BarSite = {
+  readonly id: number;
+  readonly width: number;
+  readonly maxDepth: number;
+  readonly height: number;
+  readonly doorS: number;
+  readonly doorWidth: number;
+  readonly name: string;
+};
+
+/** The bar's sections across the room, from the left wall: the back bar's depth, the aisle for the bartender, the counter's top, and where the stools stand. */
+export const BACK_D = 0.6;
+export const AISLE = 0.95;
+export const TOP_D = 0.7;
+export const COUNTER_S = BACK_D + AISLE + TOP_D / 2;
+export const FRONT_EDGE = BACK_D + AISLE + TOP_D;
+export const STOOL_S = FRONT_EDGE + 0.3;
+/** Where the room's free floor begins, to the right of the stools. */
+export const LANE_FROM = STOOL_S + 0.25;
+
+const TOWARD_RIGHT: Spot = { s: 1, d: 0 };
+const TOWARD_LEFT: Spot = { s: -1, d: 0 };
+const TOWARD_BACK: Spot = { s: 0, d: 1 };
+const TOWARD_FRONT: Spot = { s: 0, d: -1 };
+/** Small turns, as unit vectors, for a chair pulled out and a stool pushed back. */
+const TURNS: readonly (readonly [number, number])[] = [[1, 0], [0.96, 0.28], [0.96, -0.28], [0.8, 0.6], [0.8, -0.6]];
+
+const turn = (f: Spot, k: number): Spot => {
+  const [c, sn] = TURNS[k % TURNS.length] as readonly [number, number];
+  return { s: cm(f.s * c - f.d * sn), d: cm(f.s * sn + f.d * c) };
+};
+
+/** The depth the bar is made: the room needs about 1.6 times its width and 2.5 m (8 to 15), and no more than the building has less a metre. */
+export function barDepth(width: number, maxDepth: number): number {
+  return cm(min(maxDepth, max(8, min(15, width * 1.6 + 2.5))));
+}
+
+/** The words of a sign on at most two lines, split at the space nearest the middle, in capitals. */
+export function lettered(text: string): string {
+  const t = text.toUpperCase();
+  if (t.length <= 14) return t;
+  let at = -1;
+  for (let i = 0; i < t.length; i++) if (t[i] === " " && (at < 0 || Math.abs(i - t.length / 2) < Math.abs(at - t.length / 2))) at = i;
+  return at < 0 ? t : t.slice(0, at) + "|" + t.slice(at + 1);
+}
+
+export function barDesign(site: BarSite): Design {
+  const W = site.width;
+  const D = barDepth(W, site.maxDepth);
+  const H = site.height;
+  const id = site.id;
+  const b = new DesignBuilder(W, D, H, id, footOf);
+  const roll = (salt: number): number => b.roll(salt);
+
+  // ---- what is kept clear: the street door's zone, and the way in from it, 1.4 m wide and 3 m long (less in a shallow room).
+  const zoneL = site.doorS - site.doorWidth / 2 - 0.55;
+  const zoneR = site.doorS + site.doorWidth / 2 + 0.55;
+  const way = max(2.5, min(3, D * 0.45));
+  b.reserve({ s0: zoneL, s1: zoneR, d0: 0, d1: 2.5 });
+  b.reserve({ s0: site.doorS - 0.7, s1: site.doorS + 0.7, d0: 0, d1: way });
+
+  // ---- the bar: from near the front, further in where the way in reaches the bar's side, to about two-thirds of the depth.
+  const d0 = site.doorS - 0.7 < LANE_FROM ? way + 0.15 : 1.4;
+  const dEndWant = max(d0 + 1.2, min(D * 0.68, D - 1.5));
+  // A bar that does not fit as long as wanted is made shorter until it does (and is left out where nothing of it fits).
+  let L = cm(min(dEndWant, D - 0.4) - d0);
+  const bar = (len: number): boolean => b.fits("back_bar", BACK_D / 2, cm(d0 + len / 2), TOWARD_RIGHT, [len], { gap: 0, margin: -0.01 }) && b.fits("bar_counter", COUNTER_S, cm(d0 + len / 2), TOWARD_RIGHT, [len], { gap: 0 });
+  while (L >= 0.9 && !bar(L)) L = cm(L - 0.3);
+  const hasBar = L >= 0.9;
+  if (!hasBar) L = 0;
+  const dEnd = cm(d0 + L);
+  const dMid = cm((d0 + dEnd) / 2);
+  if (hasBar) {
+    b.item("back_bar", BACK_D / 2, dMid, TOWARD_RIGHT, [L], { gap: 0, margin: -0.01 });
+    b.item("bar_counter", COUNTER_S, dMid, TOWARD_RIGHT, [L], { gap: 0 });
+  }
+  // The bartender's aisle is shut at the front end by a half-height partition and open at the back.
+  if (hasBar) b.wall({ s0: BACK_D, d0: d0, s1: BACK_D + AISLE, d1: d0, thick: 0.08, y0: 0, y1: 1.05, mat: "dark_wood", openings: [] });
+  b.slab({ kind: "floor", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: 0, thick: 0, mat: "dark_wood" });
+  b.slab({ kind: "ceiling", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: H, thick: 0, mat: "ceiling_dark" });
+  b.surface({ kind: "floor", s0: 0, s1: W, d0: 0, d1: D, y: 0 });
+
+  // Stools along the bar, each a little different: pulled out, turned.
+  const stools: Spot[] = [];
+  const nStools = hasBar ? max(1, floor(L / 0.62)) : 0;
+  for (let i = 0; i < nStools; i++) {
+    const d = cm(d0 + ((i + 0.5) * L) / nStools);
+    const s = cm(STOOL_S + roll(10 + i) * 0.1);
+    if (b.item("stool", s, d, turn(TOWARD_LEFT, i + id), [], { gap: 0.03 })) stools.push({ s, d });
+  }
+
+  // Two televisions over the back bar, one if it is short.
+  const tvAt = !hasBar ? [] : L >= 2.4 ? [d0 + L * 0.28, d0 + L * 0.72] : [d0 + L * 0.5];
+  const tvY = min(2.55, H - 0.8);
+  for (const d of tvAt) {
+    const w = onWall("left", cm(d), W, D);
+    b.decorate({ kind: "television", s: w.s, d: w.d, y: tvY, face: w.face, w: 0.95, h: 0.55 });
+    b.light({ s: 0.35, d: cm(d), y: tvY, kind: "glow", power: 0.1, reach: 1.6, tone: [0.55, 0.68, 1] });
+  }
+  // The back bar's shelves are lit from under their top.
+  const strips = hasBar ? max(2, round(L / 1.3)) : 0;
+  for (let i = 0; i < strips; i++) b.light({ s: 0.5, d: cm(d0 + ((i + 0.5) * L) / strips), y: 1.95, kind: "strip", power: 0.5, reach: 1.3, tone: [1, 0.78, 0.46] });
+
+  // ---- one square column where the room is wide, hugging the right wall like a pilaster in the line of its tables, with the exit sign on its face toward the front.
+  if (W >= 7) {
+    const colD = cm(D * 0.44);
+    const colS = cm(W - 0.25);
+    if (b.item("column", colS, colD, TOWARD_FRONT, [H], { gap: 0.1, margin: -0.03 })) {
+      b.decorate({ kind: "sign", s: colS, d: cm(colD - 0.25), y: min(2.4, H - 1.2), face: TOWARD_FRONT, w: 0.5, h: 0.2, text: "EXIT" });
+      b.light({ s: colS, d: cm(colD - 0.35), y: min(2.4, H - 1.2), kind: "glow", power: 0.07, reach: 1.0, tone: [1, 0.2, 0.15] });
+    }
+  }
+
+  // ---- the right wall: high-top tables with stools, where the room has the width for a way beside them.
+  const highTops = W >= 5.65;
+  const stoolsHigh: Spot[] = [];
+  if (highTops) {
+    for (let k = 0, dh = 2.4; dh <= D - 2.3 && k < 4; k++, dh += 1.75) {
+      if (!b.item("high_table", cm(W - 0.62), cm(dh), TOWARD_LEFT, [0.36], { gap: 0.05 })) continue;
+      for (const dd of [-0.34, 0.34]) {
+        const s = cm(W - 1.25);
+        const d = cm(dh + dd);
+        if (b.item("stool", s, d, turn(TOWARD_RIGHT, k + (dd > 0 ? 1 : 0)), [], { gap: 0.02 })) stoolsHigh.push({ s, d });
+      }
+    }
+  }
+  const sL = LANE_FROM + 0.1;
+  const sR = highTops ? W - 1.6 : W - 0.5;
+  const lane = sR - sL;
+
+  // ---- lower round tables with chairs toward the back: against the right wall's side of the way, so that the way beside them stays wide; one or two across.
+  const tables: Spot[] = [];
+  const chairs: { s: number; d: number; face: Spot }[] = [];
+  if (lane >= 2.6) {
+    const across = lane >= 4.8 ? [sL + lane * 0.3, sR - 0.9] : [sR - 0.9];
+    for (let r = 0, dt = max(D * 0.5, d0 + 1.5); dt <= D - 2.3 && r < 3; r++, dt += 2.8) {
+      for (let k = 0; k < across.length; k++) {
+        const s = cm(across[k] as number);
+        const d = cm(dt + (roll(30 + r * 3 + k) - 0.5) * 0.3);
+        if (!b.item("low_table", s, d, TOWARD_BACK, [0.42], { gap: 0.05 })) continue;
+        tables.push({ s, d });
+        const sides: Spot[] = [TOWARD_BACK, TOWARD_FRONT];
+        if (lane >= 3.8 && k === across.length - 1) sides.push(TOWARD_RIGHT);
+        for (let j = 0; j < sides.length; j++) {
+          const f = sides[j] as Spot;
+          const out = 0.66 + roll(40 + r * 7 + k * 3 + j) * 0.1;
+          const cs = cm(s + f.s * out);
+          const cd = cm(d + f.d * out);
+          // A chair faces the table: its front looks the way back to it.
+          const face = turn({ s: -f.s, d: -f.d }, r + k + j);
+          if (b.item("chair", cs, cd, face, [], { gap: 0 })) chairs.push({ s: cs, d: cd, face });
+        }
+      }
+    }
+  }
+
+  // ---- the back: a banquette with tables along the wall, the archway with its sign, the name board.
+  const arch = cm(max(LANE_FROM + 0.8, min(W - 1.25, W * 0.78)));
+  b.item("archway", arch, cm(D - 0.13), TOWARD_FRONT, [1.1], { gap: 0 });
+  const archFace = onWall("back", arch, W, D);
+  b.decorate({ kind: "sign", s: archFace.s, d: archFace.d, y: min(2.8, H - 0.9), face: archFace.face, w: 1.7, h: 0.2, text: "RESTROOMS" });
+  const bx0 = LANE_FROM + 0.3;
+  const bx1 = arch - 0.95;
+  const bLen = cm(bx1 - bx0);
+  const seated: { s: number; d: number; face: Spot }[] = [];
+  if (bLen >= 1.4) {
+    b.item("banquette", cm((bx0 + bx1) / 2), cm(D - 0.33), TOWARD_FRONT, [bLen], { gap: 0 });
+    const nT = max(1, floor(bLen / 1.55));
+    for (let i = 0; i < nT; i++) {
+      const s = cm(bx0 + ((i + 0.5) * bLen) / nT);
+      if (!b.item("square_table", s, cm(D - 1.08), TOWARD_FRONT, [0.38], { gap: 0 })) continue;
+      tables.push({ s, d: cm(D - 1.08) });
+      const cs = cm(s);
+      const cd = cm(D - 1.08 - 0.38 - 0.27);
+      if (b.item("chair", cs, cd, turn(TOWARD_BACK, i + 1), [], { gap: 0 })) chairs.push({ s: cs, d: cd, face: TOWARD_BACK });
+      seated.push({ s, d: cm(D - 0.36), face: TOWARD_FRONT });
+    }
+  }
+  const nameLo = max(0.7, LANE_FROM - 0.4);
+  const nameHi = arch - 0.9;
+  if (nameHi - nameLo >= 1.2) {
+    const text = lettered(site.name);
+    const lines = text.split("|");
+    // The letters are as large as the room's stretch of wall allows up to 4.5 cm a pixel (a letter 31 cm high), and the board is as wide as its words with a margin.
+    const cols = max(...lines.map((l) => l.length * 6 - 1));
+    const px = min(0.045, (min(nameHi - nameLo, 3.6) - 0.5) / cols);
+    const w = cm(cols * px + 0.5);
+    const h = cm((lines.length * 7 + (lines.length - 1) * 2) * px + 0.3);
+    const wb = onWall("back", cm((nameLo + nameHi) / 2), W, D);
+    b.decorate({ kind: "board", s: wb.s, d: wb.d, y: min(2.65, H - 0.9), face: wb.face, w, h, text });
+  }
+
+  // ---- the right wall's hangings: guitars and posters, alternate, spread along it.
+  const slots = max(2, min(5, floor((D - 2.2) / 1.6)));
+  const order = ["guitar", "poster", "guitar", "poster", "guitar"];
+  for (let i = 0; i < slots; i++) {
+    const along = cm(1.5 + ((i + 0.5) * (D - 3.0)) / slots);
+    const w = onWall("right", along, W, D);
+    const kind = order[i] as string;
+    if (kind === "guitar") b.decorate({ kind, s: w.s, d: w.d, y: min(2.75, H - 0.8), face: w.face, w: 0.38, h: 1.0 });
+    else b.decorate({ kind, s: w.s, d: w.d, y: min(2.1, H - 1.3), face: w.face, w: 0.62, h: 0.9 });
+  }
+
+  // ---- the bulbs, on strings the length of the room: over the bar, down the middle, and over the right wall in a wide room.
+  const rows = [COUNTER_S + 0.1, cm((sL + sR) / 2)];
+  if (W >= 8.5) rows.push(cm(W - 0.9));
+  for (let k = 0; k < rows.length; k++) {
+    const s = rows[k] as number;
+    const from = 0.9;
+    const len = cm(D - 0.7 - from);
+    const n = max(2, floor(len / 1.25) + 1);
+    b.item("bulb_string", s, from, TOWARD_BACK, [len, n], { anywhere: true });
+    for (let i = 0; i < n; i++) {
+      b.light({ s, d: cm(from + (i * len) / (n - 1)), y: cm(H - 0.5), kind: "bulb", power: k === 0 ? 0.46 : 0.3, reach: 1.7, tone: [1, 0.74, 0.42] });
+    }
+  }
+
+  // ---- the people: a bartender behind the bar, three on the stools, one or two at the tables.
+  if (hasBar) b.person({ s: cm(BACK_D + AISLE / 2), d: cm(d0 + L * 0.45), face: TOWARD_RIGHT, activity: "wipe", role: "staff", sits: null, family: "chair" });
+  const taken = stools.length >= 4 ? 3 : stools.length >= 2 ? 2 : stools.length;
+  const used: number[] = [];
+  for (let k = 0; k < stools.length * 2 && used.length < taken; k++) {
+    const i = floor(roll(50 + k) * stools.length);
+    if (!used.includes(i)) used.push(i);
+  }
+  for (const i of used) {
+    const st = stools[i] as Spot;
+    b.person({ s: st.s, d: st.d, face: TOWARD_LEFT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
+  }
+  if (chairs.length > 0) {
+    const c = chairs[floor(roll(60) * chairs.length)] as (typeof chairs)[number];
+    b.person({ s: c.s, d: c.d, face: c.face, activity: "sit_table", role: "customer", sits: 0.46, family: "chair" });
+  }
+  if (seated.length > 0 && roll(61) < 0.8) {
+    const c = seated[floor(roll(62) * seated.length)] as (typeof seated)[number];
+    b.person({ s: c.s, d: c.d, face: c.face, activity: "sit_rest", role: "customer", sits: 0.46, family: "chair" });
+  }
+  if (stoolsHigh.length > 0 && roll(63) < 0.8) {
+    const st = stoolsHigh[floor(roll(64) * stoolsHigh.length)] as Spot;
+    b.person({ s: st.s, d: st.d, face: TOWARD_RIGHT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
+  }
+
+  const wood = { mat: "dark_wood" };
+  return b.build({
+    name: "bar",
+    legacy: false,
+    doorS: site.doorS,
+    doorWidth: site.doorWidth,
+    doorHead: min(2.05, H - 0.2),
+    arrive: arrivalOf(W, site.doorS),
+    shell: {
+      front: { mat: "plaster_dark", wainscot: { h: 1.1, mat: "dark_wood" }, skirt: "dark_wood" },
+      left: { ...wood, skirt: "dark_wood" },
+      right: { mat: "brick", skirt: "dark_wood" },
+      back: { mat: "plaster_dark", wainscot: { h: 1.1, mat: "dark_wood" }, skirt: "dark_wood" },
+      floor: "dark_wood",
+      ceiling: "ceiling_dark",
+    },
+    mood: { exposure: 0.6, ambient: [1, 0.82, 0.6], ambientK: 0.02, day: 0.12 },
+  });
+}

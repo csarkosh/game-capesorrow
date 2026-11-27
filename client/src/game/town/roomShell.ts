@@ -224,7 +224,7 @@ function layerSurface(f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | und
   return f.layer === null ? undefined : { layer: f.layer, frame: { origin, u: unit3(u), v: unit3(v) } as UvFrame, tint: f.gain };
 }
 
-type Band = { y0: number; y1: number; f: Layered; kind: "base" | "wain" | "wall" | "stripe" };
+export type Band = { y0: number; y1: number; f: Layered; kind: "base" | "wain" | "wall" | "stripe"; /** The material the band is of, in the place of its kind's (a designed room's wainscot of dark timber). */ mat?: MatRef };
 
 /** The colour of a pane in daylight, a pale overcast one, and how strongly it lights itself (the day's glow: it is dark at night, `DAY_GLOW_CODE` in `townMaterial.ts`). */
 const PANE: Rgb = [0.8, 0.86, 0.92];
@@ -240,7 +240,7 @@ const PROUD = 0.03;
  * unit has (and its door), a bright pane in each window with its frame (and what covers it: slats, paper, boards), and the door shut in its frame, as
  * the street side lays them out (`frontGeometry.ts`). A pane shows the day and not the street: it is a sheet that glows with the daylight and is dark at night.
  */
-function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
+export function frontWall(c: Ctx, r: Pick<RoomIn, "door" | "openings">, bands: readonly Band[]): void {
   const { out, xf, floorY, s0, s1 } = c;
   const top = c.ceiling;
   const d0 = FACE_D;
@@ -271,7 +271,7 @@ function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
     for (let q = 0; q <= rows; q++) vs.push(y0 + ((y1 - y0) * q) / rows);
     const origin = P(a0, y0, 0);
     const along = xd(xf, a1 - a0, 0);
-    withMat(b.kind === "base" || b.kind === "stripe" ? "boards" : "plaster", () => out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), into, (i, j) => {
+    withMat(b.mat ?? (b.kind === "base" || b.kind === "stripe" ? "boards" : "plaster"), () => out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), into, (i, j) => {
       const y = vs[j] as number;
       let mod = 1 + noise(i * 3 + k, j, 3) * 0.12;
       if (y < 0.5) mod *= 0.9;

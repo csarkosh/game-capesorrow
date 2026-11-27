@@ -598,7 +598,7 @@ reasons. Nothing of the town reaches that high, so no roof, tree or crane stands
 reaches 100 m up, so a roof over the room still stops the rain there. And it is not under the ground, where the engine's
 height fog and its water line would be wrong for a player below the sea. The rooms are `insideRooms(seed)`
 (`client/src/sim/inside/rooms.ts`), a pure function of the world's seed: ids 1 the bar, 2 the cafe, 3 the lodging, each with
-its walls, its door and its furnishings as rectangles.
+its door, its design and the blocks of its design as rectangles (below).
 
 ### The phases
 
@@ -608,9 +608,9 @@ press on the host (`insidePressed`, from the `pressed` hook, which gives a playe
 door only if the car did not act); a held phase counts `DOOR_TICKS` (27, 450 ms) down in the host's step (`insideStep`),
 during which the engine holds the player still (`held`); then the player is moved: to `arriveIn(room)` for going in, and
 for going out to `arriveOut(room)` moved clear of what stands there by the town's own constraint, on the walked ground.
-A player in a room moves by `insideMove`, the engine's own walking step on a flat floor with no jump (the eye would go
-through a low ceiling), then `constrainInRoom` keeps the hull in the walls and out of the furnishings; where two pieces
-of furniture stand closer than a hull is wide, the player stays where they were. It runs on the host, in a client's
+A player in a room moves by `insideMove` (`walkInRoom`), the engine's own walking step on the ground the room's design has under the hull, with no jump (the eye would go
+through a low ceiling), then `constrainInRoom` keeps the hull in the walls and out of the blocks of the design that act at its height; where two pieces
+of furniture stand closer than a hull is wide, the player stays where they were (see "Walking on levels"). It runs on the host, in a client's
 prediction and in its replay, so it is deterministic from the room and the command. The line at a door ("Click to go in",
 "Click to go out") asks the same `streetDoorAt` and `roomDoorAt` as the host's press, and shows nothing during a hold. The
 screen's black cover (`WalkHud.setDark`: 200 ms to black, 450 ms to clear) follows the phase in the snapshot, going dark
@@ -626,10 +626,64 @@ must not be drawn to someone in the street, nor the reverse. The console's `goin
 `goin out` put the host's player in a room, with no hold, for looking at one; from an address it waits for the world and
 the player.
 
+### A room as a design
+
+Every `InsideRoom` has a `design` (`client/src/sim/inside/design.ts`): one pure description of the room, made in the simulation from the world's seed and the place's own measures, from which both the
+walking and the drawing are derived, so that they cannot disagree. Everything in it is in the room's frame: `s` along the front wall from the room's left end as the street sees it (the design's own `s` 0 is
+the unit's left end, and `InsideRoom.s0` is where that is in the building's frame), `d` into the building (the front wall's inner face at `FRONT_WALL`, the back wall's at `depth`), and `y` up from the room's
+floor (`floorY`). It is plain data: material names, kinds of furniture and activities are strings that the drawing and the people's part give their meaning to (the simulation imports nothing of `game/`).
+
+- **What it holds.** The outer box (`width`, `depth`, `height`), the street door (`doorS`, `doorWidth`, `doorHead`), where a player arrives, `surfaces` and `blocks` (what the walking reads), and what is drawn:
+  `walls` (a run with a thickness, a height range, two faces' materials and doorways, some of them shut), `slabs` (floors and ceilings with their edges), `stairs`, `rails`, `items` (furniture and
+  fixtures by kind: a place, a facing and a few numbers), `decor` (what hangs on a wall: a television, a guitar, a poster, a sign or a board with words), `lights`, `people` and the outer walls' finishes and the room's mood.
+- **A thing is stated once.** `DesignBuilder` takes a wall, a rail, a stair or an item and makes its blocks from the same numbers that are drawn: a wall gives a block for each stretch between its doorways, a header over each
+  doorway that a standing hull's head clears, and a thin block across a shut one; a rail a thin block along it; an item the footprint its kind has in `kinds.ts` (a stool 0.4 m across, 0.76 m high; a bar counter 0.7 m deep, 1.07 m high);
+  a stair its ramp and the blocks under and beside it. `DesignBuilder.item` refuses an item that would stand outside the room, on a reserved zone (the street door's, the way in) or on another item, so a design written against
+  any width and depth drops what does not fit and keeps the rest.
+- **The converter.** `convert.ts` makes a one-floor `legacy` design from the plan's record of a room (`Unit.interior`): its furnishings as blocks on a flat floor, nothing drawn. The cafe and the lodging use it for now, and the
+  municipal building's layout is made a design the same way (`designs/municipal.ts`: its layout and its people unchanged). A `legacy` design is drawn by the street's room builder in its `whole` mode, as before; the others by `designGeometry.ts`.
+- **The bar** (`designs/bar.ts`) is the first designed room: a function of the unit's width, the building's depth less a metre and the door. The depth is made from the width (8 to 15 m, or what the building has less a metre); a bar down the
+  left wall from near the front (further in where the way from the door reaches its side) to about two-thirds of the depth, a bartender's aisle, a back bar of three shelves of bottles with two televisions, stools; high-tops with stools along the brick
+  right wall where the room is 5.7 m wide or more; a column where it is 7 m wide or more; lower round tables with chairs toward the back where the way beside the bar is wide enough to leave a clear lane; a banquette with tables along the back wall,
+  an archway with a shut door and a sign over it, a board with the tavern's name, guitars and posters, bulbs on strings, and its people.
+
+### Walking on levels
+
+A design can have floors at different heights, so the walking (`designWalk.ts`, used by `rooms.ts` and `rules.ts`) reads heights.
+
+- **The ground under a hull** is the highest of the `surfaces` that hold its (s, d) whose height there is no more than `STEP_UP` (0.45 m) over its feet. A surface is a `floor` (a rectangle at one height) or a `ramp` (a rectangle whose
+  height runs linearly along `s` or `d`: a flight of stairs is a ramp to the walker). If none holds the place the move is refused and the hull stays where it was, so nobody walks into a void, and nobody comes up through a gallery's
+  floor from below, since its height is far over their feet. A hull that steps off an edge finds only the surface below it, and falls to it under the engine's gravity (the ground field answers from the hull's feet at the start of the tick).
+- **What a hull is pushed out of** is a `Block`: an oriented rectangle over a height range. A block acts on a hull only where its range meets the hull's own, from 0.3 m to 1.7 m over its feet: a rail on a gallery is nothing to someone
+  on the floor below, a stool is something, a dust sheet (under 0.3 m) is stepped over, and a header over a doorway is above a head. `rooms.ts`'s `solids` are the blocks that act on a hull on the floor.
+- **Stairs.** `stairSurface` is the ramp; `stairBlocks` makes, where the ramp's headroom over the floor under it is under 1.9 m, a block under it in slices of 25 cm, each as high as the ramp's own low edge over it (a hull on the ramp,
+  whose feet are at or over that edge, is never held by it, and a hull on the floor is stopped at the low end of the flight and walks under the high end); and, along each side that has a handrail, a thin guard in slices that follow the
+  ramp, so that nobody walks off the side of a flight. The engine is told the ground's normal is straight up, so it never slides a walker down a flight.
+- **Open edges** have a rail: a rail is a block (`railBlock`), and a design puts one at every open edge of every upper surface. `client/test/inside/` holds this: it flood-fills a 0.5 m grid from the arrival with the same rules and asserts that
+  every surface is reached, that a step outward from an upper surface's edge is refused or lands within `STEP_UP`, that a deterministic walk of 3,000 ticks never leaves the box, ends in a block or stands on nothing, and that the bar
+  and the test-only design (a hall with a stair, a gallery and a room under it, in `designHelpers.ts`) hold to it on every test seed.
+
+### How a design is drawn and lit
+
+`designGeometry.ts` (`designMesh`, `designGeometry`) builds a design into a `MeshBuilder(true)` (every face's back is laid, so the room is seen from every side) at the room's frame (moved along the wall to the unit's left end) and `floorY`;
+the drawn floor's surface is at `floorY` exactly (the old whole-room path lifts its floor 8 cm). `insideGeometry.ts` calls it for a room whose design is not `legacy`, with the unit's own windows (moved to the design's `s`), its era and its hours
+(`withHours`, so a room shut for the night is dark), and the old path for the rest.
+
+- **Parts.** Slabs and the outer walls are lit grids (cells of at most 75 cm, in bands: skirting, wainscot, wall); the front wall is the street side's own `frontWall` (`roomShell.ts`, now exported): the wall cut round the unit's openings and door, a bright
+  pane in each window (the day, no street), the door in its frame. Inner walls are faces in cells round their doorways with casings and, where shut, a leaf. A stair is real steps, 17.5 cm risers, each tread's top at the ramp's height over its middle, so
+  the walker is within half a riser of the tread under the foot, with a stringer each side, a soffit and a round handrail on posts. A rail is a top rail and a channel on posts, with bars or a timber panel; clear glass has no panel drawn (the inside
+  mesh has no blended layer). Each kind of item has a builder in `furniture/` (`ITEMS` by kind; `DECOR` for what hangs), through `furniture/kit.ts`: `Geo` puts a polygon given in the room's frame into the world, lit at its corners, and `Local` is an item's
+  own frame (forward, right, up) with `box`, `frustum`, `disc`, `tubeR` and `tube`. Every builder varies a little by the item's id (a tint a few percent off, a stool turned, a bottle a different height). The words are the town's stroke font as quads.
+- **Materials.** Surfaces are named by interior material names (`marble_tile`, `carpet`, `oak`, `dark_wood`, `cloth`, `glazed_tile`, `cane`, `brick`, `concrete`, `plaster`, `steel`, `painted`, and a few more) and `interiorMaterials.ts` is the one table that
+  maps each to the town's material (a texture layer and how it lies) and an albedo. When the interiors' own textures arrive, only that table changes.
+- **Light.** `designLight.ts` bakes the light into the vertices' colours: an ambient term, each light's inverse-square falloff in its own reach with a facing term (a face turned away keeps a third), the day through the front's panes, a darkening in corners, at the
+  foot and head of a wall and under what stands on the floor, and the whole brought to an exposure by the brightest place on the floor (the bar's is dim, pooled under its bulbs). The same object is the `RoomField` the room kit's `frontWall` reads. No shadows.
+- **Cost.** The bar is 5,700 to 26,800 vertices over the test seeds (about 20,000 on the world the game opens on), built in 10 to 70 ms; a test holds each under 30,000 and every vertex inside the box.
+
 ### How it is drawn
 
 **The fourth room, the municipal building's** (id 4, name "office", `unit` -1), has no plan record to be built from, and the plan must not change (its digests are pinned), so its inside is made by
-`sim/inside/municipal.ts` from the building's front frame alone (`municipalInterior(seed)`, a pure function of the seed): an `Interior` in the plan's own types (type "lobby", the building's whole front wide,
+`sim/inside/designs/municipal.ts` from the building's front frame alone (`municipalInterior(seed)`, a pure function of the seed): an `Interior` in the plan's own types (type "lobby", the building's whole front wide,
 `min(14, frame.depth - 1.5)` deep, 3.6 m high) with the street door (the place's pair of doors, 2.3 m, at the middle `C`), the city clerk's counter on the left and the sheriff's on the right with desks and
 cabinets behind, a partition across at d 7.2 with two doorways (into the player's office at `C - 2.4`, and a shut door, solid, at `C + 3.0`), the player's office behind it (a desk, a couch, cabinets, a plant, a table
 and a lamp), benches, plants, a water cooler, a low table and a flag in the hall, tube lights, the fixed places and activities of its people (a clerk, a deputy, one or two visitors), and the stations of the front windows as the
@@ -639,7 +693,8 @@ for the others (a partition and the shut door are solids). Its drawing is the sa
 the shut door's leaf, a notice board, a clock, a flag on its stand and a cork board with a map in the office. The windows are the street side's stations (`plainFront`) at its sill and head heights, in the look the street rolls for each; the street side
 leaves out a window the ground stands too high for, this does not.
 
-The hidden room is drawn by `insideGeometry.ts` and `insideParts.ts` (`client/src/game/town/`).
+The hidden room is drawn by `insideGeometry.ts` and `insideParts.ts` (`client/src/game/town/`). What follows is how a room whose design is the converter's (`legacy`: the cafe, the lodging and the municipal building for now) is drawn,
+by the street's room builder; a room with a design of its own (the bar) is drawn by `designGeometry.ts` (above), and shares the lifecycle, the material, the rain and the people of the rest of this section.
 
 - **Built whole, from the same record.** `insideGeometry(g, room, detail)` calls `roomGeometry`, the builder of the room behind the street's glass,
   with the unit's own `Unit.interior`, state, hours and finish (so a shop shut for the night is as dark inside as it looks from the street), the

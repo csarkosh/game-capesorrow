@@ -11,11 +11,17 @@
  *
  * Nothing here says what the building is to the town but a city's and a sheriff's: no other service is named in it.
  *
+ * Its design (`municipalDesign`) is this layout unchanged, as the converter makes a design of it (one floor, the furnishings and the two fixtures as blocks, the
+ * same people): a design that is `legacy`, so the street's room builder still draws it with `game/town/municipalDecor.ts`. The designed hall that replaces it
+ * (a stair and a gallery, offices behind glass) is a later step and states its own walls, stairs and rails.
+ *
  * Simulation code: the arithmetic of AGENTS.md ("The simulation's rules") applies, and collections are never walked for their order.
  */
-import { hashSeed } from "../town/rng.js";
-import { planFor } from "../town/planFor.js";
-import type { Furnishing, Interior, RoomLight } from "../town/types.js";
+import { hashSeed } from "../../town/rng.js";
+import { planFor } from "../../town/planFor.js";
+import type { Furnishing, Interior, RoomLight } from "../../town/types.js";
+import { designFromInterior } from "../convert.js";
+import type { Block, Design, DesignPerson } from "../design.js";
 
 const { floor, max, min, round } = Math;
 
@@ -224,4 +230,20 @@ function make(seed: number): Municipal {
     people,
     marks: { back: P, cityS: cm((cityFrom + cityTo) / 2), sheriffS: cm((sheriffFrom + sheriffTo) / 2), officeDoor: gO, shutDoor: gS, officeLeft: left, officeRight: right, flag, bays },
   };
+}
+
+const DESIGNS = new Map<number, Design>();
+
+/** The municipal building's design for a world's seed: its layout as one floor, with its people. */
+export function municipalDesign(seed: number): Design {
+  let made = DESIGNS.get(seed);
+  if (made === undefined) {
+    const m = municipalInterior(seed);
+    // The shut door and the flag's stand are solid too, though they are no furnishings of the plan's kinds.
+    const fixtures: Block[] = m.fixtures.map((x) => ({ s: x.s, d: x.d, ax: 1, ad: 0, ha: x.ha, hb: x.hb, y0: 0, y1: x.kind === "door" ? 2.2 : 2.5 }));
+    const people: DesignPerson[] = m.people.map((p) => ({ s: p.s, d: p.d, face: p.face, activity: p.activity, role: p.role, sits: p.sits, family: "chair" }));
+    made = designFromInterior("office", m.interior, { s0: 0, s1: m.width, doorS: m.doorS, doorWidth: m.doorWidth }, fixtures, people);
+    DESIGNS.set(seed, made);
+  }
+  return made;
 }

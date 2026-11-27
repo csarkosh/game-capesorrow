@@ -10,7 +10,7 @@ import { withMat } from "./materials.js";
 import { scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { BAKED, fbox, shade, wallQuad, xd, xp, type Ctx } from "./roomKit.js";
 import { GLYPH_H, textPixels, textRuns } from "./signFont.js";
-import { DOORWAY, MUNICIPAL_CEILING, PARTITION, type Municipal } from "../../sim/inside/municipal.js";
+import { DOORWAY, MUNICIPAL_CEILING, PARTITION, type Municipal } from "../../sim/inside/designs/municipal.js";
 
 const AX = { x: 1, z: 0 };
 

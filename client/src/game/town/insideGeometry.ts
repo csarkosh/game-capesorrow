@@ -5,15 +5,18 @@
  * and a front wall on the inside, into a builder that lays every face's back (`MeshBuilder`'s `backs`), so no face of it is see-through from any
  * side. `insideParts.ts` makes a mesh of it while a player is in it and lets it go when they leave.
  *
+ * That is the room whose design is the converter's (`legacy`); a room with a design of its own is drawn from it by `designGeometry.ts` (`designedGeometry` below), with the same front wall.
+ *
  * What it is built from is what the street side is built from (`planFront`, `frontGeometry.ts`): the unit's own state, hours, finish and light, so
  * a shop shut for the night is as dark inside as it looks from the street. Only its place differs: the floor is at the height the simulation
  * holds the player's feet at, and the frame is the building's own (a test holds it equal to the room's).
  */
 import type { InsideRoom } from "../../sim/inside/rooms.js";
-import { municipalInterior } from "../../sim/inside/municipal.js";
+import { municipalInterior } from "../../sim/inside/designs/municipal.js";
 import type { Opening } from "../../sim/town/types.js";
 import { buildingLevels, roofOver } from "./buildingGeometry.js";
 import { pickOf } from "./buildingKit.js";
+import { designMesh } from "./designGeometry.js";
 import { municipalDecor } from "./municipalDecor.js";
 import { unitHours } from "./hours.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
@@ -29,8 +32,12 @@ export function doorHeadOf(era: number, fascia: number): number {
   return era < 1940 && fascia > 3.1 ? 2.65 : 2.2;
 }
 
-/** The room of the plan as the arrays of the hidden room: one set for the solid layer (a whole room has no haze, and its panes are sheets in it). */
-export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail): MeshArrays {
+/**
+ * The hidden room as arrays: one set for the solid layer (a whole room has no haze, and its panes are sheets in it). A room whose design is not the converter's is drawn from its
+ * design (`designGeometry.ts`); the rest by the street's room builder, as they always were.
+ */
+export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void): MeshArrays {
+  if (!room.design.legacy) return designedGeometry(g, room, detail, report);
   if (room.unit === -1) return municipalGeometry(g, room, detail);
   const b = g.plan.buildings[room.building];
   const use = g.plan.uses[room.building];
@@ -65,6 +72,28 @@ export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail):
     glassIn: -glassOffOf(detail === "full", isMasonry(b.material)) - 0.07,
   });
   return out.take();
+}
+
+/** A room drawn from its design: the unit's own front (its windows, its hours) with the design's walls, floors and furniture behind it, in the design's own frame (`s` from the unit's left end). */
+function designedGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void): MeshArrays {
+  const b = g.plan.buildings[room.building];
+  const use = g.plan.uses[room.building];
+  const u = use?.units.find((x) => x.id === room.unit);
+  if (b === undefined || b.id !== room.building || use === undefined || u === undefined) throw new Error(`the town has no unit ${room.unit} of building ${room.building} for the room ${room.id}`);
+  const frame = buildingLevels(g, b).xf;
+  if (frame === null) throw new Error(`building ${room.building} has no front wall frame`);
+  // The design's own `s` runs from the unit's left end: the frame is the building's, moved along its wall to there.
+  const xf = { ...frame, ox: frame.ox + frame.tx * u.s0, oz: frame.oz + frame.tz * u.s0, width: room.design.width, depth: room.design.depth };
+  return designMesh({
+    design: room.design,
+    xf,
+    floorY: room.floorY,
+    seed: b.id * 31 + u.id,
+    hours: unitHours(b, u),
+    detail,
+    front: { openings: u.openings.map((o) => ({ ...o, s0: o.s0 - u.s0, s1: o.s1 - u.s0 })), era: b.era, doorHead: doorHeadOf(b.era, u.fascia) },
+    ...(report === undefined ? {} : { report }),
+  });
 }
 
 /** The most neutral trade the dressing has for a hall of offices: a bank's wooden floor and wainscot and what an office hangs (licences, a calendar, a clock), and nothing of a shop's. */

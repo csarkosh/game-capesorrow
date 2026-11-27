@@ -4,7 +4,7 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { arriveIn, arriveOut, constrainInRoom, fromRoom, DOOR_OUT, DOOR_SIDE, DOOR_TICKS, inRoom, insideRooms, roomDoorAt, roomOf, streetDoorAt, type InsideRoom } from "../../src/sim/inside/rooms.js";
 import { townConstrain } from "../../src/sim/town/solid.js";
-import { municipalInterior } from "../../src/sim/inside/municipal.js";
+import { municipalInterior } from "../../src/sim/inside/designs/municipal.js";
 import { townStart } from "../../src/sim/town/start.js";
 import { readFileSync } from "node:fs";
 
@@ -131,7 +131,7 @@ describe("the municipal building's room", () => {
       expect(m.depth).toBeLessThanOrEqual(14);
       expect(m.interior.type).toBe("lobby");
     }
-    for (const file of ["src/sim/inside/municipal.ts", "src/game/town/municipalDecor.ts"]) {
+    for (const file of ["src/sim/inside/designs/municipal.ts", "src/game/town/municipalDecor.ts"]) {
       expect(readFileSync(new URL(`../../${file}`, import.meta.url), "utf8"), file).not.toMatch(/\b(fbi|agent|bureau|federal)\b/i);
     }
   }, timeLimit(300_000));

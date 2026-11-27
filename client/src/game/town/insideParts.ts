@@ -21,9 +21,9 @@ import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, insideRooms, roomOf, type Inside, type InsideRoom } from "../../sim/inside/rooms.js";
 import { buildingLevels } from "./buildingGeometry.js";
 import { heldBy, tradeAt } from "./handHeld.js";
+import { unitHours } from "./hours.js";
 import { insideGeometry } from "./insideGeometry.js";
-import { PERSON_MODELS, roomPeople, type PersonModel } from "./people.js";
-import { municipalInterior } from "../../sim/inside/municipal.js";
+import { PERSON_MODELS, roomPeople, type Activity, type PersonModel } from "./people.js";
 import type { PlacedPerson } from "./peopleParts.js";
 import { xd, xp } from "./roomKit.js";
 import { packSurface } from "./surfacePack.js";
@@ -112,20 +112,25 @@ export function createInsideParts(host: InsideHost): InsideParts {
   };
 }
 
-/** The people of the municipal building's room (`sim/inside/municipal.ts` fixes where they stand and what they do), in the room's frame placed in the world. */
-function hallPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
+/** The people a design places itself (`Design.people`), in the room's frame placed in the world: the municipal building's and the bar's. */
+function designPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
   const b = g.plan.buildings[room.building];
   const xf = b === undefined ? null : buildingLevels(g, b).xf;
   if (xf === null) return [];
-  const m = municipalInterior(g.seed);
-  return m.people.map((p, i): PlacedPerson => {
-    const at = xp(xf, p.s, p.d, room.floorY);
+  // A unit's people are there while it is open; the municipal building's never leave.
+  const unit = b === undefined ? undefined : g.plan.uses[room.building]?.units.find((u) => u.id === room.unit);
+  const hours = b === undefined || unit === undefined ? null : unitHours(b, unit);
+  return room.design.people.map((p, i): PlacedPerson => {
+    const at = xp(xf, room.s0 + p.s, p.d, room.floorY);
     const way = xd(xf, p.face.s, p.face.d);
     const model = PERSON_MODELS[(i * 2 + room.building) % PERSON_MODELS.length] as PersonModel;
     return {
-      person: { model, activity: p.activity, seat: p.sits === null ? null : { furnishing: 0, top: p.sits, family: "chair" }, scale: 0.97 + 0.02 * ((i + room.building) % 3), offset: 7 * (i + 1), rate: 0.95 + 0.05 * (i % 3) },
+      person: {
+        model, activity: p.activity as Activity, seat: p.sits === null ? null : { furnishing: 0, top: p.sits, family: p.family }, scale: 0.97 + 0.02 * ((i + room.building) % 3), offset: 7 * (i + 1),
+        rate: 0.95 + 0.05 * (i % 3),
+      },
       at: { x: at[0], y: at[1], z: at[2], yaw: Math.atan2(way[0], way[2]) },
-      hours: null,
+      hours,
       outdoor: false,
       held: null,
       room: room.id,
@@ -140,8 +145,8 @@ function hallPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
 export function insidePeople(g: TownGround): PlacedPerson[] {
   const out: PlacedPerson[] = [];
   for (const room of insideRooms(g.seed)) {
-    if (room.unit === -1) {
-      out.push(...hallPeople(g, room));
+    if (room.design.people.length > 0) {
+      out.push(...designPeople(g, room));
       continue;
     }
     const b = g.plan.buildings[room.building];
