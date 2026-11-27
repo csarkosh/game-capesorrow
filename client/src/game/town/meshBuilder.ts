@@ -346,6 +346,39 @@ export class MeshBuilder {
     if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx, given);
   }
 
+  /**
+   * A flat sheet of shared corners, for a pane-like see-through effect that reads its own numbers from a corner (the dark under a vehicle,
+   * `props/vehicleShade.ts`): `points` with a `uvs` each, laid as the triangles `tris` (three indices each, in any order: each is wound to face
+   * `hint`). The corners carry `fx` as `poly` carries it for a polygon with no surface.
+   */
+  sheet(points: readonly Vec3[], uvs: readonly (readonly [number, number])[], tris: readonly number[], hint: Vec3, colour: Rgb, fx: Fx): void {
+    const base = this.vertices;
+    if (MeshBuilder.trace) this.tag(this.idx.length / 3);
+    const glow = fx.glow ?? this.glowBase;
+    points.forEach((p, i) => {
+      const uv = uvs[i] as readonly [number, number];
+      this.pos.push3(p[0], p[1], p[2]);
+      this.nor.push3(hint[0], hint[1], hint[2]);
+      this.col.push4(colour[0], colour[1], colour[2], 1);
+      this.uv.push2(uv[0], uv[1]);
+      this.srf.push12(NO_LAYER, fx.dirt ?? 0, fx.seed ?? 0, glow, 1, 1, 1, fx.clear ?? 0, fx.size?.[0] ?? 0, fx.size?.[1] ?? 0, fx.tilt?.[0] ?? 0, fx.rank ?? fx.tilt?.[1] ?? 0);
+    });
+    for (let t = 0; t + 2 < tris.length; t += 3) {
+      const a = tris[t] as number;
+      const b = tris[t + 1] as number;
+      const c = tris[t + 2] as number;
+      const pa = points[a] as Vec3;
+      const pb = points[b] as Vec3;
+      const pc = points[c] as Vec3;
+      const nx = (pb[1] - pa[1]) * (pc[2] - pa[2]) - (pb[2] - pa[2]) * (pc[1] - pa[1]);
+      const ny = (pb[2] - pa[2]) * (pc[0] - pa[0]) - (pb[0] - pa[0]) * (pc[2] - pa[2]);
+      const nz = (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]);
+      // The engine's front face is the one the triangle's corners turn against (as `poly` winds them).
+      if (nx * hint[0] + ny * hint[1] + nz * hint[2] < 0) this.idx.push3(base + a, base + b, base + c);
+      else this.idx.push3(base + a, base + c, base + b);
+    }
+  }
+
   /** The back of a polygon just laid (`Fx.back`): the same corners, facing `hint` (the front's normal reversed), in the back's own look. */
   private twin(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], fx: Fx, front?: Surface | MatRef): void {
     const back = fx.back as Exclude<Fx["back"], undefined>;

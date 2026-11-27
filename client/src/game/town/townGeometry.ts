@@ -115,7 +115,7 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
   lightGeometry(g, sinks.solid);
   yield;
 
-  yield* propsGeometry(g, { solid: sinks.solid, glass: sinks.glass, flat: sinks.flat }, detail, sliceDue);
+  yield* propsGeometry(g, { solid: sinks.solid, glass: sinks.glass, flat: sinks.flat, ...(detail === "low" ? {} : { shade: sinks.shade }) }, detail, sliceDue);
   yield;
   // The marks on the street: oil, scuffs, puddles, drifts (`groundStains.ts`).
   if (detail !== "low") groundStains(g, sinks.flat);

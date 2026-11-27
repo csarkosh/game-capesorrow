@@ -11,6 +11,7 @@ import type { Detail, TownGround } from "../townTypes.js";
 import type { BoatTrailer } from "../../../sim/town/types.js";
 import { D, P, lbox, mix, mixC, placeOn, rnd, tube, type Place } from "./kit.js";
 import { CHROME, GLASS_CAR, PAINT, PLATE, TAIL, TARP_BLUE, TARP_SILVER, TYRE, paintTint } from "./vehicleStyle.js";
+import { trailerShade } from "./vehicleShade.js";
 import type { VehicleSinks } from "./vehicleGeometry.js";
 
 const FRAME: Rgb = [0.05, 0.05, 0.055];
@@ -138,6 +139,7 @@ function weeds(m: MeshBuilder, pl: Place, t: BoatTrailer, detail: Detail): void 
 export function trailerGeometry(g: TownGround, sinks: VehicleSinks, t: BoatTrailer, detail: Detail): void {
   const m = sinks.solid(t.x, t.z);
   const gl = sinks.glass(t.x, t.z);
+  if (sinks.shade !== undefined && detail !== "low") trailerShade(g, sinks.shade(t.x, t.z), t);
   const pl = placeOn(g, t.x, t.z, t.hx, t.hz, t.length, t.width);
   const L = t.length;
   const rear = -L / 2;

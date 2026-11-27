@@ -16,6 +16,7 @@
  *   drawn by the engine (`dress` says no); each is given a matrix array of its own here, the same size as the bodies' (a thing's instance k is
  *   body k, since the clip a body plays is read by the instance's index), holding the body's own matrix for a body that holds that thing
  *   (`handHeld.ts`) and a matrix that draws nothing for every other.
+ * - **A soft dark under each one shown** (`peopleShade.ts`): written with the set a model shows, in one draw for everyone, and let go with the part.
  * - **They wear the town's air, and are darker than the open sky would make them**, since they stand indoors (`dress`).
  */
 import { markMaterialUboDirty, setMeshVisible, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
@@ -30,6 +31,7 @@ import type { Held } from "./handHeld.js";
 import { PERSON_MODELS, type Activity, type PersonModel, type PersonSeat, type PersonWorld } from "./people.js";
 import type { LampList } from "./lampLight.js";
 import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
+import { personShade, type PeopleShade } from "./peopleShade.js";
 
 /** How far from the eye a person is drawn (m), and on the low tier. */
 export const PEOPLE_REACH = 60;
@@ -65,6 +67,8 @@ export type PeoplePartsHost = {
   /** The eye and the way it looks (yaw 0 faces +z, growing toward +x). */
   readonly eye: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number };
   readonly low: boolean;
+  /** The dark under each person shown (`peopleShade.ts`): written with the set shown; none on the low tier. */
+  readonly shade?: PeopleShade;
 };
 
 /** What a body needs of a person: the model, the clip, the seat, and how they vary. A person of a room (`people.ts`) and one outside (`outdoorPeople.ts`) both are. */
@@ -286,6 +290,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           writeClipParams(model.clipParams, k, clip, ((person.offset + run * person.rate) * CLIP_STORED) % clip.seconds, person.rate * CLIP_STORED, host.clock.seconds, true);
         }
         model.show(next.length, true, true);
+        host.shade?.write(batch.id, next.map((i) => personShade(batch.people[i] as PlacedPerson)));
         // The things: the body's own matrix for a body that holds one, and none that draws for the rest.
         for (const thing of batch.things) {
           let holders = 0;
@@ -328,6 +333,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     dispose() {
       disposed = true;
       loads.abort();
+      host.shade?.dispose();
       for (const b of batches.values()) {
         b.model?.dispose();
         b.model = null;

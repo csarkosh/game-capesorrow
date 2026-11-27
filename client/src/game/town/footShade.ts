@@ -15,6 +15,8 @@
  * - A building on piles stands on its deck: the strip lies on the deck, and there is none where the deck ends.
  * - How far the dark reaches and how deep it is are the building's own (a roll by its id), so no two are alike.
  *
+ * The same dark lies under parked vehicles (`props/vehicleShade.ts`, in this layer) and under people (`peopleShade.ts`, thin instances of its own).
+ *
  * Full tier only: the low tier has none.
  */
 import { penetration, solidsNear } from "../../sim/town/solid.js";
