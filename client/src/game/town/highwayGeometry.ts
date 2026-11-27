@@ -18,20 +18,21 @@
  *   line and the lane's two edge lines are broken across it.
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
-import { clamp01, hashN, smooth } from "./groundNoise.js";
+import { hashN } from "./groundNoise.js";
 import { RANK, type Over } from "./groundSurfaces.js";
 import { BED_STEP, bedIndex, bedTile } from "./highwayBed.js";
 import { CROSSWALK_WIDTH } from "../../sim/town/junctions.js";
 import { onLeg } from "../../sim/town/junctionShape.js";
 import { RAIL_BED_HALF } from "../../sim/town/rail.js";
 import { spurOf } from "../../sim/town/railSpur.js";
+import { SLOT, envParts, highwayKey, layFeatures, layRows, type HighwayEnv } from "./highwayLook.js";
 import { BAR_MARGIN, BAR_WIDTH, barOffsets } from "./junctionPaint.js";
 import { worldJunctions, type WJunction } from "./junctionWorld.js";
-import type { Rgb, Vec3 } from "./meshBuilder.js";
-import { ASPHALT, PAINT_WHITE, PAINT_YELLOW } from "./palette.js";
-import { LINE_WIDTH, MARK_OVER, ROADWAY_LIFT, asphaltOf } from "./streetGeometry.js";
+import type { Rgb } from "./meshBuilder.js";
+import { PAINT_WHITE, PAINT_YELLOW } from "./palette.js";
+import { LINE_WIDTH, MARK_OVER, ROADWAY_LIFT } from "./streetGeometry.js";
 import { clipLine, shareArea, subtractConvex, type P2, type Surface } from "./surface.js";
-import type { TownGround } from "./townTypes.js";
+import type { Detail, TownGround } from "./townTypes.js";
 import type { Vec } from "../../sim/town/types.js";
 
 /** How far the strip runs past the outermost meeting of a street with the highway, measured along the highway's centre line, metres. */
@@ -218,7 +219,7 @@ export function highwayStrip(g: TownGround, junctions: readonly WJunction[] = wo
 }
 
 /** The ground the town's spur lies over where it crosses or runs along the highway's bed: its bed's whole width, as quads between its points, within reach of the bed. */
-function spurGround(g: TownGround): P2[][] {
+export function spurGround(g: TownGround): P2[][] {
   const track = spurOf(g.seed);
   if (track === null) return [];
   const out: P2[][] = [];
@@ -308,22 +309,15 @@ function without(lo: number, hi: number, blocked: readonly (readonly [number, nu
   return out.filter(([a, b]) => b - a > 1e-6);
 }
 
-/** Lays the highway's paving and its marks: nothing where no street meets it. */
-export function highwayGeometry(g: TownGround, surf: Surface, junctions: readonly WJunction[]): void {
+/**
+ * Lays the highway's paving and its marks: nothing where no street meets it. The paving is `highwayLook.ts`'s (stretches with frames and tones of their own, bands across so
+ * that the dirt gathers toward the edges, seams, and the wear a street has), cut to the strip; the marks are the town's own, laid here.
+ */
+export function highwayGeometry(g: TownGround, surf: Surface, junctions: readonly WJunction[], detail: Detail = "full"): void {
   const strip = highwayStrip(g, junctions);
   if (strip === null) return;
   const { start, end } = strip;
-  const edge = g.plan.edges[g.plan.streets.find((s) => s.kind === "highway")?.id ?? -1];
-  const paving = edge?.paving[0] ?? { s0: 0, s1: 1, decade: 1990, curb: 0, wear: 0.5 };
-  const key = Math.imul(g.seed ^ 0x4857, 40503);
-  const sf = 0.78 + 0.5 * hashN(key, 0, 0, 1);
-  const { layer, tint } = asphaltOf(paving, sf);
-  // One frame for the whole length, its texture running along the highway's direction at its start, shifted by a roll.
-  const frame = { origin: [start.x + hashN(key, 0, 0, 2) * 5, 0, start.z + hashN(key, 0, 0, 3) * 5] as Vec3, u: [-start.tz, 0, start.tx] as Vec3, v: [start.tx, 0, start.tz] as Vec3 };
-  const across = (q: readonly [number, number, number]): number => Math.abs(q[0] - g.roadX(q[2])) / ROAD_BED_HALF;
-  const dirt = (q: readonly [number, number, number]): number => clamp01(0.02 + 0.08 * paving.wear + 0.1 * smooth(0.55, 1, across(q)));
-  const wear = (q: readonly [number, number, number]): number => clamp01(0.02 + 0.1 * paving.wear * smooth(0.6, 1.05, across(q)));
-  const over: Over = { layer, tint, frame, dirt, wear };
+  const key = highwayKey(g.seed);
   /** The part of a convex polygon between the two end lines. */
   const between = (poly: readonly P2[]): P2[] => {
     const a = clipLine(poly, [start.x, start.z], [start.x + start.tz, start.z - start.tx], true);
@@ -331,13 +325,17 @@ export function highwayGeometry(g: TownGround, surf: Surface, junctions: readonl
   };
   // The spur's bed is left its own ground where the track crosses the highway: the town's paving and its marks are cut off it, so that no two faces lie there.
   const spur = spurGround(g);
-  const lay = (poly: readonly P2[], lift: number, colour: Rgb, o: Over): void => {
+  const region = (poly: readonly P2[]): P2[][] => {
     const piece = between(poly);
-    if (piece.length < 3 || Math.abs(areaOf(piece)) <= 1e-6) return;
+    if (piece.length < 3 || Math.abs(areaOf(piece)) <= 1e-6) return [];
     let pieces: P2[][] = [piece.slice()];
     for (const q of spur) pieces = pieces.flatMap((r) => (shareArea(r, q, 1e-4) ? subtractConvex(r, q) : [r]));
-    for (const r of pieces) if (r.length >= 3 && Math.abs(areaOf(r)) > 1e-6) surf.pave(r, lift, colour, o);
+    return pieces.filter((r) => r.length >= 3 && Math.abs(areaOf(r)) > 1e-6);
   };
+  const inStrip = (p: P2): boolean => (p[0] - start.x) * start.tx + (p[1] - start.z) * start.tz >= 0 && (p[0] - end.x) * end.tx + (p[1] - end.z) * end.tz <= 0;
+  const full: [number, number] = [Math.min(start.left[1], start.right[1]), Math.max(end.left[1], end.right[1])];
+  const env: HighwayEnv = { seed: g.seed, key, near: true, height: g.heightAt, full, manholes: true, marks: false, centre: g.roadX, stretches: new Map(), memo: { last: null, frames: new Map() }, ...envParts(surf, region, (pts) => pts.every(inStrip)) };
+  const lay = (poly: readonly P2[], lift: number, colour: Rgb, o: Over): void => env.pave(poly, lift, colour, o);
 
   const first = bedIndex(Math.min(start.left[1], start.right[1])) - 1;
   const last = bedIndex(Math.max(end.left[1], end.right[1])) + 1;
@@ -357,9 +355,11 @@ export function highwayGeometry(g: TownGround, surf: Surface, junctions: readonl
     { o0: -LANE_HALF - LINE_WIDTH / 2, o1: -LANE_HALF + LINE_WIDTH / 2, colour: PAINT_WHITE, breaks: edgeBreaks(-1) },
     { o0: LANE_HALF - LINE_WIDTH / 2, o1: LANE_HALF + LINE_WIDTH / 2, colour: PAINT_WHITE, breaks: edgeBreaks(1) },
   ];
+  // The asphalt, by stretch and band, and the wear the streets have: over the rows the bed is cut into.
+  layRows(env, first * BED_STEP, (last + 1) * BED_STEP, BED_STEP);
+  for (let S = Math.floor((first * BED_STEP) / SLOT); S * SLOT < (last + 1) * BED_STEP; S++) layFeatures(env, S, detail === "low" ? 1 : 0);
   for (let i = first; i <= last; i++) {
     const tile = bedTile(g, i);
-    lay(tile, ROADWAY_LIFT, ASPHALT, over);
     const z0 = i * BED_STEP;
     const z1 = z0 + BED_STEP;
     lines.forEach((m, line) => {

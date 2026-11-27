@@ -32,6 +32,7 @@ import { PROP_ROUGHNESS } from "@csarkosh/engine/game/propBoxes";
 import type { Slices } from "@csarkosh/engine/game/syncJobs";
 import { WET_CAP } from "@csarkosh/engine/game/wetSurface";
 import { townStart } from "../../sim/town/start.js";
+import { createHighwayStream, type HighwayStream } from "./highwayParts.js";
 import { createRailStream, type RailStream } from "./railParts.js";
 import { SignAtlas } from "./signAtlas.js";
 import { createPaintSurface, paintRequest } from "./signPaint.js";
@@ -139,6 +140,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   const textured: PbrMaterialProps[] = [];
   // The railroad and the power line, streamed along the coast by the camera's place (`railParts.ts`).
   let rail: RailStream | null = null;
+  // The highway outside the town's strip, streamed the same way (`highwayParts.ts`).
+  let highway: HighwayStream | null = null;
   // The parked vehicles that stand as real models (`props/vehicleParts.ts`), on the tiers above low: loaded once the town's geometry is made.
   let vehicles: VehicleParts | null = null;
   // The car the players drive (`../car/carParts.ts`): made with the town, loaded once it stands, posed from the state's cars each frame.
@@ -311,7 +314,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       worldSeed = forest.seed;
       const start = townStart(worldSeed);
-      rail = createRailStream(host, { engine, scene, materials, textured: wearsTextures, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
+      const railDraw = { engine, scene, materials, textured: wearsTextures, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } };
+      rail = createRailStream(host, railDraw, worldSeed);
+      // The highway's cells share the railroad's flat material (the town's own, with the depth lead of the flat ground) and its draw order.
+      highway = createHighwayStream(host, railDraw, worldSeed, low);
 
       const ground = townGround(worldSeed);
       drawnGround = (x, z) => groundAt(ground, x, z);
@@ -474,6 +480,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     seen(planes, cover) {
       base.side.seen(planes, cover);
       rail?.seen(planes);
+      highway?.seen(planes);
       vehicles?.seen(planes);
       car?.seen(planes);
       leaner.step();
@@ -509,6 +516,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       textured.length = 0;
       rail?.dispose();
       rail = null;
+      highway?.dispose();
+      highway = null;
       vehicles?.dispose();
       vehicles = null;
       car?.dispose();
