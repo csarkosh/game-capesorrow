@@ -13,7 +13,7 @@
  *   behind the player costs nothing; a street of them costs their triangles, about 20,000 a vehicle.
  */
 import {
-  addToScene, createMeshFromData, createPbrMaterial, disposeMeshGpu, markThinInstancePluginData, removeFromScene, setMeshVisible, setThinInstanceCount,
+  addToScene, createMeshFromData, createPbrMaterial, disposeMeshGpu, flushThinInstances, markThinInstancePluginData, removeFromScene, setMeshVisible, setThinInstanceCount,
   setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
 import { modelUrl } from "@csarkosh/engine/game/assetUrls";
@@ -25,6 +25,7 @@ import type { WetUniforms } from "@csarkosh/engine/game/wetSurface";
 import type { PluginUniformBlock } from "@babylonjs/lite";
 import type { Slices, SyncJobs } from "@csarkosh/engine/game/syncJobs";
 import { FLEET_DATA_FLOATS, type FleetInstance } from "./vehicleFleet.js";
+import type { Vehicle } from "../../../sim/town/types.js";
 import { vehiclePlugin, type VehicleGeom } from "./vehicleMaterial.js";
 import { MANIFEST } from "./vehicleManifest.js";
 
@@ -49,6 +50,11 @@ export type VehicleParts = {
   begin(): void;
   /** Shows the instances in the view and within reach. */
   seen(planes: readonly ViewFrustumPlane[]): void;
+  /**
+   * Draws a parked vehicle moved from where it stands: `move` (sixteen floats, column by column, in the world) is applied over its own matrix, or null
+   * puts it back. A vehicle that is no model here is not this part's, and nothing is done. Safe every frame.
+   */
+  moved(vehicle: Vehicle, move: Float32Array | null): void;
   /** Whether a model's meshes are all made (so its instances stand for its vehicles). */
   ready(model: string): boolean;
   /** Models still being loaded or made. */
@@ -120,6 +126,38 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
       order.push(inst.model);
     }
     b.instances.push(inst);
+  }
+  // A vehicle that is drawn moved (struck by a car: `struck.ts`): its own matrix with the move over it, in place of its own.
+  const where = new Map<Vehicle, { batch: Batch; index: number }>();
+  for (const b of batches.values()) for (const [index, inst] of b.instances.entries()) where.set(inst.vehicle, { batch: b, index });
+  const overrides = new Map<FleetInstance, Float32Array>();
+  const matrixOf = (inst: FleetInstance): Float32Array => overrides.get(inst) ?? inst.matrix;
+  function moved(vehicle: Vehicle, move: Float32Array | null): void {
+    const at = where.get(vehicle);
+    if (at === undefined) return;
+    const inst = at.batch.instances[at.index] as FleetInstance;
+    if (move === null) {
+      if (!overrides.delete(inst)) return;
+    } else {
+      let own = overrides.get(inst);
+      if (own === undefined) {
+        own = new Float32Array(16);
+        overrides.set(inst, own);
+      }
+      // The move times the vehicle's own matrix, column by column.
+      const a = move;
+      const b = inst.matrix;
+      for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 4; row++) {
+          own[col * 4 + row] = (a[row] as number) * (b[col * 4] as number) + (a[4 + row] as number) * (b[col * 4 + 1] as number) + (a[8 + row] as number) * (b[col * 4 + 2] as number) + (a[12 + row] as number) * (b[col * 4 + 3] as number);
+        }
+      }
+    }
+    // Shown now: its place in the buffers is written again.
+    const k = at.batch.shown.indexOf(at.index);
+    if (k < 0 || !at.batch.ready) return;
+    at.batch.matrices.set(matrixOf(inst), k * 16);
+    for (const { mesh } of at.batch.meshes) flushThinInstances(mesh, k, 1);
   }
   const loads = new AbortController();
   const orders = createDrawOrders(DRAW_ORDER.bodies);
@@ -242,7 +280,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
       batch.shown = next;
       for (const [k, i] of next.entries()) {
         const inst = batch.instances[i] as FleetInstance;
-        batch.matrices.set(inst.matrix, k * 16);
+        batch.matrices.set(matrixOf(inst), k * 16);
         batch.data.set(inst.data, k * FLEET_DATA_FLOATS);
       }
       for (const { mesh } of batch.meshes) {
@@ -256,6 +294,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
   return {
     begin,
     seen,
+    moved,
     ready: (model) => batches.get(model)?.ready === true,
     waiting: () => pending,
     stats() {

@@ -14,10 +14,11 @@
  *
  * A sign faces along its normal `n`, the way the traffic it is for comes from; its right (as the reader sees it) is (-n.z, n.x).
  */
-import { SIGN_BEHIND_CURB, STOP_SIGN_SIZE, stopSignSpot } from "../../sim/town/junctions.js";
-import type { JunctionCorner, JunctionLeg, Vec } from "../../sim/town/types.js";
+import { STOP_SIGN_SIZE } from "../../sim/town/junctions.js";
+import { POST_BEHIND, bladesSpot, junctionSigns } from "../../sim/town/junctionSigns.js";
+import type { JunctionLeg } from "../../sim/town/types.js";
 import { withMat } from "./materials.js";
-import type { Rgb, Vec3 } from "./meshBuilder.js";
+import { withKnock, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { FLAG_POLE, SIGN_BLACK, SIGN_GREEN, SIGN_RED, SIGN_WHITE, SIGN_YELLOW } from "./palette.js";
 import { GLYPH_H, textPixels, textRuns } from "./signFont.js";
 import { WALK_LIFT } from "./streetGeometry.js";
@@ -95,7 +96,7 @@ export function stopSign(solid: Sink, g: TownGround, x: number, z: number, nx: n
   const bottom = ground + WALK_LIFT + SIGN_HEIGHT;
   const half = STOP_SIZE / 2;
   const c: Plane = { x, y: bottom + half, z, nx, nz };
-  post(solid, g, x - nx * 0.05, z - nz * 0.05, bottom + STOP_SIZE);
+  post(solid, g, x - nx * POST_BEHIND, z - nz * POST_BEHIND, bottom + STOP_SIZE);
   // The white rim and the red face lie side by side in one plane (a ring and an octagon), not one over the other.
   const rim = octagon(STOP_SIZE);
   const face = octagon(STOP_SIZE * 0.92);
@@ -113,7 +114,7 @@ function rectSign(solid: Sink, g: TownGround, x: number, z: number, nx: number, 
   const ground = g.heightAt(x, z);
   const bottom = ground + WALK_LIFT + SIGN_HEIGHT;
   const c: Plane = { x, y: bottom + h / 2, z, nx, nz };
-  post(solid, g, x - nx * 0.05, z - nz * 0.05, bottom + h);
+  post(solid, g, x - nx * POST_BEHIND, z - nz * POST_BEHIND, bottom + h);
   plate(solid, c, [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]], SIGN_YELLOW, FLAG_POLE);
   if (full) words(solid, c, text, pixel, (GLYPH_H * pixel) / 2, SIGN_BLACK, false);
 }
@@ -125,7 +126,7 @@ function diamondSign(solid: Sink, g: TownGround, x: number, z: number, nx: numbe
   const ground = g.heightAt(x, z);
   const bottom = ground + 1.5;
   const c: Plane = { x, y: bottom + half, z, nx, nz };
-  post(solid, g, x - nx * 0.05, z - nz * 0.05, bottom + half);
+  post(solid, g, x - nx * POST_BEHIND, z - nz * POST_BEHIND, bottom + half);
   plate(solid, c, [[0, -half], [half, 0], [0, half], [-half, 0]], SIGN_YELLOW, FLAG_POLE);
   if (full) {
     const pixel = 0.0125;
@@ -140,7 +141,7 @@ export function endMarker(solid: Sink, g: TownGround, x: number, z: number, nx: 
   const d = MARKER_SIDE * 0.7071;
   const bottom = g.heightAt(x, z) + roadLift + MARKER_HEIGHT;
   const c: Plane = { x, y: bottom + d, z, nx, nz };
-  post(solid, g, x - nx * 0.05, z - nz * 0.05, bottom + d);
+  post(solid, g, x - nx * POST_BEHIND, z - nz * POST_BEHIND, bottom + d);
   plate(solid, c, [[0, -d], [d, 0], [0, d], [-d, 0]], SIGN_RED, FLAG_POLE);
 }
 
@@ -161,55 +162,22 @@ function blade(solid: Sink, g: TownGround, x: number, z: number, y: number, ax: 
 export function signGeometry(g: TownGround, surf: Surface, solid: Sink, junctions: readonly WJunction[], detail: Detail = "full"): void {
   void surf;
   const full = detail === "full";
-  for (const j of junctions) {
-    if (j.polygon.length >= 3) {
-      for (const l of j.legs) {
-        if (l.engine || l.closed) continue;
-        if (l.stops && l.stopLine !== null) {
-          // The right of the approach: the traffic comes toward the junction along -d, so its right is the leg's left.
-          const spot = stopSignSpot(l) as { s: number; lat: number };
-          const s = spot.s;
-          const lat = spot.lat;
-          stopSign(solid, g, l.x + l.dx * s - l.dz * lat, l.z + l.dz * s + l.dx * lat, l.dx, l.dz, full);
-        }
-        if (l.deadEnd) {
-          // At the entrance of a street that ends: for traffic leaving the junction, on its right, facing back toward the junction.
-          const s = l.mouth + 7;
-          const lat = -(l.half + SIGN_BEHIND_CURB);
-          rectSign(solid, g, l.x + l.dx * s - l.dz * lat, l.z + l.dz * s + l.dx * lat, -l.dx, -l.dz, "DEAD END", 0.76, 0.4, 0.014, full);
-        }
-      }
-      for (const l of j.closed) {
-        // The planter's sign: DEAD END, on the planter, facing the street's traffic.
-        const s = l.mouth + 0.4;
-        rectSign(solid, g, l.x + l.dx * s, l.z + l.dz * s, l.dx, l.dz, "DEAD END", 0.76, 0.4, 0.014, full);
-      }
-      if (j.blades !== null) bladesAt(solid, g, j, full);
-    }
-    if (j.pavementEnds !== null) {
-      const e = j.pavementEnds;
-      const width = j.legs[1]?.roadway ?? 6;
-      // On the road's right, facing the traffic that leaves town along it.
-      const lat = -(Math.min(width, 6) / 2 + 1.2);
-      diamondSign(solid, g, e.x + g.anchor.x - e.dz * lat, e.z + g.anchor.z + e.dx * lat, -e.dx, -e.dz, ["PAVEMENT", "ENDS"], full);
-    }
+  // Where each sign stands is the simulation's (`junctionSigns.ts`): what a car knocks down is read from the same list. Every sign but the
+  // planter's is laid tagged as a thing that falls (`withKnock`).
+  for (const s of junctionSigns(junctions, g.anchor.x, g.anchor.z)) {
+    if (s.kind === "stop") withKnock(() => stopSign(solid, g, s.x, s.z, s.nx, s.nz, full));
+    else if (s.kind === "dead end") withKnock(() => rectSign(solid, g, s.x, s.z, s.nx, s.nz, "DEAD END", 0.76, 0.4, 0.014, full));
+    else if (s.kind === "planter") rectSign(solid, g, s.x, s.z, s.nx, s.nz, "DEAD END", 0.76, 0.4, 0.014, full);
+    else if (s.kind === "blades") withKnock(() => bladesAt(solid, g, junctions[s.junction] as WJunction, full));
+    else withKnock(() => diamondSign(solid, g, s.x, s.z, s.nx, s.nz, ["PAVEMENT", "ENDS"], full));
   }
 }
 
 /** The two blades of a junction on a post of their own at a corner, the upper naming the first leg's street. */
 function bladesAt(solid: Sink, g: TownGround, j: WJunction, full: boolean): void {
   const b = j.blades;
-  if (b === null) return;
-  const k = j.corners[b.corner] as JunctionCorner;
-  let p: Vec | null = null;
-  if (k.shape === "arc" && k.c !== null && k.v !== null) {
-    // Half a metre behind the curb on the corner's middle.
-    const vx = k.v.x - k.c.x;
-    const vz = k.v.z - k.c.z;
-    const vl = Math.sqrt(vx * vx + vz * vz) || 1;
-    p = { x: k.c.x + (vx / vl) * (k.radius - 0.55), z: k.c.z + (vz / vl) * (k.radius - 0.55) };
-  } else if (k.v !== null) p = { x: k.v.x, z: k.v.z };
-  if (p === null) return;
+  const p = bladesSpot(j);
+  if (b === null || p === null) return;
   const top = g.heightAt(p.x, p.z) + WALK_LIFT + 2.9;
   post(solid, g, p.x, p.z, top);
   const ground = g.heightAt(p.x, p.z) + WALK_LIFT;

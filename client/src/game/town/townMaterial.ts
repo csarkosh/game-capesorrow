@@ -72,7 +72,7 @@ import {
 } from "./hours.js";
 import { MAX_LAMPS, type LampList } from "./lampLight.js";
 import { SURFACE_PACKED_BYTES } from "./surfacePack.js";
-import { PAINT_RANKS } from "./paint.js";
+import { KNOCK_OVER, KNOCK_UNDER, PAINT_RANKS } from "./paint.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
 import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
@@ -447,13 +447,19 @@ export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Te
  * many of the lamp list's entries are used (0: none, which is the day); and the list itself, `lampP<i>` (a lamp's x, y, z and range) and `lampC<i>` (its colour and
  * strength), one vec4 each, since a uniform array is not a type the material's buffer takes. `markMaterialUboDirty` after changing any.
  */
-export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townLamps: number[]; townDoors: number[] } & Record<string, number[]>;
+export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townLamps: number[]; townDoors: number[]; townKnocked: number[] } & Record<string, number[]>;
 
 export function emptyTownReady(): TownReady {
-  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townLamps: [0], townDoors: [0] };
+  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townLamps: [0], townDoors: [0], townKnocked: [0] };
   for (let i = 0; i < MAX_DOORS; i++) {
     r[`doorA${i}`] = [0, 0, 1, 0];
     r[`doorB${i}`] = [0, 1, 1, 0];
+  }
+  for (let i = 0; i < MAX_KNOCKED; i++) {
+    r[`knockA${i}`] = [0, 0, 0, 0];
+    r[`knockB${i}`] = [1, 0, 0, 0];
+    r[`knockC${i}`] = [1, 0, 0, 0];
+    r[`knockD${i}`] = [0, 0, 0, 0];
   }
   for (let i = 0; i < MAX_LAMPS; i++) {
     r[`lampP${i}`] = [0, 0, 0, 0];
@@ -517,8 +523,84 @@ export const DOOR_VERTEX = [
   "break;}}}",
 ].join("");
 
-/** The fields of the buffer: the doors' are read by the vertex stage, the rest by the fragment. */
-const READY_FIELDS: readonly UniformField[] = [...uniformFields(emptyTownReady())].map((f) => (f.name.startsWith("door") || f.name === "townDoors" ? { ...f, visibility: "vertex" as const } : f));
+/**
+ * The things a car has moved that are not as they were built: knocked down (`knocked.ts`) or shoved (`struck.ts`), up to `MAX_KNOCKED`, as uniforms the
+ * vertex stage reads. `knockA<i>` is the thing's centre in the world (x, z) and the height of the ground it stands on; `knockB<i>` is the unit direction it
+ * leans in (x, z), the angle it leans by (radians, 0 upright), and how far from its centre toward that direction the edge it turns about is; `knockC<i>` is
+ * the box its vertices stand in, a unit vector along it (x, z) and its half extents along and across; `knockD<i>` is how far it has been slid over the
+ * ground (x, z). `townKnocked` is how many are used.
+ */
+export const MAX_KNOCKED = 12;
+export type KnockMove = {
+  readonly x: number; readonly z: number; readonly y: number;
+  readonly dx: number; readonly dz: number; readonly angle: number; readonly edge: number;
+  readonly ux: number; readonly uz: number; readonly hu: number; readonly hv: number;
+  readonly sx: number; readonly sz: number;
+};
+
+/** Copies the things that are moved now into the uniforms. */
+export function writeKnocked(ready: TownReady, moves: readonly KnockMove[]): void {
+  const n = Math.min(moves.length, MAX_KNOCKED);
+  ready.townKnocked[0] = n;
+  for (let i = 0; i < n; i++) {
+    const m = moves[i] as KnockMove;
+    const a = ready[`knockA${i}`] as number[];
+    const b = ready[`knockB${i}`] as number[];
+    const c = ready[`knockC${i}`] as number[];
+    const d = ready[`knockD${i}`] as number[];
+    a[0] = m.x; a[1] = m.z; a[2] = m.y; a[3] = 0;
+    b[0] = m.dx; b[1] = m.dz; b[2] = m.angle; b[3] = m.edge;
+    c[0] = m.ux; c[1] = m.uz; c[2] = m.hu; c[3] = m.hv;
+    d[0] = m.sx; d[1] = m.sz; d[2] = 0; d[3] = 0;
+  }
+}
+
+/**
+ * What the vertex stage does to a corner of a moved thing, as sixteen floats column by column: the turn by `angle` about the horizontal line through
+ * the edge it turns about, at the ground (with d the direction of the lean and u up, R = I + (cos - 1)(d d^T + u u^T) + sin (d u^T - u d^T) takes u toward
+ * d), and then the slide. The stage's own arithmetic, for what is not drawn by it but must move the same: a parked vehicle's model, a mark on a thing.
+ */
+export function knockMatrix(m: KnockMove, out: Float32Array): Float32Array {
+  const c = Math.cos(m.angle);
+  const s = Math.sin(m.angle);
+  const k1 = c - 1;
+  const px = m.x + m.dx * m.edge;
+  const py = m.y;
+  const pz = m.z + m.dz * m.edge;
+  out[0] = 1 + k1 * m.dx * m.dx; out[1] = -s * m.dx; out[2] = k1 * m.dx * m.dz; out[3] = 0;
+  out[4] = s * m.dx; out[5] = c; out[6] = s * m.dz; out[7] = 0;
+  out[8] = k1 * m.dx * m.dz; out[9] = -s * m.dz; out[10] = 1 + k1 * m.dz * m.dz; out[11] = 0;
+  out[12] = px - ((out[0] as number) * px + (out[4] as number) * py + (out[8] as number) * pz) + m.sx;
+  out[13] = py - ((out[1] as number) * px + (out[5] as number) * py + (out[9] as number) * pz);
+  out[14] = pz - ((out[2] as number) * px + (out[6] as number) * py + (out[10] as number) * pz) + m.sz;
+  out[15] = 1;
+  return out;
+}
+
+/**
+ * The vertex stage's move of a thing, at the world matrix as a door's turn is: a vertex tagged by its colour's alpha as a thing that moves
+ * (`KNOCK_ALPHA`) finds the moved thing whose box it stands in and is turned and slid with it (`knockMatrix` is the same arithmetic). What moves is the
+ * corner's world matrix, so its normal turns with it. With nothing moved (`townKnocked` 0) nothing is read.
+ */
+export const KNOCK_VERTEX = [
+  `if(material.townKnocked>0.5&&color.a>${KNOCK_OVER}&&color.a<${KNOCK_UNDER}){`,
+  `var kA:array<vec4<f32>,${MAX_KNOCKED}>;var kB:array<vec4<f32>,${MAX_KNOCKED}>;var kC:array<vec4<f32>,${MAX_KNOCKED}>;var kD:array<vec4<f32>,${MAX_KNOCKED}>;`,
+  ...Array.from({ length: MAX_KNOCKED }, (_, i) => `kA[${i}]=material.knockA${i};kB[${i}]=material.knockB${i};kC[${i}]=material.knockC${i};kD[${i}]=material.knockD${i};`),
+  "for(var ki:i32=0;ki<i32(material.townKnocked+0.5);ki=ki+1){",
+  "let ka=kA[ki];let kb=kB[ki];let kq=kC[ki];let kx=position.x-ka.x;let kz=position.z-ka.y;",
+  "if(abs(kx*kq.x+kz*kq.y)<kq.z&&abs(kx*kq.y-kz*kq.x)<kq.w){",
+  "let kc=cos(kb.z);let ks=sin(kb.z);let k1=kc-1.0;",
+  "let kp=vec3<f32>(ka.x+kb.x*kb.w,ka.z,ka.y+kb.y*kb.w);",
+  "let kr0=vec3<f32>(1.0+k1*kb.x*kb.x,-ks*kb.x,k1*kb.x*kb.y);",
+  "let kr1=vec3<f32>(ks*kb.x,kc,ks*kb.y);",
+  "let kr2=vec3<f32>(k1*kb.x*kb.y,-ks*kb.y,1.0+k1*kb.y*kb.y);",
+  "let kt=kp-(kr0*kp.x+kr1*kp.y+kr2*kp.z)+vec3<f32>(kD[ki].x,0.0,kD[ki].y);",
+  "finalWorld=mat4x4<f32>(vec4<f32>(kr0,0.0),vec4<f32>(kr1,0.0),vec4<f32>(kr2,0.0),vec4<f32>(kt,1.0))*finalWorld;",
+  "break;}}}",
+].join("");
+
+/** The fields of the buffer: the doors' and the knocked things' are read by the vertex stage, the rest by the fragment. */
+const READY_FIELDS: readonly UniformField[] = [...uniformFields(emptyTownReady())].map((f) => (f.name.startsWith("door") || f.name === "townDoors" || f.name.startsWith("knock") || f.name === "townKnocked" ? { ...f, visibility: "vertex" as const } : f));
 
 /**
  * The depth steps (of a 24-bit buffer) between one rank of the flat ground and the next: the flat layer is drawn a fixed number of steps ahead of
@@ -551,6 +633,8 @@ export const PAINT_K = (PAINT_UNITS * PAINT_RANKS) / 2 ** 24;
 export const PAINT_CODE = `out.clipPos.z+=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;`;
 /** The paint's depth step a leaf's alpha would give it, taken back (`PAINT_CODE` reads every vertex's alpha as a rank of paint): a leaf lies where it stands. */
 export const DOOR_UNPAINT = `if(color.a<0.04){out.clipPos.z-=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;}`;
+/** The same for a thing that falls (`KNOCK_ALPHA`): it carries no paint, and lies where it stands. */
+export const KNOCK_UNPAINT = `if(color.a>${KNOCK_OVER}&&color.a<${KNOCK_UNDER}){out.clipPos.z-=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;}`;
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
 export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
@@ -564,7 +648,7 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getCustomCode: (stage) =>
       stage === "fragment"
         ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_LIGHT: TOWN_LIGHT_CODE, CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
-        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX + (ranked ? "" : DOOR_VERTEX), CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE + DOOR_UNPAINT}` },
+        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX + (ranked ? "" : DOOR_VERTEX + KNOCK_VERTEX), CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE + DOOR_UNPAINT + KNOCK_UNPAINT}` },
     getVertexAttributes: () => [
       // Twelve 16-bit floats a vertex (`surfacePack.ts`): the shader reads them as the 32-bit floats they stand for.
       { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float16x4", stride: SURFACE_PACKED_BYTES, offset: 0 },

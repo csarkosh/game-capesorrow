@@ -10,7 +10,7 @@
  * The low tier lofts through fewer stations and columns, with simpler wheels, and leaves off the interior, mirrors, seams and handles.
  */
 import { withMat } from "../materials.js";
-import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
+import { withKnock, type MeshBuilder, type Rgb, type Vec3 } from "../meshBuilder.js";
 import type { Detail } from "../townTypes.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
@@ -497,30 +497,33 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
   }
   // On the full tier a vehicle with a model is that model's (`vehicleFleet.ts`): what is left of it here is the dark of the ground under it.
   if (drawnAsModel(v, detail)) return;
-  if (camper) {
-    withMat("painted", () => camperGeometry(m, gl, pl, v, detail));
-    return;
-  }
-  const base = wk ? CAB : SHAPES[v.kind as "sedan" | "suv" | "van" | "pickup"];
-  const sx = wk ? 1 : v.length / base.L;
-  const sw = v.width / base.W;
-  const xOff = wk ? v.length - CAB.L : 0;
-  const sh: Shape = wk ? { ...CAB, axles: [CAB.L - 0.95], r: 0.45 } : base;
-  const o: Opts = { sx, sw, xOff, len: v.length, paint, age: derelict ? Math.max(v.age, 0.85) : v.age, idle: v.idle, detail, flat: derelict, wheels: !project, seed: v.seed, sy: 1 };
-  const { wAt, beltAt } = profileAt(sh, o);
-  const T0 = m.vertices;
-  withMat("painted", () => loft(m, gl, pl, sh, o));
-  const T1 = m.vertices;
-  if (!project) wheelsOf(m, pl, sh, o, v, wAt);
-  else blocks(m, pl, sh, o);
-  if (wk) withMat("steel", () => workTruck(m, pl, v, o, wAt));
-  withMat("painted", () => details(m, pl, sh, o, v, wAt, beltAt));
-  if (detail !== "low") withMat("painted", () => interior(m, pl, sh, o, wAt, beltAt));
-  loads(m, pl, v, sh, o);
-  void T0;
-  void T1;
-  if (project && v.load !== "none" ? true : project && rnd(v.seed, 21) < 0.55) tarpOver(m, pl, sh, o, v.seed);
-  else if (derelict && v.load === "tarp") tarpOver(m, pl, sh, o, v.seed);
+  // The body is laid tagged as a thing that moves (`withKnock`): a car that strikes it shoves it and rocks it (`struck.ts`), in the vertex stage.
+  withKnock(() => {
+    if (camper) {
+      withMat("painted", () => camperGeometry(m, gl, pl, v, detail));
+      return;
+    }
+    const base = wk ? CAB : SHAPES[v.kind as "sedan" | "suv" | "van" | "pickup"];
+    const sx = wk ? 1 : v.length / base.L;
+    const sw = v.width / base.W;
+    const xOff = wk ? v.length - CAB.L : 0;
+    const sh: Shape = wk ? { ...CAB, axles: [CAB.L - 0.95], r: 0.45 } : base;
+    const o: Opts = { sx, sw, xOff, len: v.length, paint, age: derelict ? Math.max(v.age, 0.85) : v.age, idle: v.idle, detail, flat: derelict, wheels: !project, seed: v.seed, sy: 1 };
+    const { wAt, beltAt } = profileAt(sh, o);
+    const T0 = m.vertices;
+    withMat("painted", () => loft(m, gl, pl, sh, o));
+    const T1 = m.vertices;
+    if (!project) wheelsOf(m, pl, sh, o, v, wAt);
+    else blocks(m, pl, sh, o);
+    if (wk) withMat("steel", () => workTruck(m, pl, v, o, wAt));
+    withMat("painted", () => details(m, pl, sh, o, v, wAt, beltAt));
+    if (detail !== "low") withMat("painted", () => interior(m, pl, sh, o, wAt, beltAt));
+    loads(m, pl, v, sh, o);
+    void T0;
+    void T1;
+    if (project && v.load !== "none" ? true : project && rnd(v.seed, 21) < 0.55) tarpOver(m, pl, sh, o, v.seed);
+    else if (derelict && v.load === "tarp") tarpOver(m, pl, sh, o, v.seed);
+  });
 }
 
 function workTruck(m: MeshBuilder, pl: Place, v: Vehicle, o: Opts, wAt: (x: number) => number): void {

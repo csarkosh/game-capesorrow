@@ -5,6 +5,8 @@ import type { Aabb } from "@csarkosh/engine/sim/level";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv, driveCar, wheelPoints, type CarWorld } from "../../src/sim/car/body.js";
+import { touches } from "../../src/sim/car/knock.js";
+import { KNOCK_LOSS, knockablesFor, type KnockKind, type Knockable } from "../../src/sim/town/knockables.js";
 import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, GRIP, SPEED_CAP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
 import { GRAVEL, PAVED, type Car, type CarControls } from "../../src/sim/car/types.js";
 import { bearingU } from "../../src/sim/town/bearings.js";
@@ -664,4 +666,75 @@ describe("the car on the ground, the rails and the water", () => {
     expect(c.z).toBeGreaterThan(z + 15);
     expect(c.x).toBeCloseTo(roadCenterX(seed, z), 3);
   }, timeLimit(300_000));
+});
+
+describe("the car and what gives way, in the town", () => {
+  const knockables = knockablesFor(seed).list;
+  const DIRS: [number, number][] = [[1, 0], [0, 1], [-1, 0], [0, -1], [0.6, 0.8], [-0.6, 0.8], [0.6, -0.8], [-0.6, -0.8]];
+
+  /** Whether the car's three circles stand in nothing solid to a car at (x, z) heading (hx, hz). */
+  function free(x: number, z: number, hx: number, hz: number): boolean {
+    for (const along of CAR_CIRCLES) {
+      const pos = { x: x + hx * along, y: 0, z: z + hz * along };
+      if (constrainCircle(seed, pos, { x: 0, y: 0, z: 0 }, CAR_RADIUS, true)) return false;
+    }
+    return true;
+  }
+
+  /** A knockable of `kind` with a straight run through it that nothing solid stands in, and the heading of the run. */
+  function approach(kind: KnockKind): { k: Knockable; hx: number; hz: number } {
+    for (const k of knockables) {
+      if (k.kind !== kind) continue;
+      for (const [hx, hz] of DIRS) {
+        let clear = true;
+        for (let d = -7; d <= 7 && clear; d += 0.5) clear = free(k.x + hx * d, k.z + hz * d, hx, hz);
+        // And over no other knockable on the way, so the one hit is this one's.
+        if (clear && !knockables.some((o) => o.id !== k.id && Math.hypot(o.x - k.x, o.z - k.z) < 9)) return { k, hx, hz };
+      }
+    }
+    throw new Error(`no ${kind} with a free run through it`);
+  }
+
+  for (const kind of ["stop", "cart"] as const) {
+    it(`drives through a ${kind}: it is not stopped or turned aside, and it is slowed once, by the ${kind}'s share`, () => {
+      const { k, hx, hz } = approach(kind);
+      const c = carAt(k.x - hx * 6, k.z - hz * 6, hx, hz, 6);
+      const [share, flat] = KNOCK_LOSS[kind];
+      let worst = 0;
+      let before = 0;
+      let hitTicks = 0;
+      for (let i = 0; i < 150; i++) {
+        const was = Math.hypot(c.speed, c.slip);
+        const touched = touches(k, c.x, c.z, c.hx, c.hz);
+        driveCar(world, c, full);
+        const lost = was - Math.hypot(c.speed, c.slip);
+        if (!touched && touches(k, c.x, c.z, c.hx, c.hz)) {
+          hitTicks++;
+          before = was;
+        }
+        worst = Math.max(worst, lost);
+      }
+      // Past it, on the line it came in on.
+      const along = (c.x - k.x) * hx + (c.z - k.z) * hz;
+      const across = (c.x - k.x) * hz - (c.z - k.z) * hx;
+      expect(along).toBeGreaterThan(3);
+      expect(Math.abs(across)).toBeLessThan(0.5);
+      expect(c.hx * hx + c.hz * hz).toBeGreaterThan(0.99);
+      // One hit, and its tick is the hardest of the drive: the share and the flat loss, give or take what the engine and the ground did in that tick.
+      expect(hitTicks).toBe(1);
+      expect(before).toBeGreaterThan(2);
+      expect(worst).toBeGreaterThan(before * share + flat - 0.25);
+      expect(worst).toBeLessThan(before * share + flat + 0.25);
+    }, timeLimit(120_000));
+  }
+
+  it("is still stopped by what does not give way: the same drive at a utility pole ends against it", () => {
+    const pole = plan.props.poles[0];
+    expect(pole).toBeDefined();
+    // The poles' boxes are in the car's solids as they were.
+    const box = plan.props.solids.find((b) => b.hu === 0.21 && b.hv === 0.21);
+    expect(box).toBeDefined();
+    const pos = { x: anchor.x + (box as { cx: number }).cx + 0.02, y: 0, z: anchor.z + (box as { cz: number }).cz };
+    expect(constrainCircle(seed, pos, { x: 0, y: 0, z: 0 }, CAR_RADIUS, true)).toBe(true);
+  }, timeLimit(120_000));
 });
