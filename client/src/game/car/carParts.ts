@@ -33,6 +33,7 @@ import { MODEL_PAINT } from "../town/props/vehicleLook.js";
 import { manifestOf } from "../town/props/vehicleManifest.js";
 import { vehiclePlugin, type VehicleGeom } from "../town/props/vehicleMaterial.js";
 import { geometryOf, type VehiclePartsHost } from "../town/props/vehicleParts.js";
+import { newSway, stepSway, swayMatrix, type Sway } from "./bodySway.js";
 import { carPose, halfTurnAboutY, newCarPose, rollAfter, splitWheels, wheelMatrix, type CarPose, type WheelPart } from "./carPose.js";
 
 export const CAR_MODEL = "vehicle.sedan_a";
@@ -84,6 +85,8 @@ type Entry = {
   span: number;
   tick: number;
   roll: number;
+  /** The body on its springs (`bodySway.ts`). */
+  sway: Sway;
   stamp: number;
 };
 
@@ -175,6 +178,8 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
   const posed: Entry[] = [];
   const posedIds: number[] = [];
   const pick: number[] = [];
+  /** The body's matrix with its lean, written once a car and copied to each of its meshes. */
+  const leaned = new Float32Array(16);
 
   const meshes = (): Mesh[] => [...bodies.map((b) => b.mesh), ...wheels.map((w) => w.mesh), ...(patch === null ? [] : [patch.mesh])];
 
@@ -310,7 +315,9 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
   function write(n: number): void {
     for (const [i, entry] of drawn.entries()) {
       const m = entry.pose.matrix;
-      for (const b of bodies) b.matrices.set(m, i * 16);
+      // The body leans, dips and rides on its springs; the wheels and the patch stay on the ground.
+      swayMatrix(m, entry.sway, leaned, 0);
+      for (const b of bodies) b.matrices.set(leaned, i * 16);
       if (patch !== null) patch.matrices.set(m, i * 16);
       for (const w of wheels) wheelMatrix(m, w.centre, w.front ? entry.pose.steer : 0, entry.roll, w.matrices, i * 16);
     }
@@ -332,7 +339,7 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
     for (const c of cars) {
       let e = entries.get(c.id);
       if (e === undefined) {
-        e = { id: c.id, pose: newCarPose(), prev: copyCar(c), cur: copyCar(c), has: false, blend: false, span: 1, tick, roll: 0, stamp };
+        e = { id: c.id, pose: newCarPose(), prev: copyCar(c), cur: copyCar(c), has: false, blend: false, span: 1, tick, roll: 0, sway: newSway(), stamp };
         entries.set(c.id, e);
       }
       e.stamp = stamp;
@@ -362,6 +369,7 @@ export function createCarParts(host: VehiclePartsHost & { groundAt(x: number, z:
       }
       carPose(before, c, a, host.groundAt, e.pose);
       e.roll = rollAfter(e.roll, e.pose.speed, dt);
+      stepSway(e.sway, e.pose, dt);
       // Every car is posed, whatever the count, for the camera's sake.
       posed.push(e);
       posedIds.push(c.id);
