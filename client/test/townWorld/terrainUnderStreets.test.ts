@@ -14,6 +14,7 @@
  * over every ring (and the lip of a drop to the sea) it is the depth step that is asserted.
  */
 import { describe, expect, it } from "vitest";
+import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import "../../src/terrain.js";
 import { elevationSampleAt } from "@csarkosh/engine/sim/terrain";
 import { finish } from "@csarkosh/engine/game/syncJobs";
@@ -88,7 +89,8 @@ function measure(seed: number, cam: { x: number; z: number }, tier: QualityTier)
         m.samples++;
         if (gap < -0.02) m.under2++;
         if (gap < -0.05) m.under5++;
-        if (T.sandAt(x, z) > 0.2) m.sand++;
+        // (Not on the highway's bed: the engine paints its road there, over whatever the ground would be.)
+        if (T.sandAt(x, z) > 0.2 && Math.abs(x - g.roadX(z)) >= ROAD_BED_HALF) m.sand++;
       }
     }
   }

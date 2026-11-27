@@ -294,7 +294,7 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
   // The junctions' pavements first: they keep their ground, and the roadways laid after them leave it.
   junctionGeometry(g, surf, solid, paved, road, pavements);
   // The highway between its first street and its last, paved on its bed (the streets that end on it are cut off the bed, so they meet it).
-  highwayGeometry(g, surf, junctions);
+  highwayGeometry(g, surf, junctions, detail);
 
   // ---- The streets.
   for (const p of prepared.values()) {
