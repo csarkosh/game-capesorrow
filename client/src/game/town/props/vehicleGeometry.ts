@@ -17,11 +17,13 @@ import type { TownGround } from "../townTypes.js";
 import { groundFrame, type Surface, type WearKind } from "../townSurface.js";
 import { RANK } from "../groundSurfaces.js";
 import { drawnAsModel } from "./vehicleFleet.js";
+import { vehicleShade } from "./vehicleShade.js";
 import { D, P, groundAt, lbox, lquadX, lquadZ, mix, mixC, placeOn, rnd, type Place } from "./kit.js";
 import { BUMPER, CABIN, CHROME, GLASS_CAR, LAMP, PAINT, PLATE, RIM, SEAT, SHAPES, TAIL, TARP_BLUE, TARP_SILVER, TYRE, UNDER, paintTint, type Shape, type Station } from "./vehicleStyle.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
-export type VehicleSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat?: Sink };
+/** `shade` is the see-through layer the dark under the vehicle is laid in (`vehicleShade.ts`): the town's own on the full tier, none for the code-built stand-in of a model. */
+export type VehicleSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat?: Sink; readonly shade?: Sink };
 
 type Opts = {
   readonly sx: number;
@@ -456,6 +458,8 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
   const sag = derelict ? -0.05 : 0;
   const lift = project ? 0.3 : sag;
   const pl = placeOn(g, v.x, v.z, v.hx, v.hz, v.length, v.width, lift);
+  // The soft dark on the ground under and round it, wider than its outline (`vehicleShade.ts`).
+  if (sinks.shade !== undefined && detail !== "low") vehicleShade(g, sinks.shade(v.x, v.z), v);
   // The dark of the ground under it (there is no shadow in the scene): an eight-cornered patch drawn on the ground, inside the body's footprint, seen in the gap under the sills.
   if (sinks.flat !== undefined) {
     const hl = v.length / 2 - 0.3;

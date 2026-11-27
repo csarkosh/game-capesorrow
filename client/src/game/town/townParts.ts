@@ -40,6 +40,7 @@ import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
 import { peopleFor, personWorld } from "./people.js";
 import { outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
+import { createPeopleShade } from "./peopleShade.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { heldBy, tradeAt } from "./handHeld.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
@@ -280,13 +281,13 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const plan = ground.plan;
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
-      people = createPeopleParts(
-        { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
-        [
-          ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
-          ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
-        ],
-      );
+      const placed = [
+        ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
+        ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
+      ];
+      // The soft dark under each person shown (`peopleShade.ts`): one draw, written by the people's part with the set it shows; not on the low tier.
+      const shade = low ? undefined : createPeopleShade({ engine, scene, air, ahead, aheadUnits: SHADE_AHEAD_UNITS, order: SHADE_ORDER + 0.5 }, placed.length);
+      people = createPeopleParts({ engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low, ...(shade === undefined ? {} : { shade }) }, placed);
       people.setHour(shownHour);
 
       function* build(): Slices {
