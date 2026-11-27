@@ -23,7 +23,7 @@ import { municipalDesign } from "./designs/municipal.js";
 
 export { FRONT_WALL };
 
-const { abs } = Math;
+const { abs, floor } = Math;
 
 /** Where a player is by a room: in the street, held at the street door while the screen goes dark, in the room, held at the room's door. */
 export const OUTSIDE = 0, GOING_IN = 1, INSIDE = 2, GOING_OUT = 3;
@@ -239,4 +239,54 @@ export function constrainInRoom(room: InsideRoom, pos: { x: number; z: number },
 export function fitsInRoom(room: InsideRoom, pos: { x: number; z: number }, feet = 0): boolean {
   const at = inRoom(room, pos.x, pos.z);
   return fitsDesign(room.design, at.s - room.s0, at.d, feet, HULL_RADIUS, FIT);
+}
+
+/** The place a hull stands free nearest to (s, d) on a floor at `y`, within two metres (the place itself when it is free), or the place itself if there is none. */
+function clearNear(d: Design, s: number, dd: number, y: number): Spot3 {
+  const r = HULL_RADIUS + CLEAR;
+  for (let ring = 0; ring <= 20; ring++) {
+    for (let k = 0; k < (ring === 0 ? 1 : 8 * ring); k++) {
+      // Round a square ring of cells about the place.
+      const side = ring === 0 ? 0 : floor(k / (2 * ring));
+      const along = ring === 0 ? 0 : (k % (2 * ring)) - ring;
+      const ds = side === 0 ? along : side === 1 ? ring : side === 2 ? -along : -ring;
+      const dz = side === 0 ? -ring : side === 1 ? along : side === 2 ? ring : -along;
+      const ps = s + ds * 0.1;
+      const pd = dd + dz * 0.1;
+      const g = groundAt(d, ps, pd, y);
+      if (g !== null && abs(g - y) < 0.3 && fitsDesign(d, ps, pd, g, r, 0.001)) return { s: ps, d: pd, y: g };
+    }
+  }
+  return { s, d: dd, y };
+}
+
+/** A named place of a room: `s` and `d` in the design's frame and the height of the floor there. */
+export type Spot3 = { readonly s: number; readonly d: number; readonly y: number };
+
+/**
+ * The place a room's design names (`Design.marks`: `room`, `corridor`, `stair`, `lounge`, `flight`, ...), or, for `back`, the back of the room: the nearest place to its back wall's middle where a hull stands
+ * clear; or undefined. `door` is where a player arrives.
+ */
+export function spotOf(room: InsideRoom, name: string): Spot3 | undefined {
+  const d = room.design;
+  const mark = d.marks?.find((m) => m.name === name);
+  if (mark !== undefined) return clearNear(d, mark.s, mark.d, mark.y);
+  if (name === "door") return { s: d.arrive.s, d: d.arrive.d, y: groundAt(d, d.arrive.s, d.arrive.d, 0) ?? 0 };
+  if (name === "back") {
+    for (let back = 1.0; back < d.depth * 0.5; back += 0.25) {
+      for (let k = 0; k <= d.width; k += 0.25) {
+        const s = d.width / 2 + (k % 0.5 === 0 ? k : -k) / 2;
+        if (s < 0.5 || s > d.width - 0.5) continue;
+        const y = groundAt(d, s, d.depth - back, 0);
+        if (y !== null && fitsDesign(d, s, d.depth - back, y, HULL_RADIUS + CLEAR, 0.001)) return { s, d: d.depth - back, y };
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Where a hull's centre stands at a named place of a room (the hull's centre is half its height over the floor there). */
+export function arriveAt(room: InsideRoom, spot: Spot3): { x: number; y: number; z: number } {
+  const p = fromRoom(room, room.s0 + spot.s, spot.d);
+  return { x: p.x, y: room.floorY + spot.y + PLAYER_HALF.y, z: p.z };
 }

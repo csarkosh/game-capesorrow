@@ -267,7 +267,17 @@ export function barDesign(site: BarSite): Design {
     { kind: "neon_sign", w: 1.0, h: 0.4, y: 1.7, text: neon[(id + 1) % 4] as string },
     { kind: "poster", w: 0.62, h: 0.9, y: 1.55 },
   ];
-  b.fillWall("left", 1.4, specs);
+  // The left wall is the one by the door: its neon sits further down the wall, after the board, the shelf and the mirror, and is two thirds the size.
+  const leftSpecs = [
+    specs[0] as (typeof specs)[number],
+    specs[2] as (typeof specs)[number],
+    specs[3] as (typeof specs)[number],
+    { kind: "neon_sign", w: 0.67, h: 0.27, y: 1.7, text: neon[id % 4] as string },
+    specs[4] as (typeof specs)[number],
+    { kind: "neon_sign", w: 0.67, h: 0.27, y: 1.7, text: neon[(id + 1) % 4] as string },
+    specs[6] as (typeof specs)[number],
+  ];
+  b.fillWall("left", 1.4, leftSpecs);
   b.fillWall("right", 1.4, specs);
   // Higher up: neon over the back bar, bunting down the right wall.
   if (hasBar && H >= 3.6) for (let k = 0; k < 2; k++) {

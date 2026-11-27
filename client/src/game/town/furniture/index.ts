@@ -5,7 +5,9 @@
 import type { Decor, Item } from "../../../sim/inside/design.js";
 import { archway, backBar, barCounter, column } from "./bar.js";
 import { acUnit, bistroStool, booth, brassRack, cafeBack, cafeCounter, espresso, floorJoints, flushLight, panel, picture, roundChair, tileWall, wallLamp } from "./cafe.js";
-import { armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, frameArt, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
+import { art } from "./art.js";
+import { brochureRack, coffeeStation, downlight, floorLamp, longTable, luggageCart, planter, sideTable, slatScreen, sprinkler, vent } from "./lobby.js";
+import { armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
 import { beam, bunting, ceilingFan, chalkboard, coatHooks, crateStack, dartboard, jukebox, kegStack, mirror, neonSign, newspaperRack, pastryCase, sideboard, tabletop, wallShelf, windowBench } from "./dress.js";
 import { board, bulbString, guitar, poster, sign, television } from "./hung.js";
 import type { Geo } from "./kit.js";
@@ -65,6 +67,17 @@ export const ITEMS: Readonly<Record<string, (g: Geo, it: Item) => void>> = {
   beam,
   ceiling_fan: ceilingFan,
   tabletop,
+  luggage_cart: luggageCart,
+  brochure_rack: brochureRack,
+  long_table: longTable,
+  coffee_station: coffeeStation,
+  slat_screen: slatScreen,
+  planter,
+  floor_lamp: floorLamp,
+  side_table: sideTable,
+  downlight,
+  vent,
+  sprinkler,
 };
 
 export const DECOR: Readonly<Record<string, (g: Geo, dc: Decor) => void>> = {
@@ -80,7 +93,8 @@ export const DECOR: Readonly<Record<string, (g: Geo, dc: Decor) => void>> = {
   tile_wall: tileWall,
   slat_wall: slatWall,
   lit_letters: litLetters,
-  frame_art: frameArt,
+  frame_art: art,
+  art,
   forest_picture: forestPicture,
   lit_pane: litPane,
   closet_front: closetFront,

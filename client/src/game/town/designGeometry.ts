@@ -43,6 +43,8 @@ const THROUGH: Readonly<Record<string, number>> = { none: 1, display: 0.7, blind
 const SKIRT = 0.12;
 /** The most a lit cell of a wall or a floor is long, metres: the light is baked at its corners. */
 const CELL = 0.75;
+/** The grid of a floor and a ceiling: the light is baked at its corners, so this is the finest a pool of light can be (0.5 m; the bar keeps 0.75 m, its light is as it is; a pool about 1 m across is then two or three vertices wide). */
+const SLAB_CELL = 0.5;
 
 const ONE: Rgb = [1, 1, 1];
 /** The fractions of a span, in steps no longer than `step`. */
@@ -92,16 +94,16 @@ export function designGeometry(out: MeshBuilder, r: DrawIn): void {
 // ---- floors and ceilings
 
 function slabs(g: Geo, d: Design): void {
-  for (const sl of d.slabs) slab(g, sl);
+  for (const sl of d.slabs) slab(g, sl, d.name !== "bar");
 }
 
-function slab(g: Geo, sl: Slab): void {
+function slab(g: Geo, sl: Slab, fine: boolean): void {
   const w = sl.s1 - sl.s0;
   const l = sl.d1 - sl.d0;
   const up: P3 = [0, 0, 1];
   const dn: P3 = [0, 0, -1];
-  const us = lines(w, CELL);
-  const vs = lines(l, CELL);
+  const us = lines(w, fine ? SLAB_CELL : CELL);
+  const vs = lines(l, fine ? SLAB_CELL : CELL);
   const tint = sl.tint;
   const tinted = tint === undefined ? undefined : (): Rgb => tint;
   if (sl.kind === "floor" && (sl.mat === "dark_wood" || sl.mat === "oak")) {

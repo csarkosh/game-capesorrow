@@ -1,3 +1,4 @@
+import { fitsDesign } from "../../src/sim/inside/designWalk.js";
 import "../../src/terrain.js";
 import { describe, expect, it } from "vitest";
 import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
@@ -155,5 +156,60 @@ describe.each([["bar", 0], ["cafe", 1]] as const)("the light of the %s on the wo
     console.log(`[light ${name}] ratios floor ${ratio("floor").toFixed(1)} left ${ratio("left").toFixed(1)} right ${ratio("right").toFixed(1)} back ${ratio("back").toFixed(1)}`);
     expect(ratio("floor"), `${name} floor`).toBeGreaterThanOrEqual(4);
     for (const w of ["left", "right", "back"]) expect(ratio(w), `${name} ${w} wall`).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/** The mean of a list, 0 for none. */
+const mean = (xs: number[]): number => (xs.length === 0 ? 0 : xs.reduce((u, v) => u + v, 0) / xs.length);
+
+describe.each([["cafe", 1], ["lodging", 2]] as const)("the light of the %s is pooled on open floor", (name, index) => {
+  const seed = 1175766972;
+  const room = insideRooms(seed)[index]!;
+  const d = room.design;
+  const a = insideGeometry(townGround(seed), room, "full");
+  const n = a.positions.length / 3;
+  /** Floor vertices (ground floor, facing up, lit by the room's light) with the place and luminance, on OPEN floor: a hull of 0.6 m stands there clear of any block or wall. */
+  const floor: { s: number; d: number; v: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    if ((a.surface[i * 12 + 3] as number) > 1.01 || (a.normals[i * 3 + 1] as number) < 0.95) continue;
+    if (Math.abs((a.positions[i * 3 + 1] as number) - room.floorY) > 0.02) continue;
+    const dx = (a.positions[i * 3] as number) - room.ox;
+    const dz = (a.positions[i * 3 + 2] as number) - room.oz;
+    const s = dx * room.tx + dz * room.tz - room.s0;
+    const dd = -(dx * room.nx + dz * room.nz);
+    if (!fitsDesign(d, s, dd, 0, 0.6, 0.001)) continue;
+    floor.push({ s, d: dd, v: lum(a, i) });
+  }
+  const near = (s: number, dd: number, r: number): number[] => floor.filter((f) => Math.hypot(f.s - s, f.d - dd) < r).map((f) => f.v);
+  const fixtures = d.lights.filter((l) => l.beam !== undefined && l.y < (d.cuts?.[0] ?? d.height));
+  it("has the floor under a ceiling fixture at least twice as bright as midway between two", () => {
+    const ratios: number[] = [];
+    for (let i = 0; i < fixtures.length; i++) for (let j = i + 1; j < fixtures.length; j++) {
+      const p = fixtures[i]!;
+      const q = fixtures[j]!;
+      const gap = Math.hypot(p.s - q.s, p.d - q.d);
+      if (gap < 1.8 || gap > 6) continue;
+      // Between two with no third nearer to the middle than either.
+      const ms = (p.s + q.s) / 2;
+      const md = (p.d + q.d) / 2;
+      if (fixtures.some((r, k) => k !== i && k !== j && Math.hypot(r.s - ms, r.d - md) < gap / 2 - 0.2)) continue;
+      const under = Math.max(mean(near(p.s, p.d, 0.5)), mean(near(q.s, q.d, 0.5)));
+      const mid = near(ms, md, 0.5);
+      const under0 = near(p.s, p.d, 0.5);
+      if (under0.length < 2 || mid.length < 2) continue;
+      console.log(`[pair ${name}] (${p.s.toFixed(1)},${p.d.toFixed(1)},y${p.y}) kind ${p.kind} (${q.s.toFixed(1)},${q.d.toFixed(1)}) under ${under.toFixed(3)} mid ${mean(mid).toFixed(3)} n ${mid.length}`);
+      ratios.push(under / Math.max(1e-6, mean(mid)));
+    }
+    ratios.sort((u, v) => u - v);
+    const med = ratios[Math.floor(ratios.length / 2)] ?? 0;
+    console.log(`[pools ${name}] ${floor.length} open vertices, ${fixtures.length} fixtures, ${ratios.length} pairs, median under/between ${med.toFixed(2)}`);
+    expect(ratios.length, `${name}: pairs measured`).toBeGreaterThanOrEqual(3);
+    expect(med, `${name}: under a fixture over midway`).toBeGreaterThanOrEqual(2);
+  });
+  it("has the front third of the day-lit room at least 1.6 times the back third", () => {
+    const front = mean(floor.filter((f) => f.d < d.depth / 3).map((f) => f.v));
+    const back = mean(floor.filter((f) => f.d > (2 * d.depth) / 3).map((f) => f.v));
+    console.log(`[front/back ${name}] front ${front.toFixed(3)} back ${back.toFixed(3)} ratio ${(front / Math.max(1e-6, back)).toFixed(2)}`);
+    expect(front / Math.max(1e-6, back), `${name}: front over back`).toBeGreaterThanOrEqual(1.6);
   });
 });

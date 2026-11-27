@@ -177,9 +177,11 @@ export function roundChair(g: Geo, it: Item): void {
 export function flushLight(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   const y = g.ceiling;
-  L.frustum(0, 0, y - 0.05, y, 0.17, 0.17, 10, "brass", undefined, false, false);
-  const ring = Array.from({ length: 10 }, (_, i): [number, number, number] => [Math.cos((i / 10) * Math.PI * 2) * 0.15, Math.sin((i / 10) * Math.PI * 2) * 0.15, y - 0.056]);
-  L.poly(ring, [0, 0, -1], "paper", { glow: 3, tint: [1, 0.92, 0.78] });
+  // A brass ring 38 cm across, and inside it a frosted disc 30 cm across that glows clearly (a white-hot centre in a warm edge).
+  L.frustum(0, 0, y - 0.05, y, 0.19, 0.19, 12, "brass", undefined, false, false);
+  const disc = (r: number, z: number): [number, number, number][] => Array.from({ length: 14 }, (_, i): [number, number, number] => [Math.cos((i / 14) * Math.PI * 2) * r, Math.sin((i / 14) * Math.PI * 2) * r, z]);
+  L.poly(disc(0.15, y - 0.056), [0, 0, -1], "paper", { glow: 5, tint: [1, 0.9, 0.7] });
+  L.poly(disc(0.08, y - 0.058), [0, 0, -1], "paper", { glow: 8, tint: [1, 0.97, 0.9] });
 }
 
 /** The joints of a tiled floor: thin dark strips across the room every 30 cm (`p0` width, `p1` the first `d`, `p2` the last), a hand's breadth over the floor's grain; the tiles are 60 by 30 cm laid in a brick bond, of which the long joints are drawn. */

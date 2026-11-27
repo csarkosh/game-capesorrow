@@ -4,7 +4,7 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { STEP_UP } from "../../src/sim/inside/design.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 import { planFor } from "../../src/sim/town/planFor.js";
-import { CELL, R, centre, flood, stepTo } from "./designHelpers.js";
+import { CELL, R, centre, flood, stepTo, standsAt } from "./designHelpers.js";
 
 const GAME_SEEDS: readonly number[] = [20261121, 1, 6, 1175766972];
 const SEEDS = [...GAME_SEEDS, ...Array.from({ length: 24 }, (_, i) => i + 1).filter((s) => !GAME_SEEDS.includes(s))];
@@ -66,4 +66,27 @@ describe("the lodging, on every test seed", () => {
     }
     console.log(`[lodging]\n${table.join("\n")}`);
   }, timeLimit(600_000));
+
+  it("leaves about 60 percent or less of a hotel lobby's floor for a hull to stand on, and prints each lobby's items", () => {
+    const lines: string[] = [];
+    const over: string[] = [];
+    for (const seed of SEEDS) {
+      const d = insideRooms(seed)[2]!.design;
+      // The lobby: the ground floor, from the front wall to the back, the length of the stair hall.
+      let free = 0;
+      let all = 0;
+      for (let j = 0; j * CELL < d.depth; j++) for (let i = 0; i * CELL < d.width; i++) {
+        const c = centre(i, j);
+        if (c.d < 0.5) continue;
+        all++;
+        if (standsAt(d, c.s, c.d, 0, R) !== null) free++;
+      }
+      const share = free / all;
+      const hotel = d.width >= 12 && (d.marks?.some((m) => m.name === "corridor" && m.y > 1) ?? false);
+      lines.push(`${seed}: ${d.width.toFixed(1)} x ${d.depth.toFixed(1)}${hotel ? " hotel" : ""}: ${(share * 100).toFixed(0)} percent free, ${d.items.length} items, ${d.decor.length} hangings`);
+      if (hotel && d.depth >= 10 && share >= 0.69) over.push(`${seed} ${(share * 100).toFixed(0)}`);
+    }
+    console.log(`[lobby]\n${lines.join("\n")}`);
+    expect(over, "hotel lobbies leaving over 69 percent of the floor free").toEqual([]);
+  }, timeLimit(120_000));
 });

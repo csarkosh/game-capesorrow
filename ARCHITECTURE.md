@@ -583,6 +583,9 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
   player on a slow link, before the host's answer has come back.
 - `?cmd=carhome` in the address does nothing; the command typed in the command bar works.
 
+
+**The console's `goin` and the light's pools.** `goin <place> [spot] [face]` puts the hull at a design's named place (`Design.marks`, plus `door` and `back`; `spotOf` picks the nearest free place within 2 m) and turns the view `front`, `back`, `left` or `right` (`faceYaw` in `game/doors.ts`). A fixture that throws its light down (`DesignLight.beam`, the exponent of the cosine from straight down) makes a pool a metre across on the floor and a halo of about a metre on the ceiling round it; the bake's floors and ceilings are on a 0.5 m grid (the bar keeps 0.75 m), so a pool is two or three vertices wide. Tests measure the pools on open floor (a hull of 0.6 m clear of any block): under a fixture at least twice midway between two, and the front third of a day-lit room at least 1.6 times the back third.
+
 ## Walking into a building
 
 The bar, the cafe, the lodging and the municipal building (where the player's office is) can be walked into: the first three are rooms of the plan, the fourth is made from the building's frame (below). A click

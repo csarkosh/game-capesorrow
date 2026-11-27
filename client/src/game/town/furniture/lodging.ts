@@ -14,6 +14,11 @@ const cloth = (r: number, g: number, b: number): { tint: Rgb } => ({ tint: [r / 
 const TEAL = cloth(0.04, 0.34, 0.38);
 const WHITE = cloth(0.8, 0.8, 0.78);
 const SHELL: Readonly<Record<string, Rgb>> = { yellow: [0.8, 0.65, 0.08], green: [0.35, 0.5, 0.12], grey: [0.22, 0.24, 0.26] };
+/** The cloth of a sofa or an armchair by the item's material name: teal by default, grey, yellow or mustard. */
+const fabric = (name: string | undefined, fallback: { tint: Rgb }): { tint: Rgb } => {
+  const c = name === undefined ? undefined : SHELL[name] ?? (name === "mustard" ? ([0.7, 0.5, 0.1] as Rgb) : undefined);
+  return c === undefined ? fallback : cloth(c[0], c[1], c[2]);
+};
 
 /** The reception desk: a block of white stone 1.1 m high and 0.6 deep with a ledge, a lower timber shelf that wraps one end, a monitor and keyboard and a bell. It faces the customers. */
 export function receptionDesk(g: Geo, it: Item): void {
@@ -39,9 +44,10 @@ export function sofa(g: Geo, it: Item): void {
   const len = it.p[0] ?? 2;
   const h = len / 2;
   L.box(-0.45, 0.45, -h, h, 0, 0.15, "dark_wood", { tint: [0.6, 0.6, 0.6] }, true, false);
-  L.box(-0.2, 0.45, -h + 0.18, h - 0.18, 0.15, 0.45, "cloth", TEAL);
-  L.box(-0.45, -0.2, -h, h, 0.15, 0.85, "cloth", TEAL);
-  for (const r of [-h, h - 0.18]) L.box(-0.2, 0.45, r, r + 0.18, 0.15, 0.62, "cloth", TEAL);
+  const look = fabric(it.mat, TEAL);
+  L.box(-0.2, 0.45, -h + 0.18, h - 0.18, 0.15, 0.45, "cloth", look);
+  L.box(-0.45, -0.2, -h, h, 0.15, 0.85, "cloth", look);
+  for (const r of [-h, h - 0.18]) L.box(-0.2, 0.45, r, r + 0.18, 0.15, 0.62, "cloth", look);
   const n = Math.max(1, Math.floor(len / 1.1));
   for (let k = 0; k < n; k++) {
     const r = -h + 0.5 + (k * (len - 1)) / Math.max(1, n - 1);
@@ -89,7 +95,7 @@ export function shellChair(g: Geo, it: Item): void {
 /** An armchair: a seat, a back and two arms, in a mustard cloth. */
 export function armchair(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
-  const look = cloth(0.7, 0.5, 0.1);
+  const look = fabric(it.mat, cloth(0.7, 0.5, 0.1));
   L.box(-0.4, 0.4, -0.4, 0.4, 0.12, 0.2, "dark_wood", { tint: [0.6, 0.6, 0.6] }, true, false);
   L.box(-0.2, 0.4, -0.3, 0.3, 0.2, 0.45, "cloth", look);
   L.box(-0.4, -0.2, -0.4, 0.4, 0.2, 0.85, "cloth", look);
@@ -313,26 +319,9 @@ export function litLetters(g: Geo, dc: Decor): void {
   const L = g.at(dc.s, dc.d, dc.face);
   const s = dc.text ?? "";
   const px = Math.min(0.064, (dc.w - 0.2) / Math.max(1, textPixels(s)));
-  text(L, s, 0, dc.y + (GLYPH_H * px) / 2, px, 0.07, { tint: [1, 0.93, 0.8], glow: 1.8 });
-}
-
-/** A framed picture: a thin frame, a mat and an abstract in three blocks of colour; the item's `id` picks its colours. */
-export function frameArt(g: Geo, dc: Decor): void {
-  const L = g.at(dc.s, dc.d, dc.face);
-  const w = dc.w / 2;
-  const h = dc.h / 2;
-  const y0 = dc.y - h;
-  const y1 = dc.y + h;
-  L.box(0, 0.03, -w, w, y0, y1, "dark_wood", { tint: [0.9, 0.9, 0.9] }, false);
-  L.poly([[0.032, -w + 0.04, y0 + 0.04], [0.032, w - 0.04, y0 + 0.04], [0.032, w - 0.04, y1 - 0.04], [0.032, -w + 0.04, y1 - 0.04]], [1, 0, 0], "paper", { tint: [1.1, 1.1, 1.05] });
-  const pal: Rgb[] = [[0.08, 0.4, 0.45], [0.8, 0.6, 0.1], [0.5, 0.15, 0.12], [0.2, 0.3, 0.5], [0.25, 0.45, 0.2]];
-  for (let k = 0; k < 3; k++) {
-    const c = pal[Math.floor(hash01(dc.id * 5 + k + g.seed, 79) * pal.length)] as Rgb;
-    const a = -w + 0.1 + k * ((2 * w - 0.2) / 3);
-    const b = a + (2 * w - 0.2) / 3 - 0.03;
-    const top = y0 + 0.1 + (0.35 + 0.6 * hash01(dc.id * 7 + k, 80)) * (dc.h - 0.2);
-    L.poly([[0.034, a, y0 + 0.1], [0.034, b, y0 + 0.1], [0.034, b, top], [0.034, a, top]], [1, 0, 0], "painted", { tint: [c[0] * 1.6, c[1] * 1.6, c[2] * 1.6] });
-  }
+  // Laid four times a fifth of a pixel apart so that each stroke is a little thicker, warm white and glowing.
+  const th = px * 0.22;
+  for (const [dr, dy] of [[-th, 0], [th, 0], [0, -th], [0, th]] as const) text(L, s, dr, dc.y + (GLYPH_H * px) / 2 + dy, px, 0.07, { tint: [1, 0.95, 0.85], glow: 3 });
 }
 
 /** A framed picture of a forest: a frame, a pale sky, vertical trunks in warm browns and blue-green masses of leaves behind them. */

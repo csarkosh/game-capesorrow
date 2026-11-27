@@ -21,8 +21,8 @@ import { FOOT } from "../car/types.js";
 import { townConstrain } from "../town/solid.js";
 import { groundAt } from "./designWalk.js";
 import {
-  arriveIn, arriveOut, constrainInRoom, DOOR_TICKS, fitsInRoom, GOING_IN, GOING_OUT, inRoom, INSIDE, newInside, OUTSIDE, roomDoorAt, roomOf, streetDoorAt, type Inside,
-  type InsideRoom,
+  arriveAt, arriveIn, arriveOut, constrainInRoom, DOOR_TICKS, fitsInRoom, GOING_IN, GOING_OUT, inRoom, INSIDE, newInside, OUTSIDE, roomDoorAt, roomOf, spotOf, streetDoorAt, type Inside,
+  type InsideRoom, type Spot3,
 } from "./rooms.js";
 
 /** A player who may be in a room as well as in a car. */
@@ -127,8 +127,8 @@ export function insidePressed(world: InsideWorld, p: Insider, bits: number): boo
 }
 
 /** Puts a player in a room, at rest on its floor inside the door, grounded. */
-function standIn(room: InsideRoom, p: Insider): void {
-  const at = arriveIn(room);
+function standIn(room: InsideRoom, p: Insider, spot?: Spot3): void {
+  const at = spot === undefined ? arriveIn(room) : arriveAt(room, spot);
   p.pos = { x: at.x, y: at.y, z: at.z };
   p.vel = { x: 0, y: 0, z: 0 };
   p.grounded = true;
@@ -175,7 +175,7 @@ export function insideStep(world: InsideWorld, p: Insider): void {
  * Puts a player straight into room `id`, or out into the street for 0 (and for an id that is no room), with no hold: for the console's `goin` and for
  * tests. A player in a car is not moved. Answers whether the player is where was asked.
  */
-export function insidePut(world: InsideWorld, p: Insider, id: number): boolean {
+export function insidePut(world: InsideWorld, p: Insider, id: number, spot?: string): boolean {
   if (p.ride.phase !== FOOT) return false;
   if (id === 0) {
     const room = p.inside.phase === OUTSIDE ? undefined : roomOf(world.forest.seed, p.inside.place);
@@ -185,6 +185,13 @@ export function insidePut(world: InsideWorld, p: Insider, id: number): boolean {
   }
   const room = roomOf(world.forest.seed, id);
   if (room === undefined) return false;
-  standIn(room, p);
+  if (spot === undefined) {
+    standIn(room, p);
+    return true;
+  }
+  // A named place of the room, or nowhere: a player is not put where the room has no such place.
+  const at = spotOf(room, spot);
+  if (at === undefined) return false;
+  standIn(room, p, at);
   return true;
 }

@@ -177,7 +177,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     if (niche > Cs0 + 1) front.push(opening(niche, Cs0, 1.2, false));
   } else front.push(opening(cm(Wm * 0.5), Cs0, 2.0, false));
   front.sort(byStart);
-  b.wall({ s0: Cs0, d0: Fw, s1: cm(Wm - 0.15), d1: Fw, thick: WALL, y0: level, y1: wallTop, mat: "plaster", tint: beige, matBack: "plaster", tintBack: cream, openings: front, skirt: "dark_wood" });
+  b.wall({ s0: Cs0, d0: Fw, s1: cm(Wm - 0.15), d1: Fw, thick: WALL, y0: level, y1: wallTop, mat: "painted", tint: beige, matBack: "painted", tintBack: cream, openings: front, skirt: "dark_wood" });
   if (multi) b.item("ice_machine", niche, cm(Dc - 0.55), TOWARD_BACK, [], { anywhere: true, y: yc });
   for (let j = 0; j < doorsFront.length; j++) plate(cm((doorsFront[j] as number) + 0.8), Dc + 0.02, TOWARD_BACK, roomNo + 1 + 2 * j);
 
@@ -192,18 +192,19 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   for (const s of doorsBack) back.push(opening(s, Cs0, 1.0, true));
   back.sort(byStart);
   const backTo = cm(Wm - 0.15);
-  b.wall({ s0: Cs0, d0: Bw, s1: backTo, d1: Bw, thick: WALL, y0: level, y1: wallTop, mat: "plaster", tint: beige, matBack: "plaster", tintBack: cream, openings: back, skirt: "dark_wood" });
+  b.wall({ s0: Cs0, d0: Bw, s1: backTo, d1: Bw, thick: WALL, y0: level, y1: wallTop, mat: "painted", tint: beige, matBack: "painted", tintBack: cream, openings: back, skirt: "dark_wood" });
   for (let j = 0; j < doorsBack.length; j++) plate(cm((doorsBack[j] as number) + 0.8), Dc + CORRIDOR - 0.02, TOWARD_FRONT, roomNo - 2 - 2 * j);
   plate(cm(sDoor + 0.8), Dc + CORRIDOR - 0.02, TOWARD_FRONT, roomNo);
   if (multi) {
     // The corridor ends against the stair's slot: a short wall closes the 20 cm between the flight's lane and the back wall.
-    b.wall({ s0: Ss, d0: cm(Dc + LANE - 0.03), s1: Ss, d1: cm(Dc + CORRIDOR + WALL), thick: 0.1, y0: F, y1: wallTop, mat: "plaster", tint: cream, openings: [] });
+    b.wall({ s0: Ss, d0: cm(Dc + LANE - 0.03), s1: Ss, d1: cm(Dc + CORRIDOR + WALL), thick: 0.1, y0: F, y1: wallTop, mat: "painted", tint: cream, openings: [] });
   } else {
-    b.wall({ s0: Cs0, d0: Dc, s1: Cs0, d1: Bw, thick: WALL, y0: 0, y1: H, mat: "plaster", tint: cream, openings: [] });
+    b.wall({ s0: Cs0, d0: Dc, s1: Cs0, d1: Bw, thick: WALL, y0: 0, y1: H, mat: "painted", tint: cream, openings: [] });
   }
 
   // The corridor's surface, from its far end to where the stair's top meets it; and the flight above floor 2.
   const closed = multi && site.storeys >= 3 && Ss >= 7.45;
+  let flightMark: { name: string; s: number; d: number; y: number } | null = null;
   const corrFrom = closed ? 2.39 : 0;
   if (multi) surf(corrFrom, Ss, cm(Dc - 0.05), cm(Dc + CORRIDOR + 0.05), F);
   else surf(0, Wm, cm(Fw - 0.1), cm(Bw + 0.1), 0);
@@ -214,9 +215,10 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     const rise = 8 * RISER;
     b.display({ s0, s1, d0: Dc, d1: cm(Dc + CORRIDOR), along: "s", y0: cm(F + rise), y1: F, base: F, mat: "oak", rails: [] });
     const sBar = cm(s1 - 3 * 0.28);
+    flightMark = { name: "flight", s: cm(sBar + 0.95), d: cm(Dc + CORRIDOR / 2), y: cm(F + (rise * (s1 - (sBar + 0.95))) / (s1 - s0)) };
     b.surface({ kind: "ramp", s0: sBar, s1, d0: Dc, d1: cm(Dc + CORRIDOR), along: "s", y0: cm(F + (rise * (s1 - sBar)) / (s1 - s0)), y1: F });
     b.block({ s: sBar, d: cm(Dc + CORRIDOR / 2), ax: 1, ad: 0, ha: 0.05, hb: CORRIDOR / 2, y0: F, y1: F + 3 });
-    b.wall({ s0, d0: Dc, s1: s0, d1: Bw, thick: 0.1, y0: F, y1: wallTop, mat: "plaster", tint: [0.1, 0.1, 0.1], tintBack: [0.06, 0.06, 0.06], matBack: "plaster", openings: [] });
+    b.wall({ s0, d0: Dc, s1: s0, d1: Bw, thick: 0.1, y0: F, y1: wallTop, mat: "painted", tint: [0.1, 0.1, 0.1], tintBack: [0.06, 0.06, 0.06], matBack: "painted", openings: [] });
     b.item("barrier", sBar, cm(Dc + CORRIDOR / 2), TOWARD_RIGHT, [F + 0.53], { anywhere: true, y: F });
     b.item("step_ladder", cm(sBar - 0.5), cm(Dc + 1.4), TOWARD_RIGHT, [F + 0.9], { anywhere: true, y: F });
     b.item("paint_cans", cm(s1 - 0.3), cm(Dc + 0.4), TOWARD_RIGHT, [F], { anywhere: true, y: F });
@@ -234,7 +236,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     // The landing's open side toward the lobby is railed: a hull on it is not to step off onto the floor under it.
     b.rail({ s0: cm(Ss + run), d0: Dc, s1: lend, d1: Dc, y: yL, h: 1.0, kind: "bars", mat: "steel" });
     // The shaft's back wall on the ground floor and the corridor's wall above it are the building's; a wall closes the lobby side of the stair's far side.
-    b.wall({ s0: Ss, d0: cm(Dc + 2 * LANE + 0.2), s1: lend, d1: cm(Dc + 2 * LANE + 0.2), thick: 0.1, y0: 0, y1: F - 0.3, mat: "plaster", tint: [0.9, 0.85, 0.75], openings: [] });
+    b.wall({ s0: Ss, d0: cm(Dc + 2 * LANE + 0.2), s1: lend, d1: cm(Dc + 2 * LANE + 0.2), thick: 0.1, y0: 0, y1: F - 0.3, mat: "painted", tint: [0.9, 0.85, 0.75], openings: [] });
   }
 
   // ---- the player's room.
@@ -244,12 +246,12 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const roomWalls = (): void => {
     const sL = cm(Rs);
     const sR = cm(Rs + ROOM_W + WALL);
-    b.wall({ s0: sL, d0: Bw, s1: sL, d1: D, thick: WALL, y0: roomY, y1: wallTop, mat: "plaster", tint: cream, matBack: "plaster", tintBack: beige, openings: [] });
-    b.wall({ s0: sR, d0: Bw, s1: sR, d1: D, thick: WALL, y0: roomY, y1: wallTop, mat: "plaster", tint: teal, matBack: "plaster", tintBack: cream, openings: [] });
+    b.wall({ s0: sL, d0: Bw, s1: sL, d1: D, thick: WALL, y0: roomY, y1: wallTop, mat: "painted", tint: cream, matBack: "painted", tintBack: beige, openings: [] });
+    b.wall({ s0: sR, d0: Bw, s1: sR, d1: D, thick: WALL, y0: roomY, y1: wallTop, mat: "painted", tint: teal, matBack: "painted", tintBack: cream, openings: [] });
     if (hasBath) {
       const sB = X(2.45);
-      b.wall({ s0: sB, d0: Rd0, s1: sB, d1: Y(entry), thick: 0.1, y0: roomY, y1: wallTop, mat: "plaster", tint: beige, tintBack: beige, matBack: "plaster", openings: [{ a0: 0.35, a1: 1.25, head: cm(roomY + 2.05), shut: true }] });
-      b.wall({ s0: sB, d0: Y(entry), s1: cm(sR), d1: Y(entry), thick: 0.1, y0: roomY, y1: wallTop, mat: "plaster", tint: beige, matBack: "plaster", tintBack: beige, openings: [] });
+      b.wall({ s0: sB, d0: Rd0, s1: sB, d1: Y(entry), thick: 0.1, y0: roomY, y1: wallTop, mat: "painted", tint: beige, tintBack: beige, matBack: "painted", openings: [{ a0: 0.35, a1: 1.25, head: cm(roomY + 2.05), shut: true }] });
+      b.wall({ s0: sB, d0: Y(entry), s1: cm(sR), d1: Y(entry), thick: 0.1, y0: roomY, y1: wallTop, mat: "painted", tint: beige, matBack: "painted", tintBack: beige, openings: [] });
     }
   };
   roomWalls();
@@ -319,74 +321,145 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const battenFrom = cm(deskD - deskLen / 2 - 0.6);
   b.item("batten_ceiling", 2.2, battenFrom, TOWARD_BACK, [cm(min(deskLen + 1.2, lobbyBack - 0.15 - battenFrom)), 3.6, cm(H - 0.4)], { anywhere: true });
   b.item("pendant_lamp", cm(deskS + 1.3), cm(deskD - deskLen * 0.25), TOWARD_RIGHT, [cm(H - 1.4)], { anywhere: true });
-  b.light({ s: cm(deskS + 1.3), d: cm(deskD - deskLen * 0.25), y: cm(H - 1.5), kind: "pendant", power: 0.9, reach: 3.0, tone: [1, 0.92, 0.78] });
+  b.light({ s: cm(deskS + 1.3), d: cm(deskD - deskLen * 0.25), y: cm(H - 1.5), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.92, 0.78] });
   b.item("floor_joints", 0, 0, TOWARD_RIGHT, [W, FRONT_WALL, D, 0.8], { anywhere: true });
 
-  const lounge = (sx: number): boolean => {
-    const ok = b.fits("sofa", sx, 1.0, TOWARD_BACK, [3.2], { gap: 0.05 });
-    if (!ok) return false;
-    b.item("sofa", sx, 1.0, TOWARD_BACK, [3.2], { gap: 0.05 });
-    b.item("sofa", cm(sx + 1.15), 2.5, TOWARD_LEFT, [2.0], { gap: 0.05 });
-    b.item("oval_table", cm(sx - 0.7), 2.6, TOWARD_BACK, [], { gap: 0.05 });
-    b.item("pouffe", cm(sx - 1.5), 2.2, TOWARD_BACK, [], { gap: 0.05 });
-    b.item("pouffe", cm(sx - 0.3), 3.5, TOWARD_BACK, [], { gap: 0.05 });
-    if (!small) b.item("pouffe", cm(sx + 0.6), 3.6, TOWARD_BACK, [], { gap: 0.05 });
-    b.item("carpet_inset", cm(sx - 0.5), 2.2, TOWARD_BACK, [4.0, 3.8, 0], { anywhere: true });
-    b.item("batten_ceiling", cm(sx - 2.3), 2.2, TOWARD_RIGHT, [4.6, 3.6, cm(H - 0.4)], { anywhere: true });
-    b.item("pendant_lamp", cm(sx - 0.7), 2.6, TOWARD_RIGHT, [cm(H - 1.5)], { anywhere: true });
-    b.light({ s: cm(sx - 0.7), d: 2.6, y: cm(H - 1.6), kind: "pendant", power: 0.9, reach: 3.0, tone: [1, 0.92, 0.78] });
-    b.light({ s: cm(sx - 0.5), d: 1.8, y: cm(H - 0.5), kind: "tube", power: 1.0, reach: 3.2, tone: [1, 0.96, 0.88] });
-    b.person({ s: cm(sx - 0.6), d: 0.95, face: TOWARD_BACK, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
-    return true;
+  let loungeMark = cm(min(Ss - 3.5, max(4.5, Wm * 0.45)));
+  const backD = multi ? D : cm(lobbyBack);
+  const hang = H - 0.4;
+  /** A lamp or a strip of light of the ceiling's, with the item that draws it where there is one. */
+  const downlights = (s0: number, s1: number, d0: number, d1: number, step: number): void => {
+    for (let s = s0; s <= s1; s += step) for (let dd = d0; dd <= d1; dd += step) {
+      b.item("downlight", cm(s), cm(dd), TOWARD_RIGHT, [], { anywhere: true });
+      b.light({ s: cm(s), d: cm(dd), y: cm(H - 0.05), kind: "tube", beam: 60, power: 1.4, reach: 2.2, tone: [1, 0.93, 0.8] });
+    }
   };
   if (!small) {
-    let found = false;
-    for (let sx = cm(Ss - 3.1); sx >= 4.2 && !found; sx = cm(sx - 0.9)) found = lounge(sx);
-    // Dining tables toward the back, with shell chairs of three colours.
-    const nDin = max(0, min(3, floor((Ss - 6.5) / 2.6)));
+    // ---- (a) reception: the desk and wall are above; two armchairs waiting by a side table, a luggage cart, a rack of brochures.
+    const roomy = lobbyBack >= 10;
+    const wait = cm(deskD - deskLen / 2 - 1.4);
+    if (roomy) b.item("armchair", 4.7, cm(wait - 0.9), TOWARD_LEFT, [], { gap: 0.1, mat: "grey" });
+    if (roomy) b.item("armchair", 4.7, cm(wait + 0.9), TOWARD_LEFT, [], { gap: 0.1, mat: "grey" });
+    if (roomy) b.item("side_table", 4.75, wait, TOWARD_LEFT, [], { gap: 0.1 });
+    if (roomy) b.light({ s: 4.75, d: wait, y: 1.45, kind: "lamp", power: 0.5, reach: 1.3, tone: [1, 0.85, 0.6] });
+    if (roomy) b.item("luggage_cart", 3.3, cm(deskD - deskLen / 2 - 0.6), TOWARD_RIGHT, [], { gap: 0.1 });
+    b.item("brochure_rack", 0.4, cm(deskD - deskLen / 2 - 1.2), TOWARD_RIGHT, [], { gap: 0.1 });
+    if (roomy) b.person({ s: 4.7, d: cm(wait - 0.9), face: TOWARD_LEFT, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
+
+    // ---- (b) the lounge by the front windows: the corner sofa, pouffes, the oval table on a carpet, and a second group beside it of a grey sofa and two yellow armchairs; floor lamps, side tables with lamps.
+    const group = (sx: number, grey: boolean, person: boolean): boolean => {
+      if (!b.fits("sofa", sx, 1.0, TOWARD_BACK, [3.2], { gap: 0.05 })) return false;
+      b.item("sofa", sx, 1.0, TOWARD_BACK, [grey ? 2.8 : 3.2], { gap: 0.05, ...(grey ? { mat: "grey" } : {}) });
+      if (!grey) {
+        loungeMark = cm(sx - 1.0);
+        b.item("sofa", cm(sx + 1.15), 2.5, TOWARD_LEFT, [2.0], { gap: 0.05 });
+        b.item("pouffe", cm(sx - 1.5), 2.3, TOWARD_BACK, [], { gap: 0.05 });
+        b.item("pouffe", cm(sx - 0.3), 3.5, TOWARD_BACK, [], { gap: 0.05 });
+        b.item("pouffe", cm(sx + 0.6), 3.6, TOWARD_BACK, [], { gap: 0.05 });
+        b.item("oval_table", cm(sx - 0.7), 2.6, TOWARD_BACK, [], { gap: 0.05 });
+        b.item("tabletop", cm(sx - 0.7), 2.6, TOWARD_BACK, [4], { anywhere: true, y: 0.42 });
+      } else {
+        b.item("armchair", cm(sx - 0.8), 3.3, TOWARD_FRONT, [], { gap: 0.05, mat: "yellow" });
+        b.item("armchair", cm(sx + 0.8), 3.3, TOWARD_FRONT, [], { gap: 0.05, mat: "yellow" });
+        b.item("oval_table", sx, 2.3, TOWARD_BACK, [], { gap: 0.05 });
+        b.item("tabletop", sx, 2.3, TOWARD_BACK, [3], { anywhere: true, y: 0.42 });
+      }
+      b.item("carpet_inset", cm(sx - 0.4), 2.3, TOWARD_BACK, [4.4, grey ? 3.6 : 4.4, grey ? 0 : 1], { anywhere: true });
+      b.item("floor_lamp", cm(sx + 1.9), 0.7, TOWARD_BACK, [], { gap: 0.05 });
+      b.light({ s: cm(sx + 1.9), d: 0.7, y: 1.4, kind: "lamp", power: 0.8, reach: 1.7, tone: [1, 0.85, 0.6] });
+      b.item("side_table", cm(sx - 1.9), 0.75, TOWARD_BACK, [], { gap: 0.05 });
+      b.light({ s: cm(sx - 1.9), d: 0.75, y: 1.0, kind: "lamp", power: 0.6, reach: 1.3, tone: [1, 0.85, 0.6] });
+      b.item("batten_ceiling", cm(sx - 2.3), 2.3, TOWARD_RIGHT, [4.8, 3.6, cm(hang)], { anywhere: true });
+      for (let k = 0; k < 3; k++) {
+        b.item("pendant_lamp", cm(sx - 1.1 + k * 0.9), cm(2.2 + (k % 2) * 0.7), TOWARD_RIGHT, [cm(H - 1.2 - k * 0.3)], { anywhere: true });
+        b.light({ s: cm(sx - 1.1 + k * 0.9), d: cm(2.2 + (k % 2) * 0.7), y: cm(H - 1.3 - k * 0.3), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
+      }
+      b.light({ s: cm(sx - 0.5), d: 2.3, y: cm(hang), kind: "tube", beam: 40, power: 0.9, reach: 2.2, tone: [1, 0.96, 0.88] });
+      if (person) b.person({ s: cm(sx - 0.6), d: 0.95, face: TOWARD_BACK, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
+      return true;
+    };
+    let placed = 0;
+    for (let sx = cm(Ss - 3.2); sx >= 7.4 && placed < 2; sx = cm(sx - 1.0)) if (group(sx, placed === 1, placed === 0)) {
+      placed++;
+      sx = cm(sx - 5.2);
+    }
+    // ---- (c) the dining zone: a long table with stools, tables with shell chairs, a coffee station against the back wall.
+    const mid = cm(min(Ss * 0.55, Ss - 4.5));
+    const longD = cm(D - 6.5);
+    if (roomy && b.item("long_table", mid, longD, TOWARD_BACK, [3.4], { gap: 0.1 })) {
+      for (let k = 0; k < 4; k++) for (const sg of [-1, 1]) b.item("stool", cm(mid - 1.2 + k * 0.8), cm(longD + sg * 0.75), TOWARD_BACK, [], { gap: 0.02 });
+      b.item("tabletop", mid, longD, TOWARD_BACK, [1], { anywhere: true, y: 1.05 });
+      b.item("batten_ceiling", cm(mid - 1.9), cm(longD - 0.5), TOWARD_RIGHT, [3.8, 3.4, cm(hang)], { anywhere: true });
+      for (let k = 0; k < 3; k++) {
+        b.item("pendant_lamp", cm(mid - 1.0 + k * 1.0), longD, TOWARD_RIGHT, [cm(H - 1.0 - 0.35 * (k % 2))], { anywhere: true });
+        b.light({ s: cm(mid - 1.0 + k * 1.0), d: longD, y: cm(H - 1.1 - 0.35 * (k % 2)), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
+      }
+      b.person({ s: cm(mid - 0.4), d: cm(longD + 0.75), face: TOWARD_FRONT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
+    }
     const shades = ["yellow", "green", "grey"];
+    const nDin = max(0, min(5, floor((Ss - 6.0) / 2.3)));
     for (let k = 0; k < nDin; k++) {
-      const s = cm(5.0 + ((k + 0.5) * (Ss - 7.4)) / nDin);
-      const dd = cm(D - 2.4);
+      const s = cm(5.0 + ((k + 0.5) * (Ss - 7.0)) / nDin);
+      const dd = cm(D - 3.2);
       if (!b.item("low_table", s, dd, TOWARD_BACK, [0.5], { gap: 0.05 })) continue;
+      b.item("tabletop", s, dd, TOWARD_BACK, [k % 5], { anywhere: true, y: 0.74 });
       for (let j = 0; j < 3; j++) {
         const ang: Spot[] = [TOWARD_BACK, TOWARD_FRONT, TOWARD_LEFT];
         const f = ang[j] as Spot;
         b.item("shell_chair", cm(s + f.s * 0.78), cm(dd + f.d * 0.78), { s: -f.s, d: -f.d }, [], { gap: 0, mat: shades[(k + j) % 3] as string });
       }
-      b.item("pendant_lamp", s, dd, TOWARD_RIGHT, [cm(H - 1.5)], { anywhere: true });
-      b.light({ s, d: dd, y: cm(H - 1.6), kind: "pendant", power: 0.8, reach: 2.8, tone: [1, 0.92, 0.78] });
+      b.item("pendant_lamp", s, dd, TOWARD_RIGHT, [cm(H - 1.3)], { anywhere: true });
+      b.light({ s, d: dd, y: cm(H - 1.4), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
     }
-    // A wall of open shelves with a television, and framed pictures.
-    b.item("shelf_wall", cm(Ss * 0.5 + 1), cm(D - 0.24), TOWARD_FRONT, [3.2], { gap: 0.05 });
-    const art = onWall("back", cm(Ss * 0.5 - 2.4), W, D);
-    b.decorate({ kind: "frame_art", s: art.s, d: art.d, y: 1.8, face: art.face, w: 0.8, h: 1.0 });
-    const art2 = onWall("back", cm(Ss * 0.5 + 4.2), W, D);
-    b.decorate({ kind: "frame_art", s: art2.s, d: art2.d, y: 1.7, face: art2.face, w: 0.6, h: 0.8 });
-    // Light over the room: strips between battens and the day through the curtains.
-    for (let s = 6; s < Ss - 1; s += 3.5) b.light({ s: cm(s), d: cm(D * 0.55), y: cm(H - 0.5), kind: "tube", power: 0.9, reach: 3.4, tone: [1, 0.96, 0.88] });
+    const coffeeLen = cm(min(4.2, Ss * 0.2));
+    const coffeeS = cm(min(Ss - 3.0, mid + 4.2));
+    b.item("coffee_station", coffeeS, cm(D - 0.38), TOWARD_FRONT, [coffeeLen], { gap: 0.05 });
+    b.light({ s: coffeeS, d: cm(D - 0.9), y: 2.4, kind: "strip", power: 0.8, reach: 1.6, tone: [1, 0.9, 0.7] });
+    // ---- (d) the media wall: shelving 4.6 m wide filled with a television, books, vases and plants, lit niches.
+    b.item("shelf_wall", cm(max(6.2, mid - 5.2)), cm(D - 0.24), TOWARD_FRONT, [4.6], { gap: 0.05 });
+    b.light({ s: cm(max(6.2, mid - 5.2)), d: cm(D - 0.7), y: 1.4, kind: "strip", power: 0.7, reach: 1.8, tone: [1, 0.9, 0.7] });
+    // ---- (e) the stair hall: a bench and a plant, and a notice by the foot of the stair.
+    b.item("window_bench", cm(Ss + 1.8), cm(D - 0.35), TOWARD_FRONT, [1.8], { gap: 0.05 });
+    b.item("plant", cm(Ss + 0.5), cm(D - 0.5), TOWARD_FRONT, [], { gap: 0.05 });
+    // ---- free-standing things in the middle of the floor: columns on a grid of 6 m, clad in timber, slat screens between the zones, long planters.
+    if (roomy) for (let s = 6; s < Ss - 2; s += 6) for (const dd of D >= 12.5 ? [5.4, 9.6] : []) b.item("column", cm(s), cm(dd), TOWARD_BACK, [cm(H), 1], { gap: 0.2 });
+    if (roomy) b.item("slat_screen", cm(Ss * 0.5), 4.5, TOWARD_BACK, [2.6], { gap: 0.2 });
+    if (roomy) b.item("planter", cm(Ss * 0.62), 0.55, TOWARD_RIGHT, [2.2], { gap: 0.2 });
+    if (roomy && D >= 12.5) b.item("planter", cm(Ss - 3.0), cm(D - 5.0), TOWARD_BACK, [2.4], { gap: 0.2 });
+    if (roomy) {
+      // Furnished to the edges: more planters along the front, benches along the back wall, a second row of columns' worth of plants.
+      b.item("planter", cm(Ss * 0.42), 0.55, TOWARD_RIGHT, [1.8], { gap: 0.2 });
+      b.item("planter", cm(Ss * 0.82), 0.55, TOWARD_RIGHT, [2.0], { gap: 0.2 });
+      for (let s = 3.2; s < Ss - 1; s += 3.4) if (!b.fits("window_bench", s, cm(D - 0.35), TOWARD_FRONT, [1.8], { gap: 0.05 }) || !b.item("window_bench", s, cm(D - 0.35), TOWARD_FRONT, [1.8], { gap: 0.05 })) continue;
+      if (D >= 12.5) for (let s = 5.0; s < Ss - 1; s += 4.6) b.item("planter", cm(s), cm(D * 0.5), TOWARD_RIGHT, [1.6], { gap: 0.9 });
+      if (D >= 12.5) for (let s = 4.0; s < Ss - 1; s += 5.2) b.item("plant", cm(s), cm(D * 0.38), TOWARD_BACK, [], { gap: 0.9 });
+    }
+    if (roomy) b.item("planter", cm(Ss * 0.2), 0.55, TOWARD_RIGHT, [2.0], { gap: 0.2 });
+    // ---- the ceiling: downlights in rows elsewhere, vents and sprinkler heads.
+    downlights(2.4, Ss - 1.2, 2.0, D - 1.0, 2.4);
+    for (let k = 0; k < 5; k++) b.item("vent", cm(3 + k * (Ss - 5) / 4), cm(k % 2 === 0 ? D * 0.35 : D * 0.7), TOWARD_RIGHT, [], { anywhere: true });
+    for (let s = 3.5; s < Ss - 1; s += 4.5) for (const dd of [cm(D * 0.3), cm(D * 0.72)]) b.item("sprinkler", cm(s), cm(dd), TOWARD_RIGHT, [], { anywhere: true });
   } else {
-    // A small lodging: two armchairs and a low table at the right of the desk.
+    // A small lodging: two armchairs and a low table at the right of the desk, a plant.
     const sx = cm(min(Ss - 3.0, max(4.5, Wm * 0.45)));
     b.item("armchair", cm(sx - 0.9), 2.4, TOWARD_RIGHT, [], { gap: 0.05 });
     b.item("armchair", cm(sx + 0.9), 2.4, TOWARD_LEFT, [], { gap: 0.05 });
     b.item("oval_table", sx, 2.4, TOWARD_BACK, [], { gap: 0.05 });
-    b.light({ s: sx, d: 2.4, y: cm(H - 0.5), kind: "tube", power: 1.0, reach: 3.2, tone: [1, 0.96, 0.88] });
+    b.light({ s: sx, d: 2.4, y: cm(H - 0.5), kind: "tube", beam: 40, power: 1.0, reach: 2.4, tone: [1, 0.96, 0.88] });
     b.person({ s: cm(sx - 0.9), d: 2.4, face: TOWARD_RIGHT, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
+    downlights(2.4, Ss - 1.2, 1.5, backD - 1.0, 2.4);
   }
 
-  // ---- what fills the walls and the corners: plants, pictures in groups, a clock, an extinguisher.
-  const sizes: readonly (readonly [number, number])[] = [[0.6, 0.8], [1.0, 0.7], [0.45, 0.6], [0.8, 1.0], [0.5, 0.5]];
-  const backD = multi ? D : cm(lobbyBack);
+  // ---- what fills the walls and the corners: plants, pictures hung in groups, a clock, an extinguisher.
   const spots: readonly (readonly [number, number])[] = [[0.7, 0.7], [Wm - 0.7, 0.7], [Ss - 1.6, backD - 0.7], [cm(Ss * 0.5 - 3.6), backD - 0.7], [cm(Ss * 0.5 + 3.8), backD - 0.7], [0.7, backD - 0.7], [cm(Ss * 0.35), 3.0]];
-  const nPlants = small ? 2 : 5;
+  const nPlants = small ? 2 : 4;
   for (let k = 0, put = 0; k < spots.length && put < nPlants; k++) if (b.item("plant", (spots[k] as readonly [number, number])[0], (spots[k] as readonly [number, number])[1], TOWARD_BACK, [], { gap: 0.1 })) put++;
-  for (let k = 0; k < (small ? 4 : 11); k++) {
-    const sz = sizes[(k + id) % sizes.length] as readonly [number, number];
-    const along = cm(1.2 + k * ((Ss - 2.4) / (small ? 4 : 11)) + roll(90 + k) * 0.3);
-    const at = onWall("back", along, W, D);
-    if (along > Ss - 0.8 || Math.abs(along - (Ss * 0.5 + 1)) < 2.0) continue;
-    b.decorate({ kind: "frame_art", s: at.s, d: backD, y: cm(1.5 + sz[1] / 2 + roll(110 + k) * 0.6), face: at.face, w: sz[0], h: sz[1] });
+  // Pictures in groups along the back wall between what stands against it, and on the left and right walls where nothing does.
+  const against = b.items.filter((i) => ["shelf_wall", "coffee_station"].includes(i.kind) && i.d > backD - 0.8).map((i) => [i.s - (i.p[0] ?? 2) / 2 - 0.5, i.s + (i.p[0] ?? 2) / 2 + 0.5] as const);
+  let g = 0;
+  for (let s = 1.6; s < Ss - 1.0; s += 3.0) {
+    if (against.some(([lo, hi]) => s > lo - 0.5 && s < hi + 0.5)) continue;
+    b.hang("back", cm(s) , cm(1.75 + 0.15 * (g % 3)), g++ + id);
   }
   if (!small) {
     const cl = onWall("back", cm(Ss * 0.5 + 1), W, D);
@@ -395,17 +468,22 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   if (multi) {
     // The corridor: pictures between the doors, an extinguisher by the stair.
     const nearDoor = (s: number): boolean => [...doorsFront, ...doorsBack, sDoor, niche].some((x) => Math.abs(x - s) < 1.6);
-    for (let s = Cs0 + 4.2; s < Cs1 - 2; s += 4.4) if (!nearDoor(s)) b.decorate({ kind: "frame_art", s: cm(s), d: Dc, y: level + 1.55, face: TOWARD_BACK, w: 0.7, h: 0.5 });
+    for (let s = Cs0 + 4.2; s < Cs1 - 2; s += 4.4) if (!nearDoor(s)) b.hang("front", cm(s), level + 1.6, 1 + (g++ % 2));
     b.decorate({ kind: "extinguisher", s: cm(Cs1 - 2.2), d: Dc, y: level + 1.3, face: TOWARD_BACK, w: 0.15, h: 0.5 });
-    for (let s = Cs0 + 2.4; s < Cs1 - 2; s += 4.4) if (!nearDoor(s)) b.decorate({ kind: "frame_art", s: cm(s), d: Dc + CORRIDOR, y: level + 1.55, face: TOWARD_FRONT, w: 0.6, h: 0.45 });
+    for (let s = Cs0 + 2.4; s < Cs1 - 2; s += 4.4) if (!nearDoor(s)) b.decorate({ kind: "art", s: cm(s), d: Dc + CORRIDOR, y: level + 1.6, face: TOWARD_FRONT, w: 0.6, h: 0.45 });
   }
 
   // ---- the people of the room: none; the room is the player's.
   const marks = [
+    { name: "back", s: cm(max(2.5, Ss * 0.3)), d: cm(backD - 1.6), y: 0 },
+    { name: "corridor", s: cm(max(Cs0 + 1.2, min(Cs1 - 1.2, sDoor - 2.5))), d: cm(Dc + CORRIDOR / 2), y: yc },
+    { name: "stair", s: cm(multi ? Ss - 0.9 : sDoor), d: cm(multi ? Dc + LANE + 1.0 : Fw - 1.0), y: 0 },
+    { name: "lounge", s: loungeMark, d: cm(min(4.8, lobbyBack - 1.2)), y: 0 },
+    ...(flightMark === null ? [] : [flightMark]),
     { name: "room", s: X(1.2), d: Y(entry + 0.3), y: roomY },
     ...(closed ? [{ name: "beyond", s: cm(Cs0 + 0.6), d: cm(Dc + CORRIDOR / 2), y: F + 1.0 }] : []),
   ];
-  const wallFinish = { mat: "plaster", tint: [1.15, 1.1, 1.0] as [number, number, number], skirt: "dark_wood" };
+  const wallFinish = { mat: "painted", tint: [1.15, 1.1, 1.0] as [number, number, number], skirt: "dark_wood" };
   return b.build({
     name: "lodging",
     legacy: false,
@@ -414,7 +492,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     doorHead: min(2.05, H - 0.2),
     arrive: arrivalOf(W, site.doorS),
     shell: { front: wallFinish, left: wallFinish, right: wallFinish, back: wallFinish, floor: "marble_tile", ceiling: "painted" },
-    mood: { exposure: 0.9, ambient: [1, 0.95, 0.85], ambientK: 0.05, day: 0.3 },
+    mood: { exposure: 1.4, ambient: [1, 0.95, 0.85], ambientK: 0.015, day: 0.3 },
     ...(multi ? { cuts: [cm(F - 0.15)] } : {}),
     frontCurtains: !small,
     marks,

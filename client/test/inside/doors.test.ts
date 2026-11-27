@@ -4,7 +4,7 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { addPlayer } from "@csarkosh/engine/sim/tick";
 import { createCapeSide, promptFor } from "../../src/game/car/side.js";
-import { darkFor, doorLine, goinTarget, INSIDE_COMMANDS } from "../../src/game/doors.js";
+import { darkFor, doorLine, faceYaw, goinTarget, INSIDE_COMMANDS } from "../../src/game/doors.js";
 import { GO_IN, GO_OUT, HOST_PUTS_IN } from "../../src/game/words.js";
 import { WALK_SIDE } from "../../src/game.js";
 import { createWalkHud, DARK_MS, CLEAR_MS } from "../../src/hud.js";
@@ -109,14 +109,31 @@ describe("the page's black cover", () => {
 describe("the console's goin", () => {
   const [spec] = INSIDE_COMMANDS;
 
-  it("takes one place, bar, cafe, lodging, office or out, and leaves out of the address", () => {
+  it("takes a place, bar, cafe, lodging, office or out, then a place of the room and a way to look, and leaves out of the address", () => {
     expect(INSIDE_COMMANDS).toHaveLength(1);
     expect(spec?.name).toBe("goin");
     expect(spec?.kind).toBe("view");
     for (const place of ["bar", "cafe", "lodging", "office", "out"]) expect(spec?.validate([place]), place).toBeNull();
-    for (const bad of [[], ["roof"], ["bar", "cafe"], [""]]) expect(spec?.validate(bad)).toMatch(/goin takes/);
+    for (const ok of [["lodging", "room"], ["bar", "back"], ["cafe", "back", "front"], ["lodging", "flight", "left"], ["office", "gallery", "right"]]) expect(spec?.validate(ok), ok.join(" ")).toBeNull();
+    for (const bad of [[], ["roof"], ["bar", "Cafe!"], [""], ["bar", "back", "up"], ["bar", "back", "front", "x"], ["out", "back"]]) expect(spec?.validate(bad), bad.join(" ")).toMatch(/goin takes/);
     expect(spec?.scriptValue?.(["out"])).toBe(spec?.defaultValue);
     expect(spec?.scriptValue?.(["bar"])).not.toBe(spec?.defaultValue);
+    // The address keeps the whole of it.
+    expect(spec?.scriptValue?.(["cafe", "back", "front"])).toBe("cafe back front");
+  });
+
+  it("turns the view toward the street, the back wall, left or right as one comes in", () => {
+    const r = room(2);
+    const dir = (face: string): { s: number; d: number } => {
+      const yaw = faceYaw(r, face);
+      const x = Math.sin(yaw);
+      const z = Math.cos(yaw);
+      return { s: x * r.tx + z * r.tz, d: -(x * r.nx + z * r.nz) };
+    };
+    expect(dir("front").d).toBeCloseTo(-1, 6);
+    expect(dir("back").d).toBeCloseTo(1, 6);
+    expect(dir("left").s).toBeCloseTo(-1, 6);
+    expect(dir("right").s).toBeCloseTo(1, 6);
   });
 
   it("names rooms by their id in a world", () => {

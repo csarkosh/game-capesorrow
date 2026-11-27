@@ -98,7 +98,8 @@ export function backBar(g: Geo, it: Item): void {
 export function column(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   const H = it.p[0] ?? 3;
-  L.box(-0.23, 0.23, -0.23, 0.23, 0, H, "concrete", { tint: tintOf(it.id + g.seed, 31, 0.05) }, true, false);
+  L.box(-0.23, 0.23, -0.23, 0.23, 0, H, (it.p[1] ?? 0) === 1 ? "painted" : "concrete", { tint: tintOf(it.id + g.seed, 31, 0.05) }, true, false);
+  if ((it.p[1] ?? 0) === 1) L.box(-0.245, 0.245, -0.245, 0.245, 0.12, 2.1, "oak", { tint: [0.9, 0.7, 0.55] }, true, false);
   L.box(-0.245, 0.245, -0.245, 0.245, 0, 0.12, "dark_wood");
 }
 

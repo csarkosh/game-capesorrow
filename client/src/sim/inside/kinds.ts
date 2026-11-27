@@ -92,6 +92,24 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
   beam: () => null,
   ceiling_fan: () => null,
   tabletop: () => null,
+  /** A luggage cart, 0.6 by 1.1 m and 1.4 m high; a rack of brochures, 0.6 by 0.3 and 1.5 m. */
+  luggage_cart: () => ({ ha: 0.3, hb: 0.55, h: 1.4 }),
+  brochure_rack: () => ({ ha: 0.15, hb: 0.3, h: 1.5 }),
+  /** A long communal high table, 0.9 m wide, `p0` long, top at 1.05 m. */
+  long_table: (p) => ({ ha: 0.45, hb: (p[0] ?? 3) / 2, h: 1.05 }),
+  /** A coffee station against a wall: a counter with a machine and cups and a fridge with a lit front: `p0` long, 0.7 deep, the fridge 1.9 m high. */
+  coffee_station: (p) => ({ ha: 0.35, hb: (p[0] ?? 3) / 2, h: 1.9 }),
+  /** A screen of upright timber slats, 2.2 m high, `p0` long, 12 cm thick. */
+  slat_screen: (p) => ({ ha: 0.06, hb: (p[0] ?? 2.5) / 2, h: 2.2 }),
+  /** A long planter, 0.6 m wide, `p0` long, with plants in it to 1.2 m. */
+  planter: (p) => ({ ha: 0.3, hb: (p[0] ?? 2) / 2, h: 0.5 }),
+  /** A floor lamp (1.6 m, with a light) and a side table (0.55 m): the lamp stands on the table in `table_lamp`. */
+  floor_lamp: () => ({ ha: 0.2, hb: 0.2, h: 1.6 }),
+  side_table: () => ({ ha: 0.25, hb: 0.25, h: 0.55 }),
+  /** What is let into a ceiling: a downlight (a small glowing disc), a vent, a sprinkler head: none stood in. */
+  downlight: () => null,
+  vent: () => null,
+  sprinkler: () => null,
   /** A potted plant on the floor: a pot 0.4 m across and a fan of leaves to 1.2 m. */
   plant: () => ({ ha: 0.22, hb: 0.22, h: 1.2 }),
   /** Hung or laid: pendant lamps, a ceiling of battens, an inset of carpet, the barrier across the closed flight and what stands at it. */
@@ -107,7 +125,7 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
 };
 
 /** The kinds that hang on a wall (`Decor`). */
-export const DECOR_KINDS: readonly string[] = ["television", "guitar", "poster", "sign", "board", "wall_lamp", "ac_unit", "picture", "panel", "tile_wall", "slat_wall", "lit_letters", "frame_art", "forest_picture", "lit_pane", "closet_front", "door_leaf", "clock", "extinguisher", "chalkboard", "neon_sign", "dartboard", "wall_shelf", "mirror", "coat_hooks", "bunting"];
+export const DECOR_KINDS: readonly string[] = ["television", "guitar", "poster", "sign", "board", "wall_lamp", "ac_unit", "picture", "panel", "tile_wall", "slat_wall", "lit_letters", "frame_art", "forest_picture", "lit_pane", "closet_front", "door_leaf", "clock", "extinguisher", "art", "chalkboard", "neon_sign", "dartboard", "wall_shelf", "mirror", "coat_hooks", "bunting"];
 
 /** A kind's footprint as the builder of a design asks for it. A kind that is not named is a mistake, not a kind without one. */
 export function footOf(kind: string, p: readonly number[]): Foot | null {

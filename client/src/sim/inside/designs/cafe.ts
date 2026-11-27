@@ -100,7 +100,7 @@ export function cafeDesign(site: CafeSite): Design {
   for (let i = 0; i < nLights; i++) {
     const d = cm(1.0 + (i * (D - 1.8)) / (nLights - 1));
     b.item("flush_light", lightS, d, TOWARD_RIGHT, [], { anywhere: true });
-    b.light({ s: lightS, d, y: cm(H - 0.1), kind: "pendant", power: 0.65, reach: 2.4, tone: [1, 0.93, 0.8] });
+    b.light({ s: lightS, d, y: cm(H - 0.1), kind: "pendant", beam: 60, power: 3.5, reach: 3.0, tone: [1, 0.93, 0.8] });
   }
 
   // ---- the booths down the right wall, or small tables where the room is not wide enough for them.
@@ -247,6 +247,6 @@ export function cafeDesign(site: CafeSite): Design {
       floor: "marble_tile",
       ceiling: "painted",
     },
-    mood: { exposure: 0.9, ambient: [1, 0.93, 0.82], ambientK: 0.05, day: 0.35 },
+    mood: { exposure: 0.9, ambient: [1, 0.93, 0.82], ambientK: 0.03, day: 0.35 },
   });
 }

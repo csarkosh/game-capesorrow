@@ -172,7 +172,12 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
       const len = Math.sqrt(q2) + 1e-4;
       const c = (ns * dx + nd * dd + ny * dy) / len;
       const wrap = 0.3 + 0.7 * (0.5 + 0.5 * c);
-      const a = (l.power * wrap * seen(i, s, d, y)) / (k * k);
+      let cone = 1;
+      if (l.beam !== undefined) {
+        // A downlight: the cosine from straight down to a power below its own height; a halo of a metre or so on what is above it.
+        cone = y < l.y - 0.2 ? Math.pow(Math.max(0, (l.y - y) / len), l.beam) : 0.9 * Math.exp(-(dx * dx + dd * dd) / 0.5);
+      }
+      const a = (l.power * wrap * cone * seen(i, s, d, y)) / (k * k);
       out[0] += l.tone[0] * a;
       out[1] += l.tone[1] * a;
       out[2] += l.tone[2] * a;

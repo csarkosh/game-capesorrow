@@ -71,7 +71,10 @@ export type Item = { readonly kind: string; readonly s: number; readonly d: numb
 /** What hangs on a wall: a picture, a sign with words, a board, a clock, a guitar. `w` by `h` metres, its centre `y` over the floor, `face` the way it looks (into the room). */
 export type Decor = { readonly kind: string; readonly s: number; readonly d: number; readonly y: number; readonly face: Spot; readonly w: number; readonly h: number; readonly text?: string; readonly id: number };
 /** A light the bake lights the room from: a place, a power (1 is a tube's), the distance (m) at which its light has fallen to a quarter, and a tone. */
-export type DesignLight = { readonly s: number; readonly d: number; readonly y: number; readonly kind: "bulb" | "pendant" | "tube" | "lamp" | "strip" | "glow"; readonly power: number; readonly reach: number; readonly tone: readonly [number, number, number] };
+export type DesignLight = { readonly s: number; readonly d: number; readonly y: number; readonly kind: "bulb" | "pendant" | "tube" | "lamp" | "strip" | "glow"; readonly power: number; readonly reach: number; readonly tone: readonly [number, number, number];
+  /** A fixture that throws its light down in a cone: the exponent of the cosine of the angle from straight down (a downlight is 8 to 20), and a halo of about a metre on the ceiling round it. None: it lights all round. */
+  readonly beam?: number;
+};
 /** Someone in the room: a place, the way they face, an activity (`ACTIVITIES` of `game/town/people.ts`) and the height of the seat for a sitter. */
 export type DesignPerson = {
   readonly s: number; readonly d: number; readonly face: Spot; readonly activity: string; readonly role: "staff" | "customer"; readonly sits: number | null; readonly family: "chair" | "stool";
@@ -318,6 +321,26 @@ export class DesignBuilder {
         }
       }
     }
+  }
+  /**
+   * Hangs a group of pictures on a wall at `along` metres (the middle of the group) and the height `y` (its middle): `group` 0 one large picture alone, 1 a pair of different sizes side by side, 2 a row of three,
+   * 3 a tall one with a small one under it. The pictures are `art` (`game/town/furniture/art.ts`); the group is as wide as it is and the width is answered.
+   */
+  hang(wall: "left" | "right" | "back" | "front", along: number, y: number, group: number): number {
+    const sizes: readonly (readonly [number, number, number, number])[][] = [
+      [[0, 1.0, 0.75, 0]],
+      [[-0.4, 0.55, 0.75, 0], [0.4, 0.6, 0.45, -0.1]],
+      [[-0.6, 0.4, 0.5, 0], [0, 0.4, 0.5, 0], [0.6, 0.4, 0.5, 0]],
+      [[-0.3, 0.45, 0.7, 0.1], [0.3, 0.4, 0.4, -0.15]],
+    ];
+    const parts = sizes[group % sizes.length] as readonly (readonly [number, number, number, number])[];
+    let extent = 0;
+    for (const [dx, w, h, dy] of parts) {
+      const at = onWall(wall, cm(along + dx), this.width, this.depth);
+      this.decorate({ kind: "art", s: at.s, d: at.d, y: cm(y + dy), face: at.face, w, h });
+      extent = max(extent, abs(dx) + w / 2);
+    }
+    return extent * 2;
   }
   /** A flight that is drawn and is no ground: its ramp and its blocks are left out. */
   display(st: Stair): void {
