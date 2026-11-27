@@ -22,7 +22,7 @@
  */
 import { EYE_SNAP_M } from "@csarkosh/engine/game/eyeBlend";
 import type { CameraPose } from "@csarkosh/engine/game/lite/cameraPose";
-import { CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, LEAVE_TICKS, SPEED_CAP, TOP_SPEED } from "../../sim/car/tuning.js";
+import { CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, FULL_SPEED, LEAVE_TICKS, TOP_SPEED } from "../../sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, PAVED, SEATED } from "../../sim/car/types.js";
 import type { CarPose } from "./carPose.js";
 
@@ -33,7 +33,7 @@ export const CHASE_LAG = 10, CHASE_RETURN = 2.5, CHASE_IDLE = 2;
 /** The nearest the camera is drawn in to by a wall (m); the widest the lens grows (rad) and the furthest back the camera is stood (m), both at `CHASE_FAST`. */
 export const CHASE_MIN = 1.5, CHASE_FOV = 0.15, CHASE_PULL = 0.7;
 /** The speed over the ground (m/s) at which the lens is widest and the camera furthest back: the fastest the car can go, so the top of its range reads as fast whatever that is. */
-export const CHASE_FAST = Math.min(TOP_SPEED[PAVED] as number, SPEED_CAP);
+export const CHASE_FAST = Math.min(TOP_SPEED[PAVED] as number, FULL_SPEED);
 /** How fast the speed's share is followed, per second: the lens and the distance take about half a second to answer, so a hit does not snap them. */
 const FAST_RATE = 2.2;
 /** The share of the angle between the car's nose and its velocity the camera comes round by, and the forward speed (m/s) above which it does. */

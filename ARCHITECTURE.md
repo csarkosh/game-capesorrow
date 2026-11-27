@@ -405,10 +405,14 @@ The designed top speeds (`TOP_SPEED` in `tuning.ts`) and grips (`GRIP`) are by s
 | two wheel tracks | 12 | 4.9 |
 | open ground | 6 | 3.9 |
 
-The speed is held to `SPEED_CAP`, 10 m/s, on every surface, because the streamed world does not keep up with an eye that
-travels faster; the table keeps the designed speeds for when the world is made ahead of travel, and raising the cap is
-the whole change. `carEnv` (`sim/car/body.ts`) takes the mean of the four wheels' surfaces and holds the top speed to
-the cap.
+The speed is also held to a limit by place (`speedLimitAt`, `sim/car/limit.ts`): `TOWN_SPEED`, 10 m/s, where the town's
+cover holds the ground, rising smoothly to `FULL_SPEED`, 15 m/s, over the cover's fade past the town's last blocks
+(`COVER_FADE`, 160 m), and 15 m/s beyond. It follows the blocks and the quay and not the single outlying lots, so a lone
+building by the highway does not slow the car, and it is a pure function of the seed and the place, so the host's step
+and a joined machine's prediction agree. The streamed world does not keep up with an eye that travels faster than
+that; the table keeps the designed speeds for when the world is made ahead of travel, and raising `FULL_SPEED` is the
+whole change. `carEnv` (`sim/car/body.ts`) takes the mean of the four wheels' surfaces and holds the top speed to the
+lesser of that and the place's limit. A car over the limit is slowed by the drag over the top speed, never stopped.
 
 ### What is under a wheel
 
@@ -584,7 +588,7 @@ refused leave eases back.
 the camera comes round toward it by 0.55 of that angle, so the car is seen turned in the frame and the road it slides
 along stays ahead. A car that has backed for 0.7 s is followed from its nose, looking the way it goes, until it goes
 forward or has stood for 0.6 s. C, held, turns the view half a circle at once. The speed over the ground, as a share of
-the fastest the car goes (`CHASE_FAST`, the lesser of the pavement's top speed and `SPEED_CAP`) and eased over about
+the fastest the car goes (`CHASE_FAST`, the lesser of the pavement's top speed and `FULL_SPEED`) and eased over about
 half a second, widens the lens by up to 0.15 rad and stands the camera up to 0.7 m further back. A fall in speed too
 sudden for the brakes (over 22 m/s^2) is a hit and shakes the view for about half a second.
 
@@ -636,8 +640,8 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
 
 ### The car's limits
 
-- The top speed is held to 10 m/s (`SPEED_CAP`) because the streamed world does not keep up with a faster eye; the
-  designed speeds stay in the table for when it does.
+- The top speed is held to 10 m/s in the town and 15 m/s (`FULL_SPEED`) past it, by place (`speedLimitAt`), because the
+  streamed world does not keep up with a faster eye; the designed speeds stay in the table for when it does.
 - The car that is simulated is rigid: on a curb it tilts and a wheel can hang in the air. The suspension is drawn
   only (the body leans and rides over wheels that stay where the rigid car has them), and the wheels do not travel in
   their arches.
