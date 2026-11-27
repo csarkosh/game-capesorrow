@@ -1,6 +1,6 @@
 /**
- * The town's streets as flat surfaces that follow the ground: every street of the plan but the highway (which the engine
- * paints and the town does not draw over). A street is a roadway of `street.roadway` between curbs and, down each side, what that side
+ * The town's streets as flat surfaces that follow the ground: every street of the plan but the highway (which the town paves on its bed
+ * through the town: `highwayGeometry.ts`). A street is a roadway of `street.roadway` between curbs and, down each side, what that side
  * of the street has (`plan.edges`, `port/edges.ts`): a curb and a sidewalk of slabs (`walkGeometry.ts`), or no curb and a ragged
  * asphalt edge against a gravel shoulder; an alley is two wheel tracks of gravel with grass between; the wharf is a timber deck.
  *
@@ -21,7 +21,7 @@
  * - **Paint**: the main street has a dashed yellow centre line (10 ft dashes with 30 ft gaps, ending short of every crossing) and
  *   white parking stalls held back from corners; the avenue a painted median between solid yellow lines. A residential street
  *   has none. Paint is worn: some dashes short, some gone, the rest faded by the street's use. The marks at a junction are `junctionPaint.ts`'s.
- * - Ground under the sea is not drawn. A tile that reaches into the engine's road bed is cut along the bed's edge.
+ * - Ground under the sea is not drawn. A tile that reaches into the highway's bed is cut along the bed's edge, where the highway's paving meets it.
  */
 import { type Rgb, type Vec3 } from "./meshBuilder.js";
 import { ASPHALT, CURB, DECK, GRAVEL, MEDIAN, PAINT_WHITE, PAINT_YELLOW, PATCH_ASPHALT, SIDEWALK } from "./palette.js";
@@ -29,6 +29,7 @@ import { clamp01, hashN, hashS, smooth, vnoise } from "./groundNoise.js";
 import { RANK, type Over } from "./groundSurfaces.js";
 import { junctionWear, roadWear } from "./roadWear.js";
 import { walkSide, type SideFrame } from "./walkGeometry.js";
+import { highwayGeometry } from "./highwayGeometry.js";
 import { junctionGeometry } from "./junctionGeometry.js";
 import { junctionPaint } from "./junctionPaint.js";
 import { worldJunctions } from "./junctionWorld.js";
@@ -292,6 +293,8 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
 
   // The junctions' pavements first: they keep their ground, and the roadways laid after them leave it.
   junctionGeometry(g, surf, solid, paved, road, pavements);
+  // The highway between its first street and its last, paved on its bed (the streets that end on it are cut off the bed, so they meet it).
+  highwayGeometry(g, surf, junctions);
 
   // ---- The streets.
   for (const p of prepared.values()) {

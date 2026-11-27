@@ -234,6 +234,8 @@ export function contextOf(plan: BasePlan, seed0: number): Context {
       const ka = fa.street.kind;
       const kb = fb.street.kind;
       if (ka === "stair" || kb === "stair" || ka === "rail" || kb === "rail" || ka === "alley" || kb === "alley") continue;
+      // Two lengths of the highway's own line join end to end and are no junction.
+      if (ka === "highway" && kb === "highway") continue;
       const x = segCross(fa.street.a, fa.street.b, fb.street.a, fb.street.b);
       const reach = fa.street.width / 2 + fb.street.width / 2 + CLEAR_JUNCTION;
       // Where a junction's own record is, its boxes are made.

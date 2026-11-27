@@ -256,10 +256,26 @@ describe("junctions: the plan's records", () => {
     }
   });
 
-  it("closes a leg with a planter only where streets cross within 60 degrees, and leaves a tee of the rest", () => {
+  it("closes a leg with a planter for its angle only where two town streets cross within 60 degrees and no highway is in the junction; at the highway every street leg is open and stops", () => {
     let legacy = 0;
+    let atHighway = 0;
+    let shut = 0;
     for (const seed of SEEDS) {
       for (const j of paved(townFor(seed).plan)) {
+        if (j.kind === "highway") {
+          // A street meets the highway at whatever angle it has: its legs are open and stop for it, the junction a highway junction with its legs and corners, the highway's two edge legs the only ones that do not stop.
+          for (const l of j.legs) {
+            expect(l.closed, `seed ${seed} junction ${j.id}`).toBe(false);
+            expect(l.stops, `seed ${seed} junction ${j.id}: a street leg stops for the highway`).toBe(!l.engine);
+          }
+          atHighway++;
+          // The one case a leg is still shut here is where two streets that meet each other beside the highway leave no pavement that is one piece: then the lesser of the two is closed, and only that.
+          if (j.closed.length > 0) {
+            shut++;
+            expect(j.streets.filter((id) => (townFor(seed).plan.streets[id] as { kind: string }).kind !== "highway").length, `seed ${seed} junction ${j.id}: a closed leg at the highway`).toBeGreaterThanOrEqual(2);
+          } else expect(j.legacy, `seed ${seed} junction ${j.id}`).toBeNull();
+          continue;
+        }
         if (j.legacy === null) {
           expect(j.closed.length).toBe(0);
           continue;
@@ -271,6 +287,63 @@ describe("junctions: the plan's records", () => {
       }
     }
     expect(legacy).toBeGreaterThan(0);
+    expect(atHighway).toBeGreaterThan(300);
+    console.log(`highway junctions: ${atHighway}, of them with a closed leg: ${shut}`);
+    // Rare: two streets meeting each other a few metres from the highway, each at a sharp angle to it.
+    expect(shut / atHighway).toBeLessThan(0.02);
+  });
+
+  it("brings every street the plan ends on the highway to the bed's edge: the pavement of its junction reaches the edge, or the street has no leg because it lies within 26 degrees of the highway or is a stub", () => {
+    let ends = 0;
+    let reached = 0;
+    let along = 0;
+    let stubs = 0;
+    let lost = 0;
+    let closed = 0;
+    for (const seed of SEEDS) {
+      const { plan } = townFor(seed);
+      const hw = plan.streets.filter((s) => s.kind === "highway");
+      for (const st of plan.streets.filter((q) => GRID.includes(q.kind))) {
+        for (const [end, other] of [[st.a, st.b], [st.b, st.a]] as const) {
+          if (Math.min(...hw.map((h) => segDist(end, h.a, h.b))) > ROAD_BED_HALF + 3) continue;
+          ends++;
+          const j = plan.junctions.find((q) => q.kind === "highway" && q.streets.includes(st.id) && Math.hypot(q.x - end.x, q.z - end.z) < 60);
+          expect(j, `seed ${seed}: street ${st.id}'s end is in a highway junction`).toBeDefined();
+          const junction = j as Junction;
+          const leg = junction.legs.find((l) => !l.engine && l.street === st.id);
+          if (leg === undefined) {
+            // No leg of its own: a street within 26 degrees of the highway's line (it lies nearly along the edge, and the legs nearly one way lose the lesser), a stub the bed's clearance leaves nothing of, or a street closed at a compound junction.
+            const len = Math.hypot(other.x - end.x, other.z - end.z);
+            const e = junction.legs.find((l) => l.engine) as JunctionLeg;
+            const cos = Math.abs(((other.x - end.x) * e.dx + (other.z - end.z) * e.dz) / len);
+            if (junction.closed.some((l) => l.street === st.id)) closed++;
+            else if (cos > 0.9) along++;
+            else if (len < 40) stubs++;
+            else {
+              // Two streets nearly one way out of the one junction (within 26 degrees of each other): the lesser is the one lost, and the other carries the junction to the highway.
+              expect(junction.legs.some((l) => !l.engine && Math.abs(l.dx * (other.x - end.x) + l.dz * (other.z - end.z)) / len > 0.9), `seed ${seed}: street ${st.id} meets the highway at ${Math.sqrt(1 - cos * cos).toFixed(2)} and has no leg`).toBe(true);
+              lost++;
+            }
+            continue;
+          }
+          // The junction's pavement reaches the bed: some stretch of its outline, of more than half a metre, lies along the bed's edge (the street's own strip runs on from its mouth to the edge, which the drawing cuts at the bed).
+          const edge = junction.legs.find((l) => l.engine) as JunctionLeg;
+          const poly = pavementPolygon(junction.legs, junction.corners);
+          const onEdge = poly.map((p) => Math.abs((p.x - edge.x) * -edge.dz + (p.z - edge.z) * edge.dx) < 1e-5);
+          let longest = 0;
+          for (let k = 0; k < poly.length; k++) {
+            const p = poly[k] as { x: number; z: number };
+            const q = poly[(k + 1) % poly.length] as { x: number; z: number };
+            if (onEdge[k] && onEdge[(k + 1) % poly.length]) longest = Math.max(longest, Math.hypot(q.x - p.x, q.z - p.z));
+          }
+          expect(longest, `seed ${seed}: street ${st.id} ends short of the highway (junction ${junction.id}: its pavement does not reach the bed)`).toBeGreaterThan(0.5);
+          reached++;
+        }
+      }
+    }
+    console.log(`street ends on the highway: ${ends}; reach the edge ${reached}; lie along it (within 26 degrees) ${along}; stubs ${stubs}; lost to a street beside it ${lost}; closed at a compound junction ${closed}`);
+    expect(reached).toBeGreaterThan(200);
+    expect(reached + along + stubs + lost + closed).toBe(ends);
   });
 
   it("gives each junction with a pavement name blades that carry two different streets' own names", () => {

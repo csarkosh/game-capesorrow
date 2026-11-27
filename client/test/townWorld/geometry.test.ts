@@ -11,8 +11,8 @@ import { FACE_DEPTH, deckGeometry, wharfGeometry } from "../../src/game/town/pil
 import { APRON, quayGeometry } from "../../src/game/town/quayGeometry.js";
 import { STEP_RISE, stairGeometry } from "../../src/game/town/stairGeometry.js";
 import { CURB_REBUILT, walkAt } from "../../src/sim/town/port/edges.js";
-import { CURB_WIDTH, WALK_LIFT, streetGeometry } from "../../src/game/town/streetGeometry.js";
-import { ENGINE_MARK_LIFT } from "../../src/game/town/junctionPaint.js";
+import { CURB_WIDTH, MARK_OVER, ROADWAY_LIFT, WALK_LIFT, streetGeometry } from "../../src/game/town/streetGeometry.js";
+import { LANE_HALF, highwayStrip } from "../../src/game/town/highwayGeometry.js";
 import { bladeText } from "../../src/game/town/signGeometry.js";
 import { textRuns } from "../../src/game/town/signFont.js";
 import { CELL, townGeometry, townGround } from "../../src/game/town/townGeometry.js";
@@ -145,7 +145,8 @@ describe("the town's arrays, every batch of three worlds", () => {
   });
 
   // The plan's version changes these: a new TOWN_GEN gives other buildings, so every number here moves with it. Re-pin from the
-  // test's own message when the plan changes on purpose.
+  // test's own message when the plan changes on purpose. The highway's paving (`highwayGeometry.ts`) added the strip's tiles and marks and the pieces
+  // the bed's tiles cut off the town's surfaces, in the cells that already held the streets: the meshes and the flat ones are as they were. Version 24 (the streets that met the highway at a sharp angle are open) added the pavements of those junctions and the crosswalks laid across the highway.
   it("has stable counts for world seed 20261121", () => {
     let vertices = 0;
     let triangles = 0;
@@ -156,7 +157,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 165, flat: 40, vertices: 1521407, triangles: 786644 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 165, flat: 40, vertices: 1533233, triangles: 792597 });
   });
 });
 
@@ -183,8 +184,6 @@ describe("the streets", () => {
           // Not on steep ground (a fall of over 18 percent in 30 cm: a street's end on the highway's cut, a bank): beside a curb the ground is read 30 cm out, which there is more than a few centimetres off.
           if (Math.abs(g.heightAt((q[0] as number) + 0.3, q[2] as number) - g.heightAt(q[0] as number, q[2] as number)) > 0.055 || Math.abs(g.heightAt(q[0] as number, (q[2] as number) + 0.3) - g.heightAt(q[0] as number, q[2] as number)) > 0.055) continue;
           if (n[1] >= 0.75) {
-            // A crosswalk across the highway lies on the engine's road, at the lift the engine's marks take.
-            if (Math.abs((q[0] as number) - g.roadX(q[2] as number)) < ROAD_BED_HALF + 0.5) continue;
             least = Math.min(least, lift);
             most = Math.max(most, lift);
           } else {
@@ -236,26 +235,86 @@ describe("the streets", () => {
     expect(a.indices.length / 6).toBeGreaterThanOrEqual(tiles * 2);
   });
 
-  it("end at the highway's bed: no street surface stands within the bed of the road the engine paints, but a marked crosswalk across it, which lies on its surface", () => {
+  it("end at the highway's bed: nothing of the town lies within the bed of the road but the highway's own paving and its marks, and those lie only between the strip's two ends", () => {
     for (const seed of WORLD_SEEDS) {
       const { g, a } = streetsOf(seed);
+      const strip = highwayStrip(g);
+      expect(strip, `seed ${seed}: a street meets the highway`).not.toBeNull();
+      const { start, end } = strip as NonNullable<typeof strip>;
       let nearest = Infinity;
-      let crosswalks = 0;
+      let paving = 0;
       eachTriangle(a, (p, _n, c) => {
-        const white = Math.abs(c[0] - PAINT_WHITE[0]) < 1e-6 && Math.abs(c[1] - PAINT_WHITE[1]) < 1e-6;
+        const colour = (k: readonly number[]): boolean => Math.abs(c[0] - (k[0] as number)) < 1e-6 && Math.abs(c[1] - (k[1] as number)) < 1e-6 && Math.abs(c[2] - (k[2] as number)) < 1e-6;
+        const own = colour(ASPHALT) || colour(PAINT_WHITE) || colour(PAINT_YELLOW);
         for (const q of p) {
           const off = Math.abs((q[0] as number) - g.roadX(q[2] as number));
-          if (white && off < ROAD_BED_HALF - 0.02) {
-            // A crosswalk's bar on the engine's road: its lift is the one the engine's marks take.
-            expect((q[1] as number) - g.heightAt(q[0] as number, q[2] as number)).toBeCloseTo(ENGINE_MARK_LIFT, 2);
-            crosswalks++;
+          if (own && off < ROAD_BED_HALF - 0.02) {
+            // The highway's paving or a mark on it: between the two end lines (a vertex on a line is on it: a millimetre's slack for the float32 positions).
+            expect(((q[0] as number) - start.x) * start.tx + ((q[2] as number) - start.z) * start.tz, `seed ${seed}: paving before the strip's start`).toBeGreaterThan(-0.001);
+            expect(((q[0] as number) - end.x) * end.tx + ((q[2] as number) - end.z) * end.tz, `seed ${seed}: paving past the strip's end`).toBeLessThan(0.001);
+            paving++;
           } else nearest = Math.min(nearest, off);
         }
       });
-      // Float32 positions, and the clip is on a line through the tile's corners while the road curves a little.
+      // Float32 positions, and the cut is on the bed's tiles, chords of the centre line's curve.
       expect(nearest).toBeGreaterThan(ROAD_BED_HALF - 0.02);
-      console.log(`${seed}: ${crosswalks} crosswalk vertices on the highway`);
+      expect(paving).toBeGreaterThan(1000);
+      console.log(`${seed}: ${paving} vertices of the highway's paving and marks`);
     }
+  });
+
+  it("lays a crosswalk across the highway's paving wherever the plan marks one, at the lift of the streets' marks, and no other white on the bed but the lane's edge lines", () => {
+    let marked = 0;
+    for (const seed of WORLD_SEEDS) {
+      const { g, a } = streetsOf(seed);
+      const strip = highwayStrip(g) as NonNullable<ReturnType<typeof highwayStrip>>;
+      // What the plan marks: every edge leg of a junction on the highway that is `marked` (the junctions of the core), none of its street legs counted.
+      const planned = g.plan.junctions.filter((j) => j.kind === "highway").flatMap((j) => j.legs.filter((l) => l.engine && l.marked));
+      expect(strip.crosswalks.length, `seed ${seed}`).toBe(planned.length);
+      marked += planned.length;
+      const inBar = (x: number, z: number): boolean =>
+        strip.crosswalks.some((w) =>
+          w.bars.some((q) => {
+            let sign = 0;
+            for (let i = 0; i < q.length; i++) {
+              const p0 = q[i] as readonly [number, number];
+              const p1 = q[(i + 1) % q.length] as readonly [number, number];
+              const side = (p1[0] - p0[0]) * (z - p0[1]) - (p1[1] - p0[1]) * (x - p0[0]);
+              if (Math.abs(side) < 1e-6) continue;
+              if (sign === 0) sign = Math.sign(side);
+              else if (Math.sign(side) !== sign) return false;
+            }
+            return true;
+          }),
+        );
+      let bars = 0;
+      eachTriangle(a, (p, _n, c) => {
+        if (!(Math.abs(c[0] - PAINT_WHITE[0]) < 1e-6 && Math.abs(c[1] - PAINT_WHITE[1]) < 1e-6 && Math.abs(c[2] - PAINT_WHITE[2]) < 1e-6)) return;
+        if (!p.every((q) => Math.abs((q[0] as number) - g.roadX(q[2] as number)) < ROAD_BED_HALF - 0.02)) return;
+        const cx = (p[0]![0] + p[1]![0] + p[2]![0]) / 3;
+        const cz = (p[0]![2] + p[1]![2] + p[2]![2]) / 3;
+        // A lane's edge line, or a bar of a crosswalk: nothing else.
+        const lane = Math.abs(Math.abs(cx - g.roadX(cz)) - LANE_HALF) < 0.1;
+        const bar = inBar(cx, cz);
+        expect(lane || bar, `seed ${seed}: white on the bed that is no lane line and no crosswalk bar, at ${cx.toFixed(2)}, ${cz.toFixed(2)}`).toBe(true);
+        if (bar) {
+          bars++;
+          // The lift of any crosswalk's bars: a roadway's lift and a mark's over the ground.
+          for (const q of p) expect((q[1] as number) - g.heightAt(q[0] as number, q[2] as number), `seed ${seed}: a highway crosswalk's lift`).toBeCloseTo(ROADWAY_LIFT + MARK_OVER, 3);
+        }
+      });
+      // Each bar of each crosswalk is there (two triangles at least), and the lines are broken under them: no yellow or lane line across a crosswalk's range of z.
+      expect(bars, `seed ${seed}`).toBeGreaterThanOrEqual(2 * strip.crosswalks.reduce((n, w) => n + w.bars.length, 0));
+      eachTriangle(a, (p, _n, c) => {
+        const line = (Math.abs(c[0] - PAINT_YELLOW[0]) < 1e-6 && Math.abs(c[1] - PAINT_YELLOW[1]) < 1e-6) || (Math.abs(c[0] - PAINT_WHITE[0]) < 1e-6 && Math.abs(c[1] - PAINT_WHITE[1]) < 1e-6);
+        if (!line || !p.every((q) => Math.abs((q[0] as number) - g.roadX(q[2] as number)) < ROAD_BED_HALF - 0.02)) return;
+        const cx = (p[0]![0] + p[1]![0] + p[2]![0]) / 3;
+        const cz = (p[0]![2] + p[1]![2] + p[2]![2]) / 3;
+        if (inBar(cx, cz)) return;
+        for (const w of strip.crosswalks) expect(cz < w.z[0] + 0.01 || cz > w.z[1] - 0.01, `seed ${seed}: a line across a highway crosswalk at z ${cz.toFixed(2)}`).toBe(true);
+      });
+    }
+    expect(marked).toBeGreaterThan(0);
   });
 
   describe("at their junctions", () => {
@@ -427,6 +486,8 @@ describe("the streets", () => {
           const poly = pavementPolygon(j.legs, j.corners).map((q) => ({ x: q.x + g.anchor.x, z: q.z + g.anchor.z }));
           if (poly.length < 3) continue;
           for (const t of white) {
+            // Not the highway's own marks, which lie on its bed (its lane's edge lines and its crosswalks), under the pavement of a street that crosses it.
+            if (t.p.every((q) => Math.abs(q[0] - g.roadX(q[1])) < ROAD_BED_HALF + 0.01)) continue;
             const cx = (t.p[0]![0] + t.p[1]![0] + t.p[2]![0]) / 3;
             const cz = (t.p[0]![1] + t.p[1]![1] + t.p[2]![1]) / 3;
             expect(insideStrictly(poly, { x: cx, z: cz }), `seed ${seed} junction ${j.id}: white paint inside the pavement`).toBe(false);
@@ -440,8 +501,9 @@ describe("the streets", () => {
       for (const seed of JUNCTION_SEEDS) {
         const g = groundFor(seed);
         const l = layer(seed);
-        // The lines of a stall are the white marks 0.1 m wide.
+        // The lines of a stall are the white marks 0.1 m wide (not the highway's own edge lines, which lie on its bed).
         const thin = l.of(PAINT_WHITE).filter((t) => {
+          if (t.p.every((q) => Math.abs(q[0] - g.roadX(q[1])) < ROAD_BED_HALF + 0.01)) return false;
           const e = t.p.map((q, k) => Math.hypot(q[0] - (t.p[(k + 1) % 3] as [number, number])[0], q[1] - (t.p[(k + 1) % 3] as [number, number])[1]));
           return Math.min(...e) < 0.12 && Math.max(...e) > 0.3;
         });
@@ -484,7 +546,7 @@ describe("the streets", () => {
             for (let s = -(b.mouth + 1); s <= a.mouth + 1; s += 0.5) {
               const x = g.anchor.x + a.x + a.dx * s - a.dz * lotLat;
               const z = g.anchor.z + a.z + a.dz * s + a.dx * lotLat;
-              // The engine's road bed is cut from every surface.
+              // The highway's bed is cut from every surface but its own paving.
               if (Math.abs(x - g.roadX(z)) < ROAD_BED_HALF + 0.5) continue;
               // Only where the street's side has a sidewalk there (a pour ends, a stretch is missing, a side has none: `plan.edges`).
               const st = g.plan.streets[a.street] as (typeof g.plan.streets)[number];
