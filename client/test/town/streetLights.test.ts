@@ -21,6 +21,8 @@ describe("the street lights", () => {
       }
       let major = 0;
       let majorLit = 0;
+      // A junction of the highway whose street runs through the railroad's clearance has no place for a pole within reach of its middle (nothing stands on the railroad): it is left dark, and only where a rail crossing lies within a lamp's reach of it.
+      let darkByRail = 0;
       let minor = 0;
       let minorLit = 0;
       for (const j of plan.junctions) {
@@ -30,13 +32,15 @@ describe("the street lights", () => {
         if (isMajor) {
           major++;
           if (lit) majorLit++;
+          else if (j.kind === "highway" && plan.junctions.some((k) => k.kind === "rail" && Math.hypot(k.x - j.x, k.z - j.z) < 42)) darkByRail++;
         } else {
           minor++;
           if (lit) minorLit++;
         }
       }
       process.stderr.write(`world ${seed}: ${plan.props.poles.length} poles, ${lamps.length} with a light; by street kind (poles, lit) ${JSON.stringify(byKind)}; major junctions lit ${majorLit}/${major}, others ${minorLit}/${minor}\n`);
-      expect(majorLit).toBe(major);
+      expect(majorLit + darkByRail).toBe(major);
+      expect(darkByRail).toBeLessThanOrEqual(1);
       expect(minorLit / minor).toBeGreaterThan(0.3);
       expect(minorLit / minor).toBeLessThan(0.8);
       // Along an avenue or a main street: the lights that serve it (within a verge of its line), its ends counted, are never far apart.
