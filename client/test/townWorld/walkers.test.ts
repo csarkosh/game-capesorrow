@@ -1,14 +1,19 @@
 // The people who walk from one business to another: the same twice; both ends open when a walker leaves and arrives; at every tenth of an hour and at
 // random instants every walker is on a sidewalk or a crossing at a corner, clear of buildings and props, of the people who stand and of each other;
 // the path is continuous and turns no faster than a person can; speeds are in the band; no two trips leave one door within 20 real seconds; and the
-// count by hour is a small town's street: printed, and held to the bands scaled by the town's size.
+// count by hour is a small town's street: printed, and held to the bands scaled by the town's size. And the walkers are not a matched set: each has a speed of
+// their own (and two near each other differ), a line of their own across the walk that bends, ends that are spread over the town's businesses, and about as many go
+// one way along a block as the other.
+
+/** The walkers' sum of the means by hour on main before the walkers were made different (the four seeds: sorrow, 20261121, 1, 6), measured by the same sampling. */
+const MAIN_SUM: Record<string, number> = { sorrow: 57, 20261121: 27, 1: 14, 6: 2 };
 import { seedFromToken } from "@csarkosh/engine/game/seed";
 import { describe, expect, it } from "vitest";
 import { HOUR_S } from "../../src/game/dayClock.js";
 import { hashN } from "../../src/game/town/groundNoise.js";
 import { isOpen, unitHours, wrapHour } from "../../src/game/town/hours.js";
 import { groundOf, inRoadway, isDowntown, isThere, openDowntownUnits, outdoorPeopleFor, rectDist } from "../../src/game/town/outdoorPeople.js";
-import { DOOR_GAP, MAX_TURN, PAIR_SIDE, STANDER_CLEAR, TRIP_LENGTH, WALK_PROP, WALK_REASONS, WALK_SPEED, alongAt, crossingsOf, pathPoint, walkCeilingAt, walkNet, walkable, walkHours, walkersFor } from "../../src/game/town/walkers.js";
+import { WALK_WORK, walkerJob, CROSS_WIDTH, DOOR_GAP, END_APART, END_APART_SMALL, MAX_TURN, PAIR_SHARE, SPEED_GAP, SPEED_NEAR, STANDER_CLEAR, TRIP_LENGTH, WALK_PROP, WALK_REASONS, WALK_SPEED, alongAt, crossingsOf, rampsOf, pathPoint, walkCeilingAt, walkNet, walkable, walkHours, walkersFor } from "../../src/game/town/walkers.js";
 import { townGround } from "../../src/game/town/townGeometry.js";
 import { WORLD_SEEDS } from "./world.js";
 
@@ -59,13 +64,27 @@ describe("the people who walk", () => {
       // A town the size of the one the table was set on has a few walking at noon and at five, and one to four at eight and at eight at night.
       if (k >= 0.8) {
         for (const h of [12, 17]) {
-          // (One at five is a quiet hour of a town this size: the trips' doors are 2 m inside their rooms now, which moved every trip's times by a few seconds.)
-          expect(walking(h).length, `${h}:00`).toBeGreaterThanOrEqual(h === 17 ? 1 : 2);
+          // The mean over the hour about it, not the one instant (a street has its quiet minutes); and no more than eight at any.
+          let sum = 0;
+          for (let t = -5; t <= 5; t++) sum += walking(h + t / 10).length;
+          expect(sum / 11, `${h}:00 mean`).toBeGreaterThanOrEqual(h === 17 ? 1 : 2);
           expect(walking(h).length, `${h}:00`).toBeLessThanOrEqual(8);
         }
         for (const h of [8, 20]) expect(walking(h).length, `${h}:00`).toBeLessThanOrEqual(4);
         expect(walking(8).length + walking(20).length).toBeGreaterThanOrEqual(1);
       }
+    });
+
+    it(`seed ${seed}: the day's count of walkers is not below what it was before they were made different (printed beside it)`, () => {
+      let sum = 0;
+      for (let h = 0; h < 24; h++) {
+        let at = 0;
+        for (let t = 0; t < 10; t++) at += walking(h + t / 10).length;
+        sum += at / 10;
+      }
+      const was = MAIN_SUM[seed === SORROW ? "sorrow" : String(seed)] as number;
+      process.stderr.write(`seed ${seed}: walker-hours in the day ${sum.toFixed(1)} (before: ${was})\n`);
+      expect(sum).toBeGreaterThanOrEqual(was - 0.5);
     });
 
     it(`seed ${seed}: the same plan gives the same walkers twice`, () => {
@@ -130,7 +149,7 @@ describe("the people who walk", () => {
                 const dx = bx - ax;
                 const dz = bz - az;
                 const t = Math.min(1, Math.max(0, ((p.x - ax) * dx + (p.z - az) * dz) / (dx * dx + dz * dz || 1)));
-                return Math.hypot(p.x - ax - dx * t, p.z - az - dz * t) <= 1;
+                return Math.hypot(p.x - ax - dx * t, p.z - az - dz * t) <= CROSS_WIDTH;
               });
               expect(on, `${where} in the roadway off a crossing`).toBe(true);
             }
@@ -168,7 +187,81 @@ describe("the people who walk", () => {
       }
     });
 
-    it(`seed ${seed}: a pair walks side by side at one speed, 0.7 m apart`, () => {
+    it(`seed ${seed}: at a corner or the end of a crossing that five trips or more use, the points the paths pass are spread (0.3 m or more), not one spot`, () => {
+      // Where each path comes nearest a corner's ramp (within 3 m), and, across a roadway, where it crosses the middle of the crossing along the curb.
+      const spread = (pts: readonly { x: number; z: number }[]): number => {
+        const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+        const mz = pts.reduce((a, p) => a + p.z, 0) / pts.length;
+        return Math.sqrt(pts.reduce((a, p) => a + (p.x - mx) ** 2 + (p.z - mz) ** 2, 0) / pts.length);
+      };
+      const nearest = (w: typeof walkers[number], x: number, z: number, within: number): { x: number; z: number } | null => {
+        let best = within;
+        let at: { x: number; z: number } | null = null;
+        // (Not where the path is a door's, its first and last nine metres: it is the door's own point there.)
+        for (let i = 45; i < w.cum.length - 45; i++) {
+          const d = Math.hypot((w.pts[i * 2] as number) - x, (w.pts[i * 2 + 1] as number) - z);
+          if (d < best) {
+            best = d;
+            at = { x: w.pts[i * 2] as number, z: w.pts[i * 2 + 1] as number };
+          }
+        }
+        return at;
+      };
+      let used = 0;
+      let spreadOut = 0;
+      const lines: string[] = [];
+      for (const ramp of rampsOf(plan)) {
+        const pts = walkers.filter((w) => w.partner < 0 || w.id < w.partner).map((w) => nearest(w, ramp.x, ramp.z, 3)).filter((p): p is { x: number; z: number } => p !== null);
+        if (pts.length < 5) continue;
+        const sd = spread(pts);
+        // The clear width there: across the way the paths mostly go (the line through their points), the run of walkable, clear ground about the middle of them.
+        const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+        const mz = pts.reduce((a, p) => a + p.z, 0) / pts.length;
+        let hx = 0;
+        let hz = 0;
+        for (const p of pts) {
+          const d = Math.hypot(p.x - mx, p.z - mz);
+          if (d > 0.05) {
+            const sg = hx * (p.x - mx) + hz * (p.z - mz) < 0 ? -1 : 1;
+            hx += (sg * (p.x - mx)) / d;
+            hz += (sg * (p.z - mz)) / d;
+          }
+        }
+        const hl = Math.hypot(hx, hz) || 1;
+        const clear = (o: number): boolean => walkable(net, mx + (hx / hl) * o, mz + (hz / hl) * o) && !net.obst.blocked(mx + (hx / hl) * o, mz + (hz / hl) * o, 0.3, WALK_PROP);
+        let lo = 0;
+        let hi = 0;
+        while (lo > -2.5 && clear(lo - 0.1)) lo -= 0.1;
+        while (hi < 2.5 && clear(hi + 0.1)) hi += 0.1;
+        const width = hi - lo;
+        if (width < 1.2) continue;
+        used++;
+        if (sd >= 0.3) spreadOut++;
+        else lines.push(`corner at ${ramp.x.toFixed(0)}, ${ramp.z.toFixed(0)}: ${pts.length} trips, spread ${sd.toFixed(2)} m, clear width ${width.toFixed(1)} m`);
+      }
+      let crossUsed = 0;
+      let crossSpread = 0;
+      for (const [ax, az, bx, bz] of crossings) {
+        const mx = (ax + bx) / 2;
+        const mz = (az + bz) / 2;
+        const l = Math.hypot(bx - ax, bz - az);
+        const cx = -(bz - az) / l;
+        const cz = (bx - ax) / l;
+        const us = walkers.filter((w) => w.partner < 0 || w.id < w.partner).map((w) => nearest(w, mx, mz, 1.6)).filter((p): p is { x: number; z: number } => p !== null).map((p) => (p.x - mx) * cx + (p.z - mz) * cz);
+        if (us.length < 5) continue;
+        crossUsed++;
+        const m = us.reduce((a, b) => a + b, 0) / us.length;
+        const sd = Math.sqrt(us.reduce((a, b) => a + (b - m) ** 2, 0) / us.length);
+        if (sd >= 0.3) crossSpread++;
+        else lines.push(`crossing at ${mx.toFixed(0)}, ${mz.toFixed(0)}: ${us.length} trips, spread ${sd.toFixed(2)} m`);
+      }
+      process.stderr.write(`seed ${seed}: ${used} corners used by 5 trips or more, ${spreadOut} spread 0.3 m or more; ${crossUsed} crossings, ${crossSpread} spread across their width${lines.length > 0 ? `\n  not spread: ${lines.join("; ")}` : ""}\n`);
+      // Most of them (seven in ten, where there are three or more such places): a corner a few trips use may by chance have them near one spot.
+      if (used >= 3) expect(spreadOut / used).toBeGreaterThanOrEqual(0.7);
+      if (crossUsed >= 3) expect(crossSpread / crossUsed).toBeGreaterThanOrEqual(0.7);
+    });
+
+    it(`seed ${seed}: a pair walks side by side, the gap between them breathing between 0.6 and 0.9 m`, () => {
       for (const w of walkers) {
         if (w.partner < 0) continue;
         const o = walkers[w.partner];
@@ -180,9 +273,173 @@ describe("the people who walk", () => {
         const mid = (w.length / 2) * (hashN(w.id, 1, 1, 81) * 0.4 + 0.8);
         const a = pathPoint(w, mid);
         const b = pathPoint(o as typeof w, Math.min(mid, (o as typeof w).length));
-        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(PAIR_SIDE - 0.2);
-        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(PAIR_SIDE + 0.2);
+        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(0.55);
+        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(0.95);
       }
+    });
+
+    it(`seed ${seed}: each walker's speed is their own, bell-shaped, and two out together within 60 m differ by 0.12 m/s or more`, () => {
+      const sp = walkers.map((w) => w.speed);
+      const mean = sp.reduce((a, b) => a + b, 0) / Math.max(1, sp.length);
+      const sd = Math.sqrt(sp.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, sp.length));
+      process.stderr.write(`seed ${seed}: speeds ${Math.min(...sp).toFixed(2)} to ${Math.max(...sp).toFixed(2)}, mean ${mean.toFixed(2)}, sd ${sd.toFixed(3)}, under 1.1: ${sp.filter((v) => v < 1.1).length}, over 1.55: ${sp.filter((v) => v > 1.55).length} of ${sp.length}\n`);
+      for (const v of sp) {
+        expect(v).toBeGreaterThanOrEqual(WALK_SPEED[0]);
+        expect(v).toBeLessThanOrEqual(WALK_SPEED[1]);
+      }
+      if (walkers.length >= 40) expect(sd).toBeGreaterThanOrEqual(0.13);
+      for (const [i, a] of walkers.entries()) {
+        for (const b of walkers.slice(i + 1)) {
+          if (a.partner === b.id) continue;
+          if (Math.abs(a.speed - b.speed) >= SPEED_GAP - 1e-9) continue;
+          // They must never be near each other at the same time.
+          const ha = walkHours(a);
+          const hb = walkHours(b);
+          const gap = wrapHour(b.t0 - a.t0);
+          for (const shift of [gap, gap - 24]) {
+            const lo = Math.max(0, shift);
+            const hi = Math.min(ha, shift + hb);
+            for (let u = lo; u <= hi; u += 2 / HOUR_S) {
+              const p = pathPoint(a, u * HOUR_S * a.speed);
+              const q = pathPoint(b, (u - shift) * HOUR_S * b.speed);
+              expect(Math.hypot(p.x - q.x, p.z - q.z), `walkers #${a.id} (${a.speed.toFixed(2)}) and #${b.id} (${b.speed.toFixed(2)})`).toBeGreaterThanOrEqual(SPEED_NEAR);
+            }
+          }
+        }
+      }
+    });
+
+    it(`seed ${seed}: no two trips out together share a destination or an origin (a quarter hour apart where the town's few open units could not), and no end has much more than its share`, () => {
+      const trips = walkers.filter((w) => w.partner < 0 || w.id < w.partner);
+      const gapOf = (a: number, b: number): number => Math.min(Math.abs(a - b), 24 - Math.abs(a - b));
+      let relaxed = 0;
+      const endKey = (u: { building: number; unit: number }): string => `${u.building}:${u.unit}`;
+      for (const [i, a] of trips.entries()) {
+        if (a.relaxed) relaxed++;
+        for (const b of trips.slice(i + 1)) {
+          const bothStrict = !a.relaxed && !b.relaxed;
+          const sameTo = endKey(a.to) === endKey(b.to);
+          const sameFrom = endKey(a.from) === endKey(b.from);
+          if (!sameTo && !sameFrom) continue;
+          if (sameTo) {
+            // Arrivals: a quarter hour apart where relaxed; trips out at once, with 30 real seconds either side, where not.
+            if (bothStrict) {
+              const out = (w: typeof a): [number, number] => [w.t0, w.t0 + walkHours(w)];
+              const [a0, a1] = out(a);
+              const [b0, b1] = out(b);
+              const clash = [-24, 0, 24].some((sh) => a0 - END_APART < b1 + sh && b0 + sh < a1 + END_APART);
+              expect(clash, `trips #${a.id} and #${b.id} to one end, together`).toBe(false);
+            } else expect(gapOf(a.t0 + walkHours(a), b.t0 + walkHours(b)), `trips #${a.id} and #${b.id} arriving at one end`).toBeGreaterThanOrEqual(END_APART_SMALL - 1e-6);
+          }
+          if (sameFrom) {
+            if (bothStrict) {
+              const out = (w: typeof a): [number, number] => [w.t0, w.t0 + walkHours(w)];
+              const [a0, a1] = out(a);
+              const [b0, b1] = out(b);
+              const clash = [-24, 0, 24].some((sh) => a0 - END_APART < b1 + sh && b0 + sh < a1 + END_APART);
+              expect(clash, `trips #${a.id} and #${b.id} from one end, together`).toBe(false);
+            } else expect(gapOf(a.t0, b.t0), `trips #${a.id} and #${b.id} leaving one end`).toBeGreaterThanOrEqual(END_APART_SMALL - 1e-6);
+          }
+        }
+      }
+      const top = (f: (w: typeof trips[number]) => string): number => {
+        const m = new Map<string, number>();
+        for (const w of trips) m.set(f(w), (m.get(f(w)) ?? 0) + 1);
+        return Math.max(0, ...m.values());
+      };
+      const dest = top((w) => endKey(w.to));
+      const orig = top((w) => endKey(w.from));
+      process.stderr.write(`seed ${seed}: ${trips.length} trips, ${relaxed} on the quarter-hour rule, busiest destination ${dest} (${((100 * dest) / Math.max(1, trips.length)).toFixed(1)}%), busiest origin ${orig} (${((100 * orig) / Math.max(1, trips.length)).toFixed(1)}%)\n`);
+      // A town with 40 or more open downtown units keeps every end to 8 percent; one with 20 or more to a sixth (a few reachable doors cannot do better).
+      if (units >= 40) {
+        expect(dest / trips.length).toBeLessThanOrEqual(0.08);
+        expect(orig / trips.length).toBeLessThanOrEqual(0.08);
+      } else if (units >= 20) {
+        expect(dest / trips.length).toBeLessThanOrEqual(0.18);
+        expect(orig / trips.length).toBeLessThanOrEqual(0.18);
+      }
+    });
+
+    it(`seed ${seed}: pairs are rare, and no path is a ruler line: it bends a few centimetres over any straight 20 m, and two going one way on a walk are on lines of their own`, () => {
+      const pairs = walkers.filter((w) => w.partner >= 0).length;
+      expect(pairs / Math.max(1, walkers.length)).toBeLessThanOrEqual(PAIR_SHARE + 1e-9);
+      // The greatest distance from its chord over each 20 m of a path that is straight (its way changes by under ten degrees along it), clear of the doors.
+      let windows = 0;
+      let flat = 0;
+      let bent = 0;
+      for (const w of walkers) {
+        const n = w.cum.length;
+        for (let i = 45; i + 100 < n - 45; i += 25) {
+          const ax = w.pts[i * 2] as number;
+          const az = w.pts[i * 2 + 1] as number;
+          const bx = w.pts[(i + 100) * 2] as number;
+          const bz = w.pts[(i + 100) * 2 + 1] as number;
+          const dx = bx - ax;
+          const dz = bz - az;
+          const l = Math.hypot(dx, dz);
+          let far = 0;
+          let turn = 0;
+          for (let q = 0; q <= 100; q += 5) {
+            far = Math.max(far, Math.abs((((w.pts[(i + q) * 2] as number) - ax) * dz - ((w.pts[(i + q) * 2 + 1] as number) - az) * dx) / l));
+            if (q >= 5) {
+              const h0 = Math.atan2((w.pts[(i + q) * 2] as number) - (w.pts[(i + q - 5) * 2] as number), (w.pts[(i + q) * 2 + 1] as number) - (w.pts[(i + q - 5) * 2 + 1] as number));
+              const h1 = Math.atan2(dx, dz);
+              let t = Math.abs(h0 - h1);
+              if (t > Math.PI) t = 2 * Math.PI - t;
+              turn = Math.max(turn, t);
+            }
+          }
+          if (turn > (10 * Math.PI) / 180) continue;
+          windows++;
+          if (far < 0.04) flat++;
+          else if (far <= 0.3) bent++;
+        }
+      }
+      process.stderr.write(`seed ${seed}: ${pairs / 2} pairs; straight 20 m windows ${windows}: ${bent} bend 4 to 30 cm, ${flat} under 4 cm\n`);
+      if (windows > 20) expect(flat / windows).toBeLessThanOrEqual(0.1);
+      // Two non-partners going one way within 8 m of each other: the mean of their sideways distance, over the moments they share, is 0.2 m or more.
+      const shared = new Map<string, { sum: number; n: number }>();
+      for (let h = 6; h < 23; h += 1 / HOUR_S) {
+        const on = walking(h);
+        for (const [i, a] of on.entries()) {
+          for (const b of on.slice(i + 1)) {
+            if (a.partner === b.id) continue;
+            const p = pathPoint(a, alongAt(a, h));
+            const q = pathPoint(b, alongAt(b, h));
+            if (Math.hypot(p.x - q.x, p.z - q.z) > 8 || Math.cos(p.yaw - q.yaw) < 0.95) continue;
+            const side = Math.abs((q.x - p.x) * Math.cos(p.yaw) - (q.z - p.z) * Math.sin(p.yaw));
+            const key = `${a.id}:${b.id}`;
+            const e = shared.get(key) ?? { sum: 0, n: 0 };
+            e.sum += side;
+            e.n++;
+            shared.set(key, e);
+          }
+        }
+      }
+      const same = [...shared.values()].filter((e) => e.n >= 4);
+      const apart = same.filter((e) => e.sum / e.n >= 0.2).length;
+      process.stderr.write(`seed ${seed}: ${same.length} pairs going one way together, ${apart} at least 0.2 m apart sideways\n`);
+      if (same.length >= 5) expect(apart / same.length).toBeGreaterThanOrEqual(0.9);
+    });
+
+  }
+
+  // The work of making a town's walkers, counted and not timed (this machine's time limits fail under load; the seconds are printed beside it). The bounds are
+  // about half as much again as it takes now, which is a second or so on an idle machine for the played seed and under two for "sorrow".
+  for (const [seed, bound] of [[SORROW, { builds: 1700, lines: 1900, points: 800_000, steps: 650_000 }], [20261121, { builds: 2000, lines: 1500, points: 850_000, steps: 200_000 }]] as const) {
+    it(`seed ${seed}: making the walkers takes a bounded amount of work`, () => {
+      const g = townGround(seed);
+      outdoorPeopleFor(g.plan, g.anchor);
+      const t = performance.now();
+      const job = walkerJob(g.plan, g.anchor);
+      let slices = 0;
+      while (!job.next().done) slices++;
+      const seconds = (performance.now() - t) / 1000;
+      process.stderr.write(`seed ${seed}: ${seconds.toFixed(2)} s, ${slices} slices; work ${JSON.stringify(WALK_WORK)}\n`);
+      expect(WALK_WORK.builds).toBeLessThanOrEqual(bound.builds);
+      expect(WALK_WORK.lines).toBeLessThanOrEqual(bound.lines);
+      expect(WALK_WORK.points).toBeLessThanOrEqual(bound.points);
+      expect(WALK_WORK.steps).toBeLessThanOrEqual(bound.steps);
     });
   }
 
