@@ -28,6 +28,10 @@ import { streetChannelD, streetLiftD, streetLowerD, withStreets } from "../../sr
  * (`TOWN_GEN` raised) that moves a street or a junction's pavement moves the ground under it. Then, and only with no
  * change to any file of the ground's arithmetic, the worlds whose plan moved are pinned again. (Plan 24 opened the
  * streets that were shut at the highway: world 20261121's three were taken again, worlds 1 and 6 stood.)
+ *
+ * The three `hooks:` keys moved on purpose (the verge, `verge.ts`): they fold the place's shore strip and its feature mask, and the
+ * strip now also covers the town's unclaimed made ground and the highway's corridor, and the mask adds weeds and no trees there.
+ * No other key moved: the ground's heights, the town's own mask and strip, and the cover are the same arithmetic.
  */
 
 const SEEDS = [20261121, 1, 6];
@@ -186,9 +190,9 @@ function digests(): Record<string, string> {
 }
 
 const PINNED: Record<string, string> = {
-  "hooks:1": "ef41836ebe1f5bdb/360000",
-  "hooks:20261121": "ca6cb03f0f345312/360000",
-  "hooks:6": "12d6749702cac598/360000",
+  "hooks:1": "af3e2ba867d1e0fc/360000",
+  "hooks:20261121": "b9b4b618a3cfbaeb/360000",
+  "hooks:6": "b6db071a2de03402/360000",
   "town:1": "a9dd0d10d83af95a/1880000",
   "town:20261121": "b698a76dabea4a63/1880000",
   "town:6": "20a7eabc602ebbb2/1880000",
