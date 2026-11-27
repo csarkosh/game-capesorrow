@@ -311,7 +311,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       if (list !== null) {
         walkersMade = true;
         for (const batch of batches.values()) {
-          batch.walkers = list.filter((w) => w.model === batch.id).slice(0, walk.cap);
+          batch.walkers = list.filter((w) => w.model === batch.id);
           batch.wphase = new Float64Array(batch.walkers.length);
           batch.wat = new Float64Array(batch.walkers.length).fill(-1);
           batch.wrate = new Float64Array(batch.walkers.length);
@@ -331,6 +331,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         const dx = at.x - eye.x;
         const dz = at.z - eye.z;
         if (dx * dx + dz * dz > outReach2) continue;
+        // The batch has room for `walk.cap` walkers at once (the town's ceiling, which the trips keep under): one more is not drawn.
+        if (wnext.length >= walk.cap) break;
         wnext.push(i);
         places.push(at);
       }
