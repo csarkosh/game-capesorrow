@@ -153,6 +153,16 @@ export function coverIndexOf(plan: TownPlan): CoverIndex {
   return index;
 }
 
+/**
+ * The rectangle of the plan's frame the cover's grid spans, null where it has no cell: a point outside it is in no cell, so no block's or
+ * spur's window is tested there and the blocks' cover is 0 (`blocksCoverInto`). The quay's window is not in the grid.
+ */
+export function coverExtentOf(plan: TownPlan): { x0: number; z0: number; x1: number; z1: number } | null {
+  const index = coverIndexOf(plan);
+  if (!(index.nx > 0 && index.nz > 0)) return null;
+  return { x0: index.x0, z0: index.z0, x1: index.x0 + index.nx * CELL, z1: index.z0 + index.nz * CELL };
+}
+
 // The windows are asked at every point the ground is read at, several windows a point and several edges a window, and each answer was a
 // small object made and dropped: about 2 GB of them while a town loads. A window's answer is three numbers, so they are left in a register
 // and read at once by the one caller; the arithmetic, and its order, is what it was.

@@ -135,6 +135,14 @@ What the game lays over the engine's coast is `CAPE_PLACE` (`place.ts`), a `Coas
 
 Every constant that shapes this ground is in the overlay's tunables, which the engine makes part of the level id.
 
+The engine asks these hooks at every height sample, tree and piece of ground cover on the whole coast, so each answers at once
+beyond the town's reach (`townReachOf` in `clearing.ts`): one rectangle per plan, found from the plan's own numbers as the union of
+every stage's grid or box (the cover's, the quay's window, the fill's, the street field's, the clearing's and the roads' out) grown
+by a metre. Outside it `townKeepD` keeps the cliff bands whole (testing the along-shore coordinate before it asks the coast for the
+highway's line), `shapeD` lays only the railroad's bed, the feature mask is the engine's open mask, every piece of ground cover
+stands and the shore strip is 0: the answers each stage reached by its own tests, to the bit (`test/town/townReach.test.ts`
+compares every hook with the whole path, which is kept as `…Full`). The rectangle is about 0.9 by 1.4 to 1.6 km.
+
 ### How the town is drawn
 
 `client/src/game/town/` turns the plan and the ground's height into plain arrays (positions, normals, vertex colours,
