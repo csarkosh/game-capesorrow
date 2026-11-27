@@ -38,7 +38,7 @@ describe("the car's reading for measuring tools", () => {
   });
 
   it("answers the camera as a copy, and null where the camera is the walker's", () => {
-    const held = { x: 1, y: 2, z: 3, yaw: 0.5, pitch: 0.1, fov: 1.2, seated: 0.5, pulled: 4.5 };
+    const held = { x: 1, y: 2, z: 3, yaw: 0.5, pitch: 0.1, fov: 1.2, seated: 0.5, pulled: 4.5, shot: 2 };
     let on = true;
     const withCamera = carDebug({ state: () => null, pose: () => null, camera: () => (on ? held : null) });
     const a = withCamera.camera();

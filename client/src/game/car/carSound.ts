@@ -17,7 +17,7 @@ import { PAVED, type Surface } from "../../sim/car/types.js";
 
 export type CarSoundApi = {
   /** The nearest car as it sounds now (every frame), or null when there is none within earshot. */
-  car(s: { speed: number; throttle: number; surface: Surface; distance: number; driven: boolean } | null): void;
+  car(s: { speed: number; throttle: number; surface: Surface; distance: number; driven: boolean; /** Sideways, m/s: a slide is heard. */ slip?: number } | null): void;
   /** A hard stop, 0 to 1. */
   thud(strength: number): void;
   /** A door. */
@@ -42,6 +42,21 @@ const TYRE_SURFACE: readonly number[] = [0.5, 1, 0.85, 0.9];
 const TYRE_HZ: readonly number[] = [700, 1600, 1200, 1000];
 /** The speed at which the tyres are as loud as the surface lets them be, m/s. */
 const TYRE_FULL = 20;
+/** A slide: the sideways speed (m/s) at which the tyres are at their loudest whatever the surface, and the band-pass centre they rise to on each (Hz): a howl on pavement, a hiss of stones on the rest. */
+export const SLIDE_FULL = 5;
+const SLIDE_HZ: readonly number[] = [1500, 2000, 1500, 1300];
+
+/** How much of a slide the sideways speed is, 0 to 1. */
+export function slideShare(slip: number): number {
+  const v = Math.abs(slip);
+  return Number.isFinite(v) ? Math.min(v / SLIDE_FULL, 1) : 0;
+}
+
+/** The tyres' band-pass centre (Hz) on a surface for a share of slide. */
+export function tyreHz(surface: Surface, slide: number): number {
+  const base = TYRE_HZ[surface] as number;
+  return base + ((SLIDE_HZ[surface] as number) - base) * slide;
+}
 
 /** The greatest gain of each stage. */
 export const ENGINE_PEAK = 0.15, TYRE_PEAK = 0.12, THUD_PEAK = 0.3, DOOR_PEAK = 0.16;
@@ -61,7 +76,7 @@ export function earshot(distance: number): number {
  * The engine note's pitch (Hz) and the levels of the engine and the tyres, 0 to 1, for a moment of driving. A car with nobody at the wheel
  * (`driven` false) has no engine running; its tyres sound while it rolls. Written into `out` when given (so a frame allocates nothing).
  */
-export function carVoice(speed: number, throttle: number, surface: Surface, distance: number, driven = true, out: VoiceRecord = { hz: 0, engine: 0, tyres: 0 }): VoiceRecord {
+export function carVoice(speed: number, throttle: number, surface: Surface, distance: number, driven = true, out: VoiceRecord = { hz: 0, engine: 0, tyres: 0 }, slip = 0): VoiceRecord {
   const v = Math.abs(speed);
   const gear = v >= (GEAR_SPEEDS[1] as number) ? 2 : v >= (GEAR_SPEEDS[0] as number) ? 1 : 0;
   const lo = gear === 0 ? 0 : (GEAR_SPEEDS[gear - 1] as number);
@@ -72,7 +87,8 @@ export function carVoice(speed: number, throttle: number, surface: Surface, dist
   const near = earshot(distance);
   const load = Math.min(Math.abs(throttle), 1);
   const engine = driven ? (0.3 + 0.7 * load) * (0.6 + 0.4 * f) * near : 0;
-  const tyres = Math.min(Math.min(v / TYRE_FULL, 1) * (TYRE_SURFACE[surface] as number), 1) * near;
+  // The tyres roll, and slide: a slide is as loud as the tyres get, on any surface.
+  const tyres = Math.min(Math.max(Math.min(v / TYRE_FULL, 1) * (TYRE_SURFACE[surface] as number), slideShare(slip)), 1) * near;
   out.hz = hz;
   out.engine = engine;
   out.tyres = tyres;
@@ -233,7 +249,7 @@ export const carSound: SoundGame<CarSoundApi> = () => {
         heard.engine = 0;
         heard.tyres = 0;
       } else {
-        carVoice(s.speed, s.throttle, s.surface, s.distance, s.driven, heard);
+        carVoice(s.speed, s.throttle, s.surface, s.distance, s.driven, heard, s.slip ?? 0);
       }
       if (g === null) return;
       const now = g.host.ctx.currentTime;
@@ -247,7 +263,7 @@ export const carSound: SoundGame<CarSoundApi> = () => {
       follow(g.fifth.frequency, now, v.hz * 1.5, null);
       follow(g.engine.gain, now, v.engine * ENGINE_PEAK, 0);
       follow(g.tyres.gain, now, v.tyres * TYRE_PEAK, 0);
-      follow(g.tyreFilter.frequency, now, TYRE_HZ[s.surface] as number, null);
+      follow(g.tyreFilter.frequency, now, tyreHz(s.surface, slideShare(s.slip ?? 0)), null);
     },
     thud(strength) {
       shot(THUD_PEAK * Math.min(Math.max(strength, 0), 1), THUD_SECONDS, 180);

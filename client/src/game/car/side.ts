@@ -9,8 +9,8 @@ import type { WalkClient, WalkHost, WalkRenderer } from "../../game.js";
 import type { WalkHud } from "../../hud.js";
 import { returnCar } from "../../sim/car/rules.js";
 import { surfaceAt } from "../../sim/car/surface.js";
-import { boardSeat } from "../../sim/car/seats.js";
-import { INTERACT_BIT, LEAVE_SPEED } from "../../sim/car/tuning.js";
+import { boardSeat, slowForDoors } from "../../sim/car/seats.js";
+import { INTERACT_BIT } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
 import { HEARD_WITHIN, earshot, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
@@ -33,7 +33,7 @@ function carOf(cars: readonly Car[], id: number): Car | undefined {
 /** Whether a seated player is in a car slow enough to leave. */
 function slowEnough(ride: Ride, cars: readonly Car[]): boolean {
   const car = carOf(cars, ride.car);
-  return car !== undefined && Math.abs(car.speed) < LEAVE_SPEED;
+  return car !== undefined && slowForDoors(car);
 }
 
 /**
@@ -137,7 +137,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   // What each car was at the last frame that saw it, for the thud; and the local player's ride at that frame, for the door. Cleared with the world.
   const marks = new Map<number, CarMark>();
   let lastPhase = -1;
-  const feed = { speed: 0, throttle: 0, surface: 0 as Surface, distance: 0, driven: false };
+  const feed = { speed: 0, throttle: 0, surface: 0 as Surface, distance: 0, driven: false, slip: 0 };
   const now_: CarMark = { tick: 0, x: 0, z: 0, speed: 0 };
   const forget = (): void => {
     marks.clear();
@@ -160,7 +160,9 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
     let best = HEARD_WITHIN;
     for (let i = 0; i < list.length; i++) {
       const c = list[i] as Car;
-      if (self !== undefined && (c.seats[0] !== 0 || Math.abs(c.speed) > 0.05)) {
+      // The speed over the ground, along the heading and sliding across it: a slide takes speed from along the heading and is no hit.
+      const over = Math.hypot(c.speed, c.slip);
+      if (self !== undefined && (c.seats[0] !== 0 || over > 0.05)) {
         const d = Math.hypot(c.x - self.pos.x, c.z - self.pos.z);
         if (d < best) {
           best = d;
@@ -169,13 +171,13 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       }
       const m = marks.get(c.id);
       if (m === undefined) {
-        marks.set(c.id, { tick: state.tick, x: c.x, z: c.z, speed: c.speed });
+        marks.set(c.id, { tick: state.tick, x: c.x, z: c.z, speed: over });
         continue;
       }
       now_.tick = state.tick;
       now_.x = c.x;
       now_.z = c.z;
-      now_.speed = c.speed;
+      now_.speed = over;
       const hit = thudStrength(m, now_);
       if (hit > 0 && self !== undefined) {
         const heard = earshot(Math.hypot(c.x - self.pos.x, c.z - self.pos.z));
@@ -184,7 +186,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       m.tick = state.tick;
       m.x = c.x;
       m.z = c.z;
-      m.speed = c.speed;
+      m.speed = over;
     }
     if (marks.size > list.length) for (const id of marks.keys()) if (carOf(list, id) === undefined) marks.delete(id);
     if (nearest === null) {
@@ -197,6 +199,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       feed.surface = surfaceAt(seed, nearest.x, nearest.z);
       feed.distance = best;
       feed.driven = nearest.seats[0] !== 0;
+      feed.slip = nearest.slip;
       audio.car(feed);
       const v = audio.voice();
       voice.hz = v.hz;

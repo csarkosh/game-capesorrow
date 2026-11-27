@@ -18,9 +18,9 @@ import { HULL_RADIUS } from "../town/hull.js";
 import { constrainTrestle } from "../town/railDeck.js";
 import { constrainCircle, pushOut, STRIDE, type TownSolids } from "../town/solid.js";
 import { driveCar } from "./body.js";
-import { boardSeat, doorPlace, seatPlace } from "./seats.js";
+import { boardSeat, doorPlace, seatPlace, slowForDoors } from "./seats.js";
 import { carStart, groundCar } from "./start.js";
-import { CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, INTERACT_BIT, LAMP_BIT, LEAVE_SPEED, LEAVE_TICKS, OWED_MAX, WADE } from "./tuning.js";
+import { CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, INTERACT_BIT, LAMP_BIT, LEAVE_TICKS, OWED_MAX, WADE } from "./tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type CarControls, type Ride } from "./types.js";
 
 const abs = Math.abs;
@@ -174,7 +174,7 @@ export function carPressed(world: RiderWorld, p: Rider, bits: number): void {
     }
   } else if (p.ride.phase === SEATED) {
     const car = carOf(world, p.ride.car);
-    if (car === undefined || abs(car.speed) >= LEAVE_SPEED) return;
+    if (car === undefined || !slowForDoors(car)) return;
     if (!freeDoor(world, car, p.ride.seat)) return;
     p.ride = { car: car.id, seat: p.ride.seat, phase: LEAVING, ticks: LEAVE_TICKS };
   }
@@ -207,7 +207,7 @@ export function carHostStep(world: RiderWorld): void {
       } else if (p.ride.phase === LEAVING) {
         p.ride.ticks--;
         if (p.ride.ticks <= 0) {
-          if (abs(car.speed) < LEAVE_SPEED && freeDoor(world, car, seat)) {
+          if (slowForDoors(car) && freeDoor(world, car, seat)) {
             p.pos = { x: DOOR.x, y: heightAt(world, DOOR.x, DOOR.z) + PLAYER_HALF.y, z: DOOR.z };
             p.vel = { x: 0, y: 0, z: 0 };
             p.grounded = true;

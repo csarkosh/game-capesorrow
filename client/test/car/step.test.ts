@@ -158,6 +158,101 @@ describe("stepCar", () => {
     expect(slide(-1).slip).toBeGreaterThan(0.5);
   }, timeLimit(30_000));
 
+  it("costs no speed and leaves no slide in a turn the tyres hold", () => {
+    const c = car();
+    c.speed = 10;
+    const top: CarEnv = { top: 10, grip: 8.3, slope: 0 };
+    for (let i = 0; i < 120; i++) {
+      stepCar(c, { throttle: 1, turn: 0.4, handbrake: false }, top);
+      expect(c.slip).toBe(0);
+    }
+    expect(c.speed).toBeGreaterThan(9.99);
+    expect(c.hx).toBeGreaterThan(0.5);
+  }, timeLimit(30_000));
+
+  it("settles into a small slide at full lock, nose inside its path, at 10, 20 and 30 m/s", () => {
+    for (const v of [10, 20, 30]) {
+      const c = car();
+      c.speed = v;
+      const top: CarEnv = { top: v, grip: 8.3, slope: 0 };
+      const tangents: number[] = [];
+      for (let i = 0; i < 4 * 60; i++) {
+        stepCar(c, { throttle: 1, turn: 1, handbrake: false }, top);
+        tangents.push(-c.slip / c.speed);
+      }
+      // A right turn slides the car to its left (the slip is negative), by 2 to 12 degrees of its heading, and holds there.
+      const last = tangents[tangents.length - 1] as number;
+      expect(last).toBeGreaterThan(0.035);
+      expect(last).toBeLessThan(0.21);
+      expect(Math.max(...tangents)).toBeLessThan(0.21);
+      expect(Math.abs(last - (tangents[tangents.length - 61] as number))).toBeLessThan(0.02);
+    }
+  }, timeLimit(30_000));
+
+  it("throws the tail out with the handbrake: the car turns further and slides wider than it does without", () => {
+    const turn = (handbrake: boolean): { turned: number; tangent: number } => {
+      const c = car();
+      c.speed = 10;
+      const top: CarEnv = { top: 10, grip: 8.3, slope: 0 };
+      for (let i = 0; i < 42; i++) stepCar(c, { throttle: 0, turn: 1, handbrake }, top);
+      return { turned: Math.atan2(c.hx, c.hz), tangent: -c.slip / Math.max(c.speed, 0.01) };
+    };
+    const thrown = turn(true);
+    const plain = turn(false);
+    expect(thrown.turned).toBeGreaterThan(plain.turned);
+    // Past 25 degrees of slide in 0.7 s, where the plain turn has not reached 6.
+    expect(thrown.tangent).toBeGreaterThan(0.46);
+    expect(plain.tangent).toBeLessThan(0.1);
+  }, timeLimit(30_000));
+
+  it("comes straight when the wheel is let go in a slide: the front wheels turn against it, and the slide is over in a second and a half", () => {
+    for (const v of [10, 20, 30]) {
+      const c = car();
+      c.speed = v;
+      const top: CarEnv = { top: v, grip: 8.3, slope: 0 };
+      for (let i = 0; i < 42; i++) stepCar(c, { throttle: 0, turn: 1, handbrake: true }, top);
+      expect(c.slip).toBeLessThan(-2);
+      let against = false;
+      for (let i = 0; i < 90; i++) {
+        stepCar(c, { throttle: 1, turn: 0, handbrake: false }, top);
+        // The car slides to its left, so the wheels are turned left of centre.
+        if (c.steer < -0.05) against = true;
+      }
+      expect(against).toBe(true);
+      expect(c.slip).toBe(0);
+      expect(c.steer).toBe(0);
+      expect(c.speed).toBeGreaterThan(0);
+    }
+  }, timeLimit(30_000));
+
+  it("gains no speed from a slide: with no throttle the car's speed over the ground only falls", () => {
+    const c = car();
+    c.speed = 20;
+    let before = 20;
+    for (let i = 0; i < 180; i++) {
+      stepCar(c, { throttle: 0, turn: i < 60 ? 1 : -1, handbrake: i % 90 < 45 }, flat);
+      const now = Math.hypot(c.speed, c.slip);
+      expect(now).toBeLessThanOrEqual(before + 1e-9);
+      before = now;
+    }
+  }, timeLimit(30_000));
+
+  it("opens no lock as a slide takes speed from along the heading", () => {
+    // Two cars going 20 m/s over the ground, one of them sliding: the wheels are asked for the same lock (the steering's help aside, which the handbrake leaves out).
+    const straight = car();
+    straight.speed = 20;
+    const sliding = car();
+    sliding.speed = 16;
+    sliding.slip = -12;
+    for (let i = 0; i < 12; i++) {
+      stepCar(straight, { throttle: 0, turn: 1, handbrake: true }, { top: 30, grip: 0, slope: 0 });
+      stepCar(sliding, { throttle: 0, turn: 1, handbrake: true }, { top: 30, grip: 0, slope: 0 });
+    }
+    // At 16 m/s along the heading alone the lock would be 0.27; at 20 over the ground it is 0.21.
+    expect(Math.abs(sliding.steer - straight.steer)).toBeLessThan(0.02);
+    expect(sliding.steer).toBeLessThan(0.24);
+  }, timeLimit(30_000));
+
   it("backs with the nose swinging away from the lock", () => {
     const c = car();
     for (let i = 0; i < 120; i++) stepCar(c, { throttle: -1, turn: 1, handbrake: false }, flat);
