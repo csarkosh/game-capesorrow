@@ -115,7 +115,7 @@ LAYERS = [
 ]
 
 # The interiors' own layers. Same fields as LAYERS. Metre sizes: oak_veneer_04's is the
-# catalogue's (1.0 m); the rest are not stated by ambientCG and are read from the pictures (estimated=True).
+# catalogue's (1.0 m); the rest are not stated by their catalogue and are read from the pictures (estimated=True).
 INTERIOR_OWN = [
     dict(name="marble_tile", id="Marble019", tile=[1.2, 1.2], estimated=True, paintable=False, note="pale marble with fine grey veins, no joints: a slab about 1.2 m across; joints are laid in geometry"),
     dict(name="carpet", id="Carpet004", tile=[0.45, 0.45], estimated=True, paintable=False, note="grey low-pile carpet with a square motif, 15 squares of 3 cm over the picture"),
