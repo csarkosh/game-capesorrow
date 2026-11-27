@@ -348,9 +348,10 @@ type Point = { x: number; y: number; z: number };
 
 /**
  * Holds a hull to the side of each rail it belongs on: a hull on a deck stays on the inboard side, a hull below the deck's level
- * stays outside. Returns whether it moved the hull. A hull clear of every rail is left exactly as it was.
+ * stays outside. Returns whether it moved the hull. A hull clear of every rail is left exactly as it was. `radius` is the
+ * hull's: the walker's by default, and the car's circles pass their own (it must not exceed the 1 m the rails' cells reach).
  */
-export function constrainRails(seed: number, pos: Point, vel: Point): boolean {
+export function constrainRails(seed: number, pos: Point, vel: Point, radius: number = HULL_RADIUS): boolean {
   const t = townDecks(seed);
   const c = floor((pos.x - t.x0) / DECK_CELL);
   const r = floor((pos.z - t.z0) / DECK_CELL);
@@ -369,7 +370,7 @@ export function constrainRails(seed: number, pos: Point, vel: Point): boolean {
     const dx = pos.x - qx;
     const dz = pos.z - qz;
     const d2 = dx * dx + dz * dz;
-    if (d2 >= HULL_RADIUS * HULL_RADIUS) continue;
+    if (d2 >= radius * radius) continue;
     // Inboard (on the deck's side of the rail's line) or outboard.
     const side = (pos.x - qx) * rail.nx + (pos.z - qz) * rail.nz;
     const inboard = side >= 0;
@@ -387,18 +388,18 @@ export function constrainRails(seed: number, pos: Point, vel: Point): boolean {
       const sign = onDeck ? 1 : -1;
       nx = rail.nx * sign;
       nz = rail.nz * sign;
-      push = HULL_RADIUS - (onDeck ? side : -side) + CLEAR;
+      push = radius - (onDeck ? side : -side) + CLEAR;
     } else if (d > 0 && onDeck === inboard) {
       // Round the rail's end: away from the end point.
       nx = dx / d;
       nz = dz / d;
-      push = HULL_RADIUS - d + CLEAR;
+      push = radius - d + CLEAR;
     } else {
       // Under a deck, or on the line itself: through the rail to the side the hull belongs on.
       const sign = onDeck ? 1 : -1;
       nx = rail.nx * sign;
       nz = rail.nz * sign;
-      push = HULL_RADIUS + side + CLEAR;
+      push = radius + side + CLEAR;
     }
     if (!(push > 0)) continue;
     pos.x += nx * push;

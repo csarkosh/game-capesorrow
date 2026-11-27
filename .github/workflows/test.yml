@@ -15,9 +15,10 @@ name: test
 # (test.yml), its trigger (workflow_dispatch, no inputs) and the name of its last job (gates) are
 # what the gate holds to.
 #
-# There is no job for Git LFS: the repository has no file in LFS yet (the first model or texture
-# committed will land there, `.gitattributes`). The engine's own shipped files, which the build
-# and the client suite read, are not this repository's: they come whole inside the engine's
+# The game's own models and textures are Git LFS objects (`.gitattributes`), and the client suite
+# reads one of them (the car's model), so the `lfs` job brings them from the Actions cache and the
+# `client` job checks them out; no other job reads one. The engine's own shipped files, which the
+# build and the client suite read, are not this repository's: they come whole inside the engine's
 # release tarball, which `npm ci` installs.
 
 on:
@@ -40,6 +41,49 @@ env:
   NODE_VERSION: 22.23.4
 
 jobs:
+  # The game's models and textures are Git LFS objects and the client suite reads the car's model.
+  # LFS bandwidth on the account is capped per month, so the objects come from the Actions cache,
+  # keyed on the object ids themselves: they are downloaded from LFS once per new set of ids, never
+  # per run. This job fills the cache on a miss; on a hit it only looks the key up.
+  lfs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      # lfs: false leaves pointer files in the tree; nothing is downloaded yet.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - id: key
+        name: key the cache on the lfs object ids
+        # Only the ids (column 1): the second column is `*` or `-` depending on whether the file is
+        # checked out, so hashing whole lines would change the key between a cold and a warm tree.
+        run: echo "key=lfs-v1-$(git lfs ls-files -l | cut -d' ' -f1 | sort | sha256sum | cut -c1-64)" >> "$GITHUB_OUTPUT"
+      - id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+      # The only step in the workflow that can reach LFS, and it runs only on a miss. `fetch` is the
+      # download half of `pull`: this job needs the objects in .git/lfs/objects for the cache, not
+      # the files in the tree.
+      - name: download lfs objects (cache miss only)
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: git lfs fetch
+      # A cache entry cannot be overwritten, so a bad one would stick: check every object's hash
+      # before saving, and save nothing if one is wrong.
+      - name: verify lfs objects before saving (cache miss only)
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: git lfs fsck --objects
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.key.outputs.key }}
+
   static:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -73,8 +117,10 @@ jobs:
       - run: npm run test:tools
 
   # The client suite is small (the engine's empty game's two files and the title page's), so it
-  # runs whole on one runner, with no shards.
+  # runs whole on one runner, with no shards. It reads the car's model, an LFS object, so it
+  # restores the objects from the cache the lfs job fills.
   client:
+    needs: lfs
     runs-on: ubuntu-latest
     # The suite takes about 14 minutes on a usual runner and has taken 20 on a slow one, where a limit of 20 cancelled it with
     # nothing failed. This is the job's clock only: no test's own time limit is changed.
@@ -88,7 +134,33 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          lfs: false
           persist-credentials: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .git/lfs/objects
+          key: ${{ needs.lfs.outputs.key }}
+          fail-on-cache-miss: true
+      # `git lfs checkout` writes the files from .git/lfs/objects and never goes to the network. A
+      # bad object, or any file still a pointer afterwards, means the cache entry is bad: fail here,
+      # naming the files and the way out, not in whichever test reads them. `git lfs ls-files -l`
+      # prints `<64-hex oid> <*|-> <path>`, `-` for a pointer, so the match is anchored on the oid
+      # and a path containing " - " cannot pass for one.
+      - name: check out lfs files from the cache
+        env:
+          KEY: ${{ needs.lfs.outputs.key }}
+        run: |
+          pointers() { git lfs ls-files -l | grep -E '^[0-9a-f]{64} - ' || true; }
+          bad() {
+            echo "::error::The cached LFS objects under $KEY are incomplete or corrupt, and a cache entry cannot be overwritten. Delete it with: gh cache delete $KEY --repo ${GITHUB_REPOSITORY}  (or change lfs-v1 to lfs-v2 in this workflow), then re-run ALL jobs (gh run rerun ${GITHUB_RUN_ID} --repo ${GITHUB_REPOSITORY}, not --failed; the lfs job must run again to refill the cache)."
+            exit 1
+          }
+          echo "lfs pointers before checkout: $(pointers | grep -c . || true)"
+          git lfs fsck --objects || bad
+          git lfs checkout
+          missing=$(pointers)
+          echo "lfs pointers after checkout: $(printf '%s' "$missing" | grep -c . || true)"
+          if [ -n "$missing" ]; then echo "$missing"; bad; fi
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -126,7 +198,7 @@ jobs:
   # there: a red `gates` on a superseded commit is that cancellation, not a failure to chase.
   gates:
     if: always()
-    needs: [static, tools, client, build]
+    needs: [lfs, static, tools, client, build]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

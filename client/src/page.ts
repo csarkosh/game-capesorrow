@@ -9,6 +9,7 @@ import type { LandingShell, PageGame, PageHost, PageSide } from "@csarkosh/engin
 import type { Route } from "@csarkosh/engine/game/router";
 import { pageStorage, parseTierOverride } from "@csarkosh/engine/game/tierChoice";
 import type { AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
+import type { CarSoundApi } from "./game/car/carSound.js";
 import { EMPTY_GAME, WALK_MODES, type WalkClient, type WalkHost, type WalkRenderer } from "./game.js";
 import { creditsEntries } from "./game/credits.js";
 import { renderLanding, type LandingHandle, type LandingPanel } from "./game/landing.js";
@@ -109,7 +110,7 @@ export function createCapePage(h: PageHost): PageSide {
   };
 }
 
-export const CAPE_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio, WalkHud, WalkHost, WalkClient> = {
+export const CAPE_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud, WalkHost, WalkClient> = {
   game: EMPTY_GAME,
   side: createCapePage,
   identity: CAPE_IDENTITY,

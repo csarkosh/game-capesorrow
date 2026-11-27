@@ -85,10 +85,11 @@ plan says to push first.
 Read the report. A failing gate is reported to the user before pushing, not after.
 
 The `test` workflow (`.github/workflows/test.yml`) runs the same commands on GitHub's runners, **only when started by hand**
-(`workflow_dispatch`; no push or pull request triggers it): typecheck and lint in one job (`static`), the tools suite
-(`tools`), the client suite on one runner (`client`, its time limits scaled by `TEST_TIME_SCALE`, which the engine's
-time-limit helper reads), the client built as the deploy builds it (`build`), and a final `gates` job that fails unless
-every other job passed. `gates` is the one result to read. It is a pass-or-fail check; nothing it times means anything,
+(`workflow_dispatch`; no push or pull request triggers it): the game's Git LFS files brought from the Actions cache
+(`lfs`), typecheck and lint in one job (`static`), the tools suite (`tools`), the client suite on one runner (`client`,
+its time limits scaled by `TEST_TIME_SCALE`, which the engine's time-limit helper reads, and the LFS files checked out
+from the cache), the client built as the deploy builds it (`build`), and a final `gates` job that fails unless every
+other job passed. `gates` is the one result to read. It is a pass-or-fail check; nothing it times means anything,
 because the runners are shared machines. Every explicit time limit in the client suite is written
 `timeLimit(<ms>)` (`@csarkosh/engine/testing/timeLimit`), so the factor applies to it.
 
@@ -115,9 +116,9 @@ Three layers stop this, and the third is the one that actually catches mistakes:
 1. **`.gitignore`** — `node_modules/`, build output (`dist/`, `site/`), archives (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`,
    `.tgz`, `.dmg`).
 2. **`.gitattributes`** — `.glb`, `.webp`, `.ktx2`, `.mp3`, `.mp4`, `.wasm`, `.png`, `.jpg` and `.ico` are tracked through
-   **Git LFS**, so the object database stores a ~130-byte pointer instead of the file. The repository has no such file yet
-   (the engine's shipped files live in the engine's repository and come in its tarball); the first model, texture or sound
-   committed lands in LFS because of these lines. `tools/deploy/test/lfsAttributes.test.mjs` holds them.
+   **Git LFS**, so the object database stores a ~130-byte pointer instead of the file. The town's texture layers and
+   the models are there (the engine's shipped files live in the engine's repository and come in its tarball); any model,
+   texture or sound committed lands in LFS because of these lines. `tools/deploy/test/lfsAttributes.test.mjs` holds them.
 3. **The check below** — run it before every push. `.gitignore` does not protect against `git add -f` or against a file
    that was already tracked before a rule existed.
 
@@ -139,10 +140,11 @@ git lfs ls-files        # what LFS is actually tracking
 If a binary was staged as `Git:`, unstage it, fix `.gitattributes`, and re-add. Once it is committed and pushed, the fix is
 `git lfs migrate`, which rewrites history — report that to the user rather than doing it.
 
-When the repository first gets an LFS file, two things change: `git-lfs` must be installed on any machine that clones
-(`brew install git-lfs && git lfs install`), or the working tree gets pointer files where the files should be; and the
-`test` workflow needs the LFS steps Day Hike's has (a job that fills the Actions cache from the object ids, and a check in
-each job that reads them), which are the bandwidth-saving way to read them in CI. Add them in the commit that adds the file.
+The repository holds LFS files, so `git-lfs` must be installed on any machine that clones
+(`brew install git-lfs && git lfs install`), or the working tree gets pointer files where the files should be. The `test`
+workflow reads them the bandwidth-saving way: its `lfs` job fills the Actions cache from the object ids (one download per
+new set of ids, never per run), and a job whose tests read an LFS file (`client`, for the car's model) restores that cache
+and checks the files out; a job that reads none checks out pointers. A new job that reads one takes the same two steps.
 LFS storage and bandwidth are metered per account, and storage counts every version ever pushed.
 
 ## Pushing is not shipping
