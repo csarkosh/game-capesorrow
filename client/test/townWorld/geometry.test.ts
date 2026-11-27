@@ -125,7 +125,7 @@ describe("the town's arrays, every batch of three worlds", () => {
         expect(Math.abs(cz - batch.cz)).toBeLessThanOrEqual(1);
       }
     }
-    // A cell has up to six meshes now: the flat layer, the standing, the dark at the walls' feet, the rooms' haze, the blended glass and the signs.
+    // A cell has up to six meshes now: the flat layer, the standing, the dark at the walls' feet, the rooms' haze, the blended glass and the signs (and, where the renderer reads the frame behind its glass, a seventh: the marked panes, opaque, in place of the haze: `townBlur.test.ts`).
     expect(townFor(GAME_SEED).length).toBeLessThanOrEqual(170);
   });
 

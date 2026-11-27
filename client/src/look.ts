@@ -93,8 +93,12 @@ const GRADES: readonly LookGrade[] = [
  * logarithm of the distance, a step must be up to `lineFarBand` times deeper to draw and the line fades to `lineFarWeight` of its
  * strength. What is left far away is what carries the shape: a ridge against the sky, a headland against the water, one mass of forest
  * against the valley behind it, each lighter than a line near by.
+ *
+ * Behind a shop's glass the room is seen out of focus, and its outlines go with the focus (`lineThrough`, `game/town/townBlur.ts`): the pane says in the
+ * frame's alpha how much of the lines behind it it hides, and the line is drawn on what shows through it, lighter by that. A thing at the glass keeps
+ * its line, a thing deep in the room has none, and the window's own frame and the street are drawn as they always were.
  */
-const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], lineFrom: 0.005, lineTo: 0.025, lineNear: 40, lineFar: 600, lineFarBand: 20, lineFarWeight: 0.5, bands: 0.25 };
+const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], lineFrom: 0.005, lineTo: 0.025, lineNear: 40, lineFar: 600, lineFarBand: 20, lineFarWeight: 0.5, lineThrough: true, bands: 0.25 };
 
 /**
  * The ground under the grass. The line is drawn on every blade's edge, so the grass is darker than the engine's own floor under it, and
