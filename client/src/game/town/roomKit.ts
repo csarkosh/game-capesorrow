@@ -19,6 +19,9 @@ export const xp = (xf: Xf, s: number, d: number, y: number): Vec3 => [xf.ox + xf
 /** The world direction of a direction (ds, dd) of the frame's plane. */
 export const xd = (xf: Xf, ds: number, dd: number): Vec3 => [xf.tx * ds - xf.nx * dd, 0, xf.tz * ds - xf.nz * dd];
 
+/** Where the room's walls and what stands in it start: the depth of the front wall's plane, which the shell's side walls and its floor begin at (the wall's own thickness is the first 15 cm). */
+export const FACE_D = 0.15;
+
 /** A glow of this says "lit by the room's baked light", not a glow of its own (a tube's, a neon's, a lit cooler's front). */
 export const BAKED = -1;
 
@@ -60,6 +63,8 @@ export type Ctx = {
   readonly style: Style;
   /** Set for a furnishing deeper than `PLAIN_FROM`: drawn as its big shape only (the detail is `low`), a few bands of colour where it carries stock. */
   readonly plain?: boolean;
+  /** The room is one a person stands in (`RoomIn.whole`): every face of everything is drawn, not only those the street can see. */
+  readonly whole?: boolean;
 };
 
 /** An albedo lit by the room at a point (`yl` over the floor): what the room's light makes of it; a surface close to the floor is dimmer (it is lit from above and shaded by what is round it). */
@@ -85,10 +90,17 @@ export function glowing(c: Ctx, col: Rgb, d: number): Rgb {
   return [col[0] + (v[0] - col[0]) * h, col[1] + (v[1] - col[1]) * h, col[2] + (v[2] - col[2]) * h];
 }
 
+/** Whether a vertical face from `a` to `b` (stations `s`, `d`) lies in the plane of one of the room's walls, to a centimetre. */
+export function inWall(c: Ctx, a: readonly [number, number], b: readonly [number, number]): boolean {
+  const e = 0.01;
+  return (a[1] >= c.d1 - e && b[1] >= c.d1 - e) || (a[1] <= FACE_D + e && b[1] <= FACE_D + e) || (a[0] <= c.s0 + e && b[0] <= c.s0 + e) || (a[0] >= c.s1 - e && b[0] >= c.s1 - e);
+}
+
 /**
  * A box in the frame: centre (`cs`, `cd`), base `y0` over the floor, height `h`, half-length `ha` along `dir` (a unit vector in the (s, d)
  * plane) and half `hb` across it. Only the faces a person outside could see: those that do not face away from the street (their normal's
- * `d` part is not positive), and the top. A `glow` of `BAKED` lights it from the room; any other is the box's own (a tube, a neon).
+ * `d` part is not positive), and the top. A `glow` of `BAKED` lights it from the room; any other is the box's own (a tube, a neon). In a room that is
+ * `whole` every side is drawn whichever way it looks, and the bottom of a box that does not stand on the floor.
  */
 export function fbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: number, hb: number, dir: { x: number; z: number }, side: Rgb, top: Rgb, glow: number = BAKED, sides = true): void {
   const { out, xf } = c;
@@ -107,19 +119,29 @@ export function fbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
   const yt = yb + h;
   for (let i = 0; i < 4; i++) {
     const [ns, nd] = norms[i] as [number, number];
-    if (nd > 0.35) continue;
-    if (!sides && nd > -0.5) continue;
+    if (c.whole !== true) {
+      if (nd > 0.35) continue;
+      if (!sides && nd > -0.5) continue;
+    }
     const a = ring[i] as [number, number];
     const b = ring[(i + 1) % 4] as [number, number];
     // A face at the sheet or behind it (a box that stands through the sheet) is not drawn: it would lie in the sheet's own plane.
     if (c.cut !== undefined && Math.min(a[1], b[1]) > c.cut - 0.04) continue;
+    // In a room a person stands in, a face that lies in a wall's own plane is not drawn: it looks into the wall, and its back (laid by the builder) would fight the wall's face.
+    if (c.whole === true && inWall(c, a, b)) continue;
     const alb = nd < -0.5 ? side : scaled(side, 0.82);
     const pts: Vec3[] = [xp(xf, a[0], a[1], yb), xp(xf, b[0], b[1], yb), xp(xf, b[0], b[1], yt), xp(xf, a[0], a[1], yt)];
     const cols: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : glowing(c, alb, cd);
     out.poly(pts, xd(xf, ns, nd), cols, undefined, fx);
   }
   const cols: Rgb[] | Rgb = baked ? ring.map(([s, d]) => shade(c, top, s, d, y0 + h, 1)) : glowing(c, top, cd);
-  out.poly(ring.map(([s, d]) => xp(xf, s, d, yt)), [0, 1, 0], cols, undefined, fx);
+  // A box that reaches the ceiling (a partition) has no top: it would lie in the ceiling's own plane.
+  if (!(c.whole === true && h + y0 >= c.ceiling - 0.005)) out.poly(ring.map(([s, d]) => xp(xf, s, d, yt)), [0, 1, 0], cols, undefined, fx);
+  // The underside of a box held off the floor, which a person can stand under or bend to see.
+  if (c.whole === true && y0 > 0.02) {
+    const under: Rgb[] | Rgb = baked ? ring.map(([s, d]) => shade(c, scaled(side, 0.7), s, d, y0, -1)) : glowing(c, scaled(side, 0.7), cd);
+    out.poly(ring.map(([s, d]) => xp(xf, s, d, yb)), [0, -1, 0], under, undefined, fx);
+  }
 }
 
 /** The faces of the room a thing can hang on. */
@@ -188,6 +210,15 @@ export function wallPoly(c: Ctx, wall: WallName, pts: readonly (readonly [number
 export function wallBox(c: Ctx, wall: WallName, a0: number, a1: number, y0: number, y1: number, depth: number, albedo: Rgb, edge: Rgb = scaled(albedo, 0.7)): void {
   if (hidden(c, wall, a0, a1)) return;
   wallQuad(c, wall, a0, a1, y0, y1, depth, albedo);
+  if (c.whole === true) {
+    // In a room a person stands in the box has its two ends and its underside too (each face is double sided there, so the way it looks is no matter).
+    const mid = (a0 + a1) / 2;
+    const [sm, dm] = wallSD(c, wall, mid, depth * 0.5);
+    const end = (a: number): void => c.out.poly([wallPoint(c, wall, a, y0, 0), wallPoint(c, wall, a, y0, depth), wallPoint(c, wall, a, y1, depth), wallPoint(c, wall, a, y1, 0)], wallFacing(c, wall), shade(c, edge, sm, dm, (y0 + y1) / 2, 0), undefined, { glow: 1 });
+    end(a0);
+    end(a1);
+    c.out.poly([wallPoint(c, wall, a0, y0, 0), wallPoint(c, wall, a1, y0, 0), wallPoint(c, wall, a1, y0, depth), wallPoint(c, wall, a0, y0, depth)], [0, -1, 0], shade(c, edge, sm, dm, y0, -1), undefined, { glow: 1 });
+  }
   // Its top, which a person looking in from above the sill could see, and its end toward the front of the room.
   const top = [wallPoint(c, wall, a0, y1, 0), wallPoint(c, wall, a1, y1, 0), wallPoint(c, wall, a1, y1, depth), wallPoint(c, wall, a0, y1, depth)];
   const [s0, d0] = wallSD(c, wall, a0, depth * 0.5);
@@ -214,10 +245,12 @@ export function fcyl(c: Ctx, s: number, d: number, y0: number, r: number, h: num
     // Only the faces turned toward the street show (a face whose normal points in, `d` part positive, is behind the drum).
     const mx = c0 + c1;
     const mz = s0 + s1;
-    if (mz > 0.9) continue;
+    if (mz > 0.9 && c.whole !== true) continue;
     const k = 0.75 + 0.25 * (1 - Math.min(1, Math.abs(mx)));
     const col = shade(c, scaled(side, k), s + (mx / 2) * r, d + (mz / 2) * r, y0 + h * 0.5, 0);
     out.poly([xp(xf, s + c0 * r, d + s0 * r, yb), xp(xf, s + c1 * r, d + s1 * r, yb), xp(xf, s + c1 * rt, d + s1 * rt, yt), xp(xf, s + c0 * rt, d + s0 * rt, yt)], xd(xf, mx, mz), col, undefined, fx);
   }
   if (rt > 0) out.poly(ring.map(([cx, sz]) => xp(xf, s + cx * rt, d + sz * rt, yt)), [0, 1, 0], shade(c, top, s, d, y0 + h, 1), undefined, fx);
+  // The underside of a drum held off the floor.
+  if (c.whole === true && y0 > 0.02) out.poly(ring.map(([cx, sz]) => xp(xf, s + cx * r, d + sz * r, yb)), [0, -1, 0], shade(c, scaled(side, 0.7), s, d, y0, -1), undefined, fx);
 }

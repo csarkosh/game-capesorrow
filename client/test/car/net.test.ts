@@ -17,6 +17,7 @@ import { WALK_RULES, createWalkWorld, type WalkWorld } from "../../src/sim.js";
 import { seatPlace, doorPlace } from "../../src/sim/car/seats.js";
 import { groundCar } from "../../src/sim/car/start.js";
 import { ENTER_TICKS, INTERACT_BIT, OWED_MAX, SPEED_CAP, WHEELBASE } from "../../src/sim/car/tuning.js";
+import { newInside } from "../../src/sim/inside/rooms.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "../../src/sim/car/types.js";
 import { siteFor } from "../townWorld/world.js";
 
@@ -28,7 +29,7 @@ const { anchor } = siteFor(SEED);
 
 const ride = (car: number, seat: number, phase: Ride["phase"], ticks = 0): Ride => ({ car, seat, phase, ticks });
 const mover = (id: number, r: Ride, x = 0): WalkMover => ({
-  id, pos: { x, y: 3, z: 4 }, vel: { x: 0, y: 0, z: 0 }, yaw: 1, pitch: 0, grounded: true, ride: r,
+  id, pos: { x, y: 3, z: 4 }, vel: { x: 0, y: 0, z: 0 }, yaw: 1, pitch: 0, grounded: true, ride: r, inside: newInside(),
 });
 const aCar = (id: number, more: Partial<Car> = {}): Car => ({
   id, x: 100.25, y: 2.5, z: -300.5, hx: 0.6, hz: 0.8, speed: 27.3, slip: -1.5, steer: 0.31,
@@ -73,8 +74,8 @@ describe("the car on the wire", () => {
     expect([b.id, b.controls.handbrake, b.lights]).toEqual([3, true, false]);
   }, timeLimit(60_000));
 
-  it("is laid out as designed: the mover is 28 bytes and the car 35, the car's fields at their offsets", () => {
-    expect([MOVER_BYTES, CAR_BYTES, WALK_PROTOCOL]).toEqual([28, 35, 2]);
+  it("is laid out as designed: the mover is 31 bytes and the car 35, the car's fields at their offsets", () => {
+    expect([MOVER_BYTES, CAR_BYTES, WALK_PROTOCOL]).toEqual([31, 35, 3]);
     const bytes = encodeWalkSnapshot(snap);
     const v = new DataView(bytes);
     const mover1 = 10 + MOVER_BYTES;

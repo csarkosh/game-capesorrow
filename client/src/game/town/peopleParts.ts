@@ -92,7 +92,11 @@ export type Body = {
  * A person with the place they stand at in the world. `hours`: the hours they are shown. A person of a room (`outdoor` false) is shown at the hour
  * as it is (their unit's opening hours; null: always). A person outside (`outdoor`) changes only out of sight (`mayChange`).
  */
-export type PlacedPerson = { readonly person: Body; readonly at: PersonWorld; readonly hours: Hours | null; readonly outdoor: boolean; /** What they hold in the right hand (`heldBy`). */ readonly held: Held };
+export type PlacedPerson = {
+  readonly person: Body; readonly at: PersonWorld; readonly hours: Hours | null; readonly outdoor: boolean; /** What they hold in the right hand (`heldBy`). */ readonly held: Held;
+  /** The id of the room (`sim/inside/rooms.ts`) this person stands in the hidden copy of, over the street: shown only while the local player is where that room is (`setInside`), and nobody else is shown then. */
+  readonly room?: number;
+};
 
 /** The things the models carry in a hand, by the name of the primitive's material. */
 export const PROP_MATERIALS: ReadonlyMap<string, Exclude<Held, null>> = new Map([["prop.cup", "cup"], ["prop.phone", "phone"]]);
@@ -113,6 +117,8 @@ export type PeopleParts = {
   step(dt: number): void;
   /** The hour of day, 0 to 24: who is shown is worked out again at once when it moves. */
   setHour(hour: number): void;
+  /** The id of the room the local player is where (0 in the street): only the people of that room are shown, or, in the street, only those of no room. */
+  setInside(room: number): void;
   /** The hour of day the people are drawn at now (the last hour pushed, run on by the skin clock): the doors that open for the walkers use this one (`openDoors.ts`). */
   hourNow(): number;
   /** The lamps nearest the eye, and the hour's glow gain: the light the people take (`peopleLight.ts`). */
@@ -187,6 +193,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   let began = false;
   let disposed = false;
   let since = PEOPLE_STEP;
+  // The room the local player is where (0: the street).
+  let inside = 0;
   // The hour of day: nobody is shown in a unit that is shut at it. `hourRun` is the clock's run when it was pushed.
   let hour = 12;
   let hourRun = 0;
@@ -327,7 +335,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       // The walkers shown: walking now and within the eye's reach. Looked at every frame, so one is shown the frame they leave a door and hidden the frame they arrive.
       const wnext: number[] = [];
       const places: (PersonWorld | null)[] = [];
-      for (const [i, w] of batch.walkers.entries()) {
+      for (const [i, w] of inside === 0 ? batch.walkers.entries() : []) {
         const at = walk.at(w, now);
         if (at === null) continue;
         const dx = at.x - eye.x;
@@ -344,6 +352,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       if (standerStep) {
         next = [];
         for (const [i, p] of batch.people.entries()) {
+          // Where the player is in a room, that room's people are shown and nobody else; in the street, not a room's.
+          if ((p.room ?? 0) !== inside) continue;
           const dx = p.at.x - eye.x;
           const dz = p.at.z - eye.z;
           const d2 = dx * dx + dz * dz;
@@ -450,6 +460,11 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       since = PEOPLE_STEP;
     },
     hourNow,
+    setInside(room) {
+      if (room === inside) return;
+      inside = room;
+      since = PEOPLE_STEP;
+    },
     setLamps(list, glow) {
       writePeopleLamps(lamps, list, glow);
       for (const m of dressed) markMaterialUboDirty(m);

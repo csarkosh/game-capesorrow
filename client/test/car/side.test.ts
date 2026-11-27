@@ -7,6 +7,7 @@ import { carVoice } from "../../src/game/car/carSound.js";
 import { voiceShown } from "../../src/game/car/side.js";
 import type { WalkState, Walker } from "../../src/sim.js";
 import { newRide } from "../../src/sim/car/rules.js";
+import { newInside } from "../../src/sim/inside/rooms.js";
 import { doorPlace } from "../../src/sim/car/seats.js";
 import { INTERACT_BIT, LEAVE_SPEED } from "../../src/sim/car/tuning.js";
 import { newCar } from "../../src/sim/car/start.js";
@@ -19,7 +20,7 @@ const car = (over: Partial<Car> = {}): Car => ({
   id: 1, x: 10, y: 0, z: 20, hx: 0, hz: 1, speed: 0, slip: 0, steer: 0,
   controls: { throttle: 0, turn: 0, handbrake: false }, lights: false, owed: 0, seats: [0, 0, 0, 0], ...over,
 });
-const walker = (x: number, z: number, ride: Ride = newRide()): Walker => ({ id: 7, pos: { x, y: 0, z }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0, ride });
+const walker = (x: number, z: number, ride: Ride = newRide()): Walker => ({ id: 7, pos: { x, y: 0, z }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0, ride, inside: newInside() });
 const seated = (seat = 0, car_ = 1): Ride => ({ car: car_, seat, phase: SEATED, ticks: 0 });
 /** Where a walker stands at a car's door. */
 const atDoor = (c: Car, seat: number): { x: number; z: number } => {
@@ -125,7 +126,7 @@ function pageHost(touch: boolean): { host: never; said: Said; world: { current: 
     touchStart: touch,
     touchModel: { interactDown: () => said.down++, interactUp: () => said.up++ },
     ambient: { voice: () => heard, car: (s: { speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null) => { if (s !== null) carVoice(s.speed, s.throttle, s.surface as 0, s.distance, s.driven, heard); said.voice.push(s === null ? null : { ...s }); }, thud: (v: number) => said.thuds.push(v), door: () => said.doors++ },
-    hud: { setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
+    hud: { setDark: () => undefined, setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
     get activeWorld() { return world.current; },
   };
   return { host: host as never, said, world };
