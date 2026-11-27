@@ -28,7 +28,7 @@ const TO_INTERIOR: Readonly<Record<string, string>> = {
 
 /** The nearest layer of the town's to each of the rooms' own, which are what each name stood for before the rooms had a set. */
 const TO_TOWN: Readonly<Record<string, TownLayerName>> = {
-  marble_tile: "stone", carpet: "sidewalk", oak: "planks_weathered", dark_wood: "planks_weathered", cloth: "sidewalk", glazed_tile: "sidewalk", cane: "planks_weathered",
+  marble_tile: "stone", carpet: "sidewalk", oak: "planks_weathered", dark_wood: "planks_weathered", cloth: "sidewalk", glazed_tile: "sidewalk", cane: "planks_weathered", paint: "sidewalk",
 };
 
 /** What a vertex's layer index names: the layer's name, and whether it is one of the rooms' own. */

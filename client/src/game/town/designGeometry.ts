@@ -17,6 +17,7 @@ import { MeshBuilder, hash01, type MeshArrays, type Rgb } from "./meshBuilder.js
 import { bakeLight, type DayPane } from "./designLight.js";
 import { DECOR, ITEMS } from "./furniture/index.js";
 import { Geo, tintOf, type P3 } from "./furniture/kit.js";
+import { glassPanel } from "./furniture/glass.js";
 import { styleOf } from "./roomFill.js";
 import type { Xf, Ctx } from "./roomKit.js";
 import { frontWall, type Band, type Layered } from "./roomShell.js";
@@ -368,6 +369,19 @@ function stair(g: Geo, st: Stair): void {
   // The stringers: a solid side to each edge of the flight, from the floor under it to the line of the ramp, and the soffit.
   for (const a of [across0, across1]) {
     const n0: P3 = a === across0 ? [-across[0], -across[1], 0] : [across[0], across[1], 0];
+    if (st.glass === true) {
+      // A thin stringer along the flight's edge, and glass over it to the handrail.
+      g.poly([P(0, a, Math.max(st.base, st.y0 - 0.22)), P(run, a, Math.max(st.base, st.y1 - 0.22)), P(run, a, st.y1 + 0.02), P(0, a, st.y0 + 0.02)], n0, mat, { k: 0.75 });
+      const panes = Math.max(2, Math.round(run / 1.2));
+      const ai = a === across0 ? a + 0.04 : a - 0.04;
+      for (let i = 0; i < panes; i++) {
+        const t0 = (i * run) / panes + 0.03;
+        const t1 = ((i + 1) * run) / panes - 0.03;
+        const lerpY = (t: number): number => rampAt(st, t, run);
+        glassPanel((pts, hint, m, look) => g.poly(pts, hint, m, look), P(t0, ai, lerpY(t0) + 0.06), P(t1, ai, lerpY(t1) + 0.06), P(t1, ai, lerpY(t1) + 0.85), P(t0, ai, lerpY(t0) + 0.85), n0);
+      }
+      continue;
+    }
     g.poly([P(0, a, st.base), P(run, a, st.base), P(run, a, st.y1 + 0.02), P(0, a, st.y0 + 0.02)], n0, mat, { k: 0.75 });
   }
   g.poly([P(0, across0, st.y0 - 0.12), P(run, across0, st.y1 - 0.12), P(run, across1, st.y1 - 0.12), P(0, across1, st.y0 - 0.12)], [0, 0, -1], mat, { k: 0.7 });
@@ -386,7 +400,7 @@ function stair(g: Geo, st: Stair): void {
 
 // ---- rails
 
-/** A rail: a top rail and a channel along the foot on posts every 1.4 m at most; bars between them, or a timber panel, or nothing for clear glass (which is not drawn: this mesh has no blended layer). */
+/** A rail: a top rail and a channel along the foot on posts every 1.4 m at most; bars between them, or a timber panel, or nothing for clear glass (as panes of a frame, pale edge lines and glints, `furniture/glass.ts`: this mesh has no blended layer). */
 function rail(g: Geo, r: Rail): void {
   const dx = r.s1 - r.s0;
   const dd = r.d1 - r.d0;
@@ -409,5 +423,15 @@ function rail(g: Geo, r: Rail): void {
       L.box(f - 0.007, f + 0.007, -0.007, 0.007, r.y + 0.05, r.y + r.h - 0.045, r.mat, undefined, true, false);
     }
   } else if (r.kind === "timber") L.box(-h, h, -0.02, 0.02, r.y + 0.05, r.y + r.h - 0.045, r.mat, undefined, false, false);
+  else {
+    // Clear glass: one pane between each two posts.
+    for (let i = 0; i + 1 < posts; i++) {
+      const f0 = -h + 0.05 + (i * (len - 0.05)) / (posts - 1) + 0.02;
+      const f1 = -h + 0.025 + ((i + 1) * (len - 0.05)) / (posts - 1) - 0.02;
+      const y0 = r.y + 0.05;
+      const y1 = r.y + r.h - 0.045;
+      glassPanel((pts, hint, mat, look) => L.poly(pts, hint, mat, look), [f0, 0, y0], [f1, 0, y0], [f1, 0, y1], [f0, 0, y1], [0, 1, 0]);
+    }
+  }
 }
 

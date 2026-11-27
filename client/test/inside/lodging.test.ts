@@ -61,6 +61,8 @@ describe("the lodging, on every test seed", () => {
       if (multi) expect(edges).toBeGreaterThan(10);
       // No sign says a real brand.
       for (const dc of d.decor) expect(dc.text ?? "", `${label}: ${dc.text}`).not.toMatch(BANNED);
+      // The room numbers: 200s on floor 2, 100s on a motel's one floor.
+      for (const dc of d.decor) if (/^\d+$/.test(dc.text ?? "")) expect(Math.floor(Number(dc.text) / 100), `${label}: plate ${dc.text}`).toBe(multi ? 2 : 1);
       expect(unit.tenant?.name ?? "", `${label}: the name`).not.toMatch(BANNED);
       table.push(`${seed}: unit ${(unit.s1 - unit.s0).toFixed(1)} m wide, building ${plan.uses[room.building]!.frame!.depth.toFixed(1)} m deep, ${b.storeys} storeys, ${b.kind}, trade ${unit.tenant?.trade}: design ${d.width.toFixed(1)} x ${d.depth.toFixed(1)} x ${d.height.toFixed(1)}, ${multi ? (d.marks?.some((m) => m.name === "beyond") ? "stair, corridor, room, closed flight" : "stair, corridor, room") : "office, corridor, room (one floor)"}`);
     }

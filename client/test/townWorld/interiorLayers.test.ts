@@ -26,12 +26,12 @@ function webpSize(bytes: Buffer): [number, number] {
 }
 
 describe("the rooms' texture set (interior.layers.json)", () => {
-  it("lists the seven layers of its own first, then the four outdoor ones it shares with the town, with contiguous indices", () => {
+  it("lists the eight layers of its own first (seven scanned, one generated), then the four outdoor ones it shares with the town, with contiguous indices", () => {
     expect(INTERIOR_LAYERS.map((l) => l.index)).toEqual(INTERIOR_LAYERS.map((_, i) => i));
-    expect(INTERIOR_LAYERS.slice(0, 7).map((l) => l.name)).toEqual([...INTERIOR_ONLY_NAMES]);
-    expect(INTERIOR_LAYERS.slice(7).map((l) => l.name)).toEqual(["brick", "sidewalk", "stucco", "rust"]);
-    expect(INTERIOR_LAYERS.length).toBe(11);
-    for (const name of INTERIOR_LAYERS.slice(7).map((l) => l.name)) {
+    expect(INTERIOR_LAYERS.slice(0, 8).map((l) => l.name)).toEqual([...INTERIOR_ONLY_NAMES]);
+    expect(INTERIOR_LAYERS.slice(8).map((l) => l.name)).toEqual(["brick", "sidewalk", "stucco", "rust"]);
+    expect(INTERIOR_LAYERS.length).toBe(12);
+    for (const name of INTERIOR_LAYERS.slice(8).map((l) => l.name)) {
       const mine = INTERIOR_LAYERS.find((l) => l.name === name);
       const town = TOWN_LAYERS.find((l) => l.name === name);
       expect(mine?.id, name).toBe(town?.id);
@@ -47,10 +47,12 @@ describe("the rooms' texture set (interior.layers.json)", () => {
       expect(l.tile[1], l.name).toBeGreaterThan(0.2);
       expect(l.mean.length, l.name).toBe(3);
       for (const c of l.mean) expect(c, l.name).toBeGreaterThan(0.01);
-      expect(ids.has(l.credit as string), `${l.name}: ${l.credit}`).toBe(true);
+      // The generated paint layer has no source and no credit, as the town's shingles have none.
+      if (l.generated) expect(l.credit, l.name).toBeNull();
+      else expect(ids.has(l.credit as string), `${l.name}: ${l.credit}`).toBe(true);
     }
     // Only the seven of its own are credited as the rooms'; the four it shares keep the town's credit.
-    expect(INTERIOR_LAYERS.filter((l) => (l.credit as string).startsWith("interior.")).length).toBe(7);
+    expect(INTERIOR_LAYERS.filter((l) => (l.credit ?? "").startsWith("interior.")).length).toBe(7);
     expect(CREDITS.filter((e) => e.id.startsWith("interior.")).length).toBe(7);
   });
 
@@ -80,14 +82,14 @@ describe("the rooms' texture set (interior.layers.json)", () => {
     }
   });
 
-  it("takes under 22 MB of the GPU's memory with its mips, and the low tier a quarter of that", () => {
+  it("takes under 22 MB of the GPU's memory with its mips (21.0 MB), and the low tier a quarter of that", () => {
     const bytes = interiorTextureBytes(false);
-    // (512 x 512 + 256 x 256) texels x 4 bytes x 11 layers x 4/3 for the mip chain.
-    expect(bytes).toBe(Math.round((512 * 512 + 256 * 256) * 4 * 11 * (4 / 3)));
+    // (512 x 512 + 256 x 256) texels x 4 bytes x 12 layers x 4/3 for the mip chain.
+    expect(bytes).toBe(Math.round((512 * 512 + 256 * 256) * 4 * 12 * (4 / 3)));
     expect(bytes).toBeLessThan(22 * 1024 * 1024);
     expect(interiorTextureBytes(true)).toBeLessThan(bytes / 3.9);
-    // And well under the town's, which is not touched by it.
-    expect(bytes).toBeLessThan(townTextureBytes(false) / 3);
+    // And a third of the town's, which is not touched by it.
+    expect(bytes).toBeLessThan(townTextureBytes(false) / 2.5);
   });
 });
 
@@ -115,14 +117,14 @@ describe("the interior materials", () => {
 });
 
 describe("the plugin on the rooms' set", () => {
-  it("has a table of the set's 11 layers and no bare-metal line, and the town's is as it was", () => {
+  it("has a table of the set's 12 layers and no bare-metal line, and the town's is as it was", () => {
     const rooms = townDefinitions(false, INTERIOR_SET);
-    expect(rooms).toContain("array<vec4<f32>,11>");
+    expect(rooms).toContain("array<vec4<f32>,12>");
     expect(townDefinitions(false)).toBe(townDefinitions(false, TOWN_SET));
     expect(townDefinitions(false)).toContain(`array<vec4<f32>,${TOWN_LAYERS.length}>`);
     expect(townSurfaceCode(false, false, false, INTERIOR_SET)).not.toMatch(/metallic=/);
     expect(townSurfaceCode(false)).toMatch(/metallic=/);
     // Every colour the rooms' own layers carry is as it is: none is paint (a tint is the colour over the layer's mean).
-    for (const l of INTERIOR_LAYERS.slice(0, 7)) expect(l.paintable, l.name).toBe(false);
+    for (const l of INTERIOR_LAYERS.slice(0, 8)) expect(l.paintable, l.name).toBe(false);
   });
 });

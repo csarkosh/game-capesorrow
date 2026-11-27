@@ -101,13 +101,13 @@ describe("the rooms' arrays' loader", () => {
     lite.updates = 0;
   });
 
-  it("fetches the 22 files, makes the two arrays once and says it filled them", async () => {
+  it("fetches the 24 files, makes the two arrays once and says it filled them", async () => {
     lite.decode.mockImplementation(async (_url: string, size: number) => new Uint8ClampedArray(size * size * 4));
     const landed = vi.fn();
     const made = createInteriorTextures({} as never, false, new AbortController().signal, landed);
     expect(await made.done).toBe(true);
     expect(landed).toHaveBeenCalledWith(true);
-    expect(lite.decode).toHaveBeenCalledTimes(22);
+    expect(lite.decode).toHaveBeenCalledTimes(24);
     expect(lite.updates).toBe(2);
     const urls = lite.decode.mock.calls.map((c) => c[0] as string);
     expect(urls.every((u) => u.startsWith("/textures/interior."))).toBe(true);

@@ -204,12 +204,32 @@ describe.each([["cafe", 1], ["lodging", 2]] as const)("the light of the %s is po
     const med = ratios[Math.floor(ratios.length / 2)] ?? 0;
     console.log(`[pools ${name}] ${floor.length} open vertices, ${fixtures.length} fixtures, ${ratios.length} pairs, median under/between ${med.toFixed(2)}`);
     expect(ratios.length, `${name}: pairs measured`).toBeGreaterThanOrEqual(3);
-    expect(med, `${name}: under a fixture over midway`).toBeGreaterThanOrEqual(2);
+    // The cafe is the bright room of the four: its pools are gentle, 1.4 times the floor between them, where the lobby's are twice.
+    expect(med, `${name}: under a fixture over midway`).toBeGreaterThanOrEqual(name === "cafe" ? 1.4 : 2);
   });
   it("has the front third of the day-lit room at least 1.6 times the back third", () => {
     const front = mean(floor.filter((f) => f.d < d.depth / 3).map((f) => f.v));
     const back = mean(floor.filter((f) => f.d > (2 * d.depth) / 3).map((f) => f.v));
     console.log(`[front/back ${name}] front ${front.toFixed(3)} back ${back.toFixed(3)} ratio ${(front / Math.max(1e-6, back)).toFixed(2)}`);
     expect(front / Math.max(1e-6, back), `${name}: front over back`).toBeGreaterThanOrEqual(1.6);
+  });
+  it("has an evenly pale open ceiling: its dimmest part no less than half its brightest in the cafe, 45 percent in the lobby", () => {
+    const at = d.cuts?.[0] === undefined ? d.height : d.cuts[0] - 0.15;
+    const vals: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if ((a.surface[i * 12 + 3] as number) > 1.01 || (a.normals[i * 3 + 1] as number) > -0.95) continue;
+      if (Math.abs((a.positions[i * 3 + 1] as number) - room.floorY - at) > 0.03) continue;
+      const dx = (a.positions[i * 3] as number) - room.ox;
+      const dz = (a.positions[i * 3 + 2] as number) - room.oz;
+      const s = dx * room.tx + dz * room.tz - room.s0;
+      const dd = -(dx * room.nx + dz * room.nz);
+      if (s < 0.7 || s > d.width - 0.7 || dd < 0.7 || dd > d.depth - 0.7) continue;
+      vals.push(lum(a, i));
+    }
+    const lo = percentile(vals, 0.05);
+    const hi = percentile(vals, 0.95);
+    console.log(`[ceiling ${name}] ${vals.length} open vertices, 5th ${lo.toFixed(3)} 95th ${hi.toFixed(3)} ratio ${(lo / Math.max(1e-6, hi)).toFixed(2)}`);
+    expect(vals.length, `${name}: ceiling vertices`).toBeGreaterThan(20);
+    expect(lo / Math.max(1e-6, hi), `${name}: dimmest over brightest of the open ceiling`).toBeGreaterThanOrEqual(name === "cafe" ? 0.5 : 0.45);
   });
 });

@@ -124,10 +124,12 @@ INTERIOR_OWN = [
     dict(name="cloth", id="Fabric036", tile=[0.4, 0.4], estimated=True, paintable=False, note="plain light-grey woven upholstery: threads of about 1 mm"),
     dict(name="glazed_tile", id="Tiles036", tile=[1.2, 1.2], estimated=True, paintable=False, note="small square glazed tiles of 12 cm with grey grout, 10 over the picture"),
     dict(name="cane", id="Wicker008A", tile=[0.3, 0.3], estimated=True, paintable=False, note="basket weave of strands about 1 cm wide: the nearest to cane webbing the catalogue has"),
+    dict(name="paint", generated=True, id="paint", tile=[1.0, 1.0], estimated=False, paintable=False, note="smooth matt emulsion made by this script: a flat near-white wall with a faint roller stipple and a very fine orange peel, for a tint to colour"),
 ]
 # Each interior layer's `mean`: the average linear colour of its colour file (red, green, blue), which the game divides a room's tint by so
 # that a tint is the colour the surface comes out. Measured by this script (a build that finds another mean stops and prints it).
 INTERIOR_MEANS = {
+    "paint": [0.8, 0.8, 0.8],
     "marble_tile": [0.822, 0.824, 0.823],
     "carpet": [0.218, 0.223, 0.228],
     "oak": [0.715, 0.482, 0.313],
@@ -287,6 +289,28 @@ def shingles():
     return shown, pack_data(n[:, :, 0], n[:, :, 1], rough, blur(ao, 1))
 
 
+def paint(csize, dsize):
+    """A smooth painted wall as a tiling layer: colour (flat near-white, linear 0.80, with one or two percent of slow variation and a faint
+    roller stipple), a normal that is flat but for a very fine orange peel, matt roughness and no occlusion. Every blur wraps, so it tiles."""
+    rng = np.random.RandomState(SEED + 1)
+
+    def field(size, passes):
+        f = blur(rng.normal(0.0, 1.0, size=(size, size)), passes)
+        return f / max(float(f.std()), 1e-6)
+
+    slow = field(csize, 40)
+    stipple = field(csize, 1)
+    lin = np.clip(0.80 * (1.0 + 0.012 * slow + 0.008 * stipple), 0.0, 1.0).astype(np.float32)
+    shown = linear_to_srgb(np.dstack([lin, lin, lin]))
+    peel = field(dsize, 1)
+    gx = (np.roll(peel, -1, 1) - np.roll(peel, 1, 1)) / 2
+    gy = (np.roll(peel, -1, 0) - np.roll(peel, 1, 0)) / 2
+    n = np.dstack([-gx * 0.05, gy * 0.05, np.ones_like(peel)])
+    n /= np.linalg.norm(n, axis=2, keepdims=True)
+    rough = np.clip(0.78 + 0.02 * field(dsize, 1), 0.0, 1.0)
+    return shown, pack_data(n[:, :, 0], n[:, :, 1], rough, np.ones((dsize, dsize), np.float32))
+
+
 def encode(shown, data):
     color = Image.fromarray(np.clip(np.rint(shown * 255.0), 0, 255).astype(np.uint8))
     packed = Image.fromarray(data)
@@ -334,7 +358,7 @@ def interior_manifest_of():
                 name=layer["name"],
                 index=i,
                 id=layer["id"],
-                credit=("interior.%s" if layer["name"] in own else "town.%s") % layer["id"],
+                credit=None if layer.get("generated") else ("interior.%s" if layer["name"] in own else "town.%s") % layer["id"],
                 generated=bool(layer.get("generated")),
                 tile=layer["tile"],
                 tileEstimated=layer["estimated"],
@@ -358,7 +382,9 @@ def write_layers(layers, prefix, out, csize, dsize, means=None):
     """Writes each layer's two files; returns the bytes written. `means`, if given, receives each layer's measured mean colour."""
     total = 0
     for layer in layers:
-        if layer.get("generated"):
+        if layer.get("generated") and layer["id"] == "paint":
+            shown, data = paint(csize, dsize)
+        elif layer.get("generated"):
             shown, data = shingles()
         else:
             shown, data, _ = from_source(layer, args_sources(), csize, dsize)

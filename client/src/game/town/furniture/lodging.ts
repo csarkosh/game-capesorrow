@@ -16,7 +16,7 @@ const WHITE = cloth(0.8, 0.8, 0.78);
 const SHELL: Readonly<Record<string, Rgb>> = { yellow: [0.8, 0.65, 0.08], green: [0.35, 0.5, 0.12], grey: [0.22, 0.24, 0.26] };
 /** The cloth of a sofa or an armchair by the item's material name: teal by default, grey, yellow or mustard. */
 const fabric = (name: string | undefined, fallback: { tint: Rgb }): { tint: Rgb } => {
-  const c = name === undefined ? undefined : SHELL[name] ?? (name === "mustard" ? ([0.7, 0.5, 0.1] as Rgb) : undefined);
+  const c = name === undefined ? undefined : SHELL[name] ?? (name === "mustard" ? ([0.7, 0.5, 0.1] as Rgb) : name === "orange" ? ([0.85, 0.36, 0.08] as Rgb) : undefined);
   return c === undefined ? fallback : cloth(c[0], c[1], c[2]);
 };
 
@@ -178,15 +178,23 @@ export function carpetInset(g: Geo, it: Item): void {
 /** A king bed, head to foot along the item's facing (it looks toward the foot): a base with a brown skirt, a mattress, a white duvet with its fold, two pairs of pillows, a headboard of pale timber 1.3 m high. */
 export function bed(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
-  L.box(-1.05, 1.05, -0.93, 0.93, 0, 0.3, "cloth", { tint: [0.9, 0.55, 0.4] }, true, false);
-  L.box(-1.0, 1.02, -0.9, 0.9, 0.3, 0.55, "cloth", WHITE);
-  L.box(-0.5, 1.04, -0.96, 0.96, 0.55, 0.62, "cloth", WHITE);
-  L.box(-0.5, -0.4, -0.96, 0.96, 0.62, 0.64, "cloth", { tint: [1.1, 1.1, 1.1] });
+  const brown = { tint: [1.5, 1.4, 1.25] as Rgb };
+  // The base with a warm brown skirt, the mattress on it.
+  L.box(-1.05, 1.05, -0.93, 0.93, 0, 0.3, "dark_wood", brown, true, false);
+  L.box(-1.0, 1.02, -0.9, 0.9, 0.3, 0.5, "cloth", WHITE);
+  // A white duvet over it, turned down at the head in a fold.
+  L.box(-0.3, 1.04, -0.96, 0.96, 0.5, 0.58, "cloth", WHITE);
+  L.box(-0.42, -0.2, -0.97, 0.97, 0.5, 0.6, "cloth", { tint: [WHITE.tint[0] * 1.1, WHITE.tint[1] * 1.1, WHITE.tint[2] * 1.1] });
+  // Two pairs of pillows: one standing against the headboard and one lying before it, a pair of each.
   for (const r of [-0.45, 0.45]) {
-    L.box(-1.0, -0.55, r - 0.38, r + 0.38, 0.55, 0.7, "cloth", WHITE);
-    L.box(-0.9, -0.5, r - 0.36, r + 0.36, 0.7, 0.8, "cloth", { tint: [WHITE.tint[0] * 1.05, WHITE.tint[1] * 1.05, WHITE.tint[2] * 1.05] });
+    L.box(-1.0, -0.88, r - 0.36, r + 0.36, 0.5, 0.98, "cloth", WHITE);
+    L.box(-0.86, -0.46, r - 0.34, r + 0.34, 0.58, 0.7, "cloth", { tint: [WHITE.tint[0] * 1.05, WHITE.tint[1] * 1.05, WHITE.tint[2] * 1.05] });
   }
-  L.box(-1.07, -1.03, -1.15, 1.15, 0.4, 1.3, "oak", { tint: [1.2, 1.1, 1.0] });
+  // A teal throw across the foot.
+  L.box(0.62, 0.92, -0.98, 0.98, 0.58, 0.62, "cloth", TEAL);
+  L.box(0.62, 0.64, -0.98, 0.98, 0.3, 0.62, "cloth", TEAL, true, false);
+  // The headboard, taller and wider than the bed.
+  L.box(-1.1, -1.03, -1.2, 1.2, 0.3, 1.35, "oak", { tint: [1.2, 1.1, 1.0] });
 }
 
 /** A bedside table hung on the wall: a drawer box at 0.45 to 0.7 m with its front, a telephone on it. */
@@ -194,7 +202,11 @@ export function bedside(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   L.box(-0.25, 0.25, -0.28, 0.28, 0.45, 0.7, "oak", { tint: [1.0, 0.85, 0.7] });
   L.box(0.25, 0.26, -0.2, 0.2, 0.52, 0.64, "dark_wood", { tint: [0.8, 0.8, 0.8] }, false);
-  L.box(-0.1, 0.1, -0.1, 0.1, 0.7, 0.76, "steel", { tint: [0.1, 0.1, 0.1] });
+  // A telephone with its handset and a clock with a lit face.
+  L.box(-0.12, 0.08, -0.2, -0.02, 0.7, 0.75, "steel", { tint: [0.1, 0.1, 0.1] });
+  L.box(-0.12, 0.08, -0.2, -0.02, 0.75, 0.77, "steel", { tint: [0.14, 0.14, 0.14] });
+  L.box(-0.06, 0.04, 0.06, 0.2, 0.7, 0.78, "steel", { tint: [0.12, 0.12, 0.12] });
+  L.poly([[0.045, 0.09, 0.72], [0.045, 0.17, 0.72], [0.045, 0.17, 0.76], [0.045, 0.09, 0.76]], [1, 0, 0], "paper", { glow: 2.4, tint: [1, 0.2, 0.15] });
 }
 
 /** A dresser with a television on it and a small coffee machine: 0.55 by 1.2 m, 0.85 m high, three drawers; it faces the room. */
@@ -352,7 +364,9 @@ export function litPane(g: Geo, dc: Decor): void {
   L.poly([[0.01, -w, y0], [0.01, w, y0], [0.01, w, y1], [0.01, -w, y1]], [1, 0, 0], "painted", { glow: 1.3, tint: [0.8, 0.88, 1] });
   // The blind, rolled half down: a pale sheet from the top and its roller.
   const drop = y1 - dc.h * 0.55;
-  L.poly([[0.03, -w, drop], [0.03, w, drop], [0.03, w, y1], [0.03, -w, y1]], [1, 0, 0], "cloth", { tint: [1.7, 1.7, 1.6], k: 1.2 });
+  L.poly([[0.03, -w, drop], [0.03, w, drop], [0.03, w, y1], [0.03, -w, y1]], [1, 0, 0], "paper", { tint: [1.15, 1.15, 1.12], k: 1.1 });
+  // Its lower edge, a slat bar.
+  L.box(0.02, 0.05, -w, w, drop - 0.025, drop, "paper", { tint: [1.0, 1.0, 0.95] });
   L.tubeR(0.05, y1 - 0.02, -w, w, 0.025, 6, "painted", { tint: [1.3, 1.3, 1.3] });
   L.box(0, 0.05, -w - 0.05, -w, y0 - 0.03, y1 + 0.03, "painted", { tint: [1.3, 1.3, 1.25] }, true, false);
   L.box(0, 0.05, w, w + 0.05, y0 - 0.03, y1 + 0.03, "painted", { tint: [1.3, 1.3, 1.25] }, true, false);
@@ -412,4 +426,86 @@ export function extinguisher(g: Geo, dc: Decor): void {
   L.frustum(0.07, 0, dc.y - 0.25, dc.y + 0.2, 0.065, 0.065, 8, "painted", { tint: [2.2, 0.2, 0.15] }, false);
   L.frustum(0.07, 0, dc.y + 0.2, dc.y + 0.26, 0.03, 0.02, 6, "steel", { tint: [0.12, 0.12, 0.12] }, false);
   L.box(0.0, 0.03, -0.05, 0.05, dc.y - 0.1, dc.y + 0.05, "steel", { tint: [0.5, 0.5, 0.5] });
+}
+
+/** A luggage rack: a timber frame with straps 0.55 m high, 0.5 by 0.9 m, and a suitcase lying on it. */
+export function luggageRack(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  for (const f of [-0.22, 0.22]) for (const r of [-0.42, 0.42]) L.box(f - 0.02, f + 0.02, r - 0.02, r + 0.02, 0, 0.5, "dark_wood", undefined, true, false);
+  for (const r of [-0.42, -0.14, 0.14, 0.42]) L.box(-0.24, 0.24, r - 0.02, r + 0.02, 0.5, 0.53, "paper", { tint: [0.8, 0.6, 0.4] });
+  L.box(-0.2, 0.2, -0.36, 0.36, 0.53, 0.77, "leather", { tint: [0.8, 0.9, 1.1] });
+  L.box(-0.2, 0.2, -0.04, 0.04, 0.77, 0.8, "steel", { tint: [0.5, 0.5, 0.5] });
+}
+
+/** A waste bin: a round steel bin 28 cm across and 30 cm high. */
+export function wasteBin(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.frustum(0, 0, 0, 0.3, 0.12, 0.14, 8, "steel", { tint: [0.45, 0.45, 0.47] }, false, false);
+  L.frustum(0, 0, 0.3, 0.305, 0.14, 0.11, 8, "steel", { tint: [0.15, 0.15, 0.15] }, false, true);
+}
+
+/** A tray with a kettle and two cups, laid on a dresser (its floor `y`): a dark tray 0.4 by 0.25, a steel kettle and two white cups. */
+export function kettleTray(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.12, 0.12, -0.2, 0.2, 0, 0.02, "dark_wood", { tint: [0.9, 0.9, 0.9] });
+  L.frustum(0, -0.08, 0.02, 0.2, 0.07, 0.05, 8, "steel", { tint: [1.1, 1.1, 1.15] }, false, true);
+  L.box(-0.02, 0.02, -0.17, -0.1, 0.1, 0.12, "steel", { tint: [0.15, 0.15, 0.15] });
+  for (const r of [0.06, 0.15]) L.frustum(0.04, r, 0.02, 0.07, 0.03, 0.035, 6, "painted", { tint: [1.5, 1.5, 1.45] }, false, true);
+}
+
+/** A smoke detector let into the ceiling: a pale disc 12 cm across with a small red light. */
+export function smokeDetector(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const y = g.ceiling;
+  L.frustum(0, 0, y - 0.035, y, 0.07, 0.07, 8, "painted", { tint: [1.5, 1.5, 1.45] }, false, true);
+  L.frustum(0.03, 0, y - 0.04, y - 0.035, 0.008, 0.008, 4, "paper", { glow: 3, tint: [1, 0.1, 0.05] }, false, true);
+}
+
+/** A cornice: a pale moulding 8 cm deep and 6 cm high where the walls meet the ceiling, round the box `p0..p3` (s0, s1, d0, d1) under the ceiling at `y`. */
+export function cornice(g: Geo, it: Item): void {
+  const [s0, s1, d0, d1] = [it.p[0] ?? 0, it.p[1] ?? 1, it.p[2] ?? 0, it.p[3] ?? 1];
+  const y = g.ceiling;
+  const L = g.at(0, 0, { s: 1, d: 0 });
+  const look = { tint: [1.3, 1.28, 1.2] as Rgb };
+  L.box(s0, s1, d0, d0 + 0.08, y - 0.06, y, "painted", look, false, true);
+  L.box(s0, s1, d1 - 0.08, d1, y - 0.06, y, "painted", look, false, true);
+  L.box(s0, s0 + 0.08, d0, d1, y - 0.06, y, "painted", look, false, true);
+  L.box(s1 - 0.08, s1, d0, d1, y - 0.06, y, "painted", look, false, true);
+}
+
+/** Full-height curtains drawn back at each side of a window: two pleated panels 0.4 m wide of a pale cloth, `w` the window's width, `h` their height from the floor `y - h / 2`. */
+export function curtainPair(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const y0 = dc.y - dc.h / 2;
+  const y1 = dc.y + dc.h / 2;
+  for (const side of [-1, 1]) {
+    const r0 = side * (dc.w / 2 + 0.05);
+    for (let k = 0; k < 8; k++) {
+      const a = r0 + side * k * 0.05;
+      const b = r0 + side * (k + 1) * 0.05;
+      const f0 = k % 2 === 0 ? 0.04 : 0.1;
+      const f1 = k % 2 === 0 ? 0.1 : 0.04;
+      L.poly([[f0, a, y0], [f1, b, y0], [f1, b, y1], [f0, a, y1]], [1, 0, 0], "cloth", { tint: [1.5, 1.45, 1.3], k: 1 });
+    }
+    L.box(0.02, 0.04, Math.min(r0, r0 + side * 0.4), Math.max(r0, r0 + side * 0.4), y1 - 0.02, y1 + 0.02, "steel", { tint: [0.3, 0.3, 0.3] });
+  }
+}
+
+/** A light switch: a pale plate 8 by 12 cm with a toggle. */
+export function lightSwitch(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  L.box(0, 0.012, -0.04, 0.04, dc.y - 0.06, dc.y + 0.06, "painted", { tint: [1.5, 1.5, 1.45] }, false);
+  L.box(0.012, 0.02, -0.008, 0.008, dc.y - 0.015, dc.y + 0.02, "painted", { tint: [1.2, 1.2, 1.15] }, false);
+}
+
+/** The fire plan card on the inside of a door: a framed sheet 0.3 by 0.4 m with the plan's floor and a red arrow. */
+export function firePlan(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const y0 = dc.y - dc.h / 2;
+  const y1 = dc.y + dc.h / 2;
+  L.box(0, 0.012, -w, w, y0, y1, "painted", { tint: [0.4, 0.4, 0.4] }, false);
+  L.poly([[0.014, -w + 0.015, y0 + 0.015], [0.014, w - 0.015, y0 + 0.015], [0.014, w - 0.015, y1 - 0.015], [0.014, -w + 0.015, y1 - 0.015]], [1, 0, 0], "paper", { tint: [1.2, 1.2, 1.1] });
+  L.poly([[0.016, -w + 0.04, y0 + 0.05], [0.016, w - 0.04, y0 + 0.05], [0.016, w - 0.04, y0 + dc.h * 0.6], [0.016, -w + 0.04, y0 + dc.h * 0.6]], [1, 0, 0], "painted", { tint: [0.45, 0.5, 0.55] });
+  L.poly([[0.018, -w * 0.5, y0 + dc.h * 0.2], [0.018, w * 0.3, y0 + dc.h * 0.2], [0.018, w * 0.3, y0 + dc.h * 0.26], [0.018, -w * 0.5, y0 + dc.h * 0.26]], [1, 0, 0], "painted", { tint: [1.4, 0.15, 0.1] });
 }

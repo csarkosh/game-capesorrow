@@ -4,8 +4,8 @@
  * first starts to walk into a room that is drawn from a design (or is put straight in one): never with the town, so a player in the street
  * has not asked for a byte of it and the arrays are not in the GPU's memory. Once made they are kept for the session.
  *
- * Sizes: the colour array's layers are 512 x 512 and the data array's 256 x 256 on the tiers above low, and half of each on low. The set holds 11
- * layers, so the arrays take (512 x 512 + 256 x 256) x 4 bytes x 11 x 4/3 with their mips, 19.2 MB (4.8 MB on low): under the 22 MB the set was
+ * Sizes: the colour array's layers are 512 x 512 and the data array's 256 x 256 on the tiers above low, and half of each on low. The set holds 12
+ * layers, so the arrays take (512 x 512 + 256 x 256) x 4 bytes x 12 x 4/3 with their mips, 21.0 MB (5.2 MB on low): under the 22 MB the set was
  * given.
  */
 import type { EngineContext } from "@babylonjs/lite";

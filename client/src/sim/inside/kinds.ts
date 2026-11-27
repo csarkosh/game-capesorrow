@@ -108,6 +108,15 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
   side_table: () => ({ ha: 0.25, hb: 0.25, h: 0.55 }),
   /** What is let into a ceiling: a downlight (a small glowing disc), a vent, a sprinkler head: none stood in. */
   downlight: () => null,
+  /** The room's small things: a luggage rack (0.5 by 0.9 m, a suitcase on it), a waste bin, a kettle tray laid on a dresser, a smoke detector and a cornice, the last two let into the ceiling. */
+  luggage_rack: () => ({ ha: 0.25, hb: 0.45, h: 0.8 }),
+  waste_bin: () => ({ ha: 0.15, hb: 0.15, h: 0.3 }),
+  kettle_tray: () => null,
+  smoke_detector: () => null,
+  cornice: () => null,
+  /** The municipal hall's glass balls of light and the black grid they hang from: hung, no footprint. */
+  glass_ball: () => null,
+  lamp_grid: () => null,
   vent: () => null,
   sprinkler: () => null,
   /** A potted plant on the floor: a pot 0.4 m across and a fan of leaves to 1.2 m. */
@@ -125,7 +134,7 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
 };
 
 /** The kinds that hang on a wall (`Decor`). */
-export const DECOR_KINDS: readonly string[] = ["television", "guitar", "poster", "sign", "board", "wall_lamp", "ac_unit", "picture", "panel", "tile_wall", "slat_wall", "lit_letters", "frame_art", "forest_picture", "lit_pane", "closet_front", "door_leaf", "clock", "extinguisher", "art", "chalkboard", "neon_sign", "dartboard", "wall_shelf", "mirror", "coat_hooks", "bunting"];
+export const DECOR_KINDS: readonly string[] = ["television", "guitar", "poster", "sign", "board", "wall_lamp", "ac_unit", "picture", "panel", "tile_wall", "slat_wall", "lit_letters", "frame_art", "forest_picture", "lit_pane", "closet_front", "door_leaf", "clock", "extinguisher", "art", "glazing", "curtain_pair", "light_switch", "fire_plan", "coast_map", "mural", "concrete_joints", "chalkboard", "neon_sign", "dartboard", "wall_shelf", "mirror", "coat_hooks", "bunting"];
 
 /** A kind's footprint as the builder of a design asks for it. A kind that is not named is a mistake, not a kind without one. */
 export function footOf(kind: string, p: readonly number[]): Foot | null {

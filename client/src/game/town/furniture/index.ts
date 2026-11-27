@@ -6,8 +6,9 @@ import type { Decor, Item } from "../../../sim/inside/design.js";
 import { archway, backBar, barCounter, column } from "./bar.js";
 import { acUnit, bistroStool, booth, brassRack, cafeBack, cafeCounter, espresso, floorJoints, flushLight, panel, picture, roundChair, tileWall, wallLamp } from "./cafe.js";
 import { art } from "./art.js";
+import { coastMap, concreteJoints, glassBall, glazing, lampGrid, mural } from "./hall.js";
 import { brochureRack, coffeeStation, downlight, floorLamp, longTable, luggageCart, planter, sideTable, slatScreen, sprinkler, vent } from "./lobby.js";
-import { armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
+import { cornice, curtainPair, firePlan, kettleTray, lightSwitch, luggageRack, smokeDetector, wasteBin, armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
 import { beam, bunting, ceilingFan, chalkboard, coatHooks, crateStack, dartboard, jukebox, kegStack, mirror, neonSign, newspaperRack, pastryCase, sideboard, tabletop, wallShelf, windowBench } from "./dress.js";
 import { board, bulbString, guitar, poster, sign, television } from "./hung.js";
 import type { Geo } from "./kit.js";
@@ -74,6 +75,13 @@ export const ITEMS: Readonly<Record<string, (g: Geo, it: Item) => void>> = {
   slat_screen: slatScreen,
   planter,
   floor_lamp: floorLamp,
+  luggage_rack: luggageRack,
+  waste_bin: wasteBin,
+  kettle_tray: kettleTray,
+  smoke_detector: smokeDetector,
+  cornice,
+  glass_ball: glassBall,
+  lamp_grid: lampGrid,
   side_table: sideTable,
   downlight,
   vent,
@@ -95,6 +103,13 @@ export const DECOR: Readonly<Record<string, (g: Geo, dc: Decor) => void>> = {
   lit_letters: litLetters,
   frame_art: art,
   art,
+  glazing,
+  curtain_pair: curtainPair,
+  light_switch: lightSwitch,
+  fire_plan: firePlan,
+  coast_map: coastMap,
+  mural,
+  concrete_joints: concreteJoints,
   forest_picture: forestPicture,
   lit_pane: litPane,
   closet_front: closetFront,

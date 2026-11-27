@@ -30,8 +30,8 @@ export type MatName =
   | "steel" | "rusty" | "ribbed" | "sheet"
   | "concrete" | "formed" | "brick" | "stone" | "plaster"
   | "rubber" | "tar" | "shingle" | "soil" | "gravel" | "sand" | "plant"
-  // The rooms' own (`interiorMaterials.ts` names them): marble, carpet, pale oak, dark wood, upholstery, glazed tile, cane.
-  | "i_marble" | "i_carpet" | "i_oak" | "i_darkwood" | "i_cloth" | "i_glazed" | "i_cane";
+  // The rooms' own (`interiorMaterials.ts` names them): marble, carpet, pale oak, dark wood, upholstery, glazed tile, cane, smooth paint.
+  | "i_marble" | "i_carpet" | "i_oak" | "i_darkwood" | "i_cloth" | "i_glazed" | "i_cane" | "i_paint";
 
 /** A material with its own wear, scale or tint in the place of the table's. */
 export type MatSpec = { readonly mat: MatName; readonly wear?: number; readonly wearKind?: WearKind; readonly scale?: number; readonly streaks?: boolean; /** The sky the thing sees, where it stands against a wall and sees what the wall sees (`skyShade.ts`). */ readonly shade?: Shade };
@@ -91,6 +91,8 @@ const MATS: Readonly<Record<MatName, Mat>> = {
   i_cloth: { layer: "cloth" },
   i_glazed: { layer: "glazed_tile" },
   i_cane: { layer: "cane" },
+  // Smooth matt emulsion (a generated layer): every painted wall and ceiling, so a tint gives a clean wall and not a stained one.
+  i_paint: { layer: "paint" },
 };
 
 /**

@@ -61,6 +61,8 @@ export type Slab = { readonly kind: "floor" | "ceiling"; readonly s0: number; re
 export type Stair = {
   readonly s0: number; readonly s1: number; readonly d0: number; readonly d1: number; readonly along: "s" | "d"; readonly y0: number; readonly y1: number;
   readonly base: number; readonly mat: string; readonly rails: readonly ("lo" | "hi")[];
+  /** The flight's sides are glass over a thin stringer (a timber handrail on top), not solid. */
+  readonly glass?: boolean;
 };
 
 /** A rail at an open edge, from one end to the other, standing on a floor at `y`, `h` high. */
@@ -78,6 +80,8 @@ export type DesignLight = { readonly s: number; readonly d: number; readonly y: 
 /** Someone in the room: a place, the way they face, an activity (`ACTIVITIES` of `game/town/people.ts`) and the height of the seat for a sitter. */
 export type DesignPerson = {
   readonly s: number; readonly d: number; readonly face: Spot; readonly activity: string; readonly role: "staff" | "customer"; readonly sits: number | null; readonly family: "chair" | "stool";
+  /** The height of the floor they stand on (an upper floor's); none is the room's floor. */
+  readonly y?: number;
 };
 
 /** How an outer wall is finished: its material, a wainscot to a height in another, and its skirting. */
@@ -91,7 +95,11 @@ export type Finish = {
   readonly boards?: number;
 };
 /** The room's mood for the light: the brightest floor's luminance the lights are brought to, the ambient colour and strength, and how much of the day the front's panes let in. */
-export type Mood = { readonly exposure: number; readonly ambient: readonly [number, number, number]; readonly ambientK: number; readonly day: number };
+export type Mood = {
+  readonly exposure: number; readonly ambient: readonly [number, number, number]; readonly ambientK: number; readonly day: number;
+  /** A pale ceiling gives back light: the share of the floor's mean light that every ceiling face holds at least (0.6 of it where no light falls, the whole of it under a fixture), so that an open ceiling is evenly pale, brighter round fixtures. None: the ceiling is lit as everything is. */
+  readonly bounce?: number;
+};
 
 export type Design = {
   readonly name: string;

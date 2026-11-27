@@ -1,7 +1,7 @@
 /**
  * The rooms' texture layers as the build script wrote them (`tools/textures/build.py`: `client/assets/textures/interior.layers.json` and the WebP files
  * beside it). The rooms have a set of their own, made by the same steps as the town's (`townLayers.ts`) but loaded only when a player first walks into a
- * building (`interiorTextures.ts`, read by `insideParts.ts` alone). It is self-contained: the seven layers that only the rooms use (marble, carpet, oak, dark
+ * building (`interiorTextures.ts`, read by `insideParts.ts` alone). It is self-contained: the eight layers that only the rooms use (a generated smooth paint, and marble, carpet, oak, dark
  * wood, cloth, glazed tile, cane) and the four outdoor ones the rooms use as well (brick, sidewalk concrete, stucco, painted steel), so a room samples one pair
  * of arrays. Its colour files are `size` square and its data files `dataSize` square. Babylon-free, so the builders read it as plain data.
  *

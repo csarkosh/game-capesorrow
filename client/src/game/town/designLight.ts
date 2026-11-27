@@ -175,7 +175,7 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
       let cone = 1;
       if (l.beam !== undefined) {
         // A downlight: the cosine from straight down to a power below its own height; a halo of a metre or so on what is above it.
-        cone = y < l.y - 0.2 ? Math.pow(Math.max(0, (l.y - y) / len), l.beam) : 0.9 * Math.exp(-(dx * dx + dd * dd) / 0.5);
+        cone = y < l.y - 0.2 ? Math.pow(Math.max(0, (l.y - y) / len), l.beam) : 0.9 * Math.exp(-(dx * dx + dd * dd) / 1.6);
       }
       const a = (l.power * wrap * cone * seen(i, s, d, y)) / (k * k);
       out[0] += l.tone[0] * a;
@@ -234,8 +234,20 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
     }
     return Math.max(0.2, k);
   };
+  // A pale ceiling gives light back (`Mood.bounce`): its level is a share of the floor's mean, set below once the floor has been sampled.
+  let ceilBase = 0;
+  let ceilRef = 1;
   const lit = (s: number, d: number, y: number, ns: number, nd: number, ny: number): Rgb => {
     sum(s, d, y, ns, nd, ny, out);
+    if (mood.bounce !== undefined && ny < -0.5 && ceilBase > 0) {
+      // Evenly pale: between 0.6 and 1 of the base by how much of the lights' own light falls here, with no corner or edge darkening and no contact.
+      const L = ((out[0] + out[1] + out[2]) / 3) * gain;
+      const v = ceilBase * (0.6 + 0.4 * Math.min(1, L / ceilRef));
+      scratch[0] = v * mood.ambient[0];
+      scratch[1] = v * mood.ambient[1];
+      scratch[2] = v * mood.ambient[2];
+      return scratch;
+    }
     const day = dayAt(s, d) * mood.day;
     const k = occlusion(s, d, y, ny) * contact(s, d, y);
     scratch[0] = (out[0] * gain + mood.ambient[0] * mood.ambientK + SKY[0] * day) * k;
@@ -251,6 +263,16 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
     n++;
   }
   mean = n > 0 ? mean / n : 0;
+  if (mood.bounce !== undefined) {
+    // The ceiling's own reference: the most light any lamp throws on it, over the room's ceiling on a grid of half a metre.
+    let top = 1e-4;
+    for (let b = 0; b <= D * 2; b++) for (let a = 0; a <= W * 2; a++) {
+      sum(a * 0.5, b * 0.5, (cuts[0] ?? H) - 0.2, 0, 0, -1, tmp);
+      top = Math.max(top, ((tmp[0] + tmp[1] + tmp[2]) / 3) * gain);
+    }
+    ceilRef = top;
+    ceilBase = mood.bounce * mean;
+  }
   return {
     gain,
     mean,

@@ -28,7 +28,7 @@ describe("the rooms' designs, on every test seed", () => {
         expect(d.width, label).toBeCloseTo(room.s1 - room.s0, 9);
         expect(d.depth, label).toBe(room.depth);
         expect(d.height, label).toBe(room.ceiling);
-        expect(d.legacy, label).toBe(room.name === "office");
+        expect(d.legacy, label).toBe(false);
         if (room.name === "bar" || room.name === "cafe") {
           const use = planFor(seed).uses[room.building];
           // No deeper than the building less a metre, between 8 and 15 m where it can be.
@@ -70,7 +70,8 @@ describe("the rooms' designs, on every test seed", () => {
         expect(w.onNothing, `${label}: stood on nothing`).toBe(0);
         const covered = reach.states.filter((s) => reached(w.visited, s)).length / reach.states.length;
         // 3,000 ticks of sprint is about 350 m of walking, which covers 60 percent of a room up to about 250 m2; a hotel's lobby, stair, corridor and room is more than that, and is held to half.
-        const need = d.width * d.depth > 250 ? 0.5 : 0.6;
+        // The municipal hall is open through three storeys with a gallery and offices: a walk of this length reaches a quarter of it.
+        const need = room.name === "office" ? 0.25 : d.width * d.depth > 250 ? 0.5 : 0.6;
         expect(covered, `${label}: reached ${(covered * 100).toFixed(0)} percent`).toBeGreaterThan(need);
         // Every surface that is not the ground floor is reached; a design that walls off a part of itself fails here and in the share of the floor the fill reaches.
         expect(reach.surfaces.size, `${label}: surfaces reached`).toBe(d.surfaces.length);

@@ -81,7 +81,6 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const top = multi ? cm(F + min(H, UPPER)) : H;
   const yc = multi ? F : 0;
   const b = new DesignBuilder(W, D, top, id, footOf);
-  const roll = (salt: number): number => b.roll(salt);
   const small = W < 12 || !multi;
 
   // ---- the corridor's place: `Dc` is its near edge, where a row of the walking grid runs down its middle.
@@ -117,7 +116,8 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const Rs = cm(sDoor - 0.775);
   const X = (x: number): number => cm(Rs + WALL / 2 + x);
   const Y = (y: number): number => cm(Rd0 + y);
-  const roomNo = multi ? 200 + 2 * floor(roll(1) * 14) + 1 : 100 + 2 * floor(roll(1) * 7) + 1;
+  // The rooms are numbered along the corridor from its far end: odd on the far side, even on the street's, in the 200s on floor 2 and the 100s on a motel's one floor.
+  const numBase = multi ? 200 : 100;
 
   // ---- what is kept clear on the ground floor: the street door's zone and way in, and the stair's foot and its approach.
   const zoneL = site.doorS - site.doorWidth / 2 - 0.55;
@@ -179,7 +179,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   front.sort(byStart);
   b.wall({ s0: Cs0, d0: Fw, s1: cm(Wm - 0.15), d1: Fw, thick: WALL, y0: level, y1: wallTop, mat: "painted", tint: beige, matBack: "painted", tintBack: cream, openings: front, skirt: "dark_wood" });
   if (multi) b.item("ice_machine", niche, cm(Dc - 0.55), TOWARD_BACK, [], { anywhere: true, y: yc });
-  for (let j = 0; j < doorsFront.length; j++) plate(cm((doorsFront[j] as number) + 0.8), Dc + 0.02, TOWARD_BACK, roomNo + 1 + 2 * j);
+  for (let j = 0; j < doorsFront.length; j++) plate(cm((doorsFront[j] as number) + 0.8), Dc + 0.02, TOWARD_BACK, numBase + 2 + 2 * doorsFront.filter((x) => x < (doorsFront[j] as number)).length);
 
   // Back wall of the corridor: shut doors, the player's open one, and the stair's side where the corridor ends.
   const back: WallOpening[] = [opening(sDoor, Cs0, 1.0, false)];
@@ -193,8 +193,9 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   back.sort(byStart);
   const backTo = cm(Wm - 0.15);
   b.wall({ s0: Cs0, d0: Bw, s1: backTo, d1: Bw, thick: WALL, y0: level, y1: wallTop, mat: "painted", tint: beige, matBack: "painted", tintBack: cream, openings: back, skirt: "dark_wood" });
-  for (let j = 0; j < doorsBack.length; j++) plate(cm((doorsBack[j] as number) + 0.8), Dc + CORRIDOR - 0.02, TOWARD_FRONT, roomNo - 2 - 2 * j);
-  plate(cm(sDoor + 0.8), Dc + CORRIDOR - 0.02, TOWARD_FRONT, roomNo);
+  const backNo = (s: number): number => numBase + 1 + 2 * [...doorsBack, sDoor].filter((x) => x < s).length;
+  for (const s of doorsBack) plate(cm(s + 0.8), Dc + CORRIDOR - 0.02, TOWARD_FRONT, backNo(s));
+  plate(cm(sDoor + 0.8), Dc + CORRIDOR - 0.02, TOWARD_FRONT, backNo(sDoor));
   if (multi) {
     // The corridor ends against the stair's slot: a short wall closes the 20 cm between the flight's lane and the back wall.
     b.wall({ s0: Ss, d0: cm(Dc + LANE - 0.03), s1: Ss, d1: cm(Dc + CORRIDOR + WALL), thick: 0.1, y0: F, y1: wallTop, mat: "painted", tint: cream, openings: [] });
@@ -285,11 +286,27 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
       b.light({ s: X(0.4), d: Y(yb + 0.6), y: roomY + 1.2, kind: "lamp", power: 0.35, reach: 1.4, tone: [1, 0.9, 0.7] });
     }
   }
+  // The room's small things: a luggage rack with a suitcase, a waste bin, a tray with a kettle and cups on the dresser, an armchair with a floor lamp in the corner by the window, a full-length mirror by the closet.
+  if (Ly >= 4.6) {
+    for (const dd of [yb + 2.0, yb - 1.7]) if (dd > entry + 0.4 && dd < Ly - 0.4 && b.item("luggage_rack", X(0.35), Y(dd), TOWARD_RIGHT, [], { gap: 0.05, y: roomY })) break;
+    b.item("waste_bin", X(0.25), Y(min(Ly - 0.3, yb + 1.75)), TOWARD_RIGHT, [], { gap: 0.02, y: roomY });
+    b.item("kettle_tray", X(0.3), Y(yb - 0.85), TOWARD_RIGHT, [], { anywhere: true, y: cm(roomY + 0.85) });
+    if (Ly >= 5.2 && b.item("armchair", X(0.7), cm(D - 0.6), TOWARD_RIGHT, [], { gap: 0.05, y: roomY, mat: "mustard" })) {
+      b.item("floor_lamp", X(0.3), cm(D - 1.3), TOWARD_RIGHT, [], { gap: 0.02, y: roomY });
+      b.light({ s: X(0.3), d: cm(D - 1.3), y: roomY + 1.4, kind: "lamp", power: 0.3, reach: 1.6, tone: [1, 0.85, 0.6] });
+    }
+    if (yb - 1.25 > (hasBath ? 3.2 : 1.8)) b.decorate({ kind: "mirror", s: X(0), d: Y(hasBath ? 2.7 : 1.7), y: cm(roomY + 1.0), face: TOWARD_RIGHT, w: 0.5, h: 1.7 });
+  }
   if (Ly >= 5.2) b.item("footstool", X(2.5), Y(min(yb + 1.4, Ly - 0.7)), TOWARD_LEFT, [], { gap: 0.02, y: roomY });
   // The window in the back wall (a bright pane behind a half-drawn blind) with its heater under it, and what lights the room from it.
   const winX = ROOM_W / 2 + 0.2;
   b.decorate({ kind: "lit_pane", s: X(winX), d: D, y: roomY + 1.5, face: TOWARD_FRONT, w: 1.3, h: 1.25 });
   b.item("heater", X(winX), cm(D - 0.12), TOWARD_FRONT, [], { gap: 0, y: roomY });
+  b.decorate({ kind: "curtain_pair", s: X(winX), d: D, y: cm(roomY + (UPPER - 0.2) / 2 + 0.05), face: TOWARD_FRONT, w: 1.3, h: cm(UPPER - 0.2) });
+  b.item("smoke_detector", X(ROOM_W / 2), Y(Ly * 0.5), TOWARD_RIGHT, [], { anywhere: true, y: roomY });
+  b.item("cornice", 0, 0, TOWARD_RIGHT, [X(0), X(ROOM_W), cm(Rd0 + WALL / 2), D], { anywhere: true, y: roomY });
+  b.decorate({ kind: "light_switch", s: X(0), d: Y(1.0), y: cm(roomY + 1.2), face: TOWARD_RIGHT, w: 0.08, h: 0.12 });
+  b.decorate({ kind: "fire_plan", s: X(0.25), d: Y(0.5), y: cm(roomY + 1.5), face: TOWARD_RIGHT, w: 0.3, h: 0.4 });
   b.light({ s: X(winX), d: cm(D - 0.5), y: roomY + 1.5, kind: "glow", power: 0.6, reach: 2.6, tone: [0.85, 0.92, 1] });
   b.light({ s: X(2.0), d: Y(min(2.4, Ly * 0.4)), y: roomY + 2.5, kind: "lamp", power: 0.25, reach: 2.4, tone: [1, 0.92, 0.78] });
 
@@ -492,7 +509,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     doorHead: min(2.05, H - 0.2),
     arrive: arrivalOf(W, site.doorS),
     shell: { front: wallFinish, left: wallFinish, right: wallFinish, back: wallFinish, floor: "marble_tile", ceiling: "painted" },
-    mood: { exposure: 1.4, ambient: [1, 0.95, 0.85], ambientK: 0.015, day: 0.3 },
+    mood: { exposure: 2.1, ambient: [1, 0.95, 0.85], ambientK: 0.03, day: 0.55, bounce: 1.6 },
     ...(multi ? { cuts: [cm(F - 0.15)] } : {}),
     frontCurtains: !small,
     marks,

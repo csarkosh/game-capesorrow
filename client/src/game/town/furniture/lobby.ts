@@ -126,7 +126,8 @@ export function sideTable(g: Geo, it: Item): void {
 /** A downlight let into the ceiling: a small disc of light 14 cm across in a thin ring. */
 export function downlight(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
-  const y = g.ceiling;
+  // `p0`: the height of the ceiling it is let into, where that is not the room's (the underside of a gallery).
+  const y = it.p[0] ?? g.ceiling;
   const ring = (r: number, z: number): [number, number, number][] => Array.from({ length: 8 }, (_, i) => [Math.cos((i / 8) * Math.PI * 2) * r, Math.sin((i / 8) * Math.PI * 2) * r, z]);
   L.poly(ring(0.09, y - 0.005), [0, 0, -1], "steel", { tint: [1.3, 1.3, 1.3] });
   L.poly(ring(0.07, y - 0.009), [0, 0, -1], "paper", { glow: 3.2, tint: [1, 0.95, 0.85] });

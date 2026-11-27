@@ -113,7 +113,9 @@ describe("where the local player is by the rooms", () => {
       console.log(`[inside] seed ${seed}: ${people.length} people in the hidden rooms`);
       for (const p of people) {
         const room = insideRooms(seed).find((r) => r.id === p.room)!;
-        expect(p.at.y).toBe(room.floorY);
+        // On the floor of the room, or on a floor of its own above it (the municipal hall's second floor).
+        const levels = room.design.people.map((q) => Math.round((room.floorY + (q.y ?? 0)) * 1000));
+        expect(levels, `a person at y ${p.at.y}`).toContain(Math.round(p.at.y * 1000));
       }
     }
   });

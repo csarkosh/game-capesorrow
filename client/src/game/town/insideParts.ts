@@ -185,7 +185,7 @@ function designPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
   const unit = b === undefined ? undefined : g.plan.uses[room.building]?.units.find((u) => u.id === room.unit);
   const hours = b === undefined || unit === undefined ? null : unitHours(b, unit);
   return room.design.people.map((p, i): PlacedPerson => {
-    const at = xp(xf, room.s0 + p.s, p.d, room.floorY);
+    const at = xp(xf, room.s0 + p.s, p.d, room.floorY + (p.y ?? 0));
     const way = xd(xf, p.face.s, p.face.d);
     const model = PERSON_MODELS[(i * 2 + room.building) % PERSON_MODELS.length] as PersonModel;
     return {

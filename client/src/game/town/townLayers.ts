@@ -25,7 +25,7 @@ export type TownLayerName = (typeof LAYER_NAMES)[number];
  * into a building). A builder names one by a material (`materials.ts`: `i_marble` and the rest) and it is given an index from `INTERIOR_BASE` on, which
  * is no town layer's, so that `insideLayers.ts` can tell what the rooms' geometry wants from what the town's arrays hold and lay each where it belongs.
  */
-export const INTERIOR_ONLY_NAMES = ["marble_tile", "carpet", "oak", "dark_wood", "cloth", "glazed_tile", "cane"] as const;
+export const INTERIOR_ONLY_NAMES = ["marble_tile", "carpet", "oak", "dark_wood", "cloth", "glazed_tile", "cane", "paint"] as const;
 export type InteriorOnlyName = (typeof INTERIOR_ONLY_NAMES)[number];
 
 /** Every name a surface can have for its layer: the town's, and the rooms' own. */

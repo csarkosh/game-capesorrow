@@ -152,8 +152,29 @@
       "note": "basket weave of strands about 1 cm wide: the nearest to cane webbing the catalogue has"
     },
     {
-      "name": "brick",
+      "name": "paint",
       "index": 7,
+      "id": "paint",
+      "credit": null,
+      "generated": true,
+      "tile": [
+        1.0,
+        1.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "mean": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "color": "interior.paint.color.webp",
+      "data": "interior.paint.data.webp",
+      "note": "smooth matt emulsion made by this script: a flat near-white wall with a faint roller stipple and a very fine orange peel, for a tint to colour"
+    },
+    {
+      "name": "brick",
+      "index": 8,
       "id": "Bricks097",
       "credit": "town.Bricks097",
       "generated": false,
@@ -174,7 +195,7 @@
     },
     {
       "name": "sidewalk",
-      "index": 8,
+      "index": 9,
       "id": "Concrete047A",
       "credit": "town.Concrete047A",
       "generated": false,
@@ -195,7 +216,7 @@
     },
     {
       "name": "stucco",
-      "index": 9,
+      "index": 10,
       "id": "Plaster007",
       "credit": "town.Plaster007",
       "generated": false,
@@ -216,7 +237,7 @@
     },
     {
       "name": "rust",
-      "index": 10,
+      "index": 11,
       "id": "PaintedMetal013",
       "credit": "town.PaintedMetal013",
       "generated": false,
