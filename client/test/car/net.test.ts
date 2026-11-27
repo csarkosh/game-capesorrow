@@ -327,6 +327,31 @@ describe("a joined driver's replay", () => {
     const apart = Math.hypot(naiveEnd.x - hostEnd.x, naiveEnd.z - hostEnd.z);
     expect(apart).toBeGreaterThan(0.25 * Math.abs(hostEnd.speed) * TICK_DT);
     expect(apart).toBeLessThan(2 * Math.abs(hostEnd.speed) * TICK_DT);
+
+    // Where the extra step is the only difference: both stopped 5 ticks after the snapshot's (commands 150 to 154: the drive has just begun its first bend, a gentle 0.3 lock,
+    // so the cars have not yet been carried apart by it). The replay without the debt is one step ahead of the host, along the way the host is travelling.
+    const stop = 5;
+    const early = pair().host;
+    for (let i = 0; i < empty; i++) tickPlayers(early, new Map([[1, commands[i] as InputCommand]]), WALK_RULES);
+    tickPlayers(early, new Map(), WALK_RULES);
+    const owedSnapshot = WALK.snapshot(early, empty);
+    let was = { x: 0, z: 0 };
+    for (let i = empty; i < empty + stop; i++) {
+      was = { x: (early.state.cars[0] as Car).x, z: (early.state.cars[0] as Car).z };
+      tickPlayers(early, new Map([[1, commands[i] as InputCommand]]), WALK_RULES);
+    }
+    const { predicted: late } = pair();
+    reconcile(late, { ...owedSnapshot, cars: [{ ...(owedSnapshot.cars[0] as Car), owed: 0 }] }, commands.slice(0, empty + stop));
+    const h = early.state.cars[0] as Car;
+    const l = late.state.cars[0] as Car;
+    const stepX = h.x - was.x;
+    const stepZ = h.z - was.z;
+    const oneStep = Math.hypot(stepX, stepZ);
+    expect(oneStep).toBeGreaterThan(0);
+    expect((l.x - h.x) * stepX + (l.z - h.z) * stepZ).toBeGreaterThan(0);
+    const off = Math.hypot(l.x - h.x, l.z - h.z);
+    expect(off).toBeGreaterThan(0.5 * oneStep);
+    expect(off).toBeLessThan(1.5 * oneStep);
   }, timeLimit(60_000));
 
   it("takes copies of the snapshot's car and ride, so a replay leaves the snapshot as it was", () => {
