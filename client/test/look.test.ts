@@ -47,3 +47,11 @@ describe("the look's line far off", () => {
     expect(finish.lineFarWeight).toBeLessThanOrEqual(0.7);
   });
 });
+
+describe("the look's line behind a shop's glass", () => {
+  it("is drawn on what shows through the glass, by how much of it the pane hides (the engine's `lineThrough`)", () => {
+    expect(CAPE_LOOK.finish?.lineThrough).toBe(true);
+    // The line itself is still drawn, or there is nothing to draw through.
+    expect(CAPE_LOOK.finish?.line).toBeGreaterThan(0);
+  });
+});

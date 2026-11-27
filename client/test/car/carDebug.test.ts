@@ -84,4 +84,25 @@ describe("the car's reading for measuring tools", () => {
     expect(heard.sound()).toBeNull();
     expect(carDebug({ state: () => null, pose: () => null }).sound()).toBeNull();
   });
+
+  it("answers what lies knocked down as copies, and an empty list where nothing reads it", () => {
+    const down = [{ id: 9, kind: "stop", x: 4, z: 6, angle: 1.5, age: 2 }];
+    const debug = carDebug({ state: () => null, pose: () => null, knocked: () => down });
+    const a = debug.knocked();
+    expect(a).toEqual(down);
+    (a[0] as { angle: number }).angle = 0;
+    expect(debug.knocked()[0]?.angle).toBe(1.5);
+    expect(carDebug({ state: () => null, pose: () => null }).knocked()).toEqual([]);
+  });
+
+  it("answers what was struck as copies, and nothing where nothing reads it", () => {
+    const seen = { hits: 3, marks: [{ solid: 7, x: 1, y: 2, z: 3, size: 1.1, age: 4 }], shoves: [{ solid: 9, kind: "vehicle", sx: 0.1, sz: 0, angle: 0.02, since: 0.5 }] };
+    const debug = carDebug({ state: () => null, pose: () => null, struck: () => seen });
+    const a = debug.struck();
+    expect(a).toEqual(seen);
+    (a.marks[0] as { size: number }).size = 0;
+    (a.shoves[0] as { sx: number }).sx = 9;
+    expect(debug.struck()).toEqual(seen);
+    expect(carDebug({ state: () => null, pose: () => null }).struck()).toEqual({ hits: 0, marks: [], shoves: [] });
+  });
 });

@@ -9,6 +9,9 @@
  * the whole car and takes the part of its velocity that points into the wall. A box whose top stands no more than
  * `CURB` over the ground at the circle is driven over, and so is one that begins above the car's roof.
  *
+ * What gives way is not a wall: a sign, a trash can, a cart, a mailbox on a post (`sim/town/knockables.ts`). The car is not pushed out of
+ * one; the tick its body comes to touch it, it is slowed (`knock.ts`).
+ *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only. The scratch objects are module-level and reused.
  */
 import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
@@ -19,9 +22,11 @@ import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { constrainRails } from "../town/decks.js";
 import { constrainTrestle } from "../town/railDeck.js";
 import { constrainCircle } from "../town/solid.js";
+import { knockCar } from "./knock.js";
+import { speedLimitAt } from "./limit.js";
 import { stepCar } from "./step.js";
 import { surfaceAt } from "./surface.js";
-import { AXLE_FRONT, AXLE_REAR, CAR_HEIGHT, CLIMB_MAX, GRIP, SPEED_CAP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "./tuning.js";
+import { AXLE_FRONT, AXLE_REAR, CAR_HEIGHT, CLIMB_MAX, GRIP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "./tuning.js";
 import type { Car, CarControls, CarEnv } from "./types.js";
 
 const abs = Math.abs;
@@ -79,7 +84,7 @@ export function wheelPoints(car: Car, out: Float64Array): void {
   out[7] = bz + rz * half;
 }
 
-/** What the car's step needs of the ground under it: the four wheels' mean top speed (held to `SPEED_CAP`) and grip, and the rise along its heading between its axles. */
+/** What the car's step needs of the ground under it: the four wheels' mean top speed (held to the place's limit, `speedLimitAt`) and grip, and the rise along its heading between its axles. */
 export function carEnv(world: CarWorld, car: Car): CarEnv {
   wheelPoints(car, WHEELS);
   const seed = world.forest.seed;
@@ -90,7 +95,7 @@ export function carEnv(world: CarWorld, car: Car): CarEnv {
     top += TOP_SPEED[surface] as number;
     grip += GRIP[surface] as number;
   }
-  return { top: min(top / 4, SPEED_CAP), grip: grip / 4, slope: slopeAlong(world, car) };
+  return { top: min(top / 4, speedLimitAt(seed, car.x, car.z)), grip: grip / 4, slope: slopeAlong(world, car) };
 }
 
 /** The rise along the car's heading between its axles, over the wheelbase. */
@@ -147,7 +152,7 @@ function pushBox(world: CarWorld, b: Aabb, roof: number): boolean {
 
 /** Runs the circle at `POS` through everything that keeps it out. Returns whether it moved. */
 function settleCircle(world: CarWorld, seed: number, roof: number): boolean {
-  let moved = constrainCircle(seed, POS, VEL, CAR_RADIUS);
+  let moved = constrainCircle(seed, POS, VEL, CAR_RADIUS, true);
   LOW.x = POS.x - CAR_RADIUS;
   LOW.y = POS.y - PLAYER_HALF.y - 1;
   LOW.z = POS.z - CAR_RADIUS;
@@ -175,7 +180,7 @@ function deepestWheel(world: CarWorld, car: Car): number {
   return deepest;
 }
 
-/** One whole tick of the car in the world: `carEnv`, `stepCar`, then out of every solid, held by rails, kept out of water and off ground too steep to climb, and stood on the ground. */
+/** One whole tick of the car in the world: `carEnv`, `stepCar`, then out of every solid, held by rails, kept out of water and off ground too steep to climb, slowed by what it knocks down, and stood on the ground. */
 export function driveCar(world: CarWorld, car: Car, controls: CarControls): void {
   const seed = world.forest.seed;
   const startX = car.x;
@@ -239,6 +244,9 @@ export function driveCar(world: CarWorld, car: Car, controls: CarControls): void
     car.speed = 0;
     car.slip = 0;
   }
+  // What gives way: a sign, a can, a mailbox the body has come to touch this tick takes some of the car's speed (`knock.ts`). A tick that
+  // was undone left the car where it began, touching nothing new.
+  knockCar(seed, car, startX, startZ, startHx, startHz);
   wheelPoints(car, WHEELS);
   let sum = 0;
   for (let i = 0; i < 8; i += 2) sum += heightAt(world, WHEELS[i] as number, WHEELS[i + 1] as number);

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
+import { TICK_DT } from "@csarkosh/engine/sim/constants";
 import { boxesNear } from "@csarkosh/engine/sim/boxSource";
 import type { Aabb } from "@csarkosh/engine/sim/level";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
+import { speedLimitAt } from "../../src/sim/car/limit.js";
+import { surfaceAt } from "../../src/sim/car/surface.js";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv, driveCar, wheelPoints, type CarWorld } from "../../src/sim/car/body.js";
-import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, GRIP, SPEED_CAP, TOP_SPEED, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
+import { touches } from "../../src/sim/car/knock.js";
+import { KNOCK_LOSS, knockablesFor, type KnockKind, type Knockable } from "../../src/sim/town/knockables.js";
+import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, FULL_SPEED, GRIP, OVERSPEED_DRAG, TOWN_SPEED, TOP_SPEED, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
 import { GRAVEL, PAVED, type Car, type CarControls } from "../../src/sim/car/types.js";
 import { bearingU } from "../../src/sim/town/bearings.js";
 import { deckTopAt } from "../../src/sim/town/decks.js";
@@ -157,9 +162,29 @@ describe("the car's wheels and the ground under them", () => {
       const len = Math.hypot(st.b.x - st.a.x, st.b.z - st.a.z);
       const c = carAt(anchor.x + (st.a.x + st.b.x) / 2, anchor.z + (st.a.z + st.b.z) / 2, (st.b.x - st.a.x) / len, (st.b.z - st.a.z) / len);
       const env = carEnv(world, c);
-      expect(env.top).toBe(Math.min(TOP_SPEED[surface]!, SPEED_CAP));
+      expect(env.top).toBe(Math.min(TOP_SPEED[surface]!, speedLimitAt(seed, c.x, c.z)));
       expect(env.grip).toBe(GRIP[surface]);
     }
+  }, timeLimit(300_000));
+
+  it("holds the top speed to TOWN_SPEED in the town, on pavement and on gravel", () => {
+    for (const kind of ["street", "alley"] as const) {
+      const st = plan.streets.find((s) => s.kind === kind) as NonNullable<(typeof plan.streets)[number]>;
+      const c = carAt(anchor.x + (st.a.x + st.b.x) / 2, anchor.z + (st.a.z + st.b.z) / 2, 0, 1);
+      expect(speedLimitAt(seed, c.x, c.z)).toBe(TOWN_SPEED);
+      expect(carEnv(world, c).top).toBe(TOWN_SPEED);
+    }
+  }, timeLimit(300_000));
+
+  it("lets pavement reach FULL_SPEED beyond the town's fade", () => {
+    const z = anchor.z + 5000;
+    const c = carAt(roadCenterX(seed, z), z, 0, 1);
+    expect(surfaceAt(seed, c.x, c.z)).toBe(PAVED);
+    expect(carEnv(world, c).top).toBe(FULL_SPEED);
+    // Open ground off the road is still held to its own speed.
+    const off = carAt(roadCenterX(seed, z) + 60, z, 0, 1);
+    expect(carEnv(world, off).top).toBe(Math.min(TOP_SPEED[surfaceAt(seed, off.x, off.z)]!, FULL_SPEED));
+    expect(carEnv(world, off).top).toBeLessThan(FULL_SPEED);
   }, timeLimit(300_000));
 
   it("reads the rise along its heading between its axles", () => {
@@ -664,4 +689,120 @@ describe("the car on the ground, the rails and the water", () => {
     expect(c.z).toBeGreaterThan(z + 15);
     expect(c.x).toBeCloseTo(roadCenterX(seed, z), 3);
   }, timeLimit(300_000));
+
+  /** The steering that keeps a car heading south on the highway: toward the road's centre 20 m ahead (the highway bends, so no straight line stays on it). */
+  function followHighway(c: Car): number {
+    const dx = roadCenterX(seed, c.z - 20) - c.x;
+    const dz = -20;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    // The car's right is (hz, -hx).
+    const side = (dx * c.hz - dz * c.hx) / len;
+    return Math.max(-1, Math.min(1, side * 3));
+  }
+
+  it("a car entering the town at full speed is slowed, never stopped", () => {
+    // The town's last block to the north, then the highway 400 m beyond it, driven at full throttle toward the town.
+    let last = -Infinity;
+    for (const b of plan.blocks) if (b.district !== "outskirts") for (const p of b.polygon) last = Math.max(last, p.z);
+    const z0 = last + 400;
+    const c = carAt(roadCenterX(seed, z0), z0, 0, -1, FULL_SPEED);
+    expect(speedLimitAt(seed, c.x, c.z)).toBe(FULL_SPEED);
+    const speeds = [c.speed];
+    let inside = -1;
+    for (let i = 0; i < 3200 && (inside < 0 || i < inside + 120); i++) {
+      driveCar(world, c, { throttle: 1, turn: followHighway(c), handbrake: false });
+      speeds.push(c.speed);
+      if (inside < 0 && speedLimitAt(seed, c.x, c.z) === TOWN_SPEED) inside = i;
+    }
+    // Taken a second apart it only falls while it is between the two speeds (on either plateau the hill moves it by a few hundredths either way).
+    for (let i = 60; i < speeds.length; i += 60) {
+      if ((speeds[i - 60] as number) > TOWN_SPEED + 0.2 && (speeds[i - 60] as number) < FULL_SPEED - 0.1) expect(speeds[i] as number).toBeLessThan(speeds[i - 60] as number);
+    }
+    // It did come into a block, and ran on in it.
+    expect(inside).toBeGreaterThan(0);
+    expect(speeds.length).toBeGreaterThan(inside + 120);
+    for (let i = 1; i < speeds.length; i++) {
+      const was = speeds[i - 1] as number;
+      const now = speeds[i] as number;
+      // Never faster than a tick before, never slower than the drag over the top speed takes in a tick, and never below the town's speed.
+      // The hill under it lets it gain or lose a few hundredths of a m/s now and then: it never gains more than that.
+      expect(now).toBeLessThanOrEqual(was + 0.01);
+      expect(was - now).toBeLessThanOrEqual(OVERSPEED_DRAG * TICK_DT + 1e-9);
+      expect(now).toBeGreaterThanOrEqual(TOWN_SPEED - 0.2);
+    }
+    // Held to the town's speed once inside a block.
+    expect(Math.abs((speeds[speeds.length - 1] as number) - TOWN_SPEED)).toBeLessThanOrEqual(0.2);
+    expect(speeds[0]).toBe(FULL_SPEED);
+  }, timeLimit(300_000));
+});
+
+describe("the car and what gives way, in the town", () => {
+  const knockables = knockablesFor(seed).list;
+  const DIRS: [number, number][] = [[1, 0], [0, 1], [-1, 0], [0, -1], [0.6, 0.8], [-0.6, 0.8], [0.6, -0.8], [-0.6, -0.8]];
+
+  /** Whether the car's three circles stand in nothing solid to a car at (x, z) heading (hx, hz). */
+  function free(x: number, z: number, hx: number, hz: number): boolean {
+    for (const along of CAR_CIRCLES) {
+      const pos = { x: x + hx * along, y: 0, z: z + hz * along };
+      if (constrainCircle(seed, pos, { x: 0, y: 0, z: 0 }, CAR_RADIUS, true)) return false;
+    }
+    return true;
+  }
+
+  /** A knockable of `kind` with a straight run through it that nothing solid stands in, and the heading of the run. */
+  function approach(kind: KnockKind): { k: Knockable; hx: number; hz: number } {
+    for (const k of knockables) {
+      if (k.kind !== kind) continue;
+      for (const [hx, hz] of DIRS) {
+        let clear = true;
+        for (let d = -7; d <= 7 && clear; d += 0.5) clear = free(k.x + hx * d, k.z + hz * d, hx, hz);
+        // And over no other knockable on the way, so the one hit is this one's.
+        if (clear && !knockables.some((o) => o.id !== k.id && Math.hypot(o.x - k.x, o.z - k.z) < 9)) return { k, hx, hz };
+      }
+    }
+    throw new Error(`no ${kind} with a free run through it`);
+  }
+
+  for (const kind of ["stop", "cart"] as const) {
+    it(`drives through a ${kind}: it is not stopped or turned aside, and it is slowed once, by the ${kind}'s share`, () => {
+      const { k, hx, hz } = approach(kind);
+      const c = carAt(k.x - hx * 6, k.z - hz * 6, hx, hz, 6);
+      const [share, flat] = KNOCK_LOSS[kind];
+      let worst = 0;
+      let before = 0;
+      let hitTicks = 0;
+      for (let i = 0; i < 150; i++) {
+        const was = Math.hypot(c.speed, c.slip);
+        const touched = touches(k, c.x, c.z, c.hx, c.hz);
+        driveCar(world, c, full);
+        const lost = was - Math.hypot(c.speed, c.slip);
+        if (!touched && touches(k, c.x, c.z, c.hx, c.hz)) {
+          hitTicks++;
+          before = was;
+        }
+        worst = Math.max(worst, lost);
+      }
+      // Past it, on the line it came in on.
+      const along = (c.x - k.x) * hx + (c.z - k.z) * hz;
+      const across = (c.x - k.x) * hz - (c.z - k.z) * hx;
+      expect(along).toBeGreaterThan(3);
+      expect(Math.abs(across)).toBeLessThan(0.5);
+      expect(c.hx * hx + c.hz * hz).toBeGreaterThan(0.99);
+      // One hit, and its tick is the hardest of the drive: the share and the flat loss, give or take what the engine and the ground did in that tick.
+      expect(hitTicks).toBe(1);
+      expect(before).toBeGreaterThan(2);
+      expect(worst).toBeGreaterThan(before * share + flat - 0.25);
+      expect(worst).toBeLessThan(before * share + flat + 0.25);
+    }, timeLimit(120_000));
+  }
+
+  it("is still stopped by what does not give way: the same drive at a utility pole ends against it", () => {
+    const pole = plan.props.poles[0];
+    expect(pole).toBeDefined();
+    // The poles' boxes are in the car's solids as they were.
+    const box = plan.props.solids.find((b) => b.hu === 0.21 && b.hv === 0.21);
+    expect(box).toBeDefined();
+    const pos = { x: anchor.x + (box as { cx: number }).cx + 0.02, y: 0, z: anchor.z + (box as { cz: number }).cz };
+    expect(constrainCircle(seed, pos, { x: 0, y: 0, z: 0 }, CAR_RADIUS, true)).toBe(true);
+  }, timeLimit(120_000));
 });

@@ -26,7 +26,11 @@ near the office. Walk up to a door and click to get in; the first to the car sit
 a seat beside. Drive with W, A, S and D (forward, left, back for brake and reverse, right) and hold Space for the
 handbrake, which lets the tail go: pull it into a turn to throw the car round, and let go of the wheel to bring it
 straight. F turns the lights on and off, C looks behind while it is held, and V switches a cinematic view of the drive
-on and off. It will not go faster than 10 m/s yet. Click again to get out once it is
+on and off. Signs, trash cans, benches, pallets and mailboxes give way when the car is driven into them: they slow it, fall over,
+and stand back up a little later. A building, a parked vehicle, a dumpster or a utility pole stops it; a building is
+left with a mark where it was struck, and a parked vehicle or a dumpster is marked, rocked and shoved a little, for a
+while. It will not go faster than
+10 m/s yet. Click again to get out once it is
 nearly stopped and there is room beside it on ground at the car's level; the car can only be got into when it is nearly
 stopped too. Typing `/carhome` in the command bar puts the car back at the office (only
 the host can). That is all there is to do yet. Two browser tabs can join each other through the dev server.

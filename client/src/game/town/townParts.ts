@@ -60,7 +60,13 @@ import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, townSurfacePlugin, writeDoors, writeLamps, type TownReady } from "./townMaterial.js";
+import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady } from "./townMaterial.js";
+import { fallenBy, knockMoves, newKnocked, stepKnocked } from "./knocked.js";
+import { MARKS_MOST, markMatrices, newStruck, rockOf, shoveMove, stepStruck, struckMoves, struckSolids } from "./struck.js";
+import { createDamageParts, type DamageParts } from "./damageParts.js";
+import type { CarPose } from "../car/carPose.js";
+import type { Vehicle } from "../../sim/town/types.js";
+import { knockablesFor } from "../../sim/town/knockables.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
 import { daylightAt, litGainAt } from "../../look.js";
@@ -216,6 +222,51 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   };
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
   let shownHour = 12;
+  // What the cars have knocked down and is not standing now (`knocked.ts`), what they have struck that does not give way (`struck.ts`: the marks left
+  // and the things shoved), the cars both are worked out from, and whether anything was written moved last frame.
+  const knocked = newKnocked();
+  const struck = newStruck();
+  const knockCars: CarPose[] = [];
+  const knockList: KnockMove[] = [];
+  let knockedDown = false;
+  // The marks of damage, drawn (`damageParts.ts`), and the parked vehicles drawn moved as models last frame, to be put back when their shove is over.
+  let damage: DamageParts | null = null;
+  const markBuffer = new Float32Array(MARKS_MOST * 16);
+  const shoveMatrix = new Float32Array(16);
+  let movedModels: Vehicle[] = [];
+  let movedNow: Vehicle[] = [];
+  /** The things the frame's cars run into go down or are shoved and marked, the ones whose time is up are put back, and the vertex stage, the vehicles' models and the marks are told. */
+  const layDown = (cars: readonly Car[], dt: number): void => {
+    if (ready === null || drawnGround === null || car === null) return;
+    knockCars.length = 0;
+    for (const c of cars) {
+      const p = car.pose(c.id);
+      if (p !== null) knockCars.push(p);
+    }
+    const ground = drawnGround;
+    const solids = struckSolids(worldSeed);
+    stepKnocked(knocked, knockablesFor(worldSeed), knockCars, dt, (k) => ground(k.x, k.z));
+    stepStruck(struck, solids, knockCars, dt);
+    // A parked vehicle that is a model is moved by its own matrix; one that is part of the town's batches, and a dumpster, by the vertex stage.
+    movedNow.length = 0;
+    for (const s of struck.shoves) {
+      const solid = solids[s.solid];
+      if (solid === undefined || solid.vehicle === null || vehicles === null) continue;
+      vehicles.moved(solid.vehicle, knockMatrix(shoveMove(s, solid), shoveMatrix));
+      movedNow.push(solid.vehicle);
+    }
+    for (const v of movedModels) if (!movedNow.includes(v)) vehicles?.moved(v, null);
+    const spare = movedModels;
+    movedModels = movedNow;
+    movedNow = spare;
+    damage?.frame(markBuffer, markMatrices(struck, solids, markBuffer));
+    const moving = knocked.list.length > 0 || struck.shoves.length > 0;
+    if (!moving && !knockedDown) return;
+    knockList.length = 0;
+    writeKnocked(ready, struckMoves(struck, solids, knockMoves(knocked, knockList)));
+    knockedDown = moving;
+    for (const m of textured) markMaterialUboDirty(m);
+  };
   let ready: TownReady | null = null;
   // Every lamp the town has (once the town's plan is known), the nearest lit ones to the eye as the materials were last written, and where the eye and the hour then were.
   let lamps: readonly Lamp[] = [];
@@ -227,7 +278,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
-    // The shops' glass reads the frame the opaque draws left, to show each room out of focus (`townBlur.ts`): the medium tier keeps it too.
+    // The shops' glass reads the frame the opaque draws left, to show each room out of focus (`townBlur.ts`): the medium and low tiers keep it too (the low tier's scene pass is broken by the engine's renderer, `lite/renderer.ts`).
     keepsFrame: true,
 
     // The renderer hands the hour of day with the view each frame (the console's `time`): the town's shaders and its people follow it.
@@ -326,9 +377,18 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
       const glassMaterial = (): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
-        // Where the frame behind the glass is kept, a shop's pane reads its room from it, out of focus (`townBlur.ts`).
-        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, readied, low)] : []), ...(through && behind !== undefined ? [townBlurPlugin(behind, shared)] : []), air()];
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, readied, low)] : []), air()];
         if (textures !== null) textured.push(m);
+        return m;
+      };
+      // The glass of a shop's pane where the frame behind the glass is kept (`townBlur.ts`): the same, opaque. It reads its room from the kept frame, out of focus, and writes the whole pixel, its own depth,
+      // and in the frame's alpha how much of the lines behind it it hides, which the engine's line reads (`look.ts`, `lineThrough`).
+      const throughMaterial = (): PbrMaterialProps | null => {
+        if (!through || behind === undefined || textures === null) return null;
+        const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, usePhysicalLightFalloff: true });
+        m.plugins = [baseColourPlugin(), townSurfacePlugin(textures, readied, low), townBlurPlugin(behind, shared, low), air()];
+        orders.take(m);
+        textured.push(m);
         return m;
       };
       // The lettering's atlas (`signAtlas.ts`): empty until it is painted, as the layers' arrays are until they land.
@@ -352,7 +412,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         if (textures !== null) textured.push(m);
         return m;
       };
-      const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
+      const seeThrough = wearsTextures ? { glass: glassMaterial(), through: throughMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
       // The railroad's own materials (its draw order is its own, after the town's), reading the same texture layers and wear.
       const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       worldSeed = forest.seed;
@@ -370,7 +430,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       }
 
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
-      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null) });
+      damage = createDamageParts({ engine, scene, air, ahead });
+      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
       const plan = ground.plan;
       // The rooms' own textures are not made here: `insideParts.ts` asks for them (and so for this material, which reads them) when a player first walks into a designed room.
       // The material has the town's uniforms (the hour, the glow, the lamps and doors, shared by reference) and a ready flag of its own.
@@ -453,7 +514,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
-          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null)) || (batch.layer === "shade" && (seeThrough === null || seeThrough.shade === null))) {
+          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "through" && (seeThrough === null || seeThrough.through === null)) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null)) || (batch.layer === "shade" && (seeThrough === null || seeThrough.shade === null))) {
             left--;
             continue;
           }
@@ -462,15 +523,20 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           if (batch.layer === "shade") {
             mesh.material = (seeThrough as NonNullable<typeof seeThrough>).shade as PbrMaterialProps;
             mesh.renderOrder = SHADE_ORDER;
+          } else if (batch.layer === "through") {
+            // A marked pane is an opaque draw, first in the half of the frame after the break: it writes its own depth and the whole pixel (`townBlur.ts`).
+            const own = (seeThrough as NonNullable<typeof seeThrough>).through as PbrMaterialProps;
+            mesh.material = own;
+            mesh.renderOrder = orders.of(own) ?? DRAW_ORDER.scenery;
+            mesh.afterBreak = true;
           } else if (batch.layer === "glass" || batch.layer === "sign" || batch.layer === "haze") {
             // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
             const set = seeThrough as NonNullable<typeof seeThrough>;
             // A room's haze is the glass's material (its sheets say what they are), drawn before the lettering and the glass, which are laid over it.
             mesh.material = batch.layer === "sign" ? (set.sign as PbrMaterialProps) : set.glass;
-            // Where a pane reads the frame behind it, it is drawn in the half after the break and writes its whole pixel: the lettering is then
-            // drawn after the glass, not before it.
+            // Where a pane reads the frame behind it, it is drawn in the half after the break and writes its whole pixel (its layer above): the lettering is
+            // then drawn after the glass, not before it, and stands in front of the pane's depth.
             mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : batch.layer === "sign" ? (through ? LETTERING_OVER_GLASS : SEE_THROUGH_ORDER.lettering) : HAZE_ORDER;
-            if (through && batch.layer === "glass") mesh.afterBreak = true;
           } else {
             mesh.material = town[batch.layer];
             mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
@@ -504,6 +570,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const me = state.players.get(localId) as { ride?: Ride } | undefined;
       const driven = me?.ride?.phase === SEATED && me.ride.seat === 0 ? me.ride.car : 0;
       car?.frame((state as { cars?: readonly Car[] }).cars ?? NO_CARS, state.tick, alpha, dt, driven);
+      layDown(held.cars, dt);
       // Where the local player is by the rooms: the room is built or let go, the people and the town follow.
       const by = (me as { inside?: Inside } | undefined)?.inside;
       inside?.frame(by);
@@ -645,6 +712,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       shownSeat = 0;
       viewKeys.dispose();
       cineOn = false;
+      knocked.list.length = 0;
+      struck.marks.length = 0;
+      struck.shoves.length = 0;
+      struck.seen.length = 0;
+      movedModels.length = 0;
+      damage?.dispose();
+      damage = null;
+      knockedDown = false;
       drawnGround = null;
       held.cars = NO_CARS;
       held.players = new Map();

@@ -11,7 +11,24 @@
  */
 import { NO_LAYER, layerIndex, townLayer, type LayerName } from "./townLayers.js";
 import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Cut, type Fx, type Surface, type WearKind } from "./townSurface.js";
-import { DOOR_ALPHA, paintAlpha } from "./paint.js";
+import { DOOR_ALPHA, KNOCK_ALPHA, paintAlpha } from "./paint.js";
+
+/** True while a thing a car knocks down is being laid (`withKnock`), in whichever builders its pieces land. */
+let knocking = false;
+
+/**
+ * Runs `fn` with every polygon it lays, in any builder, tagged as part of a thing a car knocks down (`sim/town/knockables.ts`): its corners carry
+ * `KNOCK_ALPHA` as their colour's alpha, which the town's vertex stage reads as "falls with what stands here". Puts back the tag it found.
+ */
+export function withKnock<T>(fn: () => T): T {
+  const before = knocking;
+  knocking = true;
+  try {
+    return fn();
+  } finally {
+    knocking = before;
+  }
+}
 import { FALLBACK, currentMat, isMat, matLook, matSurface, unnamed, type MatRef } from "./materials.js";
 
 export type Vec3 = readonly [number, number, number];
@@ -243,15 +260,24 @@ export class MeshBuilder {
   }
   /** True while the leaf of a door that can open is being laid (`withLeaf`): its corners carry `DOOR_ALPHA` as their colour's alpha, which the town's vertex stage reads as "turns with the door". */
   private leaf = false;
+  /**
+   * Where the panes marked `through` (`PaneLook.through`) are laid in place of here: the builder of their own layer, which the glass's builder of a cell is given where the renderer
+   * draws them opaque (`townBlur.ts`). None: they are laid here, with the rest of the glass.
+   */
+  marked: MeshBuilder | null = null;
 
-  /** Runs `fn` with every polygon it lays tagged as a part of a door's leaf (`openDoors.ts`), and puts back the tag it found. */
+  /** Runs `fn` with every polygon it lays tagged as a part of a door's leaf (`openDoors.ts`), and puts back the tag it found. The builder the marked panes go to has it too. */
   withLeaf<T>(fn: () => T): T {
     const before = this.leaf;
+    const mark = this.marked;
+    const markBefore = mark?.leaf ?? false;
     this.leaf = true;
+    if (mark !== null) mark.leaf = true;
     try {
       return fn();
     } finally {
       this.leaf = before;
+      if (mark !== null) mark.leaf = markBefore;
     }
   }
   /** True while the pieces of a polygon cut along its shade's planes are being laid (`poly`): a piece is not cut again. */
@@ -378,7 +404,7 @@ export class MeshBuilder {
       this.pos.push3(p[0], p[1], p[2]);
       if (fx?.normal === undefined) this.nor.push3(nx, ny, nz);
       else this.nor.push3(fx.normal[0], fx.normal[1], fx.normal[2]);
-      this.col.push4(colourHere[0], colourHere[1], colourHere[2], this.leaf ? DOOR_ALPHA : fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
+      this.col.push4(colourHere[0], colourHere[1], colourHere[2], this.leaf ? DOOR_ALPHA : knocking ? KNOCK_ALPHA : fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
       if (basis === null || surface === undefined) {
         const cuv = fx?.uvs?.[pointIndex];
         this.uv.push2(cuv?.[0] ?? 0, cuv?.[1] ?? 0);
@@ -421,7 +447,7 @@ export class MeshBuilder {
       const uv = uvs[i] as readonly [number, number];
       this.pos.push3(p[0], p[1], p[2]);
       this.nor.push3(hint[0], hint[1], hint[2]);
-      this.col.push4(colour[0], colour[1], colour[2], 1);
+      this.col.push4(colour[0], colour[1], colour[2], knocking ? KNOCK_ALPHA : 1);
       this.uv.push2(uv[0], uv[1]);
       this.srf.push12(NO_LAYER, fx.dirt ?? 0, fx.seed ?? 0, glow, 1, 1, 1, fx.clear ?? 0, fx.size?.[0] ?? 0, fx.size?.[1] ?? 0, fx.tilt?.[0] ?? 0, fx.rank ?? fx.tilt?.[1] ?? 0);
     });
@@ -485,7 +511,7 @@ export class MeshBuilder {
     points.forEach((p, i) => {
       this.pos.push3(p[0], p[1], p[2]);
       this.nor.push3(nx * k, ny * k, nz * k);
-      this.col.push4(tint[0], tint[1], tint[2], this.leaf ? DOOR_ALPHA : fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
+      this.col.push4(tint[0], tint[1], tint[2], this.leaf ? DOOR_ALPHA : knocking ? KNOCK_ALPHA : fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
       const uv = uvs[i] as readonly [number, number];
       this.uv.push2(uv[0], uv[1]);
       this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? this.glowBase, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, (fx?.glow ?? this.glowBase) > 0 ? this.hoursCode : 0, 0);
@@ -537,7 +563,7 @@ export class MeshBuilder {
         const c = colourAt(i, j, p);
         this.pos.push3(p[0], p[1], p[2]);
         this.nor.push3(nx, ny, nz);
-        this.col.push4(c[0], c[1], c[2], 1);
+        this.col.push4(c[0], c[1], c[2], knocking ? KNOCK_ALPHA : 1);
         if (basis === null) {
           this.uv.push2(0, 0);
           this.srf.push12(NO_LAYER, 0, 0, glow, 1, 1, 1, 0, 0, 0, 0, 0);
@@ -752,7 +778,7 @@ export class MeshBuilder {
         if (l > 1e-12) this.nor.push3((nor[k] as number) / l, (nor[k + 1] as number) / l, (nor[k + 2] as number) / l);
         else this.nor.push3(0, 1, 0);
         const c = typeof v.colour === "function" ? v.colour(i, j) : v.colour;
-        this.col.push4(c[0], c[1], c[2], 1);
+        this.col.push4(c[0], c[1], c[2], knocking ? KNOCK_ALPHA : 1);
         if (auto !== null) {
           // By the grid's own lines: the metres run along its row and down its column to this corner (so the texture is at true scale and
           // follows the body round), from a place of the body's own.

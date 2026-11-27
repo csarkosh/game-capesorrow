@@ -8,7 +8,9 @@ import type { AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
 import type { WalkClient, WalkHost, WalkRenderer } from "../../game.js";
 import type { WalkHud } from "../../hud.js";
 import { returnCar } from "../../sim/car/rules.js";
+import { KNOCK_FROM, touching } from "../../sim/car/knock.js";
 import { surfaceAt } from "../../sim/car/surface.js";
+import { knockablesFor } from "../../sim/town/knockables.js";
 import { boardSeat, slowForDoors } from "../../sim/car/seats.js";
 import { INTERACT_BIT } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
@@ -96,6 +98,11 @@ export function lineFor(w: ClickWatch, now: number, line: string | null): string
   return line === GET_OUT && now < w.until ? NO_ROOM_TO_GET_OUT : line;
 }
 
+/** How loud a thing that gives way is when a car going `speed` (m/s over the ground) knocks it down, 0 to 1: a clatter at a crawl, most of a thud at 20 m/s. */
+export function knockLoudness(speed: number): number {
+  return Math.min(1, 0.2 + Math.max(speed, 0) / 30);
+}
+
 /** The line the door shows now, for a measuring tool (`__capeCar.prompt()`). */
 let shown: string | null = null;
 export function promptShown(): string | null {
@@ -139,7 +146,11 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   let lastPhase = -1;
   const feed = { speed: 0, throttle: 0, surface: 0 as Surface, distance: 0, driven: false, slip: 0 };
   const now_: CarMark = { tick: 0, x: 0, z: 0, speed: 0 };
+  // The things that give way (`sim/town/knockables.ts`) that some car's body touched at the last frame, and at this one: one newly touched by a moving car is a hit, and is heard.
+  let touched = new Set<number>();
+  let touchedNow = new Set<number>();
   const forget = (): void => {
+    touched.clear();
     marks.clear();
     lastPhase = -1;
     voiceOn = false;
@@ -158,8 +169,18 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
     const list = state.cars;
     let nearest: Car | null = null;
     let best = HEARD_WITHIN;
+    // The town's knockables are read only where there is a car to touch them.
+    const knockables = list.length === 0 ? null : knockablesFor(world === undefined ? state.rngSeed : world.forest.seed);
+    touchedNow.clear();
     for (let i = 0; i < list.length; i++) {
       const c = list[i] as Car;
+      const fast = Math.hypot(c.speed, c.slip);
+      if (knockables !== null) touching(knockables, c.x, c.z, c.hx, c.hz, (k) => {
+        touchedNow.add(k.id);
+        if (touched.has(k.id) || fast < KNOCK_FROM || self === undefined) return;
+        const heard = earshot(Math.hypot(k.x - self.pos.x, k.z - self.pos.z));
+        if (heard > 0) audio.thud(knockLoudness(fast) * heard);
+      });
       // The speed over the ground, along the heading and sliding across it: a slide takes speed from along the heading and is no hit.
       const over = Math.hypot(c.speed, c.slip);
       if (self !== undefined && (c.seats[0] !== 0 || over > 0.05)) {
@@ -188,6 +209,9 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       m.z = c.z;
       m.speed = over;
     }
+    const spare = touched;
+    touched = touchedNow;
+    touchedNow = spare;
     if (marks.size > list.length) for (const id of marks.keys()) if (carOf(list, id) === undefined) marks.delete(id);
     if (nearest === null) {
       voiceOn = false;

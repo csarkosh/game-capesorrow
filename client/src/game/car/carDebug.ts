@@ -24,6 +24,10 @@ export type CarDebug = {
   lamp(): LampSeen | null;
   /** What the car's voice was last fed (the note, the levels of the engine and the tyres, the surface under the nearest car and its distance from the listener), or null when no car was within earshot. */
   sound(): { hz: number; engine: number; tyres: number; surface: number; distance: number } | null;
+  /** The things the cars have knocked down that this screen draws lying now (`game/town/knocked.ts`): each one's id among the town's knockables, its kind, where it stands, the angle it has fallen by (radians) and how long ago it was hit (seconds). */
+  knocked(): { id: number; kind: string; x: number; z: number; angle: number; age: number }[];
+  /** What the cars have struck that does not give way, as this screen draws it (`game/town/struck.ts`): the blows so far, the marks of damage that show now, and the dumpsters and parked vehicles that stand shoved (how far, the angle each rocks by now, and how long since its last blow). */
+  struck(): { hits: number; marks: { solid: number; x: number; y: number; z: number; size: number; age: number }[]; shoves: { solid: number; kind: string; sx: number; sz: number; angle: number; since: number }[] };
 };
 
 /** What the answers are built from: the state as the last frame had it, and the poses the car's part holds. */
@@ -38,6 +42,10 @@ export type CarDebugSource = {
   lamp?(): LampSeen | null;
   /** What the voice was last fed. */
   sound?(): { hz: number; engine: number; tyres: number; surface: number; distance: number } | null;
+  /** The things that lie knocked down now. */
+  knocked?(): { id: number; kind: string; x: number; z: number; angle: number; age: number }[];
+  /** What has been struck and shows it now. */
+  struck?(): ReturnType<CarDebug["struck"]>;
 };
 
 export function carDebug(source: CarDebugSource): CarDebug {
@@ -72,6 +80,11 @@ export function carDebug(source: CarDebugSource): CarDebug {
     lamp() {
       const l = source.lamp?.() ?? null;
       return l === null ? null : { ...l };
+    },
+    knocked: () => (source.knocked?.() ?? []).map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: d.angle, age: d.age })),
+    struck() {
+      const q = source.struck?.() ?? { hits: 0, marks: [], shoves: [] };
+      return { hits: q.hits, marks: q.marks.map((m) => ({ ...m })), shoves: q.shoves.map((v) => ({ ...v })) };
     },
     doors(id) {
       const car = source.state()?.cars.find((c) => c.id === id);

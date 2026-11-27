@@ -26,7 +26,7 @@ import { constrainTrestle } from "./railDeck.js";
 import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
-import { constrainProps, propSolids } from "./propSolid.js";
+import { carPropSolids, constrainProps, propSolids } from "./propSolid.js";
 
 const abs = Math.abs;
 const min = Math.min;
@@ -250,11 +250,12 @@ export function townConstrain(world: { readonly forest: { readonly seed: number 
 /**
  * A circle of `radius` moved out of every building and prop its box touches: every cell the circle reaches is read, not
  * the one under its centre, so a circle wider than the grid's margin still meets what it overlaps. Passes, as `townConstrain`'s.
- * Returns whether it moved.
+ * `car`: the circle is a car's, which the things it knocks down do not hold out. Returns whether it moved.
  */
-export function constrainCircle(worldSeed: number, pos: Point, vel: Point, radius: number): boolean {
+export function constrainCircle(worldSeed: number, pos: Point, vel: Point, radius: number, car = false): boolean {
   const solids = townSolids(worldSeed);
-  const props = propSolids(worldSeed).full;
+  // A car is not held out of what it knocks down (`knockables.ts`).
+  const props = (car ? carPropSolids(worldSeed) : propSolids(worldSeed)).full;
   let any = false;
   for (let pass = 0; pass < SOLID_PASSES; pass++) {
     // The props first, then the buildings, as `townConstrain` does: where the two wedge a circle the buildings keep it out.

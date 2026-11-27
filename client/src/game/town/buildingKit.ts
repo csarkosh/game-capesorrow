@@ -160,25 +160,38 @@ export const GLASS_CLEAR = 0.66;
 
 /** What a pane's glass is like: how grimy (0 to 1) and how far, at most, its reflecting normal is turned from the wall's (radians; old glass more). */
 /** A pane's own look. `through`: what is behind it is read from the kept frame and shown out of focus (`townBlur.ts`): a shop's room. */
-export type PaneLook = { readonly dirt?: number; readonly tilt?: number; readonly through?: boolean };
+export type PaneLook = { readonly dirt?: number; readonly tilt?: number; readonly through?: boolean; readonly open?: boolean };
 
 /** What is added to the seed of a pane that is seen through out of focus: a pane's own seed is 0 to 1, a haze sheet's 2 (`roomHaze.ts`), so 4 to 5 is such a pane (`townMaterial.ts` reads it). */
 export const THROUGH_SEED = 4;
 
 /**
+ * What is added to the seed of the pane in an open doorway (`PaneLook.open`): a pane that is seen through and is NOT glass. It is marked as the others are, so it reads the room from the kept frame out of focus
+ * by how far behind it each place is, writes its own depth, and hides the lines behind it by how soft it read them; but it has no film, no dirt, no streaks and no reflection (`townAlphaCode` makes
+ * it nothing of its own). Its seed is 6 to 7, over a glazed pane's 4 to 5.
+ */
+export const OPEN_SEED = 6;
+/** How far behind the inner face of a door's shut leaf (metres) the pane of its doorway stands: behind the inner plate of the pull (3 cm), so the whole leaf is in front of it. */
+export const OPEN_BEHIND = 0.05;
+
+/**
  * A pane of glass in the blended layer: on the wall between two stations and heights, `off` off its face. Each pane has a turn of its own
- * (from where it is, so the same pane is the same every build): neighbouring panes reflect a little differently, as old glass does.
+ * (from where it is, so the same pane is the same every build): neighbouring panes reflect a little differently, as old glass does. A pane marked
+ * `through` goes to the builder the glass's is given for such panes (`MeshBuilder.marked`: the opaque layer of its own), and to the glass's where it has none.
  */
 export function pane(glass: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, clear = GLASS_CLEAR, tint: Rgb = GLASS_TINT, look: PaneLook = {}, inward = false): void {
   const key = Math.round(w.ax * 7 + w.az * 13 + s0 * 101 + y0 * 211 + (s1 - s0) * 31);
-  const amp = look.tilt ?? 0.03;
+  const open = look.open === true;
+  const amp = open ? 0 : look.tilt ?? 0.03;
   const seed = hash01(key, 8801);
+  // The opening of a door that swings is no glass: it has the marked pane's way of reading the room and none of the glass's look, and where the frame is not kept (no marked builder) it has none at all.
+  if (open && glass.marked === null) return;
   const fx: Fx = {
-    clear, dirt: look.dirt ?? 0.3, seed: look.through === true ? seed + THROUGH_SEED : seed, size: [y1 - y0, s1 - s0],
+    clear: open ? 1 : clear, dirt: open ? 0 : look.dirt ?? 0.3, seed: open ? seed + OPEN_SEED : look.through === true ? seed + THROUGH_SEED : seed, size: [y1 - y0, s1 - s0],
     tilt: [(hash01(key, 8802) * 2 - 1) * amp, (hash01(key, 8803) * 2 - 1) * amp],
     uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
   };
-  wquad(glass, w, s0, y0, s1, y1, off, tint, undefined, fx, inward);
+  wquad((look.through === true || open) && glass.marked !== null ? glass.marked : glass, w, s0, y0, s1, y1, off, tint, undefined, fx, inward);
 }
 
 /**
