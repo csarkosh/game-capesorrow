@@ -13,8 +13,9 @@ export const AXLE_FRONT = 1.434, AXLE_REAR = -1.218, WHEELBASE = 2.652, TRACK = 
 /** Top speed (m/s) and sideways grip (m/s²), each by `Surface`. */
 export const TOP_SPEED: readonly number[] = [30, 20, 12, 6];
 export const GRIP: readonly number[] = [8.3, 5.4, 4.9, 3.9];
-/** The most speed (m/s) the car is let reach on any surface: the speed the world is known to keep up with, apart from the surfaces' own speeds. Raise it when the world is made ahead of travel. */
-export const SPEED_CAP = 10;
+/** The most speed (m/s) the car is let reach, by place (`limit.ts`): `TOWN_SPEED` where the town covers the ground, `FULL_SPEED` past the town's last blocks, with the cover's own fade between. The limit is the speed the world is known to keep up with, apart from the surfaces' own speeds; raise `FULL_SPEED` as the world is made to keep up. */
+export const TOWN_SPEED = 10;
+export const FULL_SPEED = 15;
 
 /** Along the heading, m/s²: the engine at full throttle from rest, the brake, rolling resistance, the handbrake's addition, and the drag on a car over its surface's top speed. */
 export const ACCEL = 6.7, BRAKE = 9, COAST = 1.2, HANDBRAKE = 4.5, OVERSPEED_DRAG = 4;
