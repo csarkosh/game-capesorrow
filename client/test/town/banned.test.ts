@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -13,18 +14,22 @@ function files(dir: string): string[] {
   return out;
 }
 
-const DIR = fileURLToPath(new URL("../../src/sim/town/", import.meta.url));
+/** The whole simulation folder: the town and the car, and anything added beside them. */
+const DIR = fileURLToPath(new URL("../../src/sim/", import.meta.url));
+const TOWN = DIR + "town/";
 
 /** Code with its comments taken out (and its strings left: a banned call is not one there). */
 const code = (path: string): string => readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const ALLOWED_MATH = ["floor", "round", "abs", "min", "max", "sqrt", "imul", "PI"];
 
-describe("the town module's determinism rules", () => {
+describe("the simulation's determinism rules", () => {
   const all = files(DIR);
 
-  it("reads some files", () => {
+  it("reads some files, the town's and the car's among them", () => {
     expect(all.length).toBeGreaterThan(10);
+    expect(all.some((p) => p.startsWith(TOWN))).toBe(true);
+    expect(all.some((p) => p.startsWith(DIR + "car/"))).toBe(true);
   });
 
   it("has no banned call, no `**`, no Date, no Set, no Map but a cache, no key-order iteration", () => {
@@ -62,8 +67,10 @@ describe("the town module's determinism rules", () => {
         const ok = spec.startsWith("./") || spec.startsWith("../") || spec.startsWith("@csarkosh/engine/sim/");
         expect(ok, `${path.slice(DIR.length)} imports ${spec}`).toBe(true);
         if (spec.startsWith("../")) {
-          // From port/, ../ is the town folder; from the town folder it would leave it.
-          expect(path.slice(DIR.length).includes("/"), `${path.slice(DIR.length)} imports ${spec}`).toBe(true);
+          // A relative import must stay inside the simulation folder (the car reaches the town's; the town does not reach the car's).
+          const target = resolve(path, "..", spec) + "/";
+          expect(target.startsWith(DIR), `${path.slice(DIR.length)} imports ${spec}`).toBe(true);
+          if (path.startsWith(TOWN)) expect(target.startsWith(TOWN), `${path.slice(DIR.length)} imports ${spec}`).toBe(true);
         }
       }
     }

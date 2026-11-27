@@ -12,6 +12,7 @@ import { activeTerrainVariant, elevationSampleAt } from "@csarkosh/engine/sim/te
 import { addPlayer } from "@csarkosh/engine/sim/tick";
 import { MOVER_BYTES, WALK, WALK_PROTOCOL, decodeWalkSnapshot, encodeWalkSnapshot, type WalkSnapshot } from "../src/net.js";
 import { WALK_RULES, createWalkWorld } from "../src/sim.js";
+import { newCar } from "../src/sim/car/start.js";
 import { townStart } from "../src/sim/town/start.js";
 
 /**
@@ -41,7 +42,7 @@ describe("the empty game's world", () => {
     expect(a.pos.y).toBeCloseTo(ground + PLAYER_HALF.y, 9);
     expect(ground).toBeGreaterThan((host.waterLevel ?? -Infinity) + 2 - 1e-9);
     expect([a.id, a.yaw, a.pitch, a.grounded, a.lastProcessedInput]).toEqual([1, townStart(SEED).yaw, 0, false, 0]);
-    expect(host.state).toEqual({ tick: 0, players: new Map([[1, a]]), nextEntityId: 2, rngSeed: SEED | 0 });
+    expect(host.state).toEqual({ tick: 0, players: new Map([[1, a]]), nextEntityId: 2, rngSeed: SEED | 0, cars: [newCar(SEED, 1)] });
   });
 });
 
@@ -50,16 +51,17 @@ describe("the empty game's snapshot", () => {
     tick: 123456,
     lastProcessedInput: 987,
     players: [
-      { id: 1, pos: { x: 10.25, y: 31.5, z: -400.125 }, vel: { x: 1.5, y: -2.25, z: 0 }, yaw: Math.PI / 2, pitch: -0.5, grounded: true },
-      { id: 5, pos: { x: -3000.007, y: 0.9, z: 7 }, vel: { x: 0, y: 0, z: 4 }, yaw: 6, pitch: 1.2, grounded: false },
+      { id: 1, pos: { x: 10.25, y: 31.5, z: -400.125 }, vel: { x: 1.5, y: -2.25, z: 0 }, yaw: Math.PI / 2, pitch: -0.5, grounded: true, ride: { car: 0, seat: 0, phase: 0, ticks: 0 } },
+      { id: 5, pos: { x: -3000.007, y: 0.9, z: 7 }, vel: { x: 0, y: 0, z: 4 }, yaw: 6, pitch: 1.2, grounded: false, ride: { car: 0, seat: 0, phase: 0, ticks: 0 } },
     ],
+    cars: [],
   };
 
   it("is packed under the wire's snapshot type, in a fixed size a player", () => {
     const bytes = encodeWalkSnapshot(shot);
     expect(new Uint8Array(bytes)[0]).toBe(MessageType.Snapshot);
-    expect(bytes.byteLength).toBe(10 + 2 * MOVER_BYTES);
-    expect(MOVER_BYTES).toBe(24);
+    expect(bytes.byteLength).toBe(10 + 2 * MOVER_BYTES + 1);
+    expect(MOVER_BYTES).toBe(28);
   });
 
   it("comes back as it went, to the wire's precision", () => {

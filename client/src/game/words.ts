@@ -21,3 +21,12 @@ export const WAITING_FOR_HOST = "Waiting for the host…";
 
 export const SETTINGS = "Settings";
 export const CREDITS = "Credits";
+
+/** The line at a car's door: to take a seat, to leave it, and when leaving changes nothing. */
+export const GET_IN = "Click to get in";
+export const GET_OUT = "Click to get out";
+export const NO_ROOM_TO_GET_OUT = "No room to get out here";
+
+/** What `carhome` says when the car is back, and what a follower is told in its place. */
+export const CAR_RETURNED = "The car is back at the office.";
+export const HOST_RETURNS_CAR = "Only the host can bring the car back.";

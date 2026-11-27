@@ -2,18 +2,20 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import "../src/terrain.js";
-import { noGameSound } from "@csarkosh/engine/game/ambientAudio";
 import { isMode } from "@csarkosh/engine/game/modeList";
-import { NO_ACTIONS, type InputCommand } from "@csarkosh/engine/sim/core";
+import type { InputCommand } from "@csarkosh/engine/sim/core";
 import { turnedAwayModel } from "@csarkosh/engine/game/turnedAwayModel";
 import { engineCatalog } from "@csarkosh/engine/testing/engineFiles";
 import { createForest } from "@csarkosh/engine/sim/forest";
 import { parseLevel } from "@csarkosh/engine/sim/level";
 import { EMPTY_GAME, WALK_MODES, WALK_SIDE } from "../src/game.js";
+import { carSound } from "../src/game/car/carSound.js";
 import { creditsEntries } from "../src/game/credits.js";
 import { WALK } from "../src/net.js";
 import { CAPE_PAGE, createCapePage } from "../src/page.js";
 import type { WalkState, Walker } from "../src/sim.js";
+import { newRide } from "../src/sim/car/rules.js";
+import { INTERACT_BIT, LAMP_BIT } from "../src/sim/car/tuning.js";
 import { townStart } from "../src/sim/town/start.js";
 
 /**
@@ -26,22 +28,22 @@ const text = (name: string): string => readFileSync(SRC + name, "utf8");
 const code = (name: string): string => text(name).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the empty game as the page that runs a session is handed it", () => {
-  it("has a level the parser takes, one mode, no actions of its own, the town's start and no weather of its own", () => {
+  it("has a level the parser takes, one mode, the car's two actions, the town's start and no weather of its own", () => {
     const level = parseLevel(EMPTY_GAME.level);
     expect([level.id, level.brushes.length, level.playerSpawns.length]).toEqual(["empty-yard", 1, 1]);
     expect(EMPTY_GAME.modes).toBe(WALK_MODES);
     expect(isMode(WALK_MODES, WALK_MODES.initial)).toBe(true);
     expect(WALK_MODES.key.startsWith("capesorrow.")).toBe(true);
-    expect(EMPTY_GAME.actions).toBe(NO_ACTIONS);
+    expect(EMPTY_GAME.actions).toEqual({ interact: INTERACT_BIT, lamp: LAMP_BIT });
     expect(EMPTY_GAME.startOf(7)).toEqual(townStart(7));
     expect(EMPTY_GAME.weatherIsOwn("walk")).toBe(false);
   });
 
-  it("is drawn with the engine's own and the town's parts, and heard with no voices of a game's", () => {
+  it("is drawn with the engine's own and the town's parts, and heard with the car's voice on the bus", () => {
     const game = code("game.ts");
     expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),");
-    expect(game).toContain("audio: () => createAmbientAudio(noGameSound),");
-    expect(typeof noGameSound).toBe("function");
+    expect(game).toContain("audio: () => createAmbientAudio(carSound),");
+    expect(typeof carSound).toBe("function");
   });
 
   it("does nothing at every point of a session, and lets every command through as it came", () => {
@@ -51,8 +53,8 @@ describe("the empty game as the page that runs a session is handed it", () => {
     expect(side.command(sample, undefined, undefined as never)).toBe(sample);
     expect([side.decided(), side.over(), side.holdsFrame(), side.extrasStand(), side.lampOn(undefined), side.applyOwnView("anything", [])]).toEqual([false, false, false, false, false, false]);
     expect([side.progress(), side.matchEnd()]).toEqual([0, {}]);
-    const walker = (id: number): Walker => ({ id, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0 });
-    const state: WalkState = { tick: 0, players: new Map([[1, walker(1)], [2, walker(2)]]), nextEntityId: 3, rngSeed: 1 };
+    const walker = (id: number): Walker => ({ id, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0, ride: newRide() });
+    const state: WalkState = { tick: 0, players: new Map([[1, walker(1)], [2, walker(2)]]), nextEntityId: 3, rngSeed: 1, cars: [] };
     expect(side.entities(state)).toBe(2);
   });
 });
@@ -62,7 +64,7 @@ describe("the game's half of a session pushes the day's hour", () => {
     const pushed: number[] = [];
     const host = { base: { hour: 12 }, appliedHour: 12, appliedWeather: {}, renderer: { setView: (h: number) => pushed.push(h) } };
     const side = EMPTY_GAME.side(host as never);
-    const state = (tick: number): WalkState => ({ tick, players: new Map(), nextEntityId: 1, rngSeed: 1 });
+    const state = (tick: number): WalkState => ({ tick, players: new Map(), nextEntityId: 1, rngSeed: 1, cars: [] });
     side.beforeSync(undefined as never, state(0), 0, 0);
     side.beforeSync(undefined as never, state(30), 0, 0);
     expect(pushed).toEqual([]);

@@ -38,6 +38,15 @@ import { createPaintSurface, paintRequest } from "./signPaint.js";
 import { townGeometry, townGround, type TownBatch } from "./townGeometry.js";
 import { fleetOf } from "./props/vehicleFleet.js";
 import { createVehicleParts, type VehicleParts } from "./props/vehicleParts.js";
+import { groundAt } from "./props/kit.js";
+import { createCarParts, type CarParts } from "../car/carParts.js";
+import { carDebug, type CarDebug, type CarDebugSource, type LampSeen } from "../car/carDebug.js";
+import { headlightsFor, litFor } from "../car/headlights.js";
+import { promptShown, voiceShown } from "../car/side.js";
+import { FOOT, SEATED, type Car, type Ride } from "../../sim/car/types.js";
+import { townSolids } from "../../sim/town/solid.js";
+import { propSolids } from "../../sim/town/propSolid.js";
+import { BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, newChase, seatStep, seatTarget, stepChase, underGround } from "../car/chaseCamera.js";
 import { peopleFor, personWorld } from "./people.js";
 import { outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleShade } from "./peopleShade.js";
@@ -70,6 +79,9 @@ export const FLAT_AHEAD_SLOPE = 0;
 export const HAZE_ORDER = SEE_THROUGH_ORDER.lettering - 1;
 /** Where the lettering stands on a tier whose glass writes its whole pixel (`townBlur.ts`): after the glass. */
 export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
+
+/** The state of a game that has no cars. */
+const NO_CARS: readonly Car[] = [];
 
 /** How far the hour moves before the materials are written again (a hundredth of an hour). */
 const HOUR_STEP = 0.01;
@@ -130,6 +142,36 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let rail: RailStream | null = null;
   // The parked vehicles that stand as real models (`props/vehicleParts.ts`), on the tiers above low: loaded once the town's geometry is made.
   let vehicles: VehicleParts | null = null;
+  // The car the players drive (`../car/carParts.ts`): made with the town, loaded once it stands, posed from the state's cars each frame.
+  let car: CarParts | null = null;
+  // The state the last frame was handed, for the console's reading of the car (`__capeCar`).
+  const held: NonNullable<ReturnType<CarDebugSource["state"]>> = { cars: NO_CARS, localId: 0, players: new Map() };
+  let holding = false;
+  // The chase camera (`../car/chaseCamera.ts`): its state, the eye it eases from, the shot it answers, and what the console reads. The chase is new
+  // for each world (this part is made again) and starts over whenever the player is on foot or rides another car; a car that jumps is snapped to.
+  const chase = newChase();
+  const chaseEye = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+  const chaseLook = { yaw: 0, pitch: 0 };
+  const chaseShot = { fov: 0 as number | null, centre: { x: 0, z: 0 }, coverAtEye: false };
+  const chaseSeen = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 0, seated: 0, pulled: 0 };
+  let chasing = false;
+  // The one lamp as the last frame wrote it, for the console's reading (`__capeCar.lamp()`).
+  const lampSeen: LampSeen = { on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, angle: 0, range: 0, intensity: 0, r: 0, g: 0, b: 0 };
+  let lampWritten = false;
+  // How far into the seat the camera is shown: the ride's own value followed at a bounded rate, so a refused leave eases back out.
+  let shownSeat = 0;
+  let chasedCar = 0;
+  let lastSeconds = -1;
+  let drawnGround: ((x: number, z: number) => number) | null = null;
+  let worldSeed = 0;
+  // Whether a point stands in the way of the camera (`chaseCamera.ts`): the drawn ground, a building's footprint (the plan carries no height for it, so a column), a prop's
+  // box that is not thin (smaller half-extent at least `PROP_THIN_HALF`) and lower than `PROP_TOP` over the ground there, or another car. One cell of each grid, nothing allocated.
+  const blocked = (x: number, y: number, z: number): boolean => {
+    if (boxBlocks(townSolids(worldSeed), x, y, z, 0, Infinity, BOX_MARGIN)) return true;
+    if (drawnGround !== null && underGround(drawnGround, x, y, z)) return true;
+    if (drawnGround !== null && boxBlocks(propSolids(worldSeed), x, y, z, PROP_THIN_HALF, drawnGround(x, z) + PROP_TOP, BOX_MARGIN)) return true;
+    return carBlocks(held.cars, chasedCar, x, y, z);
+  };
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
   let people: PeopleParts | null = null;
   // The hour of day last written to the materials (12 until a frame says otherwise), and their record.
@@ -268,16 +310,19 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
       // The railroad's own materials (its draw order is its own, after the town's), reading the same texture layers and wear.
       const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
-      const worldSeed = forest.seed;
+      worldSeed = forest.seed;
       const start = townStart(worldSeed);
       rail = createRailStream(host, { engine, scene, materials, textured: wearsTextures, orders: { flat: orders.of(materials.flat) ?? DRAW_ORDER.scenery, solid: orders.of(materials.solid) ?? DRAW_ORDER.scenery } }, worldSeed);
 
       const ground = townGround(worldSeed);
+      drawnGround = (x, z) => groundAt(ground, x, z);
       const fleet = low ? [] : fleetOf(ground, "full");
       if (!low) {
         vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
       }
 
+      car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
+      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null) });
       const plan = ground.plan;
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
@@ -343,11 +388,83 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         building = false;
         // The town stands; now the vehicles' files are asked for, and each lands when it has.
         vehicles?.begin();
+        car?.begin();
         people?.begin();
       }
 
       building = true;
       host.jobs.begin(owner, build(), false, "town");
+    },
+
+    begin(state, localId, alpha, dt) {
+      base.side.begin(state, localId, alpha, dt);
+      held.cars = (state as { cars?: readonly Car[] }).cars ?? NO_CARS;
+      held.localId = localId;
+      held.players = state.players as unknown as typeof held.players;
+      holding = true;
+      const me = state.players.get(localId) as { ride?: Ride } | undefined;
+      const driven = me?.ride?.phase === SEATED && me.ride.seat === 0 ? me.ride.car : 0;
+      car?.frame((state as { cars?: readonly Car[] }).cars ?? NO_CARS, state.tick, alpha, dt, driven);
+    },
+
+    shot(seconds, pose, local, state, localId, alpha) {
+      const dt = lastSeconds < 0 ? 0 : seconds - lastSeconds;
+      lastSeconds = seconds;
+      const ride = (local as { ride?: Ride }).ride;
+      const drawn = ride !== undefined && ride.phase !== FOOT && drawnGround !== null ? (car?.pose(ride.car) ?? null) : null;
+      if (ride === undefined || drawn === null || drawnGround === null) {
+        chase.started = false;
+        chasing = false;
+        shownSeat = 0;
+        return base.side.shot(seconds, pose, local, state, localId, alpha);
+      }
+      if (ride.car !== chasedCar) chase.started = false;
+      chasedCar = ride.car;
+      shownSeat = seatStep(shownSeat, seatTarget(ride.phase, ride.ticks), dt);
+      const seated = shownSeat;
+      Object.assign(chaseEye, pose);
+      chaseLook.yaw = local.yaw;
+      chaseLook.pitch = local.pitch;
+      const widen = stepChase(chase, drawn, chaseLook, seated, dt, blocked, drawnGround, chaseEye, pose);
+      chaseShot.fov = host.lens.fov + widen;
+      chaseShot.centre.x = drawn.x;
+      chaseShot.centre.z = drawn.z;
+      chasing = true;
+      chaseSeen.x = pose.x;
+      chaseSeen.y = pose.y;
+      chaseSeen.z = pose.z;
+      chaseSeen.yaw = pose.yaw;
+      chaseSeen.pitch = pose.pitch;
+      chaseSeen.fov = chaseShot.fov;
+      chaseSeen.seated = seated;
+      chaseSeen.pulled = chase.back;
+      return chaseShot;
+    },
+
+    // The lamp is the car's while the local player is seated in a car with its lights on, and off when that car's lights are off; on foot, as the engine has it.
+    lampOn(local) {
+      const ride = (local as { ride?: Ride }).ride;
+      return litFor(ride, ride === undefined ? null : (car?.pose(ride.car) ?? null));
+    },
+
+    lamp(lamp) {
+      base.side.lamp(lamp);
+      const ride = held.players.get(held.localId)?.ride;
+      headlightsFor(lamp, ride, ride === undefined || ride.phase !== SEATED ? null : (car?.pose(ride.car) ?? null));
+      lampSeen.on = lamp.lit.on;
+      lampSeen.x = lamp.at.x;
+      lampSeen.y = lamp.at.y;
+      lampSeen.z = lamp.at.z;
+      lampSeen.dx = lamp.at.dx;
+      lampSeen.dy = lamp.at.dy;
+      lampSeen.dz = lamp.at.dz;
+      lampSeen.angle = lamp.at.angle;
+      lampSeen.range = lamp.at.range;
+      lampSeen.intensity = lamp.lit.state.intensity;
+      lampSeen.r = lamp.lit.state.colour.r;
+      lampSeen.g = lamp.lit.state.colour.g;
+      lampSeen.b = lamp.lit.state.colour.b;
+      lampWritten = true;
     },
 
     bodies(dt, lamp) {
@@ -359,6 +476,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       base.side.seen(planes, cover);
       rail?.seen(planes);
       vehicles?.seen(planes);
+      car?.seen(planes);
       leaner.step();
       for (const m of made) {
         let want = inView(planes, m);
@@ -394,6 +512,16 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       rail = null;
       vehicles?.dispose();
       vehicles = null;
+      car?.dispose();
+      car = null;
+      holding = false;
+      chasing = false;
+      chase.started = false;
+      shownSeat = 0;
+      drawnGround = null;
+      held.cars = NO_CARS;
+      held.players = new Map();
+      delete (globalThis as { __capeCar?: CarDebug }).__capeCar;
       people?.dispose();
       people = null;
       lamps = [];

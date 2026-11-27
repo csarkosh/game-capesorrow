@@ -99,21 +99,21 @@ export function withTrestles(base: GroundField, seed: number, spans: SpanSource 
 
 type Point = { x: number; y: number; z: number };
 
-/** Holds a hull to the side of the deck's rails it belongs on. Returns whether it moved the hull. */
-export function constrainTrestle(seed: number, pos: Point, vel: Point, spans: SpanSource = railSpansIn): boolean {
-  if (spans === railSpansIn && constrainSpurTrestle(seed, pos, vel)) return true;
+/** Holds a hull to the side of the deck's rails it belongs on. Returns whether it moved the hull. `radius` is the hull's: the walker's by default. */
+export function constrainTrestle(seed: number, pos: Point, vel: Point, spans: SpanSource = railSpansIn, radius: number = HULL_RADIUS): boolean {
+  if (spans === railSpansIn && constrainSpurTrestle(seed, pos, vel, radius)) return true;
   const list = spans(seed, pos.z - 1, pos.z + 1);
   for (const s of list) {
     if (s.kind !== "trestle" || pos.z < s.a - TRESTLE_END || pos.z > s.b + TRESTLE_END) continue;
     const centre = railCenterX(seed, pos.z);
     const off = pos.x - centre;
     const a = off < 0 ? -off : off;
-    if (a >= TRESTLE_HALF + HULL_RADIUS) return false;
+    if (a >= TRESTLE_HALF + radius) return false;
     const top = trestleTopAt(seed, centre, pos.z, spans) as number;
     const onDeck = pos.y - PLAYER_HALF.y >= top - TRESTLE_STAND;
     const sign = off < 0 ? -1 : 1;
     // On the deck: kept inboard of the rail; below it: kept outside the deck's side.
-    const limit = onDeck ? TRESTLE_HALF - HULL_RADIUS : TRESTLE_HALF + HULL_RADIUS;
+    const limit = onDeck ? TRESTLE_HALF - radius : TRESTLE_HALF + radius;
     if (onDeck ? a <= limit : a >= limit) return false;
     pos.x = centre + sign * limit;
     if (vel.x * sign * (onDeck ? 1 : -1) > 0) vel.x = 0;
@@ -123,16 +123,16 @@ export function constrainTrestle(seed: number, pos: Point, vel: Point, spans: Sp
 }
 
 /** The same for the spur's trestles: the side is the nearest point of the track's line, so the deck's rails hold wherever the track runs. */
-function constrainSpurTrestle(seed: number, pos: Point, vel: Point): boolean {
+function constrainSpurTrestle(seed: number, pos: Point, vel: Point, radius: number): boolean {
   const track = spurOf(seed);
   if (track === null) return false;
   for (const run of track.trestles) {
-    if (pos.x < run.x0 - HULL_RADIUS || pos.x > run.x1 + HULL_RADIUS || pos.z < run.z0 - HULL_RADIUS || pos.z > run.z1 + HULL_RADIUS) continue;
+    if (pos.x < run.x0 - radius || pos.x > run.x1 + radius || pos.z < run.z0 - radius || pos.z > run.z1 + radius) continue;
     const near = nearOnRun(track, run, pos.x, pos.z);
-    if (near.d >= TRESTLE_HALF + HULL_RADIUS) continue;
+    if (near.d >= TRESTLE_HALF + radius) continue;
     const top = (spurTrestleTopAt(seed, near.qx, near.qz) as number | null) ?? spurHeightAt(track, near.s) + TRESTLE_TOP;
     const onDeck = pos.y - PLAYER_HALF.y >= top - TRESTLE_STAND;
-    const limit = onDeck ? TRESTLE_HALF - HULL_RADIUS : TRESTLE_HALF + HULL_RADIUS;
+    const limit = onDeck ? TRESTLE_HALF - radius : TRESTLE_HALF + radius;
     if (onDeck ? near.d <= limit : near.d >= limit) continue;
     pos.x = near.qx + near.nx * limit;
     pos.z = near.qz + near.nz * limit;
