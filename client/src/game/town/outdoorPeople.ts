@@ -508,9 +508,55 @@ function inTriangle(t: Fillet["pts"], x: number, z: number): boolean {
   return !((d0 < 0 || d1 < 0 || d2 < 0) && (d0 > 0 || d1 > 0 || d2 > 0));
 }
 
+/** The roadways' segments and curb returns by cell of four metres, so that a point is looked at against the few near it and not all of them (made once for a plan's ground). */
+type RoadIndex = Map<number, { segs: Seg[]; fillets: Ground["fillets"][number][] }>;
+const roadIndexes = new WeakMap<Ground, RoadIndex>();
+/** The most margin a point may be asked about with the index (a longer one looks at everything). */
+const ROAD_MARGIN = 1.2;
+
+function roadIndexOf(g: Ground): RoadIndex {
+  const known = roadIndexes.get(g);
+  if (known !== undefined) return known;
+  const index: RoadIndex = new Map();
+  const put = (x0: number, z0: number, x1: number, z1: number, add: (cell: { segs: Seg[]; fillets: Ground["fillets"][number][] }) => void): void => {
+    for (let cx = Math.floor(x0 / 4); cx <= Math.floor(x1 / 4); cx++) {
+      for (let cz = Math.floor(z0 / 4); cz <= Math.floor(z1 / 4); cz++) {
+        const key = (cx + 8192) * 16384 + (cz + 8192);
+        let cell = index.get(key);
+        if (cell === undefined) {
+          cell = { segs: [], fillets: [] };
+          index.set(key, cell);
+        }
+        add(cell);
+      }
+    }
+  };
+  for (const s of g.segs) {
+    const e = s.cw + ROAD_MARGIN;
+    put(Math.min(s.ax, s.ax + s.tx * s.len) - e, Math.min(s.az, s.az + s.tz * s.len) - e, Math.max(s.ax, s.ax + s.tx * s.len) + e, Math.max(s.az, s.az + s.tz * s.len) + e, (c) => c.segs.push(s));
+  }
+  for (const f of g.fillets) {
+    const xs = f.pts.map((p) => p.x);
+    const zs = f.pts.map((p) => p.z);
+    put(Math.min(...xs) - ROAD_MARGIN, Math.min(...zs) - ROAD_MARGIN, Math.max(...xs) + ROAD_MARGIN, Math.max(...zs) + ROAD_MARGIN, (c) => c.fillets.push(f));
+  }
+  roadIndexes.set(g, index);
+  return index;
+}
+
 /** Whether a point is in a roadway (a street's, an alley's, a flight of stairs', or a curb return's), with `margin` to spare. */
 export function inRoadway(plan: TownPlan, x: number, z: number, margin: number): boolean {
   const g = groundOf(plan);
+  if (margin <= ROAD_MARGIN) {
+    const cell = roadIndexOf(g).get((Math.floor(x / 4) + 8192) * 16384 + (Math.floor(z / 4) + 8192));
+    if (cell === undefined) return false;
+    for (const s of cell.segs) if (segNear(s, x, z).d < s.cw + margin) return true;
+    for (const f of cell.fillets) {
+      if (Math.hypot(x - f.c.x, z - f.c.z) <= f.c.r - margin) continue;
+      if (inTriangle(f.pts, x, z)) return true;
+    }
+    return false;
+  }
   for (const s of g.segs) {
     if (segNear(s, x, z).d < s.cw + margin) return true;
   }
