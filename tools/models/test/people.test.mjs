@@ -28,7 +28,7 @@ describe('client/assets/models/people.json', () => {
   it('lists the clips every file carries, which the game plays by name', () => {
     expect(manifest.clips).toEqual([
       'idle', 'browse', 'till', 'phone', 'talk', 'drink', 'wipe', 'fold', 'sit_table', 'sit_eat', 'sit_type', 'sit_stool',
-      'wait', 'arms', 'listen', 'look', 'call', 'cup', 'lean', 'sit_rest', 'sit_phone',
+      'wait', 'arms', 'listen', 'look', 'call', 'cup', 'lean', 'sit_rest', 'sit_phone', 'walk',
     ]);
   });
 
