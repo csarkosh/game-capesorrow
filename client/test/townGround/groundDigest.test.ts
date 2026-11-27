@@ -28,6 +28,15 @@ import { streetChannelD, streetLiftD, streetLowerD, withStreets } from "../../sr
  * (`TOWN_GEN` raised) that moves a street or a junction's pavement moves the ground under it. Then, and only with no
  * change to any file of the ground's arithmetic, the worlds whose plan moved are pinned again. (Plan 24 opened the
  * streets that were shut at the highway: world 20261121's three were taken again, worlds 1 and 6 stood.)
+ *
+ * The three `hooks:` keys moved on purpose (the verge, `verge.ts`): they fold the place's shore strip and its feature mask, and the
+ * strip now also covers the town's unclaimed made ground and the highway's corridor, and the mask adds weeds and no trees there.
+ * No other key moved: the ground's heights, the town's own mask and strip, and the cover are the same arithmetic.
+ *
+ * And the engine's own ground under the place: with the beach's shape asked for (`CAPE_PLACE.beach`, engine v0.2.25: the storm
+ * ridge, cusps, bars and hummocks), the coast's heights on the beach moved on purpose, so the `world`, `walked` and `hooks` keys of
+ * all three worlds were taken again; with `beach: { shape: 0 }` every key stood as it was, and the `town` and `windows` keys (the
+ * made ground's own arithmetic) did not move.
  */
 
 const SEEDS = [20261121, 1, 6];
@@ -186,19 +195,19 @@ function digests(): Record<string, string> {
 }
 
 const PINNED: Record<string, string> = {
-  "hooks:1": "ef41836ebe1f5bdb/360000",
-  "hooks:20261121": "ca6cb03f0f345312/360000",
-  "hooks:6": "12d6749702cac598/360000",
+  "hooks:1": "d9ce5ee3be2b1dc3/360000",
+  "hooks:20261121": "3320c1ea62da9c82/360000",
+  "hooks:6": "5a2cdcb724420f46/360000",
   "town:1": "a9dd0d10d83af95a/1880000",
   "town:20261121": "b698a76dabea4a63/1880000",
   "town:6": "20a7eabc602ebbb2/1880000",
-  "walked:1": "a8ec5139d3952625/180000",
-  "walked:20261121": "b6fdc8fb8bee45a8/180000",
-  "walked:6": "ac79788bd20460cb/180000",
+  "walked:1": "7e79f52186b829bb/180000",
+  "walked:20261121": "8ccd3eef2f258f0b/180000",
+  "walked:6": "42c0db3ecf00aff1/180000",
   windows: "89b5a4c96dc02509/800000",
-  "world:1": "08bfb89bb2d4d2ab/240000",
-  "world:20261121": "7e7022212e703c86/240000",
-  "world:6": "b8cc32f8065fb906/240000",
+  "world:1": "89ceaed0fe595fc0/240000",
+  "world:20261121": "2e375361311f48d0/240000",
+  "world:6": "065b514333c89721/240000",
 };
 
 describe("the town's ground", () => {

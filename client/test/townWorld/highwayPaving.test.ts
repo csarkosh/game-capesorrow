@@ -211,8 +211,15 @@ describe("the highway's paving", () => {
     for (const seed of SEEDS) {
       const { g, tris } = stripOf(seed);
       for (const t of tris) {
+        const paint = isColour(t, PAINT_WHITE) || isColour(t, PAINT_YELLOW);
         const lift = isColour(t, ASPHALT) ? ROADWAY_LIFT : ROADWAY_LIFT + MARK_OVER;
-        for (const q of t.p) expect(q[1] - g.heightAt(q[0], q[2]), `seed ${seed}`).toBeCloseTo(lift, 3);
+        for (const q of t.p) {
+          const over = q[1] - g.heightAt(q[0], q[2]);
+          // The wear the road shares with the streets (cuts, cracks, patches, oil, manholes) lies between 1 and 5 mm over the roadway, each kind at the lift it has on a street.
+          if (!paint && !isColour(t, ASPHALT)) expect(over, `seed ${seed}: wear`).toBeGreaterThan(ROADWAY_LIFT - 0.0001);
+          if (!paint && !isColour(t, ASPHALT)) expect(over, `seed ${seed}: wear`).toBeLessThan(ROADWAY_LIFT + 0.005);
+          else expect(over, `seed ${seed}`).toBeCloseTo(lift, 3);
+        }
       }
     }
   });

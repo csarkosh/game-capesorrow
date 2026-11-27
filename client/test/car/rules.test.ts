@@ -811,7 +811,9 @@ function railedEdges(): { x: number; z: number; nx: number; nz: number }[] {
   const out: { x: number; z: number; nx: number; nz: number }[] = [];
   for (const r of townDecks(seed).rails) {
     if (Math.hypot(r.bx - r.ax, r.bz - r.az) < 8) continue;
-    out.push({ x: (r.ax + r.bx) / 2, z: (r.az + r.bz) / 2, nx: r.nx, nz: r.nz });
+    // The middle first, then a third of the way from either end: the ground outboard of a rail is the beach's own, whose bars and channels
+    // (the engine's beach shape) put one place a hand deeper than the next, and the cases below need only a few places that serve.
+    for (const t of [0.5, 0.35, 0.65]) out.push({ x: r.ax + (r.bx - r.ax) * t, z: r.az + (r.bz - r.az) * t, nx: r.nx, nz: r.nz });
   }
   return out;
 }

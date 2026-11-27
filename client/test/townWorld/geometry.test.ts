@@ -157,7 +157,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 165, flat: 40, vertices: 1547069, triangles: 811637 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 165, flat: 40, vertices: 1556736, triangles: 816630 });
   });
 });
 
@@ -245,7 +245,8 @@ describe("the streets", () => {
       let paving = 0;
       eachTriangle(a, (p, _n, c) => {
         const colour = (k: readonly number[]): boolean => Math.abs(c[0] - (k[0] as number)) < 1e-6 && Math.abs(c[1] - (k[1] as number)) < 1e-6 && Math.abs(c[2] - (k[2] as number)) < 1e-6;
-        const own = colour(ASPHALT) || colour(PAINT_WHITE) || colour(PAINT_YELLOW);
+        // The highway's own: its asphalt and paint, and the wear it shares with the streets (patches, cuts, cracks, tracks, oil), which lie wholly within the bed.
+        const own = colour(ASPHALT) || colour(PAINT_WHITE) || colour(PAINT_YELLOW) || p.every((q) => Math.abs((q[0] as number) - g.roadX(q[2] as number)) < ROAD_BED_HALF + 0.02);
         for (const q of p) {
           const off = Math.abs((q[0] as number) - g.roadX(q[2] as number));
           if (own && off < ROAD_BED_HALF - 0.02) {

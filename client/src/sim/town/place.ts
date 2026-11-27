@@ -12,6 +12,8 @@ import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
 import { CLEARING_TUNABLES, YARD_LIFT, beyondTown, townClutterStands, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
 import { GROUND, GROUND_TUNABLES, townGroundInto } from "./ground.js";
+import { townHighwayBedGround } from "./highwayBedGround.js";
+import { VERGE_TUNABLES, vergeMask, vergeWeight, vergeWeightAt } from "./verge.js";
 import { RAIL_CLEARING_TUNABLES, railFeatureMask } from "./railClearing.js";
 import { RAIL_GROUND, RAIL_TUNABLES, railGroundInto } from "./railGround.js";
 import { SHORE_BISECT_STEPS, SHORE_SCAN_REACH, SHORE_SCAN_STEP, TOWN_ONE, TOWN_SEED_MIX } from "./siteFor.js";
@@ -66,6 +68,7 @@ export const CAPE_PLACE: CoastOverlay = {
     ...CLEARING_TUNABLES,
     ...RAIL_TUNABLES,
     ...RAIL_CLEARING_TUNABLES,
+    ...VERGE_TUNABLES,
     ...STREET_TUNABLES,
     SHORE_SCAN_STEP,
     SHORE_SCAN_REACH,
@@ -80,12 +83,30 @@ export const CAPE_PLACE: CoastOverlay = {
   // The town's made ground, with the streets cut into it, then the railroad's bed laid over it, under the highway's own corridor (`shapeD` above).
   shapeD,
   // The town's mask, with the railroad's corridor shut in it (`railClearing.ts`).
-  featureMask: (seed, x, z) => railFeatureMask(seed, x, z, townFeatureMask(seed, x, z)),
-  // On a yard the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and trees.
-  shoreStrip: { lift: YARD_LIFT, forestFloor: 0, at: townStripWeight },
+  // And, on the made ground and along the highway and the railroad, rough grass and bare soil and no trees (`verge.ts`).
+  featureMask: (seed, x, z, h) => {
+    const mask = railFeatureMask(seed, x, z, townFeatureMask(seed, x, z));
+    const w = vergeWeightAt(seed, x, z, h);
+    return w === 0 ? mask : vergeMask(seed, x, z, h, w, townStripWeight(seed, x, z), mask);
+  },
+  // On a yard, a paved block or a street, on the rest of the made ground and along the highway and the railroad, the shore's rules (what paints sand, what grows) read the ground higher than it is: ground that bears grass and not beach.
+  shoreStrip: {
+    lift: YARD_LIFT,
+    forestFloor: 0,
+    at: (seed, x, z) => {
+      const own = townStripWeight(seed, x, z);
+      if (own === 1) return 1;
+      const w = vergeWeight(seed, x, z);
+      return w > own ? w : own;
+    },
+  },
   clearing: { z: COVE_Z, x: townClearingX },
   // Round a yard's building the mask is open to the wall, and each piece of ground cover is kept back by where it stands (`clearing.ts`).
   clutterStands: townClutterStands,
+  // What lies on the beach and the shape it has (the engine's `beach`): the wrack line, cobbles, small driftwood and dune grass at their full density, and the storm ridge, cusps, bars and hummocks.
+  beach: {},
   // Where animals may not be (`wildlifeGround.ts`): the renderer's alone, so no tunable and no part of the level id.
   wildlifeGround: townWildlifeGround,
+  // The highway's bed is the game's own surface: the engine's patches of finer rock make no triangle on it (`highwayBedGround.ts`); the renderer's alone, like the line above.
+  pavedGround: townHighwayBedGround,
 };

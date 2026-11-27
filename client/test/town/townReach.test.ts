@@ -22,6 +22,7 @@ import { railFeatureMask } from "../../src/sim/town/railClearing.js";
 import { RAIL_GROUND, railGroundInto } from "../../src/sim/town/railGround.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { streetLiftD, streetLowerD } from "../../src/sim/town/streetField.js";
+import { vergeMask, vergeWeight, vergeWeightAt } from "../../src/sim/town/verge.js";
 
 /** The game's own world first, then two more coasts. */
 const SEEDS = [20261121, 1, 7];
@@ -158,7 +159,11 @@ function compare(seed: number, pts: readonly Pt[]): { bad: string[]; out: number
     if (Object.is(sa, baseA) !== Object.is(sb, baseB) || !Object.is(sa.h, sb.h) || !Object.is(sa.dx, sb.dx) || !Object.is(sa.dz, sb.dz)) miss("shapeD", p);
     if (sb !== baseB) said.shape++;
     const ma = mask(seed, p.x, p.z, p.base.h);
-    const mb = railFeatureMask(seed, p.x, p.z, townFeatureMaskFull(seed, p.x, p.z));
+    // The place lays the verge (`verge.ts`: the made ground's rest and the highway's and railroad's corridor, the whole coast long) over the
+    // town's own mask and strip, so the oracle does too, from the town's full stages: what is held to the bit is still the town's early answer.
+    const townMask = railFeatureMask(seed, p.x, p.z, townFeatureMaskFull(seed, p.x, p.z));
+    const vw = vergeWeightAt(seed, p.x, p.z, p.base.h);
+    const mb = vw === 0 ? townMask : vergeMask(seed, p.x, p.z, p.base.h, vw, townStripWeightFull(seed, p.x, p.z), townMask);
     if (!sameMask(ma, mb)) miss("featureMask", p);
     if (mb.tree !== 1 || mb.clutter !== 1 || mb.meadow !== 0 || mb.loose !== undefined) said.mask++;
     if (!sameMask(townFeatureMask(seed, p.x, p.z), townFeatureMaskFull(seed, p.x, p.z))) miss("townFeatureMask", p);
@@ -167,7 +172,8 @@ function compare(seed: number, pts: readonly Pt[]): { bad: string[]; out: number
       if (stands(seed, cls, p.x, p.z) !== st) miss(`clutterStands(${cls})`, p);
       if (!st) said.stands++;
     }
-    const sw = townStripWeightFull(seed, p.x, p.z);
+    const ownStrip = townStripWeightFull(seed, p.x, p.z);
+    const sw = ownStrip === 1 ? 1 : Math.max(vergeWeight(seed, p.x, p.z), ownStrip);
     if (!Object.is(strip(seed, p.x, p.z), sw)) miss("shoreStrip", p);
     if (sw !== 0) said.strip++;
   }
