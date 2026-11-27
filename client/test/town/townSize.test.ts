@@ -15,8 +15,7 @@ describe("a town's streets serve its buildings", () => {
     let empty = 0;
     for (const seed of SEEDS) {
       const m = streetsWithoutBuildings(townFor(seed).plan);
-      // (0.2 before the downtown; 0.21 since: the hill blocks' houses are thinned to keep a world's memory under its limit.)
-      expect(m.share, `seed ${seed}`).toBeLessThanOrEqual(0.21);
+      expect(m.share, `seed ${seed}`).toBeLessThanOrEqual(0.2);
       total += m.total;
       empty += m.empty;
     }
@@ -84,11 +83,10 @@ describe("the town's houses and its shops", () => {
     }
     console.log(`dwellings per shop unit over 40 seeds: ${(dwellings / units).toFixed(2)} (houses alone ${(houses / units).toFixed(2)})`);
     expect(dwellings / units).toBeGreaterThanOrEqual(3.5);
-    // (2.8 before the downtown was built up: its shops are 25 percent more, 2.7 houses to a shop unit now.)
-    expect(houses / units).toBeGreaterThanOrEqual(2.6);
+    expect(houses / units).toBeGreaterThanOrEqual(2.8);
   });
 
-  it("has taverns a small share of the shop units (the counted towns' is 3.7 percent; it was 9.5 in the game's town; 6.0 over the forty seeds since the downtown, whose every town has a dock block and a bar of its own)", () => {
+  it("has taverns a small share of the shop units (the counted towns' is 3.7 percent; it was 9.5 in the game's town; 4.8 over the forty seeds since the downtown, whose every town has a bar of its own)", () => {
     let taverns = 0;
     let units = 0;
     for (const seed of SEEDS) {
@@ -97,10 +95,10 @@ describe("the town's houses and its shops", () => {
       units += u.units;
     }
     console.log(`taverns: ${taverns} of ${units} units (${((taverns / units) * 100).toFixed(1)} percent)`);
-    expect(taverns / units).toBeLessThanOrEqual(0.065);
+    expect(taverns / units).toBeLessThanOrEqual(0.06);
   });
 
-  it("makes the game's town 200 to 260 houses in no more than 320 buildings (it was 181 houses in 299; 291 before the downtown, which turned the strip's blocks and the school's and hospital's whole blocks into house lots)", () => {
+  it("makes the game's town 200 to 260 houses in no more than 320 buildings (it was 181 houses in 299; 214 in 309 since the downtown, whose blocks are built up)", () => {
     const { plan } = townFor(GAME_SEED);
     const d = dwellingsOf(plan);
     expect(d.houses).toBeGreaterThanOrEqual(200);
@@ -156,7 +154,7 @@ describe("a lot with no building has a reason", () => {
         l++;
         if (!built.includes(lot.id)) e++;
       }
-      expect(l === 0 || e / l <= 0.27, `seed ${seed}: ${e} of ${l} house lots empty (0.25 before the downtown)`).toBe(true);
+      expect(l === 0 || e / l <= 0.25, `seed ${seed}: ${e} of ${l} house lots empty`).toBe(true);
       lots += l;
       empty += e;
       for (const g of plan.gaps) kinds[g.why] = (kinds[g.why] ?? 0) + 1;
@@ -187,11 +185,11 @@ describe("a shop's door opens onto a sidewalk", () => {
 });
 
 describe("the town's size", () => {
-  it("reports the extent of the town's buildings, outskirts included and left out (the game's town was 594 by 1,261 m, 594 by 772 m in its blocks; 783 in its blocks since the downtown)", () => {
+  it("reports the extent of the town's buildings, outskirts included and left out (the game's town was 594 by 1,261 m, 594 by 772 m in its blocks, and is 772.3 since the downtown)", () => {
     const e = extentOf(townFor(GAME_SEED).plan);
     const g = extentOf(townFor(GAME_SEED).plan, true);
     console.log(`game's town: buildings span ${e.w.toFixed(0)} x ${e.h.toFixed(0)} m, ${g.w.toFixed(0)} x ${g.h.toFixed(0)} m without the outskirts`);
     expect(e.h).toBeLessThan(1261);
-    expect(g.h).toBeLessThanOrEqual(790);
+    expect(g.h).toBeLessThanOrEqual(775);
   });
 });
