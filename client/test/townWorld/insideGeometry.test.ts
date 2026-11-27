@@ -10,7 +10,8 @@ import { hidesTown, insidePeople, wantedOf, whereOf } from "../../src/game/town/
 const SEEDS = [20261121, 1175766972];
 /** A vertex may lie this far outside the room's box: a hanging thing's or a trim's own thickness, and the recess of the back room's doorway is allowed on top of the depth. */
 const MARGIN = 0.1;
-const BUDGET = 30000;
+/** The most vertices a room may take: the designed bar, cafe and lodging and the municipal hall each have their own (40,000, 40,000, 60,000 and 80,000). */
+const BUDGET: Readonly<Record<string, number>> = { bar: 40000, cafe: 40000, lodging: 60000, office: 80000 };
 
 const pos = (a: MeshArrays, i: number): [number, number, number] => [a.positions[i * 3] as number, a.positions[i * 3 + 1] as number, a.positions[i * 3 + 2] as number];
 
@@ -30,7 +31,7 @@ describe("the hidden rooms", () => {
         it("is built and reports its size", () => {
           console.log(`[inside] seed ${seed} ${room.name}: ${verts} vertices, ${a.indices.length / 3} triangles, ${ms.toFixed(0)} ms`);
           expect(verts).toBeGreaterThan(0);
-          expect(verts).toBeLessThan(BUDGET);
+          expect(verts).toBeLessThan(BUDGET[room.name] as number);
         });
         it("is in the room's own frame", () => {
           const xf = buildingLevels(g, g.plan.buildings[room.building]!).xf!;

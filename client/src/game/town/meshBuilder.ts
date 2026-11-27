@@ -9,7 +9,7 @@
  * metres, and a wear. The colour is then the tint the texture is multiplied by. A polygon with no surface is exactly what it
  * was before surfaces existed: its vertices carry no layer (`NO_LAYER`) and the renderer draws them as flat colour.
  */
-import { NO_LAYER, TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
+import { NO_LAYER, layerIndex, townLayer, type LayerName } from "./townLayers.js";
 import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Cut, type Fx, type Surface, type WearKind } from "./townSurface.js";
 import { DOOR_ALPHA, paintAlpha } from "./paint.js";
 import { FALLBACK, currentMat, isMat, matLook, matSurface, unnamed, type MatRef } from "./materials.js";
@@ -719,7 +719,7 @@ export class MeshBuilder {
     const base = this.vertices;
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     const layer = v.layer === undefined ? NO_LAYER : layerIndex(v.layer);
-    const tile = v.layer === undefined ? [1, 1] : (TOWN_LAYERS[layerIndex(v.layer)]?.tile ?? [1, 1]);
+    const tile = v.layer === undefined ? [1, 1] : townLayer(v.layer).tile;
     // Nothing opaque is a flat colour: a grid with no layer takes its material's (a wire and glass stay as they are).
     let auto: ReturnType<typeof matLook> | null = null;
     if (v.layer === undefined && v.wire === undefined && !((v.clear ?? 0) > 0)) {

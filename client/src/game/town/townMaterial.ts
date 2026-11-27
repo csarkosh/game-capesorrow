@@ -76,6 +76,7 @@ import { PAINT_RANKS } from "./paint.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
 import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
+import { INTERIOR_LAYERS } from "./interiorLayers.js";
 import { PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY, layerIndex } from "./townLayers.js";
 import { EAVE_CODE, EAVE_REACH, EAVE_SHADE, FOOT_CODE, FOOT_REACH, FOOT_SHADE, FOOT_UNIT } from "./skyShade.js";
 
@@ -110,16 +111,36 @@ const METAL_AMOUNT = 0.5;
 
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
+/**
+ * The layers a plugin's arrays hold, as the shader needs them: each one's tile size and whether it is paint, where the wear's overlay layers are, and which
+ * layers are bare metal. The town's (`TOWN_SET`, which is what the plugin always was); the rooms' set has no overlay and no bare metal (`INTERIOR_SET`: a
+ * surface in a room is not worn, `insideLayers.ts`, so the overlays' indices are never read and name its first layer so that they are valid).
+ */
+export type LayerSet = {
+  readonly layers: readonly { readonly tile: readonly [number, number]; readonly paintable: boolean }[];
+  readonly overlay: { readonly moss: number; readonly rust: number; readonly peel: number; readonly mud: number };
+  readonly metal: readonly number[];
+};
+
+export const TOWN_SET: LayerSet = {
+  layers: TOWN_LAYERS,
+  overlay: { moss: layerIndex(WEAR_OVERLAY.moss), rust: layerIndex(WEAR_OVERLAY.rust), peel: layerIndex(WEAR_OVERLAY.peel), mud: layerIndex(WEAR_OVERLAY.mud) },
+  metal: [layerIndex("metal_aged"), layerIndex("metal_painted"), layerIndex("roof_metal")],
+};
+
+export const INTERIOR_SET: LayerSet = { layers: INTERIOR_LAYERS, overlay: { moss: 0, rust: 0, peel: 0, mud: 0 }, metal: [] };
+
 /** The WGSL the plugin adds at `CUSTOM_FRAGMENT_DEFINITIONS`: the layer table (tile size across and up, and the colour's gain), the overlays' indices, and the noise. */
-export function townDefinitions(low: boolean): string {
-  const table = TOWN_LAYERS.map((layer) => `vec4<f32>(${f(layer.tile[0])},${f(layer.tile[1])},${f(layer.paintable ? PAINT_GAIN : 1)},0.0)`).join(",");
+export function townDefinitions(low: boolean, set: LayerSet = TOWN_SET): string {
+  const table = set.layers.map((layer) => `vec4<f32>(${f(layer.tile[0])},${f(layer.tile[1])},${f(layer.paintable ? PAINT_GAIN : 1)},0.0)`).join(",");
+  const { moss, rust, peel, mud } = set.overlay;
   const octave3 = low ? "" : "+townValue(p*6.1+vec3<f32>(5.0,29.0,2.0))*0.15";
   const weights = low ? "townValue(p*0.9)*0.65+townValue(p*2.3+vec3<f32>(17.0,3.0,11.0))*0.35" : "townValue(p*0.9)*0.55+townValue(p*2.3+vec3<f32>(17.0,3.0,11.0))*0.3";
   return [
-    `const TOWN_MOSS:i32=${layerIndex(WEAR_OVERLAY.moss)};`,
-    `const TOWN_RUST:i32=${layerIndex(WEAR_OVERLAY.rust)};`,
+    `const TOWN_MOSS:i32=${moss};`,
+    `const TOWN_RUST:i32=${rust};`,
     // The overlay layer and the grade of each wear kind: moss, rust, peel, algae, grime (xyz the colour's multiplier, w how much of it is laid).
-    `var<private> townOver:array<i32,9>=array<i32,9>(${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.rust)},${layerIndex(WEAR_OVERLAY.peel)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.mud)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.moss)},${layerIndex(WEAR_OVERLAY.mud)});`,
+    `var<private> townOver:array<i32,9>=array<i32,9>(${moss},${rust},${peel},${moss},${mud},${mud},${moss},${moss},${mud});`,
     `var<private> townGrade:array<vec4<f32>,9>=array<vec4<f32>,9>(vec4<f32>(${MOSS_COLOUR.map((c) => f(low ? Math.round(c * LOW_MOSS * 10) / 10 : c)).join(",")},1.0),vec4<f32>(${RUST_COLOUR.map(f).join(",")},1.0),vec4<f32>(1.7,1.55,1.4,1.0),vec4<f32>(0.9,1.55,0.8,0.8),vec4<f32>(0.5,0.46,0.4,0.9),vec4<f32>(0.03,0.03,0.04,1.0),vec4<f32>(1.1,2.4,0.55,1.0),vec4<f32>(1.5,1.0,0.35,1.0),vec4<f32>(0.78,0.8,0.82,0.9));`,
     // The colour of moss and growth at a place: olive, grey-green or brown by a slow noise, and now and then near black (a damp patch).
     "fn townMossGrade(p:vec3<f32>,k:i32)->vec3<f32>{",
@@ -137,7 +158,7 @@ export function townDefinitions(low: boolean): string {
     "var<private> townDd:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townGlassC:vec3<f32>=vec3<f32>(0.0,0.0,0.0);",
     "var<private> townSignA:f32=1.0;",
-    `var<private> townInfo:array<vec4<f32>,${TOWN_LAYERS.length}>=array<vec4<f32>,${TOWN_LAYERS.length}>(${table});`,
+    `var<private> townInfo:array<vec4<f32>,${set.layers.length}>=array<vec4<f32>,${set.layers.length}>(${table});`,
     "fn townHash(c:vec3<i32>)->f32{",
     "var h=bitcast<u32>(c.x)*374761393u+bitcast<u32>(c.y)*668265263u+bitcast<u32>(c.z)*2147483647u;",
     "h=(h^(h>>13u))*1274126177u;h=h^(h>>16u);",
@@ -313,7 +334,7 @@ export const DAY_GLOW_CODE =
   "if(tsSurf.w>0.001&&tsLayer>=0&&tsWearV.z<=0.5){baseColor=baseColor+tsBase0*clamp(tsSurf.w,0.0,1.0)*(1.0-material.townDay);townGlowC=townGlowC*material.townDay;}";
 
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
-export function townSurfaceCode(low: boolean, sign = false, ranked = false): string {
+export function townSurfaceCode(low: boolean, sign = false, ranked = false, set: LayerSet = TOWN_SET): string {
   return [
     `let tsSurf=input.${TOWN_VARYING};`,
     `let tsWearV=input.${TOWN_WEAR_VARYING};`,
@@ -339,7 +360,7 @@ export function townSurfaceCode(low: boolean, sign = false, ranked = false): str
     `baseColor=tsRgb*mix(1.0,tsAo,${f(AO_STRENGTH)});`,
     "roughness=clamp(tsRough,0.05,1.0);",
     // Bare metal is metal: sheet that is not rusted or painted over shines as the conductor it is, and the wear takes it away.
-    `if(tsLayer==${layerIndex("metal_aged")}||tsLayer==${layerIndex("metal_painted")}||tsLayer==${layerIndex("roof_metal")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`,
+    ...(set.metal.length === 0 ? [] : [`if(${set.metal.map((i) => `tsLayer==${i}`).join("||")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`]),
     "}",
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
     "let tsBase0=baseColor;",
@@ -553,13 +574,14 @@ export const PAINT_CODE = `out.clipPos.z+=${PAINT_K.toExponential(6)}*(1.0-color
 export const DOOR_UNPAINT = `if(color.a<0.04){out.clipPos.z-=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;}`;
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
-export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false): MaterialPlugin {
-  const definitions = townDefinitions(low);
-  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked);
+export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false, set: LayerSet = TOWN_SET): MaterialPlugin {
+  const definitions = townDefinitions(low, set);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked, set);
+  const rooms = set !== TOWN_SET;
   return {
-    name: "TownSurface",
+    name: rooms ? "InteriorSurface" : "TownSurface",
     priority: 200,
-    defines: { low, ranked },
+    defines: rooms ? { low, ranked, rooms } : { low, ranked },
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"

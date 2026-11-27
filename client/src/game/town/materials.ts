@@ -18,8 +18,9 @@
  * Authored: the table. The layers are what the game has; a material with no layer of its own kind (plastic, rubber, rope, cloth, glass) uses the
  * nearest (`stand-in` below).
  */
-import type { LayerName } from "./townLayers.js";
-import { TOWN_LAYERS, layerIndex } from "./townLayers.js";
+import { INTERIOR_LAYERS } from "./interiorLayers.js";
+import type { LayerName, TownLayerName } from "./townLayers.js";
+import { INTERIOR_ONLY_NAMES, townLayer } from "./townLayers.js";
 import type { Shade, Surface, WearKind } from "./townSurface.js";
 
 type V3 = readonly [number, number, number];
@@ -28,7 +29,9 @@ export type MatName =
   | "wood" | "bark" | "boards" | "ply" | "painted" | "plastic" | "cloth" | "rope"
   | "steel" | "rusty" | "ribbed" | "sheet"
   | "concrete" | "formed" | "brick" | "stone" | "plaster"
-  | "rubber" | "tar" | "shingle" | "soil" | "gravel" | "sand" | "plant";
+  | "rubber" | "tar" | "shingle" | "soil" | "gravel" | "sand" | "plant"
+  // The rooms' own (`interiorMaterials.ts` names them): marble, carpet, pale oak, dark wood, upholstery, glazed tile, cane.
+  | "i_marble" | "i_carpet" | "i_oak" | "i_darkwood" | "i_cloth" | "i_glazed" | "i_cane";
 
 /** A material with its own wear, scale or tint in the place of the table's. */
 export type MatSpec = { readonly mat: MatName; readonly wear?: number; readonly wearKind?: WearKind; readonly scale?: number; readonly streaks?: boolean; /** The sky the thing sees, where it stands against a wall and sees what the wall sees (`skyShade.ts`). */ readonly shade?: Shade };
@@ -79,13 +82,22 @@ const MATS: Readonly<Record<MatName, Mat>> = {
   sand: { layer: "sidewalk", scale: 5 },
   // Stand-in for leaves and stems where the engine's own plants are not used: the moss layer's green mat.
   plant: { layer: "moss", scale: 2 },
+  // The rooms' own layers (`interior.layers.json`). They carry no wear: a room is not out in the weather, and the rooms' set holds no overlay to wear them with.
+  // Veneer and boards run along the polygon's longest edge as a board does; the rest lie on the world's axes, so two faces in one plane show one texel.
+  i_marble: { layer: "marble_tile" },
+  i_carpet: { layer: "carpet" },
+  i_oak: { layer: "oak", grain: "long" },
+  i_darkwood: { layer: "dark_wood", grain: "long" },
+  i_cloth: { layer: "cloth" },
+  i_glazed: { layer: "glazed_tile" },
+  i_cane: { layer: "cane" },
 };
 
 /**
  * Each layer's mean colour, linear, as its file has it (measured from `client/assets/textures/town.<name>.color.webp`; a paintable layer's
  * is neutral and not used). A test holds the list to the layers.
  */
-export const MEAN: Readonly<Record<LayerName, V3>> = {
+export const MEAN: Readonly<Record<TownLayerName, V3>> = {
   siding_painted: [0.5, 0.5, 0.5], planks_peeling: [0.116, 0.161, 0.128], shingle_siding: [0.091, 0.077, 0.054], planks_weathered: [0.134, 0.124, 0.098],
   brick: [0.254, 0.168, 0.105], metal_aged: [0.5, 0.5, 0.5], metal_painted: [0.018, 0.093, 0.019], concrete_board: [0.173, 0.15, 0.107],
   stucco: [0.5, 0.5, 0.5], stone: [0.087, 0.067, 0.037], plywood: [0.21, 0.122, 0.053], shutter: [0.217, 0.232, 0.241],
@@ -93,6 +105,12 @@ export const MEAN: Readonly<Record<LayerName, V3>> = {
   sidewalk: [0.284, 0.247, 0.174], asphalt: [0.108, 0.107, 0.094], asphalt_dark: [0.053, 0.053, 0.049], gravel: [0.142, 0.118, 0.091],
   mud: [0.126, 0.088, 0.046], moss: [0.098, 0.097, 0.013], rust: [0.424, 0.39, 0.374],
 };
+
+/** A layer's mean colour, linear: the town's from the table, the rooms' own from their manifest. */
+export function meanOf(name: LayerName): V3 {
+  if ((INTERIOR_ONLY_NAMES as readonly string[]).includes(name)) return INTERIOR_LAYERS.find((l) => l.name === name)?.mean ?? [0.5, 0.5, 0.5];
+  return MEAN[name as TownLayerName];
+}
 
 /** The most a tint lifts a layer by: a pale thing in a dark layer keeps the layer's detail, and no channel runs away. */
 const GAIN_MAX = 10;
@@ -177,10 +195,10 @@ export function surfaceOn(like: Surface, points: readonly V3[], n: V3): Surface 
 export function matSurface(ref: MatRef, points: readonly V3[], n: V3, colour: V3 | null): Surface {
   const spec: MatSpec = typeof ref === "string" ? { mat: ref } : ref;
   const m = MATS[spec.mat];
-  const layer = TOWN_LAYERS[layerIndex(m.layer)];
+  const layer = townLayer(m.layer);
   const { u, v } = autoFrame(points, n, m.grain);
   const paintable = layer?.paintable === true;
-  const mean = MEAN[m.layer];
+  const mean = meanOf(m.layer);
   const dust = colour === null ? 0 : (m.dust ?? 0);
   const c: V3 = colour === null ? [1, 1, 1] : [colour[0] + (0.5 - colour[0]) * dust, colour[1] + (0.5 - colour[1]) * dust, colour[2] + (0.5 - colour[2]) * dust];
   const gain = (k: 0 | 1 | 2): number => Math.min(GAIN_MAX, c[k] / Math.max(0.01, mean[k]));
@@ -200,13 +218,18 @@ export function matSurface(ref: MatRef, points: readonly V3[], n: V3, colour: V3
   };
 }
 
+/** The layer a material is laid on. */
+export function matLayer(ref: MatRef): LayerName {
+  return MATS[typeof ref === "string" ? ref : ref.mat].layer;
+}
+
 /** A material as a smooth grid takes it (`MeshBuilder.grid`): its layer, the tint of a corner of colour `c`, the metres a tile spans at its scale, and its wear. */
 export function matLook(ref: MatRef): { readonly layer: LayerName; readonly tint: (c: V3) => V3; readonly tile: readonly [number, number]; readonly wear: number; readonly wearKind: WearKind } {
   const spec: MatSpec = typeof ref === "string" ? { mat: ref } : ref;
   const m = MATS[spec.mat];
-  const layer = TOWN_LAYERS[layerIndex(m.layer)];
+  const layer = townLayer(m.layer);
   const paintable = layer?.paintable === true;
-  const mean = MEAN[m.layer];
+  const mean = meanOf(m.layer);
   const scale = spec.scale ?? m.scale ?? 1;
   const tile = layer?.tile ?? [1, 1];
   return {

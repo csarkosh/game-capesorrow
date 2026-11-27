@@ -60,7 +60,7 @@ import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { MAX_DOORS, RANK_UNITS, emptyTownReady, townSurfacePlugin, writeDoors, writeLamps, type TownReady } from "./townMaterial.js";
+import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, townSurfacePlugin, writeDoors, writeLamps, type TownReady } from "./townMaterial.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
 import { daylightAt, litGainAt } from "../../look.js";
@@ -372,7 +372,28 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null) });
       const plan = ground.plan;
-      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads });
+      // The rooms' own textures are not made here: `insideParts.ts` asks for them (and so for this material, which reads them) when a player first walks into a designed room.
+      // The material has the town's uniforms (the hour, the glow, the lamps and doors, shared by reference) and a ready flag of its own.
+      const interior = wearsTextures
+        ? {
+            low,
+            signal: loading.signal,
+            make: (arrays: NonNullable<typeof textures>) => {
+              const own: TownReady = { ...readied, townReady: [0] };
+              const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
+              m.plugins = [baseColourPlugin(), townSurfacePlugin(arrays, own, low, undefined, false, INTERIOR_SET), surfaceSplitPlugin(), air()];
+              return {
+                material: m,
+                landed: (filled: boolean) => {
+                  if (!filled || disposed) return;
+                  own.townReady[0] = 1;
+                  markMaterialUboDirty(m);
+                },
+              };
+            },
+          }
+        : null;
+      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads, interior });
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       const placed = [

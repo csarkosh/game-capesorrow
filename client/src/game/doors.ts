@@ -7,6 +7,7 @@ import type { CommandSpec } from "@csarkosh/engine/game/commands";
 import { FOOT } from "../sim/car/types.js";
 import { GOING_IN, GOING_OUT, INSIDE, insideRooms, OUTSIDE, roomDoorAt, roomOf, streetDoorAt } from "../sim/inside/rooms.js";
 import type { Walker } from "../sim.js";
+import { roomDrawn } from "./insideReady.js";
 import { GO_IN, GO_OUT } from "./words.js";
 
 /** What the line at a door says to a player on foot: to go in at a street door, to go out at a room's door, else nothing (and nothing during a hold). `seed` is the world's, or null where there is none. */
@@ -18,9 +19,13 @@ export function doorLine(self: Walker | undefined, seed: number | null): string 
   return room !== undefined && roomDoorAt(room, self.pos) ? GO_OUT : null;
 }
 
-/** Whether the screen is dark: while the player is held at a door, going in or going out. Never from the click, only from the state the host has told. */
+/**
+ * Whether the screen is dark: while the player is held at a door, going in or going out, and while they are inside and the room is not yet drawn (its textures
+ * are still arriving, `insideReady.ts`). Never from the click, only from the state the host has told.
+ */
 export function darkFor(self: Walker | undefined): boolean {
-  return self !== undefined && (self.inside.phase === GOING_IN || self.inside.phase === GOING_OUT);
+  if (self === undefined) return false;
+  return self.inside.phase === GOING_IN || self.inside.phase === GOING_OUT || (self.inside.phase === INSIDE && !roomDrawn());
 }
 
 /** The places `goin` names: the rooms' names, and `out` for the street. */

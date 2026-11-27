@@ -134,26 +134,28 @@ export function board(g: Geo, dc: Decor): void {
 }
 
 /**
- * Bare bulbs on a wire along the item's facing, from its place: `p0` long, `p1` bulbs, hung from the ceiling hooks every 3 m with the wire sagging a little between them. A bulb is
- * a small globe of its own warm light, over a dark socket.
+ * Bare bulbs on a wire along the item's facing, from its place: `p0` long, `p1` bulbs, then the height of each bulb's centre over the floor (`p2` on; they hang at slightly
+ * different heights). The wire is a thin dark strip from bulb to bulb, hooked to the ceiling at each end, and each bulb hangs on a thread. A bulb is two crossed diamonds
+ * 6 cm across and 8 cm high of its own amber light, which the game's look blooms.
  */
 export function bulbString(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   const len = it.p[0] ?? 4;
   const n = Math.max(2, Math.round(it.p[1] ?? 4));
-  // The wire runs at `wire`, hooked at the ceiling at each end and every few metres; each bulb hangs a hand's length under it, a few centimetres off its neighbour's height.
-  const wire = g.ceiling - 0.28;
   const at = (i: number): number => (i * len) / (n - 1);
-  L.poly([[0, 0, g.ceiling - 0.1], [0, 0, wire], [0, 0.01, wire], [0, 0.01, g.ceiling - 0.1]], [1, 0, 0], "steel", { tint: [0.15, 0.15, 0.15] });
-  L.poly([[len, 0, g.ceiling - 0.1], [len, 0, wire], [len, 0.01, wire], [len, 0.01, g.ceiling - 0.1]], [1, 0, 0], "steel", { tint: [0.15, 0.15, 0.15] });
-  for (let i = 0; i + 1 < n; i++) L.poly([[at(i), 0, wire], [at(i + 1), 0, wire], [at(i + 1), 0, wire + 0.014], [at(i), 0, wire + 0.014]], [0, 1, 0], "steel", { tint: [0.15, 0.15, 0.15] });
+  const high = (i: number): number => it.p[2 + i] ?? g.ceiling - 0.5;
+  const dark = { tint: [0.08, 0.07, 0.06] as Rgb };
+  // The wire runs 12 cm over each bulb, and rises to the ceiling's hooks at the two ends.
+  const wireY = (i: number): number => high(i) + 0.13;
+  L.poly([[0, 0, g.ceiling - 0.03], [0, 0.008, g.ceiling - 0.03], [0, 0.008, wireY(0)], [0, 0, wireY(0)]], [1, 0, 0], "steel", dark);
+  L.poly([[len, 0, g.ceiling - 0.03], [len, 0.008, g.ceiling - 0.03], [len, 0.008, wireY(n - 1)], [len, 0, wireY(n - 1)]], [1, 0, 0], "steel", dark);
+  for (let i = 0; i + 1 < n; i++) L.poly([[at(i), 0, wireY(i)], [at(i + 1), 0, wireY(i + 1)], [at(i + 1), 0, wireY(i + 1) + 0.012], [at(i), 0, wireY(i) + 0.012]], [0, 1, 0], "steel", dark);
   for (let i = 0; i < n; i++) {
     const f = at(i);
-    const y = g.ceiling - 0.5 + (hash01(it.id * 53 + i + g.seed, 47) - 0.5) * 0.05;
-    // The drop from the wire (a thin sheet) and the globe: two four-sided cones of the bulb's own light, over a dark cap.
-    L.poly([[f, 0, y + 0.07], [f, 0.008, y + 0.07], [f, 0.008, wire], [f, 0, wire]], [1, 0, 0], "steel", { tint: [0.1, 0.1, 0.1] });
-    L.frustum(f, 0, y + 0.03, y + 0.07, 0.014, 0.014, 4, "steel", { tint: [0.12, 0.1, 0.08] }, false, false);
-    L.frustum(f, 0, y - 0.01, y + 0.03, 0.04, 0.014, 4, "paper", { glow: 2, tint: [1, 0.78, 0.45] }, false, false);
-    L.frustum(f, 0, y - 0.05, y - 0.01, 0.012, 0.04, 4, "paper", { glow: 2, tint: [1, 0.78, 0.45] }, false, false);
+    const y = high(i);
+    L.poly([[f, 0, y + 0.04], [f, 0.004, y + 0.04], [f, 0.004, wireY(i)], [f, 0, wireY(i)]], [1, 0, 0], "steel", dark);
+    const glow = { glow: 3, tint: [1, 0.62, 0.24] as Rgb };
+    L.poly([[f, 0, y + 0.04], [f, 0.03, y + 0.005], [f, 0, y - 0.04], [f, -0.03, y + 0.005]], [1, 0, 0], "paper", glow);
+    L.poly([[f, 0, y + 0.04], [f + 0.03, 0, y + 0.005], [f, 0, y - 0.04], [f - 0.03, 0, y + 0.005]], [0, 1, 0], "paper", glow);
   }
 }

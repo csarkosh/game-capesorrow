@@ -13,6 +13,13 @@
  *   (`insideWeather.ts`, which also says why the lens needs that).
  * - **The town is hidden while the player is inside** (phase INSIDE only): it is below the floor and costs frame time. It is shown again in
  *   GOING_OUT, so the street is there when the screen clears (`hidesTown`, read by `townParts.ts`).
+ * - **The room's own textures** (`interiorTextures.ts`, imported here and nowhere else). A room drawn from a design (`design.legacy` false) is drawn on the rooms'
+ *   own arrays (`interior.layers.json`: marble, carpet, oak, dark wood, cloth, glazed tile, cane and the few outdoor layers the rooms use), which are fetched
+ *   and made the first time the local player starts to walk into such a room (the first frame of the hold at its door) or is put straight in one, never with
+ *   the town, and kept for the session. The room is built once they are ready, and until then the part tells the session that the room is not drawn
+ *   (`insideReady.ts`), which keeps the screen dark. If they do not load (a warning, once) the room is built on the town's arrays, as the rooms were drawn before they had a
+ *   set (`insideLayers.ts` lays the room's layers on whichever arrays it is drawn on), so a player is never left in the dark. A room drawn the old way
+ *   (`legacy`) never waits for them and never reads them.
  * - **People.** `insidePeople` stands copies of each room's unit's people in the hidden room, over the whole room, for `peopleParts.ts` to show
  *   while the local player is where that room is.
  */
@@ -23,10 +30,14 @@ import { buildingLevels } from "./buildingGeometry.js";
 import { heldBy, tradeAt } from "./handHeld.js";
 import { unitHours } from "./hours.js";
 import { insideGeometry } from "./insideGeometry.js";
+import { retargetLayers } from "./insideLayers.js";
+import { createInteriorTextures } from "./interiorTextures.js";
+import { setRoomDrawn } from "../insideReady.js";
 import { PERSON_MODELS, roomPeople, type Activity, type PersonModel } from "./people.js";
 import type { PlacedPerson } from "./peopleParts.js";
 import { xd, xp } from "./roomKit.js";
 import { packSurface } from "./surfacePack.js";
+import type { TownTextureSet } from "./townMaterial.js";
 import type { Detail, TownGround } from "./townTypes.js";
 
 /** How many ticks into the hold at the street door the room is built: the screen is dark by then (the hold is `DOOR_TICKS` and the fade takes the first of it). */
@@ -62,6 +73,15 @@ export type InsideHost = {
   readonly ground: TownGround;
   readonly detail: Detail;
   readonly uploads: FrameUploads;
+  /**
+   * What the rooms' own textures need of the renderer (`townParts.ts`): null where the town has no textures at all. `make` is given the arrays when they have been
+   * made and returns the material that reads them (the town's indoor material, on the rooms' layers) and what to tell it when they have landed.
+   */
+  readonly interior: {
+    readonly low: boolean;
+    readonly signal: AbortSignal;
+    make(textures: TownTextureSet): { readonly material: PbrMaterialProps; landed(filled: boolean): void };
+  } | null;
 };
 
 export type InsideParts = {
@@ -72,9 +92,37 @@ export type InsideParts = {
   dispose(): void;
 };
 
+/** Where the rooms' own textures are: not asked for, being fetched, landed, or not loaded (the town's are used). */
+type Textures = "idle" | "loading" | "ready" | "failed";
+
 export function createInsideParts(host: InsideHost): InsideParts {
   let room = 0;
   let mesh: Mesh | null = null;
+  let textures: Textures = "idle";
+  let rooms: { readonly material: PbrMaterialProps; landed(filled: boolean): void } | null = null;
+  setRoomDrawn(false);
+
+  /** Fetches and makes the rooms' arrays, once: the first time it is called, and never if there is nowhere to put them. */
+  const fetchTextures = (): void => {
+    if (textures !== "idle") return;
+    const interior = host.interior;
+    if (interior === null || !host.textured) {
+      textures = "failed";
+      return;
+    }
+    textures = "loading";
+    try {
+      const arrays = createInteriorTextures(host.engine, interior.low, interior.signal, (filled) => {
+        textures = filled ? "ready" : "failed";
+        rooms?.landed(filled);
+      });
+      rooms = interior.make(arrays);
+    } catch (error) {
+      // The arrays could not be made (no device to make them on): the rooms are drawn on the town's.
+      console.warn("the rooms' texture arrays could not be made; the room is drawn with the town's textures:", error);
+      textures = "failed";
+    }
+  };
 
   const drop = (): void => {
     if (mesh === null) return;
@@ -87,9 +135,12 @@ export function createInsideParts(host: InsideHost): InsideParts {
 
   const build = (r: InsideRoom): void => {
     const a = insideGeometry(host.ground, r, host.detail);
+    // A designed room is drawn on the rooms' own arrays if they landed, else on the town's (`insideLayers.ts`).
+    const own = !r.design.legacy && textures === "ready" && rooms !== null;
+    if (host.textured && !r.design.legacy) retargetLayers(a, own ? "interior" : "town");
     const made = createMeshFromData(host.engine, `inside_${r.id}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
     if (host.textured) made.pluginVertexData = packSurface(a.surface);
-    made.material = host.material;
+    made.material = own && rooms !== null ? rooms.material : host.material;
     made.renderOrder = host.order;
     addToScene(host.scene, made);
     host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
@@ -100,15 +151,28 @@ export function createInsideParts(host: InsideHost): InsideParts {
 
   return {
     frame(inside) {
+      const here = whereOf(inside);
+      // The rooms' arrays are asked for as the player starts to walk into a designed room, or finds themselves in one.
+      const going = inside !== undefined && inside.phase === GOING_IN ? inside.place : here;
+      if (going !== 0) {
+        const target = roomOf(host.ground.seed, going);
+        if (target !== undefined && !target.design.legacy) fetchTextures();
+      }
       const want = wantedOf(inside);
-      if (want === room) return;
-      drop();
-      if (want === 0) return;
-      const r = roomOf(host.ground.seed, want);
-      if (r !== undefined) build(r);
+      if (want !== room) {
+        drop();
+        const r = want === 0 ? undefined : roomOf(host.ground.seed, want);
+        // A designed room waits for its textures, and the screen with it (`insideReady.ts`); a failed fetch is no reason to wait.
+        if (r !== undefined && (r.design.legacy || textures !== "loading")) build(r);
+      }
+      // Drawn: the player is in no room, or the room they are in is built, or there is no such room to build.
+      setRoomDrawn(here === 0 || room === here || roomOf(host.ground.seed, here) === undefined);
     },
     built: () => room,
-    dispose: drop,
+    dispose() {
+      drop();
+      setRoomDrawn(true);
+    },
   };
 }
 

@@ -1,0 +1,426 @@
+/**
+ * What the lodging is made of: the lobby (a reception desk of white stone with a timber shelf, the wall of vertical slats with the lodging's name in lit letters, a ceiling of timber
+ * battens with strip lights, pendant lamps, carpet insets, a teal sofa, round pouffes, a low oval table, shell chairs, a wall of open shelving with a television, framed pictures), the corridor's
+ * fittings (the barrier across the closed flight and what stands at it, an ice machine) and the player's room (a king bed with its headboard, bedside tables, a dresser with a television, a desk, a footstool,
+ * a window with its blind and heater, a closet front, a forest picture). Real sizes: the desk 1.1 m, a sofa's seat 0.45, a bed's top 0.62, a dresser 0.85, a desk 0.76.
+ */
+import type { Decor, Item } from "../../../sim/inside/design.js";
+import { hash01, type Rgb } from "../meshBuilder.js";
+import { GLYPH_H, textPixels, textRuns } from "../signFont.js";
+import { tintOf, type Geo, type Local } from "./kit.js";
+
+/** A tint of `cloth` (whose albedo is the colour of a rust red) that makes it the colour asked for. */
+const cloth = (r: number, g: number, b: number): { tint: Rgb } => ({ tint: [r / 0.5, g / 0.2, b / 0.16] });
+const TEAL = cloth(0.04, 0.34, 0.38);
+const WHITE = cloth(0.8, 0.8, 0.78);
+const SHELL: Readonly<Record<string, Rgb>> = { yellow: [0.8, 0.65, 0.08], green: [0.35, 0.5, 0.12], grey: [0.22, 0.24, 0.26] };
+
+/** The reception desk: a block of white stone 1.1 m high and 0.6 deep with a ledge, a lower timber shelf that wraps one end, a monitor and keyboard and a bell. It faces the customers. */
+export function receptionDesk(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const len = it.p[0] ?? 3;
+  const h = len / 2;
+  L.box(-0.3, 0.3, -h, h, 0, 1.1, "marble_tile", { tint: [1.15, 1.15, 1.13] });
+  L.box(-0.3, 0.36, -h - 0.02, h + 0.02, 1.1, 1.13, "marble_tile", { tint: [1.2, 1.2, 1.17] });
+  // The timber shelf at the end, at table height, on two legs.
+  L.box(0.3, 0.95, h - 1.2, h + 0.02, 0.74, 0.78, "oak", { tint: [0.95, 0.85, 0.75] });
+  for (const r of [h - 1.15, h - 0.02]) L.box(0.88, 0.94, r - 0.025, r + 0.025, 0, 0.74, "dark_wood", { tint: [1.2, 1.2, 1.2] }, true, false);
+  // A monitor on its stand and a keyboard on the ledge, the clerk's side; a bell on the customers'.
+  L.box(-0.12, -0.08, -h + 0.6, -h + 1.15, 1.3, 1.58, "steel", { tint: [0.1, 0.1, 0.1] });
+  L.poly([[-0.075, -h + 0.62, 1.32], [-0.075, -h + 1.13, 1.32], [-0.075, -h + 1.13, 1.56], [-0.075, -h + 0.62, 1.56]], [1, 0, 0], "painted", { glow: 0.8, tint: [0.12, 0.2, 0.3] });
+  L.box(-0.14, -0.1, -h + 0.85, -h + 0.9, 1.13, 1.3, "steel", { tint: [0.15, 0.15, 0.15] });
+  L.box(-0.2, 0.0, -h + 0.7, -h + 1.05, 1.13, 1.15, "steel", { tint: [0.12, 0.12, 0.12] });
+  L.frustum(0.2, h - 1.6 + 0.9 - 0.9 + 0.0, 1.13, 1.17, 0.035, 0.03, 8, "brass", undefined, false);
+}
+
+/** A sofa facing its front: a base, a seat cushion, a back to 0.85 m, two arms, and loose cushions in black and white. `p0` its length. */
+export function sofa(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const len = it.p[0] ?? 2;
+  const h = len / 2;
+  L.box(-0.45, 0.45, -h, h, 0, 0.15, "dark_wood", { tint: [0.6, 0.6, 0.6] }, true, false);
+  L.box(-0.2, 0.45, -h + 0.18, h - 0.18, 0.15, 0.45, "cloth", TEAL);
+  L.box(-0.45, -0.2, -h, h, 0.15, 0.85, "cloth", TEAL);
+  for (const r of [-h, h - 0.18]) L.box(-0.2, 0.45, r, r + 0.18, 0.15, 0.62, "cloth", TEAL);
+  const n = Math.max(1, Math.floor(len / 1.1));
+  for (let k = 0; k < n; k++) {
+    const r = -h + 0.5 + (k * (len - 1)) / Math.max(1, n - 1);
+    const dark = hash01(it.id * 5 + k + g.seed, 71) < 0.5;
+    L.box(-0.2, -0.1, r - 0.2, r + 0.2, 0.45, 0.85, "cloth", dark ? cloth(0.06, 0.06, 0.07) : WHITE);
+  }
+}
+
+/** A round pouffe, a little wider in the middle than at the ends, on a timber base: yellow, blue or cream. */
+export function pouffe(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const pick = floorPick(it.id + g.seed);
+  const cols: Rgb[] = [[0.8, 0.62, 0.08], [0.06, 0.25, 0.55], [0.75, 0.7, 0.6]];
+  const c = cols[pick % 3] as Rgb;
+  L.frustum(0, 0, 0, 0.07, 0.34, 0.34, 8, "oak", undefined, false);
+  L.frustum(0, 0, 0.07, 0.22, 0.34, 0.4, 8, "cloth", cloth(c[0], c[1], c[2]), false, false);
+  L.frustum(0, 0, 0.22, 0.38, 0.4, 0.36, 8, "cloth", cloth(c[0], c[1], c[2]));
+}
+const floorPick = (n: number): number => Math.floor(hash01(n, 72) * 3);
+
+/** A low oval table: an oval top of timber 0.42 m high on four splayed legs. */
+export function ovalTable(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const ring = (y: number, k = 1): [number, number, number][] => Array.from({ length: 12 }, (_, i) => [Math.cos((i / 12) * Math.PI * 2) * 0.3 * k, Math.sin((i / 12) * Math.PI * 2) * 0.65 * k, y]);
+  L.poly(ring(0.42), [0, 0, 1], "oak", { tint: [1.1, 0.85, 0.7] });
+  L.poly(ring(0.4), [0, 0, -1], "oak", { tint: [0.8, 0.6, 0.5] });
+  for (let i = 0; i < 12; i++) {
+    const a = ring(0.4)[i] as [number, number, number];
+    const b = ring(0.4)[(i + 1) % 12] as [number, number, number];
+    L.poly([a, b, [b[0], b[1], 0.42], [a[0], a[1], 0.42]], [a[0] + b[0], a[1] + b[1], 0], "oak", { tint: [0.9, 0.7, 0.55] });
+  }
+  for (const [a, b] of [[0.2, 0.45], [0.2, -0.45], [-0.2, 0.45], [-0.2, -0.45]] as const) g.tube(L.p(a, b, 0.4), L.p(a * 1.6, b * 1.15, 0.0), 0.02, 4, "dark_wood");
+}
+
+/** An upholstered shell chair, seat at 0.46 m on four thin legs: its colour is the item's material name (yellow, green or grey). */
+export function shellChair(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const c = SHELL[it.mat ?? "grey"] ?? (SHELL["grey"] as Rgb);
+  const look = cloth(c[0], c[1], c[2]);
+  L.box(-0.22, 0.22, -0.22, 0.22, 0.42, 0.47, "cloth", look);
+  L.box(-0.24, -0.18, -0.23, 0.23, 0.47, 0.85, "cloth", look);
+  for (const [a, b] of [[0.17, 0.17], [0.17, -0.17], [-0.17, 0.17], [-0.17, -0.17]] as const) L.box(a - 0.014, a + 0.014, b - 0.014, b + 0.014, 0, 0.42, "dark_wood", undefined, true, false);
+}
+
+/** An armchair: a seat, a back and two arms, in a mustard cloth. */
+export function armchair(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const look = cloth(0.7, 0.5, 0.1);
+  L.box(-0.4, 0.4, -0.4, 0.4, 0.12, 0.2, "dark_wood", { tint: [0.6, 0.6, 0.6] }, true, false);
+  L.box(-0.2, 0.4, -0.3, 0.3, 0.2, 0.45, "cloth", look);
+  L.box(-0.4, -0.2, -0.4, 0.4, 0.2, 0.85, "cloth", look);
+  for (const r of [-0.4, 0.3]) L.box(-0.2, 0.4, r, r + 0.1, 0.2, 0.62, "cloth", look);
+}
+
+/** A wall of open shelving boxes with a television in one of them and a few objects: frames, a plant, a green box. Faces the room. `p0` its length. */
+export function shelfWall(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const len = it.p[0] ?? 2;
+  const h = len / 2;
+  const frame = { tint: [0.8, 0.8, 0.8] as Rgb };
+  L.box(-0.22, -0.2, -h, h, 0, 2.2, "dark_wood", { tint: [0.35, 0.35, 0.35] }, false);
+  const cols = Math.max(2, Math.round(len / 0.8));
+  for (let i = 0; i <= cols; i++) {
+    const r = -h + (i * len) / cols;
+    L.box(-0.2, 0.2, r - 0.015, r + 0.015, 0.0, 2.2, "oak", frame, true, false);
+  }
+  for (const y of [0.0, 0.7, 1.4, 2.17]) L.box(-0.2, 0.2, -h, h, y, y + 0.03, "oak", frame);
+  // The television in the middle box, and objects in the others.
+  const tv = Math.floor(cols / 2);
+  const r0 = -h + (tv * len) / cols;
+  const w = len / cols;
+  L.box(-0.05, 0.0, r0 + 0.08, r0 + w - 0.08, 0.95, 1.38, "steel", { tint: [0.1, 0.1, 0.1] });
+  L.poly([[0.005, r0 + 0.11, 0.98], [0.005, r0 + w - 0.11, 0.98], [0.005, r0 + w - 0.11, 1.35], [0.005, r0 + 0.11, 1.35]], [1, 0, 0], "painted", { glow: 0.9, tint: [0.1, 0.22, 0.3] });
+  for (let i = 0; i < cols; i++) {
+    if (i === tv || hash01(it.id * 7 + i + g.seed, 73) < 0.25) continue;
+    const r = -h + ((i + 0.5) * len) / cols;
+    const y = [0.03, 0.73, 1.43][Math.floor(hash01(it.id + i * 3 + g.seed, 74) * 3)] as number;
+    const kind = Math.floor(hash01(it.id + i * 5 + g.seed, 75) * 3);
+    if (kind === 0) L.box(-0.05, 0.1, r - 0.12, r + 0.12, y, y + 0.3, "cloth", cloth(0.2, 0.45, 0.25));
+    else if (kind === 1) L.frustum(0.0, r, y, y + 0.28, 0.08, 0.12, 6, "painted", { tint: [0.9, 0.8, 0.6] }, false);
+    else L.box(0.0, 0.03, r - 0.15, r + 0.15, y + 0.05, y + 0.35, "paper", { tint: [0.9, 0.5, 0.3] });
+  }
+}
+
+/** A hanging lamp with a dark shade: a cord from the ceiling and a shade of 8 sides open under, with a glowing disc in it. `p0` the shade's lower edge's height. */
+export function pendantLamp(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const y = it.p[0] ?? g.ceiling - 1.4;
+  L.box(-0.004, 0.004, -0.004, 0.004, y + 0.22, g.ceiling, "steel", { tint: [0.1, 0.1, 0.1] }, true, false);
+  L.frustum(0, 0, y, y + 0.22, 0.24, 0.07, 8, "steel", { tint: [0.1, 0.1, 0.1] }, false, true);
+  const disc = Array.from({ length: 8 }, (_, i): [number, number, number] => [Math.cos((i / 8) * Math.PI * 2) * 0.22, Math.sin((i / 8) * Math.PI * 2) * 0.22, y + 0.015]);
+  L.poly(disc, [0, 0, -1], "paper", { glow: 2.2, tint: [1, 0.9, 0.7] });
+}
+
+/**
+ * A ceiling of timber battens hung under the real one: battens 6 by 12 cm on a 20 cm pitch, running forward `p0` metres from the item's place and spread `p1` metres across (centred on it), their undersides at
+ * `p2` (a drawn underside and the two long sides, no ends), with a glowing strip between every third and on rods.
+ */
+export function battenCeiling(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const len = it.p[0] ?? 4;
+  const wide = it.p[1] ?? 3;
+  const y1 = it.p[2] ?? g.ceiling - 0.4;
+  const n = Math.max(2, Math.floor(wide / 0.2));
+  for (let k = 0; k < n; k++) {
+    const r = -wide / 2 + (k + 0.5) * (wide / n);
+    const t = tintOf(it.id * 3 + k + g.seed, 76, 0.12);
+    const look = { tint: [1.1 * t[0], 0.95 * t[1], 0.8 * t[2]] as Rgb };
+    L.poly([[0, r - 0.03, y1 - 0.12], [len, r - 0.03, y1 - 0.12], [len, r + 0.03, y1 - 0.12], [0, r + 0.03, y1 - 0.12]], [0, 0, -1], "oak", look);
+    L.poly([[0, r - 0.03, y1 - 0.12], [len, r - 0.03, y1 - 0.12], [len, r - 0.03, y1], [0, r - 0.03, y1]], [0, -1, 0], "oak", look);
+    L.poly([[0, r + 0.03, y1 - 0.12], [len, r + 0.03, y1 - 0.12], [len, r + 0.03, y1], [0, r + 0.03, y1]], [0, 1, 0], "oak", look);
+    if (k % 3 === 1) L.poly([[0.1, r + 0.1, y1 - 0.1], [len - 0.1, r + 0.1, y1 - 0.1], [len - 0.1, r + 0.13, y1 - 0.1], [0.1, r + 0.13, y1 - 0.1]], [0, 0, -1], "paper", { glow: 2, tint: [1, 0.96, 0.88] });
+  }
+  for (const f of [0.3, len - 0.3]) for (const r of [-wide / 2 + 0.3, wide / 2 - 0.3]) L.box(f - 0.01, f + 0.01, r - 0.01, r + 0.01, y1, g.ceiling, "steel", { tint: [0.15, 0.15, 0.15] }, true, false);
+}
+
+/** A rectangle of carpet laid 1 cm proud of the floor: `p0` forward, `p1` across, a teal band across it when `p2` is 1. */
+export function carpetInset(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const len = it.p[0] ?? 2;
+  const w = it.p[1] ?? 2;
+  L.box(-len / 2, len / 2, -w / 2, w / 2, 0, 0.012, "carpet", { tint: [0.75, 0.78, 0.82] });
+  if ((it.p[2] ?? 0) === 1) {
+    L.poly([[-len / 2 + 0.2, -w / 2 + 0.01, 0.014], [len / 2 - 0.2, -w / 2 + 0.01, 0.014], [len / 2 - 0.2, -w / 2 + 0.4, 0.014], [-len / 2 + 0.2, -w / 2 + 0.4, 0.014]], [0, 0, 1], "carpet", { tint: [0.05, 1.2, 1.3] });
+  }
+}
+
+/** A king bed, head to foot along the item's facing (it looks toward the foot): a base with a brown skirt, a mattress, a white duvet with its fold, two pairs of pillows, a headboard of pale timber 1.3 m high. */
+export function bed(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-1.05, 1.05, -0.93, 0.93, 0, 0.3, "cloth", { tint: [0.9, 0.55, 0.4] }, true, false);
+  L.box(-1.0, 1.02, -0.9, 0.9, 0.3, 0.55, "cloth", WHITE);
+  L.box(-0.5, 1.04, -0.96, 0.96, 0.55, 0.62, "cloth", WHITE);
+  L.box(-0.5, -0.4, -0.96, 0.96, 0.62, 0.64, "cloth", { tint: [1.1, 1.1, 1.1] });
+  for (const r of [-0.45, 0.45]) {
+    L.box(-1.0, -0.55, r - 0.38, r + 0.38, 0.55, 0.7, "cloth", WHITE);
+    L.box(-0.9, -0.5, r - 0.36, r + 0.36, 0.7, 0.8, "cloth", { tint: [WHITE.tint[0] * 1.05, WHITE.tint[1] * 1.05, WHITE.tint[2] * 1.05] });
+  }
+  L.box(-1.07, -1.03, -1.15, 1.15, 0.4, 1.3, "oak", { tint: [1.2, 1.1, 1.0] });
+}
+
+/** A bedside table hung on the wall: a drawer box at 0.45 to 0.7 m with its front, a telephone on it. */
+export function bedside(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.25, 0.25, -0.28, 0.28, 0.45, 0.7, "oak", { tint: [1.0, 0.85, 0.7] });
+  L.box(0.25, 0.26, -0.2, 0.2, 0.52, 0.64, "dark_wood", { tint: [0.8, 0.8, 0.8] }, false);
+  L.box(-0.1, 0.1, -0.1, 0.1, 0.7, 0.76, "steel", { tint: [0.1, 0.1, 0.1] });
+}
+
+/** A dresser with a television on it and a small coffee machine: 0.55 by 1.2 m, 0.85 m high, three drawers; it faces the room. */
+export function dresser(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.28, 0.28, -0.6, 0.6, 0, 0.85, "oak", { tint: [0.95, 0.8, 0.68] });
+  for (let k = 0; k < 3; k++) L.poly([[0.285, -0.55, 0.08 + k * 0.25], [0.285, 0.55, 0.08 + k * 0.25], [0.285, 0.55, 0.28 + k * 0.25], [0.285, -0.55, 0.28 + k * 0.25]], [1, 0, 0], "oak", { tint: [0.8, 0.65, 0.55] });
+  L.box(-0.06, 0.0, -0.4, 0.2, 0.85, 1.3, "steel", { tint: [0.1, 0.1, 0.1] });
+  L.poly([[0.005, -0.37, 0.88], [0.005, 0.17, 0.88], [0.005, 0.17, 1.27], [0.005, -0.37, 1.27]], [1, 0, 0], "painted", { glow: 0.9, tint: [0.1, 0.16, 0.22] });
+  L.box(-0.1, 0.1, 0.3, 0.55, 0.85, 1.12, "steel", { tint: [0.12, 0.12, 0.13] });
+}
+
+/** A writing desk, 0.6 by 1.4 m at 0.76 m, with two panel ends and a lamp with a pale shade on it; it faces the room. */
+export function desk(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.3, 0.3, -0.7, 0.7, 0.72, 0.76, "oak", { tint: [0.95, 0.8, 0.68] });
+  for (const r of [-0.68, 0.64]) L.box(-0.28, 0.28, r, r + 0.04, 0, 0.72, "oak", { tint: [0.9, 0.75, 0.62] }, true, false);
+  L.frustum(-0.12, -0.45, 0.76, 0.98, 0.05, 0.03, 6, "steel", undefined, false, false);
+  L.frustum(-0.12, -0.45, 0.98, 1.2, 0.13, 0.09, 8, "paper", { glow: 1.6, tint: [1, 0.95, 0.85] }, false, true);
+  L.box(0.0, 0.2, 0.05, 0.4, 0.76, 0.78, "paper", { tint: [0.9, 0.9, 0.85] });
+}
+
+/** A teal footstool, 0.45 m square and 0.42 m high. */
+export function footstool(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.22, 0.22, -0.22, 0.22, 0.05, 0.42, "cloth", TEAL);
+  L.box(-0.2, 0.2, -0.2, 0.2, 0, 0.05, "dark_wood", undefined, true, false);
+}
+
+/** A heater unit under a window: a pale box 1.0 m wide and 0.5 m high with a grille; it faces the room. */
+export function heater(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.12, 0.12, -0.5, 0.5, 0, 0.45, "painted", { tint: [1.35, 1.35, 1.3] });
+  for (let k = 0; k < 4; k++) L.poly([[0.125, -0.42, 0.1 + k * 0.07], [0.125, 0.42, 0.1 + k * 0.07], [0.125, 0.42, 0.13 + k * 0.07], [0.125, -0.42, 0.13 + k * 0.07]], [1, 0, 0], "painted", { tint: [0.5, 0.5, 0.5] });
+}
+
+/** An ice machine, 0.7 by 0.8 m and 1.8 m high, in white steel with a dark chute. */
+export function iceMachine(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.35, 0.35, -0.4, 0.4, 0, 1.8, "painted", { tint: [1.3, 1.3, 1.3] });
+  L.box(0.35, 0.37, -0.25, 0.25, 0.9, 1.3, "steel", { tint: [0.1, 0.1, 0.12] });
+  L.poly([[0.375, -0.2, 1.4], [0.375, 0.2, 1.4], [0.375, 0.2, 1.6], [0.375, -0.2, 1.6]], [1, 0, 0], "painted", { glow: 1.0, tint: [0.2, 0.5, 0.8] });
+}
+
+/** The barrier across the closed flight: two upright posts and two timber rails painted in bands, across the width of the corridor (1.8 m) at `p0` metres up the flight (the floor there). */
+export function barrier(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const base = (it.p[0] ?? 0) - (it.y ?? 0);
+  for (const r of [-0.85, 0.85]) L.box(-0.04, 0.04, r - 0.04, r + 0.04, base, base + 1.15, "oak", { tint: [1.0, 0.8, 0.5] }, true, false);
+  for (const y of [base + 0.55, base + 0.95]) {
+    L.box(-0.025, 0.025, -0.85, 0.85, y, y + 0.12, "painted", { tint: [1.3, 1.1, 0.2] });
+    for (let k = 0; k < 6; k++) L.poly([[0.03, -0.82 + k * 0.28, y], [0.03, -0.82 + k * 0.28 + 0.12, y], [0.03, -0.82 + k * 0.28 + 0.12, y + 0.12], [0.03, -0.82 + k * 0.28, y + 0.12]], [1, 0, 0], "painted", { tint: [0.08, 0.08, 0.08] });
+  }
+}
+
+/** A step ladder leaning at the barrier: two rails and four steps, in aluminium. `p0` the height of the step it stands on. */
+export function stepLadder(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const base = (it.p[0] ?? 0) - (it.y ?? 0);
+  for (const r of [-0.22, 0.22]) {
+    L.box(-0.02, 0.02, r - 0.02, r + 0.02, base, base + 1.4, "steel", { tint: [1.5, 1.5, 1.5] }, true, false);
+    g.tube(L.p(-0.02, r, base + 1.4), L.p(-0.5, r, base), 0.016, 4, "steel", { tint: [1.5, 1.5, 1.5] });
+  }
+  for (let k = 0; k < 4; k++) L.box(-0.03 - k * 0.1, 0.03 - k * 0.1, -0.22, 0.22, base + 0.35 + k * 0.28, base + 0.37 + k * 0.28, "steel", { tint: [1.5, 1.5, 1.5] });
+}
+
+/** Three or four paint cans on the floor: cylinders of 8 sides with a lid ring and one with a splash, different colours. `p0` the floor's height. */
+export function paintCans(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const base = (it.p[0] ?? 0) - (it.y ?? 0);
+  const n = 3 + Math.floor(hash01(it.id + g.seed, 77) * 2);
+  const cols: Rgb[] = [[0.8, 0.8, 0.75], [0.12, 0.3, 0.55], [0.55, 0.12, 0.1], [0.2, 0.45, 0.2]];
+  for (let k = 0; k < n; k++) {
+    const f = (k % 2) * 0.28 - 0.14;
+    const r = -0.3 + k * 0.22;
+    L.frustum(f, r, base, base + 0.2, 0.09, 0.09, 8, "painted", { tint: [1.6, 1.6, 1.6] }, false, false);
+    L.frustum(f, r, base + 0.2, base + 0.21, 0.09, 0.09, 8, "steel", { tint: [1.2, 1.2, 1.2] }, false, true);
+    const c = cols[k % 4] as Rgb;
+    L.poly([[f + 0.093, r - 0.05, base + 0.1], [f + 0.093, r + 0.05, base + 0.1], [f + 0.093, r + 0.05, base + 0.17], [f + 0.093, r - 0.05, base + 0.17]], [1, 0, 0], "painted", { tint: [c[0] * 2, c[1] * 2, c[2] * 2] });
+  }
+}
+
+/** A dust sheet draped over the lower steps: a few sloping panels of pale cloth following the flight's rise, `p1` a riser high each. */
+export function dustSheet(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const base = (it.p[0] ?? 0) - (it.y ?? 0);
+  const riser = it.p[1] ?? 0.18;
+  for (let k = 0; k < 3; k++) {
+    const f0 = k * 0.28 - 0.1;
+    const f1 = f0 + 0.28;
+    L.poly([[-f0, -0.85, base + (k + 1) * riser + 0.02], [-f1, -0.85, base + (k + 2) * riser + 0.02], [-f1, 0.85, base + (k + 2) * riser + 0.02 + 0.01], [-f0, 0.85, base + (k + 1) * riser + 0.03]], [0, 0, 1], "cloth", WHITE);
+  }
+}
+
+// ---- hung on the walls
+
+const text = (L: Local, s: string, r0: number, top: number, px: number, f: number, look: { tint: Rgb; glow?: number }): void => {
+  const lines = s.split("|");
+  lines.forEach((line, k) => {
+    const left = r0 - (textPixels(line) * px) / 2;
+    const y = top - k * (GLYPH_H * px + px * 2);
+    for (const run of textRuns(line)) L.poly([[f, left + run.c0 * px, y - run.r1 * px], [f, left + run.c1 * px, y - run.r1 * px], [f, left + run.c1 * px, y - run.r0 * px], [f, left + run.c0 * px, y - run.r0 * px]], [1, 0, 0], "painted", look);
+  });
+};
+
+/** A wall of vertical timber slats 4 cm wide on an 8 cm pitch over a dark backing, one strip a slat: `w` along the wall, `h` high. */
+export function slatWall(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const hw = dc.w / 2;
+  const y0 = dc.y - dc.h / 2;
+  L.poly([[0.005, -hw, y0], [0.005, hw, y0], [0.005, hw, y0 + dc.h], [0.005, -hw, y0 + dc.h]], [1, 0, 0], "dark_wood", { tint: [0.35, 0.35, 0.35] });
+  const n = Math.floor(dc.w / 0.08);
+  for (let k = 0; k < n; k++) {
+    const r = -hw + 0.04 + k * 0.08;
+    const t = 0.85 + 0.3 * hash01(k * 3 + g.seed, 78);
+    L.poly([[0.03, r - 0.02, y0], [0.03, r + 0.02, y0], [0.03, r + 0.02, y0 + dc.h], [0.03, r - 0.02, y0 + dc.h]], [1, 0, 0], "oak", { tint: [1.2 * t, 1.0 * t, 0.85 * t] });
+  }
+}
+
+/** Letters of the lodging's name, lit warm white, 45 cm high, centred on the wall. */
+export function litLetters(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const s = dc.text ?? "";
+  const px = Math.min(0.064, (dc.w - 0.2) / Math.max(1, textPixels(s)));
+  text(L, s, 0, dc.y + (GLYPH_H * px) / 2, px, 0.07, { tint: [1, 0.93, 0.8], glow: 1.8 });
+}
+
+/** A framed picture: a thin frame, a mat and an abstract in three blocks of colour; the item's `id` picks its colours. */
+export function frameArt(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const h = dc.h / 2;
+  const y0 = dc.y - h;
+  const y1 = dc.y + h;
+  L.box(0, 0.03, -w, w, y0, y1, "dark_wood", { tint: [0.9, 0.9, 0.9] }, false);
+  L.poly([[0.032, -w + 0.04, y0 + 0.04], [0.032, w - 0.04, y0 + 0.04], [0.032, w - 0.04, y1 - 0.04], [0.032, -w + 0.04, y1 - 0.04]], [1, 0, 0], "paper", { tint: [1.1, 1.1, 1.05] });
+  const pal: Rgb[] = [[0.08, 0.4, 0.45], [0.8, 0.6, 0.1], [0.5, 0.15, 0.12], [0.2, 0.3, 0.5], [0.25, 0.45, 0.2]];
+  for (let k = 0; k < 3; k++) {
+    const c = pal[Math.floor(hash01(dc.id * 5 + k + g.seed, 79) * pal.length)] as Rgb;
+    const a = -w + 0.1 + k * ((2 * w - 0.2) / 3);
+    const b = a + (2 * w - 0.2) / 3 - 0.03;
+    const top = y0 + 0.1 + (0.35 + 0.6 * hash01(dc.id * 7 + k, 80)) * (dc.h - 0.2);
+    L.poly([[0.034, a, y0 + 0.1], [0.034, b, y0 + 0.1], [0.034, b, top], [0.034, a, top]], [1, 0, 0], "painted", { tint: [c[0] * 1.6, c[1] * 1.6, c[2] * 1.6] });
+  }
+}
+
+/** A framed picture of a forest: a frame, a pale sky, vertical trunks in warm browns and blue-green masses of leaves behind them. */
+export function forestPicture(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const h = dc.h / 2;
+  const y0 = dc.y - h;
+  const y1 = dc.y + h;
+  L.box(0, 0.03, -w, w, y0, y1, "painted", { tint: [1.4, 1.4, 1.35] }, false);
+  L.poly([[0.032, -w + 0.05, y0 + 0.05], [0.032, w - 0.05, y0 + 0.05], [0.032, w - 0.05, y1 - 0.05], [0.032, -w + 0.05, y1 - 0.05]], [1, 0, 0], "painted", { tint: [0.35, 0.55, 0.6] });
+  L.poly([[0.034, -w + 0.05, y0 + dc.h * 0.55], [0.034, w - 0.05, y0 + dc.h * 0.55], [0.034, w - 0.05, y1 - 0.05], [0.034, -w + 0.05, y1 - 0.05]], [1, 0, 0], "painted", { tint: [0.15, 0.35, 0.3] });
+  const n = 6;
+  for (let k = 0; k < n; k++) {
+    const r = -w + 0.12 + (k + hash01(k + g.seed, 81) * 0.5) * ((2 * w - 0.24) / n);
+    const tw = 0.025 + 0.02 * hash01(k * 3, 82);
+    L.poly([[0.036, r - tw, y0 + 0.05], [0.036, r + tw, y0 + 0.05], [0.036, r + tw, y1 - 0.05], [0.036, r - tw, y1 - 0.05]], [1, 0, 0], "painted", { tint: [0.55 + 0.2 * hash01(k, 83), 0.22, 0.12] });
+  }
+}
+
+/** A window in a wall that is no front wall: a bright pane behind a blind rolled half down, in a pale frame with a sill. `w` and `h` the pane's size, `y` its centre. */
+export function litPane(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const h = dc.h / 2;
+  const y0 = dc.y - h;
+  const y1 = dc.y + h;
+  L.poly([[0.01, -w, y0], [0.01, w, y0], [0.01, w, y1], [0.01, -w, y1]], [1, 0, 0], "painted", { glow: 1.3, tint: [0.8, 0.88, 1] });
+  // The blind, rolled half down: a pale sheet from the top and its roller.
+  const drop = y1 - dc.h * 0.55;
+  L.poly([[0.03, -w, drop], [0.03, w, drop], [0.03, w, y1], [0.03, -w, y1]], [1, 0, 0], "cloth", { tint: [1.7, 1.7, 1.6], k: 1.2 });
+  L.tubeR(0.05, y1 - 0.02, -w, w, 0.025, 6, "painted", { tint: [1.3, 1.3, 1.3] });
+  L.box(0, 0.05, -w - 0.05, -w, y0 - 0.03, y1 + 0.03, "painted", { tint: [1.3, 1.3, 1.25] }, true, false);
+  L.box(0, 0.05, w, w + 0.05, y0 - 0.03, y1 + 0.03, "painted", { tint: [1.3, 1.3, 1.25] }, true, false);
+  L.box(0, 0.05, -w - 0.05, w + 0.05, y1, y1 + 0.04, "painted", { tint: [1.3, 1.3, 1.25] });
+  L.box(0, 0.12, -w - 0.07, w + 0.07, y0 - 0.05, y0, "painted", { tint: [1.3, 1.3, 1.25] });
+}
+
+/** The front of a closet: two sliding doors in timber with a recessed handle each, in a frame. */
+export function closetFront(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const y0 = dc.y - dc.h / 2;
+  const y1 = dc.y + dc.h / 2;
+  L.box(0, 0.03, -w, w, y0, y1, "oak", { tint: [0.85, 0.7, 0.58] });
+  L.poly([[0.034, 0, y0 + 0.05], [0.034, 0, y1 - 0.05], [0.034, 0.01, y1 - 0.05], [0.034, 0.01, y0 + 0.05]], [1, 0, 0], "dark_wood", { tint: [0.4, 0.4, 0.4] });
+  for (const r of [-0.04, 0.05]) L.box(0.03, 0.05, r - 0.01, r + 0.01, dc.y - 0.15, dc.y + 0.15, "steel", { tint: [1.3, 1.3, 1.3] }, true, false);
+}
+
+/** The room's door, open against the wall inside: a timber leaf 4 cm thick, 1.0 m wide and 2.0 m high, standing across the item's forward, with its handle. */
+export function doorLeaf(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  L.box(-0.02, 0.02, -dc.w / 2, dc.w / 2, dc.y - dc.h / 2, dc.y + dc.h / 2, "oak", { tint: [0.9, 0.7, 0.55] }, true, false);
+  L.box(-0.05, 0.05, dc.w / 2 - 0.12, dc.w / 2 - 0.08, dc.y - 0.1, dc.y + 0.02, "brass", undefined, true, false);
+}
+
+/** A potted plant: a pot of 8 sides and a fan of nine leaves, each a long narrow triangle leaning out, in greens that differ by a hash. */
+export function plant(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.frustum(0, 0, 0, 0.32, 0.2, 0.15, 8, "painted", { tint: [1.0, 0.7, 0.5] }, false);
+  const n = 9;
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2 + hash01(it.id + g.seed, 86);
+    const lean = 0.25 + 0.2 * hash01(k + it.id * 3, 87);
+    const tall = 0.8 + 0.4 * hash01(k * 5 + it.id, 88);
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const tip: [number, number, number] = [ca * lean * tall, sa * lean * tall, 0.32 + tall * 0.9];
+    const w = 0.05;
+    const green = 0.8 + 0.4 * hash01(k + it.id * 11, 89);
+    L.poly([[ca * 0.02 - sa * w, sa * 0.02 + ca * w, 0.32], [ca * 0.02 + sa * w, sa * 0.02 - ca * w, 0.32], tip], [ca, sa, 0.3], "plaster", { tint: [0.05 * green, 0.3 * green, 0.06 * green] });
+  }
+}
+
+/** A round wall clock: a rim, a pale face and two hands. */
+export function clock(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  L.disc(0, dc.y, 0.17, 0.0, 0.04, 12, "dark_wood", { tint: [0.8, 0.8, 0.8] });
+  const face = Array.from({ length: 12 }, (_, i): [number, number, number] => [0.042, Math.cos((i / 12) * Math.PI * 2) * 0.15, dc.y + Math.sin((i / 12) * Math.PI * 2) * 0.15]);
+  L.poly(face, [1, 0, 0], "paper", { tint: [1.1, 1.1, 1.05] });
+  L.poly([[0.045, -0.006, dc.y], [0.045, 0.006, dc.y], [0.045, 0.004, dc.y + 0.12], [0.045, -0.004, dc.y + 0.12]], [1, 0, 0], "steel", { tint: [0.1, 0.1, 0.1] });
+  L.poly([[0.046, 0, dc.y - 0.005], [0.046, 0.09, dc.y + 0.02], [0.046, 0.09, dc.y + 0.03], [0.046, 0, dc.y + 0.005]], [1, 0, 0], "steel", { tint: [0.1, 0.1, 0.1] });
+}
+
+/** A fire extinguisher hung on a wall: a red cylinder with a black hose and a bracket, 0.5 m tall; `y` its middle. */
+export function extinguisher(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  L.frustum(0.07, 0, dc.y - 0.25, dc.y + 0.2, 0.065, 0.065, 8, "painted", { tint: [2.2, 0.2, 0.15] }, false);
+  L.frustum(0.07, 0, dc.y + 0.2, dc.y + 0.26, 0.03, 0.02, 6, "steel", { tint: [0.12, 0.12, 0.12] }, false);
+  L.box(0.0, 0.03, -0.05, 0.05, dc.y - 0.1, dc.y + 0.05, "steel", { tint: [0.5, 0.5, 0.5] });
+}

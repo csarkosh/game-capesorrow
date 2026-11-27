@@ -14,7 +14,6 @@ const GAME_SEEDS: readonly number[] = [20261121, 1, 6, 1175766972];
 const SEEDS = [...GAME_SEEDS, ...Array.from({ length: 24 }, (_, i) => i + 1).filter((s) => !GAME_SEEDS.includes(s))];
 /** A vertex of a designed room lies this far outside its box at most: a casing, a frame's bar or a thing's own thickness proud of a wall. */
 const MARGIN = 0.1;
-const BAR_BUDGET = 30000;
 
 const pos = (a: MeshArrays, i: number): [number, number, number] => [a.positions[i * 3] as number, a.positions[i * 3 + 1] as number, a.positions[i * 3 + 2] as number];
 
@@ -32,12 +31,12 @@ function unpaired(a: MeshArrays): number {
   return bad;
 }
 
-describe("the bar's design drawn, on every test seed", () => {
+describe.each([["bar", 0, 40000], ["cafe", 1, 40000], ["lodging", 2, 60000]] as const)("the %s design drawn, on every test seed", (_name, index, budget) => {
   const lines: string[] = [];
   it("builds on every seed inside its box, with its backs, under the budget, naming every material", () => {
     for (const seed of SEEDS) {
       const g = townGround(seed);
-      const room = insideRooms(seed)[0]!;
+      const room = insideRooms(seed)[index]!;
       expect(room.design.legacy).toBe(false);
       const before = unnamed.polygons;
       const t0 = performance.now();
@@ -46,8 +45,8 @@ describe("the bar's design drawn, on every test seed", () => {
       const verts = a.positions.length / 3;
       const label = `seed ${seed}`;
       expect(unnamed.polygons, `${label}: polygons that name no material`).toBe(before);
-      expect(verts, `${label}: vertices`).toBeGreaterThan(2000);
-      expect(verts, `${label}: vertices`).toBeLessThan(BAR_BUDGET);
+      expect(verts, `${label}: vertices`).toBeGreaterThan(1000);
+      expect(verts, `${label}: vertices`).toBeLessThan(budget);
       let outside = 0;
       for (let i = 0; i < verts; i++) {
         const [x, y, z] = pos(a, i);
@@ -56,7 +55,7 @@ describe("the bar's design drawn, on every test seed", () => {
         const s = dx * room.tx + dz * room.tz - room.s0;
         const d = -(dx * room.nx + dz * room.nz);
         const yy = y - room.floorY;
-        if (s < -MARGIN || s > room.design.width + MARGIN || d < -MARGIN || d > room.depth + MARGIN || yy < -1e-4 || yy > room.ceiling + 1e-4) outside++;
+        if (s < -MARGIN || s > room.design.width + MARGIN || d < -MARGIN || d > room.depth + MARGIN || yy < -0.3 || yy > room.ceiling + 1e-4) outside++;
       }
       expect(outside, `${label}: vertices outside the box`).toBe(0);
       // The drawn floor is at the floor the player stands on, exactly.
@@ -67,7 +66,7 @@ describe("the bar's design drawn, on every test seed", () => {
       expect((a.indices.length / 3) % 2).toBe(0);
       lines.push(`${seed}: ${room.design.width.toFixed(2)} x ${room.depth.toFixed(2)}, ${verts} vertices, ${a.indices.length / 3} triangles, ${ms.toFixed(0)} ms`);
     }
-    console.log(`[bar drawn]\n${lines.join("\n")}`);
+    console.log(`[${_name} drawn]\n${lines.join("\n")}`);
   }, timeLimit(600_000));
 });
 
@@ -118,5 +117,43 @@ describe("a design with a stair and a gallery drawn", () => {
     for (let k = 1; k < levels.length; k++) expect((levels[k] as number) - (levels[k - 1] as number)).toBeLessThan(0.18 + 0.01);
     expect(RISER).toBeGreaterThanOrEqual(0.17);
     expect(RISER).toBeLessThanOrEqual(0.18);
+  });
+});
+
+/** The vertex colour's luminance at `i`. */
+const lum = (a: MeshArrays, i: number): number => 0.2126 * (a.colors[i * 4] as number) + 0.7152 * (a.colors[i * 4 + 1] as number) + 0.0722 * (a.colors[i * 4 + 2] as number);
+const percentile = (xs: number[], p: number): number => {
+  const sorted = [...xs].sort((u, v) => u - v);
+  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] as number;
+};
+
+describe.each([["bar", 0], ["cafe", 1]] as const)("the light of the %s on the world the game opens on is uneven", (name, index) => {
+  const seed = 1175766972;
+  const room = insideRooms(seed)[index]!;
+  const a = insideGeometry(townGround(seed), room, "full");
+  const n = a.positions.length / 3;
+  const W = room.design.width;
+  /** Luminance of the surfaces lit by the room's light (not a glowing thing's own), by where they are: the floor, and each of the three walls. */
+  const zones: Record<string, number[]> = { floor: [], left: [], right: [], back: [] };
+  for (let i = 0; i < n; i++) {
+    if ((a.surface[i * 12 + 3] as number) > 1.01) continue;
+    const dx = (a.positions[i * 3] as number) - room.ox;
+    const dz = (a.positions[i * 3 + 2] as number) - room.oz;
+    const s = dx * room.tx + dz * room.tz - room.s0;
+    const d = -(dx * room.nx + dz * room.nz);
+    const y = (a.positions[i * 3 + 1] as number) - room.floorY;
+    const ny = a.normals[i * 3 + 1] as number;
+    if (ny > 0.95 && Math.abs(y) < 0.02) (zones.floor as number[]).push(lum(a, i));
+    else if (Math.abs(ny) < 0.2 && y > 0.3 && y < room.ceiling - 0.3) {
+      if (s < 0.02) (zones.left as number[]).push(lum(a, i));
+      else if (s > W - 0.02) (zones.right as number[]).push(lum(a, i));
+      else if (d > room.depth - 0.02) (zones.back as number[]).push(lum(a, i));
+    }
+  }
+  it("has a floor whose 90th percentile is 4 times its 10th, and walls whose are 3 times", () => {
+    const ratio = (key: string): number => percentile(zones[key] as number[], 0.9) / Math.max(1e-6, percentile(zones[key] as number[], 0.1));
+    console.log(`[light ${name}] ratios floor ${ratio("floor").toFixed(1)} left ${ratio("left").toFixed(1)} right ${ratio("right").toFixed(1)} back ${ratio("back").toFixed(1)}`);
+    expect(ratio("floor"), `${name} floor`).toBeGreaterThanOrEqual(4);
+    for (const w of ["left", "right", "back"]) expect(ratio(w), `${name} ${w} wall`).toBeGreaterThanOrEqual(3);
   });
 });

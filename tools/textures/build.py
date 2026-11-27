@@ -1,4 +1,4 @@
-"""Builds the town's texture layers: the files under client/assets/textures/ and their manifest.
+"""Builds the game's texture layers: the files under client/assets/textures/ and their manifests, in two sets.
 
 Run (from the repository root; Pillow and numpy must be installed, nothing else):
 
@@ -13,15 +13,24 @@ Run (from the repository root; Pillow and numpy must be installed, nothing else)
 --check    builds into memory and says whether the files on disk are what this script would write (bytes of the manifest
            only; WebP encoders differ between machines), writing nothing.
 
-For each layer in LAYERS it writes two 512 x 512 WebP files and one line of the manifest (town.layers.json):
+There are two sets. The town's (`town.<layer>.*`, `town.layers.json`) is loaded with the town. The interiors' (`interior.<layer>.*`,
+`interior.layers.json`) is loaded the first time a player walks into a building and costs nothing before: it is self-contained, holding
+the layers that only the rooms use (INTERIOR_LAYERS: marble, carpet, oak, dark wood, cloth, glazed tile, cane) and the few outdoor ones
+the rooms use as well (brick, sidewalk concrete, stucco, painted steel), so that a room samples one pair of arrays. It is made by the same
+steps as the town's, except that its colour maps are 512 x 512 and its data maps 256 x 256 (INTERIOR_COLOR_SIZE, INTERIOR_DATA_SIZE),
+which keeps the whole set's memory under 22 MB (see DESIGN notes in ARCHITECTURE.md, "The town's textures"), and that each of its
+layers states its `mean`, the average linear colour of its colour file, which the room's tints are divided by. The script checks the
+stated mean against the picture it makes and stops when they differ.
 
-  town.<name>.color.webp   RGB, sRGB-encoded, 8 bits. A layer that is `paintable` carries neutral detail instead of a
+For each layer of the town's set it writes two 512 x 512 WebP files and one line of the manifest (town.layers.json):
+
+  <set>.<name>.color.webp  RGB, sRGB-encoded, 8 bits. A layer that is `paintable` carries neutral detail instead of a
                            colour: its linear luminance divided by its own mean, times 0.5 (so a stored value of 0.5 is
                            "as the paint colour" and the shader multiplies by 2), desaturated. The vertex colour is then
                            the paint, and the texture gives it grain, stains and shadow lines. Every other layer keeps
                            its own colour. The renderer reads the file as sRGB (rgba8unorm-srgb), so filtering and mip
                            levels are made in linear light.
-  town.<name>.data.webp    RGBA, read as data (no colour management, no premultiplication): R = normal x, G = normal y
+  <set>.<name>.data.webp   RGBA, read as data (no colour management, no premultiplication): R = normal x, G = normal y
                            (OpenGL convention, green up; z is rebuilt as sqrt(1 - x^2 - y^2)), B = roughness,
                            A = 0.5 + 0.5 * ambient occlusion (1 where the set has none). The encoding is lossless, after
                            the rounding the constants below say. AO sits in the upper half of the
@@ -51,6 +60,14 @@ SIZE = 512
 DEFAULT_SOURCES = "/Volumes/CyrusExtSSD/dayhike-lab/capesorrow-textures"
 DEFAULT_OUT = os.path.join(ROOT, "client", "assets", "textures")
 MANIFEST = "town.layers.json"
+INTERIOR_MANIFEST = "interior.layers.json"
+# The interiors' set: colour maps at 512, data maps (normal, roughness, AO) at 256. A normal map's detail is finer than the eye reads
+# on a floor or a wall seen from a metre, and the data array is the larger part of a set's bytes in the GPU's memory, so halving its side
+# takes a quarter off it. The low tier halves both again when it loads them (`interiorTextures.ts`).
+INTERIOR_COLOR_SIZE = 512
+INTERIOR_DATA_SIZE = 256
+# How far (per channel, linear) a layer's stated mean may be from the one measured in its picture.
+MEAN_TOLERANCE = 0.006
 SEED = 20261122
 
 # The mean the paintable layers are stored at (0.5): the shader multiplies by its reciprocal.
@@ -97,6 +114,41 @@ LAYERS = [
     dict(name="rust", id="PaintedMetal013", tile=[1.0, 1.0], estimated=True, paintable=False, note="rust and peeling paint: metal things, and the rust overlay"),
 ]
 
+# The interiors' own layers. Same fields as LAYERS. Metre sizes: oak_veneer_04's is the
+# catalogue's (1.0 m); the rest are not stated by ambientCG and are read from the pictures (estimated=True).
+INTERIOR_OWN = [
+    dict(name="marble_tile", id="Marble019", tile=[1.2, 1.2], estimated=True, paintable=False, note="pale marble with fine grey veins, no joints: a slab about 1.2 m across; joints are laid in geometry"),
+    dict(name="carpet", id="Carpet004", tile=[0.45, 0.45], estimated=True, paintable=False, note="grey low-pile carpet with a square motif, 15 squares of 3 cm over the picture"),
+    dict(name="oak", id="oak_veneer_04", tile=[1.0, 1.0], estimated=False, paintable=False, note="pale straight-grain oak veneer, grain horizontal in the image"),
+    dict(name="dark_wood", id="WoodFloor008", tile=[1.5, 1.5], estimated=True, paintable=False, note="dark polished boards of about 14 cm, running across the image"),
+    dict(name="cloth", id="Fabric036", tile=[0.4, 0.4], estimated=True, paintable=False, note="plain light-grey woven upholstery: threads of about 1 mm"),
+    dict(name="glazed_tile", id="Tiles036", tile=[1.2, 1.2], estimated=True, paintable=False, note="small square glazed tiles of 12 cm with grey grout, 10 over the picture"),
+    dict(name="cane", id="Wicker008A", tile=[0.3, 0.3], estimated=True, paintable=False, note="basket weave of strands about 1 cm wide: the nearest to cane webbing the catalogue has"),
+]
+# Each interior layer's `mean`: the average linear colour of its colour file (red, green, blue), which the game divides a room's tint by so
+# that a tint is the colour the surface comes out. Measured by this script (a build that finds another mean stops and prints it).
+INTERIOR_MEANS = {
+    "marble_tile": [0.822, 0.824, 0.823],
+    "carpet": [0.218, 0.223, 0.228],
+    "oak": [0.715, 0.482, 0.313],
+    "dark_wood": [0.055, 0.03, 0.017],
+    "cloth": [0.492, 0.492, 0.492],
+    "glazed_tile": [0.636, 0.636, 0.636],
+    "cane": [0.351, 0.246, 0.148],
+    "brick": [0.253, 0.168, 0.105],
+    "sidewalk": [0.284, 0.246, 0.174],
+    "stucco": [0.5, 0.5, 0.5],
+    "rust": [0.421, 0.39, 0.378],
+}
+# The town's layers the rooms use too, by name (and the one source each, so they are the same pictures).
+INTERIOR_SHARED = ["brick", "sidewalk", "stucco", "rust"]
+
+
+def interior_layers():
+    by = {layer["name"]: layer for layer in LAYERS}
+    return INTERIOR_OWN + [dict(by[n]) for n in INTERIOR_SHARED]
+
+
 def srgb_to_linear(a):
     return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
 
@@ -130,20 +182,20 @@ def load(path, channels):
     return a if channels == 3 else a[:, :, None]
 
 
-def resize(a):
-    """(H, W, C) float to SIZE x SIZE, wrapping at the edges so the result still tiles."""
+def resize(a, size=SIZE):
+    """(H, W, C) float to size x size, wrapping at the edges so the result still tiles."""
     h, w, c = a.shape
-    if h == SIZE and w == SIZE:
+    if h == size and w == size:
         return a
     ph, pw = h // 4, w // 4
     padded = np.pad(a, ((ph, ph), (pw, pw), (0, 0)), mode="wrap")
-    th = round((h + 2 * ph) * SIZE / h)
-    tw = round((w + 2 * pw) * SIZE / w)
+    th = round((h + 2 * ph) * size / h)
+    tw = round((w + 2 * pw) * size / w)
     out = np.empty((th, tw, c), dtype=np.float32)
     for k in range(c):
         out[:, :, k] = np.asarray(Image.fromarray(padded[:, :, k]).resize((tw, th), Image.LANCZOS))
-    oy, ox = round(ph * SIZE / h), round(pw * SIZE / w)
-    return out[oy : oy + SIZE, ox : ox + SIZE]
+    oy, ox = round(ph * size / h), round(pw * size / w)
+    return out[oy : oy + size, ox : ox + size]
 
 
 def decode_normal(rgb):
@@ -173,12 +225,12 @@ def neutral(linear_rgb):
     return np.dstack([s, s, s])
 
 
-def from_source(layer, root):
+def from_source(layer, root, csize=SIZE, dsize=SIZE):
     paths = source_paths(layer, root)
-    color = resize(load(paths["color"], 3))
-    nrm = resize(load(paths["normal"], 3))
-    rough = resize(load(paths["rough"], 1))[:, :, 0]
-    ao = resize(load(paths["ao"], 1))[:, :, 0] if os.path.exists(paths["ao"]) else np.ones((SIZE, SIZE), np.float32)
+    color = resize(load(paths["color"], 3), csize)
+    nrm = resize(load(paths["normal"], 3), dsize)
+    rough = resize(load(paths["rough"], 1), dsize)[:, :, 0]
+    ao = resize(load(paths["ao"], 1), dsize)[:, :, 0] if os.path.exists(paths["ao"]) else np.ones((dsize, dsize), np.float32)
     lin = srgb_to_linear(np.clip(color, 0, 1))
     shown = neutral(lin) if layer["paintable"] else linear_to_srgb(lin)
     n = decode_normal(nrm)
@@ -272,36 +324,102 @@ def manifest_of():
     )
 
 
+def interior_manifest_of():
+    """The interiors' manifest. A layer the town has too keeps the town's credit; the seven of its own are credited as `interior.<id>`."""
+    own = {layer["name"] for layer in INTERIOR_OWN}
+    layers = []
+    for i, layer in enumerate(interior_layers()):
+        layers.append(
+            dict(
+                name=layer["name"],
+                index=i,
+                id=layer["id"],
+                credit=("interior.%s" if layer["name"] in own else "town.%s") % layer["id"],
+                generated=bool(layer.get("generated")),
+                tile=layer["tile"],
+                tileEstimated=layer["estimated"],
+                paintable=layer["paintable"],
+                mean=INTERIOR_MEANS.get(layer["name"]),
+                color="interior.%s.color.webp" % layer["name"],
+                data="interior.%s.data.webp" % layer["name"],
+                note=layer["note"],
+            )
+        )
+    return dict(
+        size=INTERIOR_COLOR_SIZE,
+        dataSize=INTERIOR_DATA_SIZE,
+        paintGain=PAINT_GAIN,
+        about="Written by tools/textures/build.py: do not edit. The rooms' set, loaded when a player first walks into a building. Tile sizes are metres across and up the layer; colour files are `size` square and data files `dataSize` square; `mean` is the average linear colour of the colour file. Where a work came from is in CREDITS.md, under the layer's credit id.",
+        layers=layers,
+    )
+
+
+def write_layers(layers, prefix, out, csize, dsize, means=None):
+    """Writes each layer's two files; returns the bytes written. `means`, if given, receives each layer's measured mean colour."""
+    total = 0
+    for layer in layers:
+        if layer.get("generated"):
+            shown, data = shingles()
+        else:
+            shown, data, _ = from_source(layer, args_sources(), csize, dsize)
+        if means is not None:
+            mean = srgb_to_linear(shown).reshape(-1, 3).mean(axis=0)
+            means[layer["name"]] = [round(float(v), 3) for v in mean]
+        color, packed = encode(shown, data)
+        cpath = os.path.join(out, "%s.%s.color.webp" % (prefix, layer["name"]))
+        dpath = os.path.join(out, "%s.%s.data.webp" % (prefix, layer["name"]))
+        write_webp(color, cpath, quality=COLOR_QUALITY, method=6)
+        write_webp(packed, dpath, lossless=True, quality=100, method=6, exact=True)
+        sizes = os.path.getsize(cpath) + os.path.getsize(dpath)
+        total += sizes
+        print("%-8s %-18s %7d bytes" % (prefix, layer["name"], sizes))
+    return total
+
+
+SOURCES = [DEFAULT_SOURCES]
+
+
+def args_sources():
+    return SOURCES[0]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sources", default=DEFAULT_SOURCES)
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
-    text = json.dumps(manifest_of(), indent=2) + "\n"
+    SOURCES[0] = args.sources
+    town_text = json.dumps(manifest_of(), indent=2) + "\n"
     if args.check:
-        path = os.path.join(args.out, MANIFEST)
-        same = os.path.exists(path) and open(path).read() == text
-        print("manifest is current" if same else "manifest is stale")
-        sys.exit(0 if same else 1)
+        # The interiors' means are stated in the script and measured when it builds, so a check without the sources compares the stated ones.
+        interior_text = json.dumps(interior_manifest_of(), indent=2) + "\n"
+        stale = []
+        for name, text in ((MANIFEST, town_text), (INTERIOR_MANIFEST, interior_text)):
+            path = os.path.join(args.out, name)
+            if not (os.path.exists(path) and open(path).read() == text):
+                stale.append(name)
+        print("manifest is current" if not stale else "manifest is stale: %s" % ", ".join(stale))
+        sys.exit(0 if not stale else 1)
     os.makedirs(args.out, exist_ok=True)
-    total = 0
-    for layer in LAYERS:
-        if layer.get("generated"):
-            shown, data = shingles()
-        else:
-            shown, data, _ = from_source(layer, args.sources)
-        color, packed = encode(shown, data)
-        cpath = os.path.join(args.out, "town.%s.color.webp" % layer["name"])
-        dpath = os.path.join(args.out, "town.%s.data.webp" % layer["name"])
-        write_webp(color, cpath, quality=COLOR_QUALITY, method=6)
-        write_webp(packed, dpath, lossless=True, quality=100, method=6, exact=True)
-        sizes = os.path.getsize(cpath) + os.path.getsize(dpath)
-        total += sizes
-        print("%-18s %7d bytes" % (layer["name"], sizes))
+    total = write_layers(LAYERS, "town", args.out, SIZE, SIZE)
     with open(os.path.join(args.out, MANIFEST), "w") as f:
-        f.write(text)
-    print("total %.2f MB" % (total / 1e6))
+        f.write(town_text)
+    print("town total %.2f MB" % (total / 1e6))
+    measured = {}
+    interior_total = write_layers(interior_layers(), "interior", args.out, INTERIOR_COLOR_SIZE, INTERIOR_DATA_SIZE, measured)
+    wrong = [n for n, m in measured.items() if n not in INTERIOR_MEANS or max(abs(a - b) for a, b in zip(m, INTERIOR_MEANS[n])) > MEAN_TOLERANCE]
+    if wrong:
+        print("INTERIOR_MEANS is not what the pictures measure; set it to:")
+        print("INTERIOR_MEANS = {")
+        for n, m in measured.items():
+            print('    "%s": %s,' % (n, m))
+        print("}")
+        sys.exit(1)
+    with open(os.path.join(args.out, INTERIOR_MANIFEST), "w") as f:
+        f.write(json.dumps(interior_manifest_of(), indent=2) + "\n")
+    cells = INTERIOR_COLOR_SIZE ** 2 + INTERIOR_DATA_SIZE ** 2
+    print("interior total %.2f MB; GPU %.2f MB with mips" % (interior_total / 1e6, cells * 4 * len(interior_layers()) * 4 / 3 / 1e6))
 
 
 if __name__ == "__main__":

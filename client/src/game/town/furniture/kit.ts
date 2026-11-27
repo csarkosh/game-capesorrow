@@ -19,11 +19,16 @@ export type Look = { readonly tint?: Rgb; readonly glow?: number; readonly k?: n
 const ONE: Rgb = [1, 1, 1];
 
 export class Geo {
-  constructor(readonly out: MeshBuilder, readonly xf: Xf, readonly floorY: number, readonly light: BakedLight, readonly seed: number, readonly ceiling: number) {}
+  constructor(readonly out: MeshBuilder, readonly xf: Xf, readonly floorY: number, readonly light: BakedLight, readonly seed: number, readonly ceiling: number, readonly yOff = 0) {}
+
+  /** The same room's context for things that stand on a floor `y` metres up (an upper floor's): their heights are measured from it, and lit as the height it is. */
+  lift(y: number): Geo {
+    return y === 0 ? this : new Geo(this.out, this.xf, this.floorY, this.light, this.seed, this.ceiling - y, this.yOff + y);
+  }
 
   /** A point of the room's frame in the world. */
   world(p: P3): Vec3 {
-    return xp(this.xf, p[0], p[1], this.floorY + p[2]);
+    return xp(this.xf, p[0], p[1], this.floorY + this.yOff + p[2]);
   }
 
   /**
@@ -56,7 +61,7 @@ export class Geo {
     const k = look.k ?? 1;
     const cols: Rgb[] = pts.map((p) => {
       if (!lit) return base;
-      const c = this.light.lit(p[0], p[1], p[2], nx, ny, nz);
+      const c = this.light.lit(p[0], p[1], p[2] + this.yOff, nx, ny, nz);
       return [base[0] * c[0] * k, base[1] * c[1] * k, base[2] * c[2] * k];
     });
     const h = xd(this.xf, hint[0], hint[1]);
@@ -83,7 +88,7 @@ export class Geo {
       const a = us[i] as number;
       const b = vs[j] as number;
       const p: P3 = [o[0] + du[0] * a + dv[0] * b, o[1] + du[1] * a + dv[1] * b, o[2] + du[2] * a + dv[2] * b];
-      const c = this.light.lit(p[0], p[1], p[2], ns, nd, nyy);
+      const c = this.light.lit(p[0], p[1], p[2] + this.yOff, ns, nd, nyy);
       // A few percent off from cell to cell, so a floor is not one flat colour; the caller's own tint on top.
       const v = varied(m.albedo, i * 131 + j * 7 + this.seed, 5, 0.06);
       const k = tintAt === undefined ? ONE : tintAt(i, j);

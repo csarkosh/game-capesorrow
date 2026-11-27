@@ -96,9 +96,9 @@ export function barDesign(site: BarSite): Design {
     b.item("bar_counter", COUNTER_S, dMid, TOWARD_RIGHT, [L], { gap: 0 });
   }
   // The bartender's aisle is shut at the front end by a half-height partition and open at the back.
-  if (hasBar) b.wall({ s0: BACK_D, d0: d0, s1: BACK_D + AISLE, d1: d0, thick: 0.08, y0: 0, y1: 1.05, mat: "dark_wood", openings: [] });
-  b.slab({ kind: "floor", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: 0, thick: 0, mat: "dark_wood" });
-  b.slab({ kind: "ceiling", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: H, thick: 0, mat: "ceiling_dark" });
+  if (hasBar) b.wall({ s0: BACK_D, d0: d0, s1: BACK_D + AISLE, d1: d0, thick: 0.08, y0: 0, y1: 1.05, mat: "dark_wood", boards: 0.12, openings: [] });
+  b.slab({ kind: "floor", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: 0, thick: 0, mat: "dark_wood", tint: [0.9, 0.9, 0.9] });
+  b.slab({ kind: "ceiling", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: H, thick: 0, mat: "ceiling_dark", tint: [0.35, 0.35, 0.35] });
   b.surface({ kind: "floor", s0: 0, s1: W, d0: 0, d1: D, y: 0 });
 
   // Stools along the bar, each a little different: pulled out, turned.
@@ -117,6 +117,8 @@ export function barDesign(site: BarSite): Design {
     const w = onWall("left", cm(d), W, D);
     b.decorate({ kind: "television", s: w.s, d: w.d, y: tvY, face: w.face, w: 0.95, h: 0.55 });
     b.light({ s: 0.35, d: cm(d), y: tvY, kind: "glow", power: 0.1, reach: 1.6, tone: [0.55, 0.68, 1] });
+    // And a spill of it onto the shelves under the screen.
+    b.light({ s: 0.5, d: cm(d), y: 1.75, kind: "glow", power: 0.12, reach: 1.1, tone: [0.5, 0.65, 1] });
   }
   // The back bar's shelves are lit from under their top.
   const strips = hasBar ? max(2, round(L / 1.3)) : 0;
@@ -135,9 +137,11 @@ export function barDesign(site: BarSite): Design {
   // ---- the right wall: high-top tables with stools, where the room has the width for a way beside them.
   const highTops = W >= 5.65;
   const stoolsHigh: Spot[] = [];
+  const highTables: number[] = [];
   if (highTops) {
     for (let k = 0, dh = 2.4; dh <= D - 2.3 && k < 4; k++, dh += 1.75) {
       if (!b.item("high_table", cm(W - 0.62), cm(dh), TOWARD_LEFT, [0.36], { gap: 0.05 })) continue;
+      highTables.push(cm(dh));
       for (const dd of [-0.34, 0.34]) {
         const s = cm(W - 1.25);
         const d = cm(dh + dd);
@@ -222,18 +226,57 @@ export function barDesign(site: BarSite): Design {
     else b.decorate({ kind, s: w.s, d: w.d, y: min(2.1, H - 1.3), face: w.face, w: 0.62, h: 0.9 });
   }
 
-  // ---- the bulbs, on strings the length of the room: over the bar, down the middle, and over the right wall in a wide room.
-  const rows = [COUNTER_S + 0.1, cm((sL + sR) / 2)];
-  if (W >= 8.5) rows.push(cm(W - 0.9));
+  // ---- the bulbs, on wires the length of the room, about 0.8 m apart along a row and a little off each other's height: one row over the bar and the others spread over the rest (four in a room 7 m wide).
+  const nRows = max(2, min(6, round(W / 1.75)));
+  const rows = [cm(COUNTER_S + 0.1)];
+  for (let k = 1; k < nRows; k++) rows.push(cm(sL + 0.4 + ((k - 1) * (W - 0.9 - (sL + 0.4))) / max(1, nRows - 2)));
   for (let k = 0; k < rows.length; k++) {
     const s = rows[k] as number;
-    const from = 0.9;
+    const from = 0.9 + roll(70 + k) * 0.3;
     const len = cm(D - 0.7 - from);
-    const n = max(2, floor(len / 1.25) + 1);
-    b.item("bulb_string", s, from, TOWARD_BACK, [len, n], { anywhere: true });
+    const n = max(2, floor(len / 0.8) + 1);
+    const high: number[] = [];
+    for (let i = 0; i < n; i++) high.push(cm(H - 0.4 - roll(80 + k * 40 + i) * 0.4));
+    b.item("bulb_string", s, from, TOWARD_BACK, [len, n, ...high], { anywhere: true });
     for (let i = 0; i < n; i++) {
-      b.light({ s, d: cm(from + (i * len) / (n - 1)), y: cm(H - 0.5), kind: "bulb", power: k === 0 ? 0.46 : 0.3, reach: 1.7, tone: [1, 0.74, 0.42] });
+      b.light({ s, d: cm(from + (i * len) / (n - 1)), y: high[i] as number, kind: "bulb", power: k === 0 ? 0.2 : 0.12, reach: 1.7, tone: [1, 0.62, 0.28] });
     }
+  }
+
+  // ---- what stands on the tables and the bar.
+  for (let i = 0; i < highTables.length; i++) b.item("tabletop", cm(W - 0.62), highTables[i] as number, TOWARD_LEFT, [i % 3], { anywhere: true, y: 1.05 });
+  for (let i = 0; i < tables.length; i++) b.item("tabletop", (tables[i] as Spot).s, (tables[i] as Spot).d, TOWARD_BACK, [(i + 1) % 4], { anywhere: true, y: 0.74 });
+  if (hasBar) for (let k = 0; k * 1.3 + 0.5 < L; k++) b.item("tabletop", COUNTER_S + 0.05, cm(d0 + 0.5 + k * 1.3), TOWARD_RIGHT, [k % 5 === 2 ? 2 : k % 2 === 0 ? 1 : 3], { anywhere: true, y: 1.07 });
+
+  // ---- the ceiling: beams across the room, two metres and a half apart.
+  for (let d = 1.6; d < D - 0.6; d += 2.4) b.item("beam", cm(W / 2), cm(d), TOWARD_BACK, [cm(W - 0.1)], { anywhere: true });
+
+  // ---- more of the room: a jukebox by the bar's end, kegs and crates by the archway, a dartboard, boards, signs, shelves, mirrors and coat hooks on every bare stretch of the long walls.
+  if (hasBar && dEnd + 1.5 < D - 1.2) b.item("jukebox", 0.32, cm(dEnd + 0.9), TOWARD_RIGHT, [], { gap: 0.05 });
+  if (W >= 5.7) b.item("keg_stack", cm(W - 0.45), cm(D - 0.45), TOWARD_LEFT, [], { gap: 0.05 });
+  b.item("crate_stack", cm(min(W - 1.6, arch + 1.3)), cm(D - 0.4), TOWARD_FRONT, [], { gap: 0.05 });
+  const dartAt = onWall("right", cm(D * 0.58), W, D);
+  b.decorate({ kind: "dartboard", s: dartAt.s, d: dartAt.d, y: 1.7, face: dartAt.face, w: 1.0, h: 0.6 });
+  const neon: readonly string[] = ["SALT ALE", "FOG LAGER", "OPEN", "KELP STOUT"];
+  const specs = [
+    { kind: "chalkboard", w: 1.3, h: 0.9, y: 1.6, text: "TODAY|FISH AND CHIPS|CLAM CHOWDER|HOUSE ALE" },
+    { kind: "neon_sign", w: 1.0, h: 0.4, y: 1.7, text: neon[id % 4] as string },
+    { kind: "wall_shelf", w: 1.0, h: 0.4, y: 1.5 },
+    { kind: "mirror", w: 0.7, h: 1.0, y: 1.55 },
+    { kind: "coat_hooks", w: 0.9, h: 0.5, y: 1.6 },
+    { kind: "neon_sign", w: 1.0, h: 0.4, y: 1.7, text: neon[(id + 1) % 4] as string },
+    { kind: "poster", w: 0.62, h: 0.9, y: 1.55 },
+  ];
+  b.fillWall("left", 1.4, specs);
+  b.fillWall("right", 1.4, specs);
+  // Higher up: neon over the back bar, bunting down the right wall.
+  if (hasBar && H >= 3.6) for (let k = 0; k < 2; k++) {
+    const w = onWall("left", cm(d0 + L * (0.28 + 0.44 * k)), W, D);
+    b.decorate({ kind: "neon_sign", s: w.s, d: w.d, y: min(3.2, H - 0.6), face: w.face, w: 1.2, h: 0.4, text: neon[(id + 2 + k) % 4] as string });
+  }
+  if (H >= 3.8) {
+    const bw = onWall("right", cm(D / 2), W, D);
+    b.decorate({ kind: "bunting", s: bw.s, d: bw.d, y: min(3.5, H - 0.5), face: bw.face, w: cm(D - 2.4), h: 0.3 });
   }
 
   // ---- the people: a bartender behind the bar, three on the stools, one or two at the tables.
@@ -261,7 +304,6 @@ export function barDesign(site: BarSite): Design {
     b.person({ s: st.s, d: st.d, face: TOWARD_RIGHT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
   }
 
-  const wood = { mat: "dark_wood" };
   return b.build({
     name: "bar",
     legacy: false,
@@ -270,13 +312,13 @@ export function barDesign(site: BarSite): Design {
     doorHead: min(2.05, H - 0.2),
     arrive: arrivalOf(W, site.doorS),
     shell: {
-      front: { mat: "plaster_dark", wainscot: { h: 1.1, mat: "dark_wood" }, skirt: "dark_wood" },
-      left: { ...wood, skirt: "dark_wood" },
-      right: { mat: "brick", skirt: "dark_wood" },
-      back: { mat: "plaster_dark", wainscot: { h: 1.1, mat: "dark_wood" }, skirt: "dark_wood" },
+      front: { mat: "plaster_dark", tint: [0.6, 0.6, 0.6], wainscot: { h: 1.1, mat: "dark_wood", tint: [0.6, 0.6, 0.6] }, skirt: "dark_wood" },
+      left: { mat: "dark_wood", tint: [0.45, 0.45, 0.45], boards: 0.14, skirt: "dark_wood" },
+      right: { mat: "brick", tint: [0.7, 0.7, 0.7], skirt: "dark_wood" },
+      back: { mat: "plaster_dark", tint: [0.6, 0.6, 0.6], wainscot: { h: 1.1, mat: "dark_wood", tint: [0.6, 0.6, 0.6] }, skirt: "dark_wood" },
       floor: "dark_wood",
       ceiling: "ceiling_dark",
     },
-    mood: { exposure: 0.6, ambient: [1, 0.82, 0.6], ambientK: 0.02, day: 0.12 },
+    mood: { exposure: 0.38, ambient: [1, 0.75, 0.5], ambientK: 0.006, day: 0.08 },
   });
 }

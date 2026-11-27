@@ -310,7 +310,10 @@ export function explore(room: InsideRoom, from: Spot, ticks: number, seed: numbe
     }
     worstOutside = Math.max(worstOutside, R - 0.002 - now.s, now.s - (design.width - R + 0.002), 0.15 + R - 0.002 - now.d, now.d - (design.depth - R + 0.002));
     const ground = groundAt(design, now.s, now.d, now.feet);
-    if (ground === null || Math.abs(now.feet - ground) > 0.03) onNothing++;
+    if (ground === null || Math.abs(now.feet - ground) > 0.03) {
+      onNothing++;
+      if (process.env.DBG !== undefined && onNothing < 4) console.log(`NOTHING t${t} s${now.s.toFixed(2)} d${now.d.toFixed(2)} feet${now.feet.toFixed(3)} ground${ground} grounded${body.grounded}`);
+    }
     else if (!fitsDesign(design, now.s, now.d, now.feet, HULL_RADIUS, 0.003)) inBlock++;
     const cell = `${Math.floor(now.s / CELL)},${Math.floor(now.d / CELL)}`;
     const list = visited.get(cell);

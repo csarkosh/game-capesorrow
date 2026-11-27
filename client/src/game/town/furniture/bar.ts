@@ -6,28 +6,36 @@ import type { Item } from "../../../sim/inside/design.js";
 import { hash01 } from "../meshBuilder.js";
 import { tintOf, type Geo } from "./kit.js";
 
-/** The bar counter: a dark timber body with panelled pilasters and a plinth, a top 0.7 m deep that overhangs, a brass foot rail on brackets, and a few glasses. */
+/**
+ * The bar counter: a body of upright dark boards (each its own strip, a tone off its neighbour's) on a darker plinth, a top 0.7 m deep that overhangs the boards by 5 cm with a bevelled
+ * edge, a brass foot rail on short brackets, and a few glasses.
+ */
 export function barCounter(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   const len = it.p[0] ?? 2;
   const h = len / 2;
-  const look = { tint: tintOf(it.id + g.seed, 11, 0.06) };
-  L.box(-0.32, 0.28, -h, h, 0.1, 1.02, "dark_wood", look);
-  L.box(-0.3, 0.3, -h, h, 0, 0.1, "dark_wood", { tint: [0.7, 0.7, 0.7] });
-  L.box(-0.35, 0.35, -h - 0.02, h + 0.02, 1.02, 1.07, "oak", { tint: [0.55, 0.5, 0.5] });
-  // Pilasters on the front, every 0.9 m or so, a little proud.
-  const n = Math.max(1, Math.round(len / 0.9));
-  for (let i = 0; i <= n; i++) {
-    const r = -h + (i * len) / n;
-    L.box(0.28, 0.31, Math.max(-h, r - 0.04), Math.min(h, r + 0.04), 0.1, 1.02, "dark_wood", { tint: [0.8, 0.8, 0.8] });
+  // The body behind the boards, and the plinth.
+  L.box(-0.3, 0.28, -h, h, 0.1, 1.02, "dark_wood", { tint: [0.45, 0.45, 0.45] });
+  L.box(-0.3, 0.3, -h, h, 0, 0.1, "dark_wood", { tint: [0.45, 0.45, 0.45] }, true, false);
+  // The boards of the front, 14 cm each, in vertical strips 2 cm proud of the body, a tone off each other's.
+  const n = Math.max(2, Math.round(len / 0.14));
+  const w = len / n;
+  for (let i = 0; i < n; i++) {
+    const k = 0.7 + 0.45 * hash01(i * 13 + it.id + g.seed, 15);
+    L.poly([[0.3, -h + i * w + 0.003, 0.1], [0.3, -h + (i + 1) * w - 0.003, 0.1], [0.3, -h + (i + 1) * w - 0.003, 1.02], [0.3, -h + i * w + 0.003, 1.02]], [1, 0, 0], "dark_wood", { tint: [k, k, k] });
   }
-  // The foot rail, in brass, 18 cm out from the front and 22 cm up, on a bracket at each pilaster but the ends.
-  L.tubeR(0.46, 0.22, -h + 0.05, h - 0.05, 0.022, 8, "brass");
-  for (let i = 1; i < n; i++) {
-    const r = -h + (i * len) / n;
-    L.box(0.31, 0.46, r - 0.012, r + 0.012, 0.2, 0.24, "brass", undefined, true, false);
+  // The top: a slab that overhangs the boards by 5 cm, with a bevel up to its top face.
+  L.box(-0.35, 0.35, -h - 0.02, h + 0.02, 1.02, 1.045, "oak", { tint: [0.8, 0.7, 0.7] });
+  L.box(-0.35, 0.325, -h - 0.02, h + 0.02, 1.045, 1.07, "oak", { tint: [0.8, 0.7, 0.7] });
+  L.poly([[0.35, -h - 0.02, 1.045], [0.35, h + 0.02, 1.045], [0.325, h + 0.02, 1.07], [0.325, -h - 0.02, 1.07]], [1, 0, 1], "oak", { tint: [0.9, 0.8, 0.8] });
+  // The foot rail, in brass, 12 cm out from the boards and 22 cm up, on a short bracket at each metre or so.
+  L.tubeR(0.42, 0.22, -h + 0.05, h - 0.05, 0.022, 8, "brass");
+  const nb = Math.max(1, Math.round(len / 1.1));
+  for (let i = 1; i < nb; i++) {
+    const r = -h + (i * len) / nb;
+    L.box(0.3, 0.42, r - 0.012, r + 0.012, 0.2, 0.24, "brass", undefined, true, false);
   }
-  // Glasses on the bar: two or three, pale, in the lit stretches.
+  // Glasses on the bar: two or three, pale.
   const glasses = 2 + Math.floor(hash01(it.id + g.seed, 12) * 2);
   for (let k = 0; k < glasses; k++) {
     const r = -h + 0.5 + hash01(it.id * 7 + k + g.seed, 13) * (len - 1);
@@ -51,6 +59,8 @@ export function backBar(g: Geo, it: Item): void {
   L.box(-0.3, 0.3, -h, h, 0, 0.08, "dark_wood", { tint: [0.7, 0.7, 0.7] }, false);
   L.box(-0.3, 0.33, -h - 0.01, h + 0.01, 0.9, 0.94, "oak", { tint: [0.55, 0.5, 0.5] });
   const shelves = [1.22, 1.56, 1.9];
+  // A dark glossy panel behind the bottles, so that they stand out: a mirror gone dark, just off the wall.
+  L.poly([[-0.285, -h + 0.04, 0.94], [-0.285, h - 0.04, 0.94], [-0.285, h - 0.04, 2.06], [-0.285, -h + 0.04, 2.06]], [1, 0, 0], "glass", { tint: [0.1, 0.12, 0.11] });
   // The uprights at the two ends and one between, and the top board.
   const ups = Math.max(2, Math.round(len / 1.6) + 1);
   for (let i = 0; i < ups; i++) {

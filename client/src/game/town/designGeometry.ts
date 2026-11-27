@@ -13,7 +13,7 @@ import { FRONT_WALL, type Design, type Finish, type Rail, type Slab, type Stair,
 import type { Opening } from "../../sim/town/types.js";
 import { hoursCode, type Hours } from "./hours.js";
 import { materialOf } from "./interiorMaterials.js";
-import { MeshBuilder, type MeshArrays, type Rgb } from "./meshBuilder.js";
+import { MeshBuilder, hash01, type MeshArrays, type Rgb } from "./meshBuilder.js";
 import { bakeLight, type DayPane } from "./designLight.js";
 import { DECOR, ITEMS } from "./furniture/index.js";
 import { Geo, tintOf, type P3 } from "./furniture/kit.js";
@@ -78,7 +78,7 @@ export function designGeometry(out: MeshBuilder, r: DrawIn): void {
       for (const it of d.items) {
         const build = ITEMS[it.kind];
         if (build === undefined) throw new Error(`no builder for the item kind ${it.kind}`);
-        part(it.kind, () => build(g, it));
+        part(it.kind, () => build(g.lift(it.y ?? 0), it));
       }
       for (const dc of d.decor) {
         const build = DECOR[dc.kind];
@@ -102,13 +102,18 @@ function slab(g: Geo, sl: Slab): void {
   const dn: P3 = [0, 0, -1];
   const us = lines(w, CELL);
   const vs = lines(l, CELL);
-  if (sl.kind === "floor") {
-    g.grid([sl.s0, sl.d0, sl.y], [w, 0, 0], [0, l, 0], us, vs, up, sl.mat);
+  const tint = sl.tint;
+  const tinted = tint === undefined ? undefined : (): Rgb => tint;
+  if (sl.kind === "floor" && (sl.mat === "dark_wood" || sl.mat === "oak")) {
+    // Boards run the length of the room: the grid's rows are along `d`.
+    g.grid([sl.s0, sl.d0, sl.y], [0, l, 0], [w, 0, 0], vs, us, up, sl.mat, tinted);
+  } else if (sl.kind === "floor") {
+    g.grid([sl.s0, sl.d0, sl.y], [w, 0, 0], [0, l, 0], us, vs, up, sl.mat, tinted);
     if (sl.thick > 0) {
       g.grid([sl.s0, sl.d0, sl.y - sl.thick], [w, 0, 0], [0, l, 0], lines(w, 1.5), lines(l, 1.5), dn, sl.edge ?? sl.mat);
     }
   } else {
-    g.grid([sl.s0, sl.d0, sl.y], [w, 0, 0], [0, l, 0], us, vs, dn, sl.mat);
+    g.grid([sl.s0, sl.d0, sl.y], [w, 0, 0], [0, l, 0], us, vs, dn, sl.mat, tinted);
     if (sl.thick > 0) g.grid([sl.s0, sl.d0, sl.y + sl.thick], [w, 0, 0], [0, l, 0], lines(w, 1.5), lines(l, 1.5), up, sl.edge ?? sl.mat);
   }
   if (sl.thick > 0) {
@@ -125,14 +130,14 @@ function slab(g: Geo, sl: Slab): void {
 
 type Face = "left" | "right" | "back";
 
-/** The bands of a finish: the skirting, the wainscot, and the wall over it. */
-function bandsOf(f: Finish, top: number): { y0: number; y1: number; mat: string }[] {
-  const out: { y0: number; y1: number; mat: string }[] = [];
+/** The bands of a finish: the skirting, the wainscot, and the wall over it, each with its tint. */
+function bandsOf(f: Finish, top: number): { y0: number; y1: number; mat: string; tint: Rgb; main: boolean }[] {
+  const out: { y0: number; y1: number; mat: string; tint: Rgb; main: boolean }[] = [];
   const skirt = f.skirt === undefined ? 0 : SKIRT;
-  if (f.skirt !== undefined) out.push({ y0: 0, y1: SKIRT, mat: f.skirt });
+  if (f.skirt !== undefined) out.push({ y0: 0, y1: SKIRT, mat: f.skirt, tint: ONE, main: false });
   const wain = f.wainscot === undefined ? skirt : Math.min(top, f.wainscot.h);
-  if (f.wainscot !== undefined) out.push({ y0: skirt, y1: wain, mat: f.wainscot.mat });
-  out.push({ y0: wain, y1: top, mat: f.mat });
+  if (f.wainscot !== undefined) out.push({ y0: skirt, y1: wain, mat: f.wainscot.mat, tint: f.wainscot.tint ?? ONE, main: false });
+  out.push({ y0: wain, y1: top, mat: f.mat, tint: f.tint ?? ONE, main: true });
   return out;
 }
 
@@ -144,21 +149,36 @@ function outerWall(g: Geo, d: Design, face: Face): void {
     const h = b.y1 - b.y0;
     if (h < 0.01) continue;
     const vs = lines(h, h > 1 ? 0.9 : 1);
-    if (face === "back") g.grid([0, D, b.y0], [W, 0, 0], [0, 0, h], lines(W, CELL), vs, [0, -1, 0], b.mat);
-    else if (face === "left") g.grid([0, FRONT_WALL, b.y0], [0, D - FRONT_WALL, 0], [0, 0, h], lines(D - FRONT_WALL, CELL), vs, [1, 0, 0], b.mat);
-    else g.grid([W, FRONT_WALL, b.y0], [0, D - FRONT_WALL, 0], [0, 0, h], lines(D - FRONT_WALL, CELL), vs, [-1, 0, 0], b.mat);
+    const tint = (): Rgb => b.tint;
+    // Where the wall runs: its origin, the way along it, its length and which way it faces.
+    const run = face === "back" ? { o: [0, D, b.y0] as P3, u: [1, 0, 0] as P3, len: W, hint: [0, -1, 0] as P3 } : face === "left" ? { o: [0, FRONT_WALL, b.y0] as P3, u: [0, 1, 0] as P3, len: D - FRONT_WALL, hint: [1, 0, 0] as P3 } : { o: [W, FRONT_WALL, b.y0] as P3, u: [0, 1, 0] as P3, len: D - FRONT_WALL, hint: [-1, 0, 0] as P3 };
+    if (b.main && f.boards !== undefined) {
+      // Upright boards, each its own strip with its grain up the board and a tone a few percent off.
+      const n = Math.max(1, Math.round(run.len / f.boards));
+      const bw = run.len / n;
+      const rows = lines(h, 1.4);
+      for (let i = 0; i < n; i++) {
+        const k = 0.86 + 0.24 * hash01(i * 7 + g.seed, 61 + (face === "left" ? 0 : 1));
+        g.grid([run.o[0] + run.u[0] * i * bw, run.o[1] + run.u[1] * i * bw, b.y0], [run.u[0] * bw, run.u[1] * bw, 0], [0, 0, h], [0, 1], rows, run.hint, b.mat, () => [b.tint[0] * k, b.tint[1] * k, b.tint[2] * k]);
+      }
+      continue;
+    }
+    g.grid(run.o, [run.u[0] * run.len, run.u[1] * run.len, 0], [0, 0, h], lines(run.len, CELL), vs, run.hint, b.mat, tint);
   }
 }
 
 /** A band of the front wall as the street side's builder takes it: its paint and the material it is laid in. */
 function frontBands(f: Finish, top: number): Band[] {
-  const layered = (mat: string): Layered => ({ layer: null, paint: materialOf(mat).albedo, gain: ONE });
+  const layered = (mat: string, k: Rgb = ONE): Layered => {
+    const a = materialOf(mat).albedo;
+    return { layer: null, paint: [a[0] * k[0], a[1] * k[1], a[2] * k[2]], gain: ONE };
+  };
   const skirt = f.skirt === undefined ? 0 : SKIRT;
   const out: Band[] = [];
   if (f.skirt !== undefined) out.push({ y0: 0, y1: SKIRT, f: layered(f.skirt), kind: "base", mat: materialOf(f.skirt).mat });
   const wain = f.wainscot === undefined ? skirt : Math.min(top, f.wainscot.h);
-  if (f.wainscot !== undefined) out.push({ y0: skirt, y1: wain, f: layered(f.wainscot.mat), kind: "wain", mat: materialOf(f.wainscot.mat).mat });
-  out.push({ y0: wain, y1: top, f: layered(f.mat), kind: "wall", mat: materialOf(f.mat).mat });
+  if (f.wainscot !== undefined) out.push({ y0: skirt, y1: wain, f: layered(f.wainscot.mat, f.wainscot.tint), kind: "wain", mat: materialOf(f.wainscot.mat).mat });
+  out.push({ y0: wain, y1: top, f: layered(f.mat, f.tint), kind: "wall", mat: materialOf(f.mat).mat });
   return out;
 }
 
@@ -173,7 +193,7 @@ function shell(g: Geo, r: DrawIn, d: Design): void {
     for (const b of bandsOf(f, d.height)) {
       const h = b.y1 - b.y0;
       if (h < 0.01) continue;
-      g.grid([0, FRONT_WALL, b.y0], [d.width, 0, 0], [0, 0, h], lines(d.width, CELL), lines(h, 0.9), [0, 1, 0], b.mat);
+      g.grid([0, FRONT_WALL, b.y0], [d.width, 0, 0], [0, 0, h], lines(d.width, CELL), lines(h, 0.9), [0, 1, 0], b.mat, () => b.tint);
     }
     return;
   }
@@ -183,11 +203,40 @@ function shell(g: Geo, r: DrawIn, d: Design): void {
     door: { s: d.doorS, w: d.doorWidth }, feet: [], style: styleOf(r.seed, null, front.era, 1960, 0), whole: true,
   };
   frontWall(c, { door: { s: d.doorS, width: d.doorWidth, head: front.doorHead }, openings: front.openings }, frontBands(d.shell.front, d.height));
+  if (d.frontCurtains === true) curtains(g, d, front.openings);
+}
+
+/** Full-height curtains either side of each window of the front, as a zig-zag of pleats from the floor to the ground floor's ceiling (not over the door), in a pale patterned cloth. */
+function curtains(g: Geo, d: Design, openings: readonly Opening[]): void {
+  const top = (d.cuts === undefined || d.cuts[0] === undefined ? d.height : d.cuts[0] - 0.15) - 0.12;
+  const near = (s: number): boolean => Math.abs(s - d.doorS) < d.doorWidth / 2 + 0.3;
+  for (let n = 0; n < openings.length; n++) {
+    const o = openings[n] as Opening;
+    const lo = Math.min(o.s0, o.s1);
+    const hi = Math.max(o.s0, o.s1);
+    for (const side of [-1, 1] as const) {
+      const s0 = side < 0 ? lo - 0.6 : hi + 0.1;
+      const s1 = s0 + 0.5;
+      if (s0 < 0.1 || s1 > d.width - 0.1 || near(s0) || near(s1) || near((s0 + s1) / 2)) continue;
+      const pleats = 8;
+      for (let k = 0; k < pleats; k++) {
+        const a = s0 + (k * (s1 - s0)) / pleats;
+        const b = s0 + ((k + 1) * (s1 - s0)) / pleats;
+        const da = FRONT_WALL + 0.02 + (k % 2) * 0.07;
+        const db = FRONT_WALL + 0.02 + ((k + 1) % 2) * 0.07;
+        const pat = 0.8 + 0.4 * hash01(n * 9 + k + (side > 0 ? 4 : 0) + g.seed, 85);
+        g.poly([[a, da, 0.04], [b, db, 0.04], [b, db, top], [a, da, top]], [0, 1, 0], "cloth", { tint: [1.1 * pat, 2.5 * pat, 2.4 * pat] });
+      }
+    }
+  }
 }
 
 // ---- the walls inside
 
 /** A wall: both faces in cells round its doorways, its ends, its top where it stops short of the ceiling, a casing round each doorway and a leaf in a shut one. */
+/** Half a wall's thickness. */
+const t0 = (w: Wall): number => w.thick / 2;
+
 function wall(g: Geo, w: Wall, ceiling: number): void {
   const dx = w.s1 - w.s0;
   const dd = w.d1 - w.d0;
@@ -203,7 +252,19 @@ function wall(g: Geo, w: Wall, ceiling: number): void {
       const o = L.p(a0, side * t, y0);
       const du = L.v(a1 - a0, 0, 0);
       const dv: P3 = [0, 0, y1 - y0];
-      g.grid(o, du, dv, lines(a1 - a0, CELL), lines(y1 - y0, 1), L.v(0, side, 0), mat);
+      const tint = side === 1 ? w.tint : w.tintBack;
+      if (w.boards !== undefined) {
+        // Upright boards, each its own strip, so that the grain runs up each.
+        const n = Math.max(1, Math.round((a1 - a0) / w.boards));
+        const bw = (a1 - a0) / n;
+        for (let i = 0; i < n; i++) {
+          const k = 0.8 + 0.4 * hash01(i * 11 + g.seed + Math.floor(a0 * 10), 62);
+          const t = tint ?? ONE;
+          g.grid(L.p(a0 + i * bw, side * t0(w), y0), L.v(bw, 0, 0), [0, 0, y1 - y0], [0, 1], lines(y1 - y0, 1.4), L.v(0, side, 0), mat, () => [t[0] * k, t[1] * k, t[2] * k]);
+        }
+        return;
+      }
+      g.grid(o, du, dv, lines(a1 - a0, CELL), lines(y1 - y0, 1), L.v(0, side, 0), mat, tint === undefined ? undefined : (): Rgb => tint);
     };
     let at = f0;
     for (const o of w.openings) {

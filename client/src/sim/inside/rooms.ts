@@ -17,6 +17,8 @@ import { designFromInterior } from "./convert.js";
 import { FRONT_WALL, type Design } from "./design.js";
 import { acts, constrainDesign, fitsDesign, groundAt, CLEAR } from "./designWalk.js";
 import { barDesign } from "./designs/bar.js";
+import { cafeDesign } from "./designs/cafe.js";
+import { lodgingDesign } from "./designs/lodging.js";
 import { municipalDesign } from "./designs/municipal.js";
 
 export { FRONT_WALL };
@@ -114,7 +116,11 @@ function make(seed: number): readonly InsideRoom[] {
     const measures = { s0: unit.s0, s1: unit.s1, doorS, doorWidth: unit.door.width };
     const design = name === "bar"
       ? barDesign({ id: place.building * 31 + unit.id, width: unit.s1 - unit.s0, maxDepth: (use?.frame?.depth ?? 0) - 1, height: unit.interior.ceiling, doorS: doorS - unit.s0, doorWidth: unit.door.width, name: unit.tenant?.name ?? "TAVERN" })
-      : designFromInterior(name, unit.interior, measures);
+      : name === "cafe"
+        ? cafeDesign({ id: place.building * 31 + unit.id, width: unit.s1 - unit.s0, maxDepth: (use?.frame?.depth ?? 0) - 1, height: unit.interior.ceiling, doorS: doorS - unit.s0, doorWidth: unit.door.width })
+        : name === "lodging"
+          ? lodgingDesign({ id: place.building * 31 + unit.id, width: unit.s1 - unit.s0, maxDepth: (use?.frame?.depth ?? 0) - 1, height: unit.interior.ceiling, storeys: plan.buildings[place.building]?.storeys ?? 1, doorS: doorS - unit.s0, doorWidth: unit.door.width, name: unit.tenant?.name ?? "HOTEL" })
+          : designFromInterior(name, unit.interior, measures);
     rooms.push({
       id: i + 1,
       name,

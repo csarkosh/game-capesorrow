@@ -48,10 +48,14 @@ export type WallOpening = { readonly a0: number; readonly a1: number; readonly h
 export type Wall = {
   readonly s0: number; readonly d0: number; readonly s1: number; readonly d1: number; readonly thick: number; readonly y0: number; readonly y1: number;
   readonly mat: string; readonly matBack?: string; readonly skirt?: string; readonly openings: readonly WallOpening[];
+  /** Multipliers of each face's albedo (`mat`'s side, `matBack`'s side). */
+  readonly tint?: readonly [number, number, number]; readonly tintBack?: readonly [number, number, number];
+  /** The faces are laid as upright boards this wide (metres), each its own strip. */
+  readonly boards?: number;
 };
 
 /** A floor or a ceiling as drawn: a rectangle at height `y` (the top of a floor, the underside of a ceiling) and how thick it is (an edge is drawn down or up by that much). */
-export type Slab = { readonly kind: "floor" | "ceiling"; readonly s0: number; readonly s1: number; readonly d0: number; readonly d1: number; readonly y: number; readonly thick: number; readonly mat: string; readonly edge?: string };
+export type Slab = { readonly kind: "floor" | "ceiling"; readonly s0: number; readonly s1: number; readonly d0: number; readonly d1: number; readonly y: number; readonly thick: number; readonly mat: string; readonly edge?: string; /** A multiplier of the material's albedo, per channel: a darker ceiling, a brighter floor. */ readonly tint?: readonly [number, number, number] };
 
 /** A flight of stairs: a ramp (`along`, `y0` at the low end of `s` or `d`, `y1` at the other), over a floor at `base`, with a handrail on the side of each of `rails` (lo or hi in the other axis). */
 export type Stair = {
@@ -63,7 +67,7 @@ export type Stair = {
 export type Rail = { readonly s0: number; readonly d0: number; readonly s1: number; readonly d1: number; readonly y: number; readonly h: number; readonly kind: "glass" | "bars" | "timber"; readonly mat: string };
 
 /** A piece of furniture or a fixture by kind: its place (the centre of its footprint), the way its front looks, and a few numbers its kind reads (`p`). `id` varies it (a stool turned, a cushion's colour). */
-export type Item = { readonly kind: string; readonly s: number; readonly d: number; readonly face: Spot; readonly p: readonly number[]; readonly id: number; readonly mat?: string };
+export type Item = { readonly kind: string; readonly s: number; readonly d: number; readonly face: Spot; readonly p: readonly number[]; readonly id: number; readonly mat?: string; /** The height of the floor it stands on (an upper floor's); none is the room's floor. */ readonly y?: number };
 /** What hangs on a wall: a picture, a sign with words, a board, a clock, a guitar. `w` by `h` metres, its centre `y` over the floor, `face` the way it looks (into the room). */
 export type Decor = { readonly kind: string; readonly s: number; readonly d: number; readonly y: number; readonly face: Spot; readonly w: number; readonly h: number; readonly text?: string; readonly id: number };
 /** A light the bake lights the room from: a place, a power (1 is a tube's), the distance (m) at which its light has fallen to a quarter, and a tone. */
@@ -74,7 +78,15 @@ export type DesignPerson = {
 };
 
 /** How an outer wall is finished: its material, a wainscot to a height in another, and its skirting. */
-export type Finish = { readonly mat: string; readonly wainscot?: { readonly h: number; readonly mat: string }; readonly skirt?: string };
+export type Finish = {
+  readonly mat: string;
+  readonly wainscot?: { readonly h: number; readonly mat: string; readonly tint?: readonly [number, number, number] };
+  readonly skirt?: string;
+  /** A multiplier of the wall material's albedo, per channel. */
+  readonly tint?: readonly [number, number, number];
+  /** The wall is laid as upright boards this wide (metres), each a little off its neighbour's tone, in place of one grid (a panelled wall). */
+  readonly boards?: number;
+};
 /** The room's mood for the light: the brightest floor's luminance the lights are brought to, the ambient colour and strength, and how much of the day the front's panes let in. */
 export type Mood = { readonly exposure: number; readonly ambient: readonly [number, number, number]; readonly ambientK: number; readonly day: number };
 
@@ -104,6 +116,12 @@ export type Design = {
   /** The outer walls' finishes, and the ceiling's and the floor's materials. */
   readonly shell: { readonly front: Finish; readonly left: Finish; readonly right: Finish; readonly back: Finish; readonly floor: string; readonly ceiling: string };
   readonly mood: Mood;
+  /** Heights over the floor that split the room into storeys for the light: a light only lights what is on its own side of each (the floor of an upper storey has no light of the one under it). */
+  readonly cuts?: readonly number[];
+  /** The front wall's windows are hung with full-height curtains (the plan says where the windows are). */
+  readonly frontCurtains?: boolean;
+  /** Places a test or a tool may ask for by name: a point inside the player's room, one past a barrier. `y` is the height of the floor there. */
+  readonly marks?: readonly { readonly name: string; readonly s: number; readonly d: number; readonly y: number }[];
 };
 
 /** A hash of two integers to [0, 1), by multiplication only: the town's own, written out here since the simulation imports nothing of the game. */
@@ -155,7 +173,8 @@ export function stairBlocks(st: Stair): Block[] {
     const yl = st.y0 + (rise * (a - lo)) / run;
     const yh = st.y0 + (rise * (b - lo)) / run;
     const low = min(yl, yh);
-    const top = low;
+    // A hull on the ramp reaches ahead a hull's radius, where the ramp is that much higher; the block stops short of what a hull standing on the ramp could meet, and still stops one on the floor where the ramp is over 0.6 m.
+    const top = low - BODY_LOW;
     if (top > st.base + 0.02 && low - st.base < HEADROOM) {
       if (along) out.push({ s: (a + b) / 2, d: (st.d0 + st.d1) / 2, ax: 1, ad: 0, ha: step / 2, hb: (st.d1 - st.d0) / 2, y0: st.base, y1: top });
       else out.push({ s: (st.s0 + st.s1) / 2, d: (a + b) / 2, ax: 0, ad: 1, ha: step / 2, hb: (st.s1 - st.s0) / 2, y0: st.base, y1: top });
@@ -278,6 +297,32 @@ export class DesignBuilder {
     this.surfaces.push(stairSurface(st));
     for (const b of stairBlocks(st)) this.blocks.push(b);
   }
+  /**
+   * Hangs something on every stretch of a long wall at eye height that has nothing on it for more than `over` metres, in turn from `specs` (a picture, a board, a shelf), each as wide as its spec or the gap
+   * allows, a hand's breadth apart, until none is left.
+   */
+  fillWall(wall: "left" | "right", over: number, specs: readonly { readonly kind: string; readonly w: number; readonly h: number; readonly y: number; readonly text?: string }[]): void {
+    let n = 0;
+    for (let pass = 0; pass < 3; pass++) {
+      const gaps = wallGaps(this, wall, over);
+      if (gaps.length === 0) return;
+      for (const [a, c] of gaps) {
+        let at = a + 0.2;
+        while (at + 0.35 < c - 0.15) {
+          const spec = specs[n++ % specs.length] as (typeof specs)[number];
+          const w = min(spec.w, c - 0.15 - at);
+          if (w < 0.35) break;
+          const w0 = onWall(wall, cm(at + w / 2), this.width, this.depth);
+          this.decorate({ kind: spec.kind, s: w0.s, d: w0.d, y: spec.y, face: w0.face, w: cm(w), h: spec.h, ...(spec.text === undefined ? {} : { text: spec.text }) });
+          at += w + 0.3;
+        }
+      }
+    }
+  }
+  /** A flight that is drawn and is no ground: its ramp and its blocks are left out. */
+  display(st: Stair): void {
+    this.stairs.push(st);
+  }
   slab(s: Slab): void {
     this.slabs.push(s);
   }
@@ -296,36 +341,37 @@ export class DesignBuilder {
   }
 
   /** The footprint block an item of this kind at this place would make, or null for a kind with no footprint. */
-  footprint(kind: string, s: number, d: number, face: Spot, p: readonly number[]): Block | null {
+  footprint(kind: string, s: number, d: number, face: Spot, p: readonly number[], y = 0): Block | null {
     const f = this.footOf(kind, p);
     if (f === null) return null;
-    return { s, d, ax: face.s, ad: face.d, ha: f.ha, hb: f.hb, y0: 0, y1: f.h };
+    return { s, d, ax: face.s, ad: face.d, ha: f.ha, hb: f.hb, y0: y, y1: y + f.h };
   }
 
   /** Whether an item would be put down: inside the room (a `margin` from the walls), off the reserved zones, and `gap` metres from every item put down before. */
-  fits(kind: string, s: number, d: number, face: Spot, p: readonly number[] = [], opts: { readonly gap?: number; readonly margin?: number; readonly anywhere?: boolean } = {}): boolean {
-    const foot = this.footprint(kind, s, d, face, p);
+  fits(kind: string, s: number, d: number, face: Spot, p: readonly number[] = [], opts: { readonly gap?: number; readonly margin?: number; readonly anywhere?: boolean; readonly y?: number } = {}): boolean {
+    const foot = this.footprint(kind, s, d, face, p, opts.y ?? 0);
     if (foot === null) return true;
     const ex = abs(foot.ax) * foot.ha + abs(foot.ad) * foot.hb;
     const ed = abs(foot.ad) * foot.ha + abs(foot.ax) * foot.hb;
     const m = opts.margin ?? 0.02;
     if (s - ex < m || s + ex > this.width - m || d - ed < FRONT_WALL + m || d + ed > this.depth - m) return false;
-    if (opts.anywhere !== true) for (const z of this.zones) if (blocksOverlap(foot, zoneBlock(z), 0)) return false;
-    for (const o of this.feet) if (blocksOverlap(foot, o, opts.gap ?? 0.12)) return false;
+    // The reserved zones are of the ground floor; an upper floor's items are not held off them.
+    if (opts.anywhere !== true && (opts.y ?? 0) < 1) for (const z of this.zones) if (blocksOverlap(foot, zoneBlock(z), 0)) return false;
+    for (const o of this.feet) if (o.y1 > foot.y0 && foot.y1 > o.y0 && blocksOverlap(foot, o, opts.gap ?? 0.12)) return false;
     return true;
   }
 
   /**
    * Puts an item down, with its block, unless it does not fit (`fits`). Answers whether it was put down.
    */
-  item(kind: string, s: number, d: number, face: Spot, p: readonly number[] = [], opts: { readonly gap?: number; readonly margin?: number; readonly mat?: string; readonly anywhere?: boolean } = {}): boolean {
+  item(kind: string, s: number, d: number, face: Spot, p: readonly number[] = [], opts: { readonly gap?: number; readonly margin?: number; readonly mat?: string; readonly anywhere?: boolean; readonly y?: number } = {}): boolean {
     if (!this.fits(kind, s, d, face, p, opts)) return false;
-    const foot = this.footprint(kind, s, d, face, p);
+    const foot = this.footprint(kind, s, d, face, p, opts.y ?? 0);
     if (foot !== null) {
       this.feet.push(foot);
       this.blocks.push(foot);
     }
-    this.items.push({ kind, s: cm(s), d: cm(d), face, p, id: this.items.length, ...(opts.mat === undefined ? {} : { mat: opts.mat }) });
+    this.items.push({ kind, s: cm(s), d: cm(d), face, p, id: this.items.length, ...(opts.mat === undefined ? {} : { mat: opts.mat }), ...(opts.y === undefined ? {} : { y: opts.y }) });
     return true;
   }
 
@@ -345,4 +391,73 @@ export function onWall(wall: "front" | "left" | "right" | "back", along: number,
     case "back": return { s: along, d: depth, face: { s: 0, d: -1 } };
     case "front": return { s: along, d: FRONT_WALL, face: { s: 0, d: 1 } };
   }
+}
+
+const ONE3: readonly [number, number, number] = [1, 1, 1];
+
+/**
+ * The design reflected about `about` (the room's width unless given: `s` to `about - s`; a layout on a grid of half metres is mirrored about a width on it), for a layout written with its stair at one end that the door's place wants at the other. Every part is
+ * mirrored in place: a wall keeps its direction of travel, so its two faces and its doorways change sides; a flight that climbs along `s` swaps its two heights.
+ */
+export function mirrorDesign(d: Design, about: number = d.width): Design {
+  const W = about;
+  const m = (s: number): number => cm(W - s);
+  const flip = (f: Spot): Spot => ({ s: -f.s, d: f.d });
+  return {
+    ...d,
+    doorS: m(d.doorS),
+    arrive: { s: m(d.arrive.s), d: d.arrive.d },
+    surfaces: d.surfaces.map((sf): Surface =>
+      sf.kind === "floor" ? { ...sf, s0: m(sf.s1), s1: m(sf.s0) } : { ...sf, s0: m(sf.s1), s1: m(sf.s0), ...(sf.along === "s" ? { y0: sf.y1, y1: sf.y0 } : {}) },
+    ),
+    blocks: d.blocks.map((b): Block => ({ ...b, s: m(b.s), ax: -b.ax })),
+    // A wall keeps its direction of travel, so its doorways stay where they are (measured from its start, which moves with it) and its two faces change sides.
+    walls: d.walls.map((w): Wall => ({
+      ...w, s0: m(w.s0), s1: m(w.s1), mat: w.matBack ?? w.mat, matBack: w.mat, ...(w.tint === undefined && w.tintBack === undefined ? {} : { tint: w.tintBack ?? ONE3, tintBack: w.tint ?? ONE3 }),
+    })),
+    slabs: d.slabs.map((s): Slab => ({ ...s, s0: m(s.s1), s1: m(s.s0) })),
+    stairs: d.stairs.map((st): Stair => ({
+      ...st, s0: m(st.s1), s1: m(st.s0), ...(st.along === "s" ? { y0: st.y1, y1: st.y0 } : { rails: st.rails.map((r) => (r === "lo" ? "hi" : "lo")) }),
+    })),
+    rails: d.rails.map((r): Rail => ({ ...r, s0: m(r.s0), s1: m(r.s1) })),
+    items: d.items.map((i): Item => ({ ...i, s: m(i.s), face: flip(i.face) })),
+    decor: d.decor.map((i): Decor => ({ ...i, s: m(i.s), face: flip(i.face) })),
+    lights: d.lights.map((l): DesignLight => ({ ...l, s: m(l.s) })),
+    people: d.people.map((p): DesignPerson => ({ ...p, s: m(p.s), face: flip(p.face) })),
+    ...(d.marks === undefined ? {} : { marks: d.marks.map((k) => ({ ...k, s: m(k.s) })) }),
+  };
+}
+
+/**
+ * The stretches of one of the two long walls (`left` is `s` 0, `right` is `s` = width) that something stands against or hangs on at eye height (between 1.0 and 2.0 m): a decoration within 0.3 m of it
+ * whose height meets that band, and a block that stands within 0.3 m of it and is taller than 1.0 m. Each is `[from, to]` along `d`, in order.
+ */
+export function wallCover(d: { readonly width: number; readonly blocks: readonly Block[]; readonly decor: readonly Decor[] }, wall: "left" | "right"): [number, number][] {
+  const at = wall === "left" ? 0 : d.width;
+  const out: [number, number][] = [];
+  for (const dc of d.decor) {
+    if (abs(dc.s - at) > 0.3 || abs(dc.face.s) < 0.5) continue;
+    if (dc.y + dc.h / 2 < 1.0 || dc.y - dc.h / 2 > 2.0) continue;
+    out.push([dc.d - dc.w / 2, dc.d + dc.w / 2]);
+  }
+  for (const b of d.blocks) {
+    if (b.y1 <= 1.0 || b.y0 >= 2.0) continue;
+    const es = abs(b.ax) * b.ha + abs(b.ad) * b.hb;
+    const ed = abs(b.ad) * b.ha + abs(b.ax) * b.hb;
+    if (wall === "left" ? b.s - es > 0.3 : b.s + es < d.width - 0.3) continue;
+    out.push([b.d - ed, b.d + ed]);
+  }
+  return out.sort((x, y) => x[0] - y[0]);
+}
+
+/** The bare stretches of a long wall of a room `depth` long: the gaps between what `wallCover` finds, from the front wall's inside to the back, longer than `over` metres. */
+export function wallGaps(d: { readonly width: number; readonly depth: number; readonly blocks: readonly Block[]; readonly decor: readonly Decor[] }, wall: "left" | "right", over: number): [number, number][] {
+  const gaps: [number, number][] = [];
+  let at = FRONT_WALL;
+  for (const [a, b] of wallCover(d, wall)) {
+    if (a - at > over) gaps.push([at, a]);
+    at = max(at, b);
+  }
+  if (d.depth - at > over) gaps.push([at, d.depth]);
+  return gaps;
 }
