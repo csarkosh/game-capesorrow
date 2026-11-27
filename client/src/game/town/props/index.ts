@@ -13,14 +13,14 @@ import { furnitureGeometry, litterGeometry } from "./streetGeometry.js";
 import { binGeometry, gearGeometry, mailboxGeometry } from "./yardPropGeometry.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
-export type PropSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat: Sink };
+export type PropSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat: Sink; /** The see-through layer of the dark under a vehicle: not on the low tier. */ readonly shade?: Sink };
 
 export function* propsGeometry(g: TownGround, sinks: PropSinks, detail: Detail, slice: () => boolean): Generator<void, void, void> {
   const p = g.plan.props;
   // The builders name a place in the plan's frame (a prop's own); the cells are the world's.
   const ax = g.anchor.x;
   const az = g.anchor.z;
-  const world: PropSinks = { solid: (x, z) => sinks.solid(x + ax, z + az), glass: (x, z) => sinks.glass(x + ax, z + az), flat: (x, z) => sinks.flat(x + ax, z + az) };
+  const world: PropSinks = { solid: (x, z) => sinks.solid(x + ax, z + az), glass: (x, z) => sinks.glass(x + ax, z + az), flat: (x, z) => sinks.flat(x + ax, z + az), ...(sinks.shade === undefined ? {} : { shade: (x, z) => sinks.shade!(x + ax, z + az) }) };
   for (const v of p.vehicles) {
     vehicleGeometry(g, world, v, detail);
     if (slice()) yield;
