@@ -56,6 +56,8 @@ describe("a player's place by the rooms on the wire", () => {
     expect(() => decodeWalkSnapshot(withInside(0, INSIDE))).toThrow(/room/);
     expect(() => decodeWalkSnapshot(withInside(0, GOING_IN))).toThrow(/room/);
     expect(decodeWalkSnapshot(withInside(2, GOING_OUT, 9)).players[0]?.inside).toEqual({ place: 2, phase: GOING_OUT, ticks: 9 });
+    // The municipal building's room is the fourth.
+    expect(decodeWalkSnapshot(withInside(4, INSIDE, 0)).players[0]?.inside).toEqual({ place: 4, phase: INSIDE, ticks: 0 });
     // A player in the street has no place and no ticks, whatever the bytes said.
     expect(decodeWalkSnapshot(withInside(0, OUTSIDE, 12)).players[0]?.inside).toEqual(newInside());
   }, timeLimit(60_000));

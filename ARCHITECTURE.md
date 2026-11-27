@@ -532,7 +532,7 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
 
 ## Walking into a building
 
-The bar, the cafe and the lodging of the town can be walked into; the municipal building's inside is not planned yet. A click
+The bar, the cafe, the lodging and the municipal building (where the player's office is) can be walked into: the first three are rooms of the plan, the fourth is made from the building's frame (below). A click
 at a building's street door holds the player still while the screen goes dark, the host then moves the player into a copy of
 the room, and a click at the room's own door fades back out to the street. The buildings stay solid to everyone outside: no
 one in the street ever sees a room, and no one in a room sees the street.
@@ -575,6 +575,17 @@ must not be drawn to someone in the street, nor the reverse. The console's `goin
 the player.
 
 ### How it is drawn
+
+**The fourth room, the municipal building's** (id 4, name "office", `unit` -1), has no plan record to be built from, and the plan must not change (its digests are pinned), so its inside is made by
+`sim/inside/municipal.ts` from the building's front frame alone (`municipalInterior(seed)`, a pure function of the seed): an `Interior` in the plan's own types (type "lobby", the building's whole front wide,
+`min(14, frame.depth - 1.5)` deep, 3.6 m high) with the street door (the place's pair of doors, 2.3 m, at the middle `C`), the city clerk's counter on the left and the sheriff's on the right with desks and
+cabinets behind, a partition across at d 7.2 with two doorways (into the player's office at `C - 2.4`, and a shut door, solid, at `C + 3.0`), the player's office behind it (a desk, a couch, cabinets, a plant, a table
+and a lamp), benches, plants, a water cooler, a low table and a flag in the hall, tube lights, the fixed places and activities of its people (a clerk, a deputy, one or two visitors), and the stations of the front windows as the
+street side lays them out. Nothing in the hall, the way from the door to the office's doorway and the door's zone is built on (a test holds it). Nothing in it names an outside service. `rooms.ts` makes the room from it as
+for the others (a partition and the shut door are solids). Its drawing is the same whole-room path with a neutral trade for its dressing (the bank's wooden floor and wainscot, and what an office hangs), hours "always", and
+`municipalDecor.ts` for what the kit has not: boards over the counters lettered "SHERIFF" and "CITY CLERK" and a plate "ROOM 3" by the office's doorway (in the town's stroke font, `signFont.ts`, laid as quads), the doorways' frames and
+the shut door's leaf, a notice board, a clock, a flag on its stand and a cork board with a map in the office. The windows are the street side's stations (`plainFront`) at its sill and head heights, in the look the street rolls for each; the street side
+leaves out a window the ground stands too high for, this does not.
 
 The hidden room is drawn by `insideGeometry.ts` and `insideParts.ts` (`client/src/game/town/`).
 

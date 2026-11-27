@@ -109,18 +109,18 @@ describe("the page's black cover", () => {
 describe("the console's goin", () => {
   const [spec] = INSIDE_COMMANDS;
 
-  it("takes one place, bar, cafe, lodging or out, and leaves out of the address", () => {
+  it("takes one place, bar, cafe, lodging, office or out, and leaves out of the address", () => {
     expect(INSIDE_COMMANDS).toHaveLength(1);
     expect(spec?.name).toBe("goin");
     expect(spec?.kind).toBe("view");
-    for (const place of ["bar", "cafe", "lodging", "out"]) expect(spec?.validate([place]), place).toBeNull();
+    for (const place of ["bar", "cafe", "lodging", "office", "out"]) expect(spec?.validate([place]), place).toBeNull();
     for (const bad of [[], ["roof"], ["bar", "cafe"], [""]]) expect(spec?.validate(bad)).toMatch(/goin takes/);
     expect(spec?.scriptValue?.(["out"])).toBe(spec?.defaultValue);
     expect(spec?.scriptValue?.(["bar"])).not.toBe(spec?.defaultValue);
   });
 
   it("names rooms by their id in a world", () => {
-    expect([goinTarget(SEED, "bar"), goinTarget(SEED, "cafe"), goinTarget(SEED, "lodging"), goinTarget(SEED, "out"), goinTarget(SEED, "roof")]).toEqual([1, 2, 3, 0, undefined]);
+    expect([goinTarget(SEED, "bar"), goinTarget(SEED, "cafe"), goinTarget(SEED, "lodging"), goinTarget(SEED, "office"), goinTarget(SEED, "out"), goinTarget(SEED, "roof")]).toEqual([1, 2, 3, 4, 0, undefined]);
   });
 
   /** A page's host with the parts the side reads, and a record of what the hud was told. */

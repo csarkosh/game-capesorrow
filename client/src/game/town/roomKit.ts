@@ -135,7 +135,8 @@ export function fbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
     out.poly(pts, xd(xf, ns, nd), cols, undefined, fx);
   }
   const cols: Rgb[] | Rgb = baked ? ring.map(([s, d]) => shade(c, top, s, d, y0 + h, 1)) : glowing(c, top, cd);
-  out.poly(ring.map(([s, d]) => xp(xf, s, d, yt)), [0, 1, 0], cols, undefined, fx);
+  // A box that reaches the ceiling (a partition) has no top: it would lie in the ceiling's own plane.
+  if (!(c.whole === true && h + y0 >= c.ceiling - 0.005)) out.poly(ring.map(([s, d]) => xp(xf, s, d, yt)), [0, 1, 0], cols, undefined, fx);
   // The underside of a box held off the floor, which a person can stand under or bend to see.
   if (c.whole === true && y0 > 0.02) {
     const under: Rgb[] | Rgb = baked ? ring.map(([s, d]) => shade(c, scaled(side, 0.7), s, d, y0, -1)) : glowing(c, scaled(side, 0.7), cd);

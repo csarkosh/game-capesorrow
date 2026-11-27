@@ -426,6 +426,7 @@ function room(out: MeshBuilder, r: RoomIn): void {
   ceilingThings(c, interior.furnishings, interior.lights.map((l) => l.s));
   // The room's fixtures are drawn at the floor's height: their y is metres over the floor.
   lights(c, interior.lights, interior.ceiling, field.dead);
+  r.extras?.(c);
   if (!lit && !vacant) {
     // A shut unit keeps a night light on at the back.
     withMat("painted", () => fbox(c, (r.s0 + r.s1) / 2, interior.depth - 0.4, 2.0, 0.1, 0.2, 0.04, AX, [1, 0.85, 0.5], [1, 0.85, 0.5], 2));

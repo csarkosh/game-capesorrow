@@ -58,6 +58,8 @@ export type RoomIn = {
    * wall on the inside (`roomShell.ts`). It is meant to be built into a `MeshBuilder` that lays backs (`insideGeometry.ts`).
    */
   readonly whole?: boolean;
+  /** Dressing of a room's own, drawn last in a whole room with the room's context (the municipal hall's boards, flag and map: `municipalDecor.ts`). */
+  readonly extras?: (c: Ctx) => void;
   /** How much deeper than 7 cm the unit's glass stands in its wall (the deeper openings of a masonry front: `glassOffOf`, `windowGeometry.ts`); what hangs in the window (`sillThings`) moves in with it. None given is 0. */
   readonly glassIn?: number;
 };

@@ -11,6 +11,7 @@ import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { walkGround } from "../car/start.js";
 import { HULL_RADIUS } from "../town/hull.js";
 import { planFor } from "../town/planFor.js";
+import { municipalInterior } from "./municipal.js";
 import { siteFor } from "../town/siteFor.js";
 import type { Place } from "../town/types.js";
 
@@ -46,10 +47,11 @@ const FIT = 0.001;
 export type RoomSolid = { readonly s: number; readonly d: number; readonly ax: number; readonly ad: number; readonly ha: number; readonly hb: number };
 
 export type InsideRoom = {
-  /** 1 the bar, 2 the cafe, 3 the lodging: what `Inside.place` holds. */
+  /** 1 the bar, 2 the cafe, 3 the lodging, 4 the municipal building (the player's office): what `Inside.place` holds. */
   readonly id: number;
-  readonly name: "bar" | "cafe" | "lodging";
+  readonly name: "bar" | "cafe" | "lodging" | "office";
   readonly building: number;
+  /** The unit of the building the room is, or -1 for the municipal building's, which has no unit (`municipal.ts` makes its inside). */
   readonly unit: number;
   /** The unit's front wall in the world: the ground at the building's left end as the street sees it, the way out of the front (`n`) and along the wall to the right (`t`). A place (s, d) of the room is `o + t * s - n * d`. */
   readonly ox: number;
@@ -132,6 +134,25 @@ function make(seed: number): readonly InsideRoom[] {
       streetY,
       floorY: streetY + LIFT,
       solids,
+    });
+  }
+  const hall = plan.places.office;
+  const fr = plan.uses[hall.building]?.frame;
+  if (fr !== undefined && fr !== null && hall.door !== null) {
+    const m = municipalInterior(seed);
+    const ox = anchor.x + fr.origin.x;
+    const oz = anchor.z + fr.origin.z;
+    const streetY = ground.heightAt(ox + fr.t.x * m.doorS + fr.n.x * ARRIVE_OUT, oz + fr.t.z * m.doorS + fr.n.z * ARRIVE_OUT);
+    const solids: RoomSolid[] = [];
+    for (const f of m.interior.furnishings) {
+      if (f.h < LOW) continue;
+      solids.push({ s: f.s, d: f.d, ax: f.dir.x, ad: f.dir.z, ha: f.sx / 2, hb: f.sd / 2 });
+    }
+    // The shut door and the flag's stand are solid too, though they are no furnishings of the plan's kinds.
+    for (const x of m.fixtures) solids.push({ s: x.s, d: x.d, ax: 1, ad: 0, ha: x.ha, hb: x.hb });
+    rooms.push({
+      id: rooms.length + 1, name: "office", building: hall.building, unit: -1, ox, oz, nx: fr.n.x, nz: fr.n.z, tx: fr.t.x, tz: fr.t.z,
+      s0: 0, s1: m.width, depth: m.depth, ceiling: m.interior.ceiling, doorS: m.doorS, doorWidth: m.doorWidth, streetY, floorY: streetY + LIFT, solids,
     });
   }
   return rooms;

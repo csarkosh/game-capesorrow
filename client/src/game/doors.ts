@@ -24,7 +24,7 @@ export function darkFor(self: Walker | undefined): boolean {
 }
 
 /** The places `goin` names: the rooms' names, and `out` for the street. */
-export const GOIN_PLACES: readonly string[] = ["bar", "cafe", "lodging", "out"];
+export const GOIN_PLACES: readonly string[] = ["bar", "cafe", "lodging", "office", "out"];
 
 /** The room id `goin` names in a world, 0 for the street, or undefined when the name is not a place or the world has no such room. */
 export function goinTarget(seed: number, name: string): number | undefined {
@@ -34,12 +34,12 @@ export function goinTarget(seed: number, name: string): number | undefined {
   return undefined;
 }
 
-/** The console's `goin bar`, `goin cafe`, `goin lodging` and `goin out`: kept in the address, so a link opens in the room, and `out` (its default) is left out of it. */
+/** The console's `goin bar`, `goin cafe`, `goin lodging`, `goin office` and `goin out`: kept in the address, so a link opens in the room, and `out` (its default) is left out of it. */
 export const INSIDE_COMMANDS: readonly CommandSpec[] = [
   {
     name: "goin",
     kind: "view",
-    validate: (args) => (args.length === 1 && GOIN_PLACES.includes(args[0] as string) ? null : "goin takes bar, cafe, lodging or out"),
+    validate: (args) => (args.length === 1 && GOIN_PLACES.includes(args[0] as string) ? null : "goin takes bar, cafe, lodging, office or out"),
     scriptValue: (args) => args[0] as string,
     defaultValue: "out",
   },
