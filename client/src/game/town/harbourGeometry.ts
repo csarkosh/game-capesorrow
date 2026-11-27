@@ -12,7 +12,7 @@ import { GLASS, PILE, ROOF_METAL, STEEL, STEEL_RUST, TIMBER, TIMBER_WEATHERED } 
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
 import { HARBOUR_LAMP, LAMP_COLOUR, LENS_GLOW, PIER_LAMP, WORK_ARM, isWorkKind, workLensAt, workLook, type WorkKind } from "./props/lamps.js";
 import { rnd } from "./props/kit.js";
-import type { Barge, Light, Piling, YardItem } from "../../sim/town/types.js";
+import type { Barge, FloatingLog, Light, Piling, YardItem } from "../../sim/town/types.js";
 
 const BARK: Rgb = [0.2, 0.14, 0.09];
 const LOG_END: Rgb = [0.55, 0.45, 0.3];
@@ -60,6 +60,21 @@ function logAt(m: MeshBuilder, cx: number, y: number, cz: number, ax: number, az
   withMat("bark", () => m.prism([cx - (ax * length) / 2, y, cz - (az * length) / 2], [cx + (ax * length) / 2, y, cz + (az * length) / 2], r, 6, colour, LOG_END));
 }
 
+/** Whether two floating logs lie closer than their radii and a hand's width: the axes' segments (in plan) come within that of each other. */
+function logsTouch(a: FloatingLog, b: FloatingLog): boolean {
+  const reach = a.radius + b.radius + 0.1;
+  // The closest approach of two segments in plan: sample the shorter log's axis against the other's segment.
+  const n = Math.max(4, Math.ceil(a.length / 0.25));
+  for (let k = 0; k <= n; k++) {
+    const t = (k / n - 0.5) * a.length;
+    const px = a.x + a.heading.x * t - b.x;
+    const pz = a.z + a.heading.z * t - b.z;
+    const along = Math.max(-b.length / 2, Math.min(b.length / 2, px * b.heading.x + pz * b.heading.z));
+    if (Math.hypot(px - b.heading.x * along, pz - b.heading.z * along) < reach) return true;
+  }
+  return false;
+}
+
 /** The mill's water: the pond's boom and logs, the jack ladder; and the burner of a closed mill. */
 export function millGeometry(g: TownGround, sink: Sink): void {
   const pond = g.plan.harbour.logPond;
@@ -90,7 +105,12 @@ export function millGeometry(g: TownGround, sink: Sink): void {
       const first = sides.find((q) => Math.abs(q.z - (pond.centre.z + sgn * pond.halfZ)) < 0.01 && Math.abs(q.x - (pond.centre.x - pond.halfX + 7.5)) < 0.01);
       if (end && first) chain(end, first);
     }
+    // A log is not laid where it would lie across one already floating (two logs through each other draw their sides in one plane): the first of
+    // two that cross is kept, and a log lies clear of the others by its own radius and theirs.
+    const laid: FloatingLog[] = [];
     for (const l of pond.logs) {
+      if (laid.some((o) => logsTouch(l, o))) continue;
+      laid.push(l);
       const x = ax + l.x;
       const z = az + l.z;
       logAt(sinkAt(sink, x, z), x, 0.02, z, l.heading.x, l.heading.z, l.length, l.radius, scaled(BARK, 0.8 + 0.4 * hash01(Math.floor(l.x * 7 + l.z * 13), 5)));

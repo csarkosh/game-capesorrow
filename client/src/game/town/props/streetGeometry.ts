@@ -54,10 +54,10 @@ export function furnitureGeometry(g: TownGround, sink: Sink, f: Furniture, detai
       const pl = placeOn(g, f.x, f.z, f.hx, f.hz, 0.6, 0.6);
       const c = CAN[col % CAN.length] as Rgb;
       if (f.state === 2) {
-        // Knocked over: the drum on its side, its lid a little way off, what it held in a tongue on the ground.
+        // Knocked over: the drum on its side, its lid a little way off (a domed lid 6 cm high: its top is then clear of the sidewalk's slab and the lumps in it), what it held in a tongue on the ground.
         withMat("steel", () => {
           lcylZ(m, pl, 0, 0.26, -0.45, 0.4, 0.24, 8, c, mixC(c, [0, 0, 0], 0.3), null);
-          lcylY(m, pl, 0.1 + 0.5 * r(1), 0.6, 0.0, 0.03, 0.26, 0.24, 8, mixC(c, [0, 0, 0], 0.3), mixC(c, [0, 0, 0], 0.3));
+          lcylY(m, pl, 0.1 + 0.5 * r(1), 0.6, 0.0, 0.06, 0.26, 0.24, 8, mixC(c, [0, 0, 0], 0.3), mixC(c, [0, 0, 0], 0.3));
         });
         withMat("plastic", () => lbox(m, pl, 0.4, 0.9, 0.0, 0.08, -0.12, 0.12, [0.02, 0.02, 0.025]));
         return;

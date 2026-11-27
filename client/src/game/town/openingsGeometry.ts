@@ -15,7 +15,7 @@
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
 import type { Building, BuildingUse, TownPlan, WindowState } from "../../sim/town/types.js";
 import { withMat } from "./materials.js";
-import { standOff } from "./faceLedger.js";
+import { noteStanding, standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { accentOf, blockOfLot } from "./accents.js";
 import { MUNICIPAL_DOOR_WIDTH } from "../../sim/town/port/places.js";
@@ -202,8 +202,12 @@ function backDoor(c: PlanCtx, w: WallRef, p: WallPlan, seed: number, floorY: num
     const s2 = hole.s1 + 1.6;
     if (s2 + 1.4 < w.length) {
       const dock: Hole = { s0: s2, s1: s2 + 2.4, y0: floorY + 0.9, y1: floorY + 3.0 };
-      if (!p.holes.some((h) => h.s0 < dock.s1 + 0.3 && h.s1 > dock.s0 - 0.3)) {
+      // The platform (1.8 m out, 3 m wide) is not laid where a bin or a pile of gear of the yard stands in its place: there is no dock door there.
+      const mid = wat(w, s2 + 1.2, 0, 0.9);
+      const yardTaken = c.g.plan.props.bins.some((q) => Math.hypot(q.x + c.g.anchor.x - mid[0], q.z + c.g.anchor.z - mid[2]) < 2.6) || c.g.plan.props.gear.some((q) => Math.hypot(q.x + c.g.anchor.x - mid[0], q.z + c.g.anchor.z - mid[2]) < 2.3);
+      if (!yardTaken && !p.holes.some((h) => h.s0 < dock.s1 + 0.3 && h.s1 > dock.s0 - 0.3)) {
         p.holes.push(dock);
+        noteStanding(mid[0], mid[2], 1.5);
         p.draws.push(() => {
           doorIn(out, w, dock, 0.15, RAINCOLOURS.shutter, { layer: "shutter", frame: c.surfaceOf(w).frame, tint: [0.7, 0.7, 0.7], wear: 0.2, wearKind: "rust" }, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3], "steel");
           // The dock: a concrete platform at its sill.

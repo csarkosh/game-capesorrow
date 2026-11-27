@@ -84,7 +84,8 @@ function dumpster(m: MeshBuilder, pl: Place, b: Bin): void {
   const w = 0.62;
   const wear = 0.1 + rnd(b.seed, 1) * 0.2;
   const sf = (o: Vec3): Surface => metal(o, c, wear);
-  const foot = 0.12;
+  // The skids lift the body 22 cm: its floor and the skids' tops, seen from above, are then clear of a paved patch's plane over the ground's lumps.
+  const foot = 0.22;
   const top = 1.2;
   // The body: floor, rear wall, front wall that slopes in toward the top; its top is open under the lids.
   withMat("steel", () => extrude(m, pl, [[-0.95, foot], [0.95, foot], [0.95, 0.45], [0.55, top], [-0.95, top]], -w, w, c, sf, true, [3]));

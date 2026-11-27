@@ -16,8 +16,22 @@ export const LEDGER_STEP = 0.03;
 /** A face within this of another's plane, and over its place, is a clash. */
 const NEAR = 0.0245;
 
+/** The standing pieces laid on the ground, as circles in plan, so that no two pieces are laid through each other. */
+const STANDING: { x: number; z: number; r: number }[] = [];
+
 export function resetLedger(): void {
   LEDGER.clear();
+  STANDING.length = 0;
+}
+
+/** Whether a piece of plan radius `r` at (x, z) clears every piece noted. */
+export function standClear(x: number, z: number, r: number): boolean {
+  return !STANDING.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + r);
+}
+
+/** Notes a piece as laid. */
+export function noteStanding(x: number, z: number, r: number): void {
+  STANDING.push({ x, z, r });
 }
 
 const key = (nx: number, nz: number, bucket: number): string => `${Math.round(nx * 400)},${Math.round(nz * 400)},${bucket}`;

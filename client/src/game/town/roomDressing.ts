@@ -533,10 +533,13 @@ function displayWindow(c: Ctx, sa: number, sb: number, sill: number, head: numbe
     if (!full) return;
     const mid = (sa + sb) / 2;
     const width = sb - sa - 0.3;
+    // A glass too narrow for the goods shows only its backdrop: the riser's ends would stand where a toolbox's or a stack of cans' do.
+    if (width < 0.6) return;
     winBox(c, mid, 0.5, sill - 0.02, 0.1 + hash01(seed, 799) * 0.07, width / 2, 0.36, AX, [0.3, 0.22, 0.14], [0.42, 0.32, 0.2]);
     const y0 = sill + 0.12;
     const u = (k: number, n: number): number => sa + 0.15 + ((k + 0.5) * width) / n;
-    const n = Math.max(2, Math.floor(width / 0.42));
+    // A good for each 42 cm of the glass: in a window narrower than 84 cm, one, where two would stand touching (a pot's side against a toolbox's end).
+    const n = Math.max(1, Math.floor(width / 0.42));
     const col = (k: number): Rgb => goodsOf(t, seed + k * 3);
     switch (t) {
       case "hardware": case "auto parts": case "saw and chain shop": case "marine supply": case "garden and feed": {

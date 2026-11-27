@@ -17,7 +17,7 @@ import { withMat } from "./materials.js";
 import { hash01, scaled, type Rgb } from "./meshBuilder.js";
 import { wat, wbox, type WallRef } from "./buildingKit.js";
 import { agingOf } from "./buildingWear.js";
-import { isClear } from "./faceLedger.js";
+import { isClear, noteFace, noteStanding, standClear } from "./faceLedger.js";
 import { insideOther } from "./openingsGeometry.js";
 import type { PartsIn } from "./buildingParts.js";
 
@@ -28,8 +28,24 @@ const RUST: Rgb = [0.34, 0.17, 0.09];
 const CONDUIT: Rgb = [0.45, 0.45, 0.47];
 const PALLET: Rgb = [0.4, 0.3, 0.2];
 
-const COOKS = ["restaurant", "diner", "cafe", "bakery", "tavern", "hotel", "laundromat", "medical clinic", "rooming house", "convenience store"];
+const COOKS = ["restaurant", "diner", "cafe", "bakery", "tavern", "hotel", "laundromat", "medical clinic", "rooming house", "inn", "convenience store"];
 const SMOKES = ["tavern", "convenience store", "bait and tackle", "diner"];
+
+/** Whether a fence of the plan runs within `reach` metres of a point of the world. */
+export function nearFence(i: PartsIn, x: number, z: number, reach: number): boolean {
+  const px = x - i.g.anchor.x;
+  const pz = z - i.g.anchor.z;
+  for (const f of i.g.plan.props.fences) {
+    const ex = f.bx - f.ax;
+    const ez = f.bz - f.az;
+    const l2 = ex * ex + ez * ez;
+    const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - f.ax) * ex + (pz - f.az) * ez) / l2));
+    const dx = px - (f.ax + ex * t);
+    const dz = pz - (f.az + ez * t);
+    if (dx * dx + dz * dz < reach * reach) return true;
+  }
+  return false;
+}
 
 /** True where a clutter piece at (x, z) of `r` metres is on the building's own lot and not over the front's sidewalk side: the caller checks the wall; this checks the ground. */
 function placeOk(i: PartsIn, x: number, z: number, r: number): boolean {
@@ -46,15 +62,7 @@ function placeOk(i: PartsIn, x: number, z: number, r: number): boolean {
   const px = x - i.g.anchor.x;
   const pz = z - i.g.anchor.z;
   for (const [ox, oz] of [[0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]] as const) if (insideOther(i.g.plan, i.b.id, px + ox, pz + oz)) return false;
-  for (const f of i.g.plan.props.fences) {
-    const ex = f.bx - f.ax;
-    const ez = f.bz - f.az;
-    const l2 = ex * ex + ez * ez;
-    const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - f.ax) * ex + (pz - f.az) * ez) / l2));
-    const dx = px - (f.ax + ex * t);
-    const dz = pz - (f.az + ez * t);
-    if (dx * dx + dz * dz < 1.2 * 1.2) return false;
-  }
+  if (nearFence(i, x, z, 1.2)) return false;
   return true;
 }
 
@@ -114,8 +122,14 @@ export function attachmentsGeometry(i: PartsIn): void {
           out.prism(wat(w, s, y0, 0.07), wat(w, s, i.baseY + 0.08, 0.07), 0.02, 4, CONDUIT, null);
         });
         // A cable stapled along the siding, a little sagged, to the end the service comes from.
-        if (rnd(14) < 0.5 + 0.3 * age) {
-          const e = rnd(15) < 0.5 ? 0.3 : w.length - 0.3;
+        // Nor along a neighbour's wall built to this one (the cable would lie in its face).
+        const eEnd = rnd(15) < 0.5 ? 0.3 : w.length - 0.3;
+        const buried = [0, 0.25, 0.5, 0.75, 1].some((q) => {
+          const x = wat(w, s + (eEnd - s) * q, 0, 0.12);
+          return insideOther(i.g.plan, i.b.id, x[0] - i.g.anchor.x, x[2] - i.g.anchor.z);
+        });
+        if (!buried && rnd(14) < 0.5 + 0.3 * age) {
+          const e = eEnd;
           const yc = i.wallTop - 0.55 - rnd(16) * 0.3;
           withMat("rubber", () => {
             out.prism(wat(w, s + 0.05, yc + 0.02, 0.06), wat(w, (s + e) / 2, yc - 0.06, 0.06), 0.01, 3, [0.08, 0.08, 0.09], null);
@@ -185,13 +199,14 @@ export function attachmentsGeometry(i: PartsIn): void {
         const d = 0.7 + hv + (lane - 0.5) * 0.4;
         const p = wat(w, s, 0, d);
         if (!placeOk(i, p[0], p[2], 0.5)) continue;
-        const y = i.g.heightAt(p[0], p[2]) + 0.04;
+        // On the highest ground under the piece's footprint, so that a paved patch laid in plain triangles over the lumps of the ground is not over it; a sheet of plywood is two sheets thick, its top clear of the patch's plane by more than the rule.
+        const y = Math.max(...[[0, 0], [hv, hv], [hv, -hv], [-hv, hv], [-hv, -hv]].map(([dx, dz]) => i.g.heightAt(p[0] + (dx as number), p[2] + (dz as number)))) + 0.04;
         const ux = w.tx;
         const uz = w.tz;
         if (kind < 0.25) {
           // A stack of pallets, a few high, not squared.
           const hh = 0.14 * (2 + Math.floor(hash01(b.id + c, 613) * 4));
-          withMat("wood", () => out.box(p[0], p[2], y, ux, uz, 0.5, 0.4, hh, PALLET, scaled(PALLET, 1.1)));
+          if (boxFree(p[0], p[2], ux, uz, 0.5, 0.4, y, y + hh)) withMat("wood", () => out.box(p[0], p[2], y, ux, uz, 0.5, 0.4, hh, PALLET, scaled(PALLET, 1.1)));
         } else if (kind < 0.45) {
           // Milk crates, three in a stack.
           withMat("plastic", () => out.box(p[0], p[2], y, ux, uz, 0.17, 0.17, 0.45, [0.15, 0.3, 0.55], [0.18, 0.34, 0.6]));
@@ -199,12 +214,12 @@ export function attachmentsGeometry(i: PartsIn): void {
           withMat("steel", () => out.cylinder(p[0], p[2], y, 0.2, 0.36, 7, [0.55, 0.52, 0.2], [0.35, 0.35, 0.3]));
         } else if (kind < 0.75 && cooks) {
           // A grease bin: a lidded steel box.
-          withMat("steel", () => out.box(p[0], p[2], y, ux, uz, 0.45, 0.35, 0.95, [0.22, 0.25, 0.22], [0.18, 0.2, 0.18]));
+          if (boxFree(p[0], p[2], ux, uz, 0.45, 0.35, y, y + 0.95)) withMat("steel", () => out.box(p[0], p[2], y, ux, uz, 0.45, 0.35, 0.95, [0.22, 0.25, 0.22], [0.18, 0.2, 0.18]));
         } else if (kind < 0.88 && smokes) {
           // A bin of cigarette ends on the wall.
           withMat("steel", () => out.cylinder(p[0], p[2], y, 0.07, 0.55, 6, [0.25, 0.25, 0.27], [0.1, 0.1, 0.1]));
         } else if (i.vacant) {
-          withMat("ply", () => out.box(p[0], p[2], y, ux, uz, 0.45, 0.3, 0.05, [0.4, 0.34, 0.24], [0.42, 0.36, 0.26]));
+          if (boxFree(p[0], p[2], ux, uz, 0.45, 0.3, y, y + 0.08)) withMat("ply", () => out.box(p[0], p[2], y, ux, uz, 0.45, 0.3, 0.08, [0.4, 0.34, 0.24], [0.42, 0.36, 0.26]));
         } else {
           withMat("steel", () => out.cylinder(p[0], p[2], y, 0.2, 0.55, 6, [0.5, 0.5, 0.52], [0.2, 0.2, 0.2], 0.17));
         }
@@ -217,7 +232,25 @@ export function attachmentsGeometry(i: PartsIn): void {
 function ok(w: WallRef, s0: number, s1: number, y0: number, y1: number, off: number): boolean {
   const a = wat(w, s0, y0, off);
   const c = wat(w, s1, y1, off);
-  return isClear(w.nx, w.nz, a[0], a[2], c[0], c[2], y0, y1);
+  // Its ends too: a box's end faces are faces of the ledger (`wbox`), and two boxes' ends a few millimetres apart are a pair.
+  const e0 = wat(w, s0, y0, 0);
+  const e1 = wat(w, s1, y0, 0);
+  return isClear(w.nx, w.nz, a[0], a[2], c[0], c[2], y0, y1) && isClear(-w.tx, -w.tz, e0[0], e0[2], a[0], a[2], y0, y1) && isClear(w.tx, w.tz, e1[0], e1[2], c[0], c[2], y0, y1);
+}
+
+/** Whether a standing box (centre, along (ux, uz), half extents) stands clear of the pieces and the faces noted; when it does, it is noted, and it is laid. */
+function boxFree(cx: number, cz: number, ux: number, uz: number, hu: number, hv: number, y0: number, y1: number): boolean {
+  const vx = uz;
+  const vz = -ux;
+  const c = (su: number, sv: number): [number, number] => [cx + ux * hu * su + vx * hv * sv, cz + uz * hu * su + vz * hv * sv];
+  const [p00, p10, p11, p01] = [c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)];
+  // Not through another standing piece (a pallet stack where a sheet of plywood lies).
+  if (!standClear(cx, cz, Math.hypot(hu, hv))) return false;
+  const sides: readonly (readonly [number, number, [number, number], [number, number]])[] = [[-vx, -vz, p00, p10], [ux, uz, p10, p11], [vx, vz, p11, p01], [-ux, -uz, p01, p00]];
+  if (!sides.every(([nx, nz, a, b]) => isClear(nx, nz, a[0], a[1], b[0], b[1], y0, y1))) return false;
+  for (const [nx, nz, a, b] of sides) noteFace(nx, nz, a[0], a[1], b[0], b[1], y0, y1);
+  noteStanding(cx, cz, Math.hypot(hu, hv));
+  return true;
 }
 
 function full(i: PartsIn): boolean {

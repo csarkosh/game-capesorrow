@@ -22,6 +22,7 @@ import { paintOff } from "./paint.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { coloursOf } from "./signStyle.js";
 import { blockOfLot, signColours } from "./accents.js";
+import { insideOther } from "./openingsGeometry.js";
 import { hoursCode, unitHours, wrapHour, type Hours } from "./hours.js";
 import { xp, type Xf } from "./roomGeometry.js";
 import { glassOffOf, isMasonry } from "./windowGeometry.js";
@@ -227,7 +228,19 @@ function drawSign(i: SignIn, sign: Sign, unit: Unit | null, k: number): void {
     i.face.polyUv([c(-ww / 2, y0 + hh), c(ww / 2, y0 + hh), c(ww / 2, y0), c(-ww / 2, y0)], [[at.u0, at.v0], [at.u1, at.v0], [at.u1, at.v1], [at.u0, at.v1]], [pl.nx, 0, pl.nz], [1, 1, 1], { glow, paint: rank });
   };
   /** A box on the wall: `off0` to `off1` off it, centred `cx`, `ww` wide, from `y0` up `hh`. */
-  const obox = (cx: number, y0: number, ww: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side, topFace = true, under = true): void => {
+  const obox = (cx0: number, y0: number, ww0: number, hh: number, off0: number, off1: number, side: Rgb, top: Rgb = side, topFace = true, under = true): void => {
+    // A board does not end at, or in, the wall of the building beside it (its end would lie within millimetres of that wall's face): it is cut back from the end that does, a hand at a time.
+    const beyond = (t: number): boolean => insideOther(i.g.plan, i.b.id, pl.x + pl.rx * t + pl.nx * ((off0 + off1) / 2) - i.g.anchor.x, pl.z + pl.rz * t + pl.nz * ((off0 + off1) / 2) - i.g.anchor.z);
+    let lo = cx0 - ww0 / 2;
+    let hi = cx0 + ww0 / 2;
+    for (let tries = 0; tries < 4 && beyond(lo - 0.04); tries++) lo += 0.06;
+    for (let tries = 0; tries < 4 && beyond(hi + 0.04); tries++) hi -= 0.06;
+    // Nor with an end within 2.45 cm of the end of a box already laid on the wall (a door's casing): cut back a step at a time (`faceLedger.ts`).
+    const endAt = (t: number, sg: 1 | -1): boolean => isClear(pl.rx * sg, pl.rz * sg, pl.x + pl.rx * t + pl.nx * off0, pl.z + pl.rz * t + pl.nz * off0, pl.x + pl.rx * t + pl.nx * off1, pl.z + pl.rz * t + pl.nz * off1, y0, y0 + hh);
+    for (let tries = 0; tries < 6 && !endAt(lo, -1); tries++) lo += 0.03;
+    for (let tries = 0; tries < 6 && !endAt(hi, 1); tries++) hi -= 0.03;
+    const cx = (lo + hi) / 2;
+    const ww = hi - lo;
     const mx = pl.x + pl.rx * cx + pl.nx * ((off0 + off1) / 2);
     const mz = pl.z + pl.rz * cx + pl.nz * ((off0 + off1) / 2);
     withMat("painted", () => solid.box(mx, mz, y0, pl.rx, pl.rz, ww / 2, (off1 - off0) / 2, hh, side, top, topFace, under ? undefined : null));

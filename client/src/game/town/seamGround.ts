@@ -317,7 +317,8 @@ function lawn(g: TownGround, surf: Surface, h: HouseSeam, neg: number, kind: str
       const r = rmin + (rmax - rmin) * hash01(key, 1020 + t);
       const cx = ax + bx0 + (bx1 - bx0) * hash01(key, 1000 + t);
       const cz = az + bz0 + (bz1 - bz0) * hash01(key, 1010 + t);
-      let ok = lotIdAt(g.plan, cx - ax, cz - az) === b.lot && !nearBuilding(g, cx, cz, r * 1.2 + 0.8) && !onRect(cx, cz);
+      // Not under a pile of gear (a net lies at hand height over the ground, its edge in the plane of a mound).
+      let ok = lotIdAt(g.plan, cx - ax, cz - az) === b.lot && !nearBuilding(g, cx, cz, r * 1.2 + 0.8) && !onRect(cx, cz) && !g.plan.props.gear.some((o) => Math.hypot(o.x - (cx - ax), o.z - (cz - az)) < r * 1.3 + 1.1);
       for (let q = 0; q < 6 && ok; q++) {
         const px = cx + Math.cos(q) * r * 1.3;
         const pz = cz + Math.sin(q) * r;
