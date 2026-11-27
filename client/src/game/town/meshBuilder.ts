@@ -121,6 +121,15 @@ abstract class Run<T extends Float32Array | Uint32Array> {
     this.length = 0;
     return out;
   }
+  /** Writes a copy of the numbers from index `from` up to the end after them, and returns where the copy starts. */
+  repeat(from: number): number {
+    const at = this.length;
+    const count = at - from;
+    this.room(count);
+    this.data.copyWithin(at, from, at);
+    this.length = at + count;
+    return at;
+  }
   push2(a: number, b: number): void {
     this.room(2);
     const d = this.data;
@@ -185,6 +194,20 @@ export class MeshBuilder {
     const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder") && !l.includes("/surface.ts")).slice(0, 4);
     this.tags.push([from, lines.map((l) => l.replace(/^\s*at\s+(?:async\s+)?(?:new\s+)?(\S+)\s+\(.*\/(game|test)\/town\//, "$1 ").replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
   }
+  /**
+   * Whether every face this builder lays also gets its back: the same corners, wound the other way, with their normals turned round and
+   * everything else (colour, surface, glow, hours) as they were. The town's materials cull back faces, so a single sheet is not there from
+   * behind; a room a player stands in (`insideGeometry.ts`) is seen from every side, and is built in this mode so that no face of it is
+   * see-through from any side, whichever builder laid it. A face that asks for a back of its own (`Fx.back`, a grid's `back`) keeps that one.
+   */
+  private readonly backs: boolean;
+  /** True while a back of its own (`Fx.back`) is being laid, which is not given a back in its turn. */
+  private backing = false;
+
+  constructor(backs = false) {
+    this.backs = backs;
+  }
+
   private pos = new Floats();
   private nor = new Floats();
   private col = new Floats();
@@ -236,6 +259,30 @@ export class MeshBuilder {
 
   get vertices(): number {
     return this.pos.length / 3;
+  }
+
+  /**
+   * In the mode that lays backs (`backs`): the back of what was laid since vertex `vFrom` and triangle index `iFrom`. Its vertices are copies of the
+   * front's with the normals turned round, and each triangle is the front's reversed, over the copies.
+   */
+  private layBack(vFrom: number, iFrom: number): void {
+    if (!this.backs || this.backing) return;
+    const vEnd = this.vertices;
+    const iEnd = this.idx.length;
+    if (vEnd === vFrom) return;
+    const at = this.pos.repeat(vFrom * 3) / 3;
+    const n = this.nor.repeat(vFrom * 3);
+    for (let i = n; i < this.nor.length; i++) this.nor.data[i] = -(this.nor.data[i] as number);
+    this.col.repeat(vFrom * 4);
+    this.uv.repeat(vFrom * 2);
+    this.srf.repeat(vFrom * SURFACE_FLOATS);
+    const shift = at - vFrom;
+    for (let t = iFrom; t < iEnd; t += 3) {
+      const a = this.idx.data[t] as number;
+      const b = this.idx.data[t + 1] as number;
+      const c = this.idx.data[t + 2] as number;
+      this.idx.push3(c + shift, b + shift, a + shift);
+    }
   }
 
   /** Calls `fn` with the position of each vertex from vertex number `from` on (for a part that wants its own extent or a fingerprint). */
@@ -351,12 +398,14 @@ export class MeshBuilder {
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
     // wind it against the normal, as the engine's boxes are (reversed from the fan when the order already faces the hint).
+    const iFrom = this.idx.length;
     for (let i = 1; i < n - 1; i++) {
       if (flip) this.idx.push3(base, base + i, base + i + 1);
       else this.idx.push3(base, base + i + 1, base + i);
     }
     // A back with no look of its own is of what the front is: its material, or its surface a shade darker.
     if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx, given);
+    else this.layBack(base, iFrom);
   }
 
   /**
@@ -376,6 +425,7 @@ export class MeshBuilder {
       this.uv.push2(uv[0], uv[1]);
       this.srf.push12(NO_LAYER, fx.dirt ?? 0, fx.seed ?? 0, glow, 1, 1, 1, fx.clear ?? 0, fx.size?.[0] ?? 0, fx.size?.[1] ?? 0, fx.tilt?.[0] ?? 0, fx.rank ?? fx.tilt?.[1] ?? 0);
     });
+    const iFrom = this.idx.length;
     for (let t = 0; t + 2 < tris.length; t += 3) {
       const a = tris[t] as number;
       const b = tris[t + 1] as number;
@@ -390,6 +440,7 @@ export class MeshBuilder {
       if (nx * hint[0] + ny * hint[1] + nz * hint[2] < 0) this.idx.push3(base + a, base + b, base + c);
       else this.idx.push3(base + a, base + c, base + b);
     }
+    this.layBack(base, iFrom);
   }
 
   /** The back of a polygon just laid (`Fx.back`): the same corners, facing `hint` (the front's normal reversed), in the back's own look. */
@@ -399,7 +450,13 @@ export class MeshBuilder {
     const dark = (c: Rgb): Rgb => greyed(scaled(c, 0.7), 0.25);
     const col: Rgb | readonly Rgb[] = own?.colour ?? (typeof (colour as readonly unknown[])[0] === "number" ? dark(colour as Rgb) : (colour as readonly Rgb[]).map(dark));
     const like: Surface | MatRef | undefined = front === undefined || isMat(front) || front.tint === undefined ? front : { ...front, tint: scaled(front.tint, 0.7) };
-    this.poly(points, hint, col, own?.surface ?? like, fx.normal === undefined ? {} : { normal: [-fx.normal[0], -fx.normal[1], -fx.normal[2]] });
+    const before = this.backing;
+    this.backing = true;
+    try {
+      this.poly(points, hint, col, own?.surface ?? like, fx.normal === undefined ? {} : { normal: [-fx.normal[0], -fx.normal[1], -fx.normal[2]] });
+    } finally {
+      this.backing = before;
+    }
   }
 
   /**
@@ -433,10 +490,12 @@ export class MeshBuilder {
       this.uv.push2(uv[0], uv[1]);
       this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? this.glowBase, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, (fx?.glow ?? this.glowBase) > 0 ? this.hoursCode : 0, 0);
     });
+    const iFrom = this.idx.length;
     for (let i = 1; i < n - 1; i++) {
       if (flip) this.idx.push3(base, base + i, base + i + 1);
       else this.idx.push3(base, base + i + 1, base + i);
     }
+    this.layBack(base, iFrom);
   }
 
   /**
@@ -490,6 +549,7 @@ export class MeshBuilder {
         }
       }
     }
+    const iFrom = this.idx.length;
     for (let j = 0; j + 1 < nv; j++) {
       for (let i = 0; i + 1 < nu; i++) {
         const q0 = base + j * nu + i;
@@ -500,6 +560,7 @@ export class MeshBuilder {
         else this.idx.push6(q0, q2, q1, q0, q3, q2);
       }
     }
+    this.layBack(base, iFrom);
   }
 
   quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, hint: Vec3, colour: Rgb, surface?: Surface | MatRef, fx?: Fx): void {
@@ -554,6 +615,8 @@ export class MeshBuilder {
       );
     }
     if (topRadius > 0) this.poly(ring.map(([c, s]): Vec3 => [cx + c * topRadius, y1, cz + s * topRadius]), [0, 1, 0], top);
+    // A room that is seen from every side (`backs`) has a drum's underside too, which a hung lamp shows.
+    if (this.backs && radius > 0) this.poly(ring.map(([c, s]): Vec3 => [cx + c * radius, y0, cz + s * radius]), [0, -1, 0], scaled(side, 0.6));
   }
 
   /**
@@ -711,6 +774,7 @@ export class MeshBuilder {
         }
       }
     }
+    const iFrom = this.idx.length;
     for (let i = 0; i < nr - 1; i++) {
       for (let j = 0; j < nc - 1; j++) {
         if (skip?.(i, j) === true) continue;
@@ -723,6 +787,7 @@ export class MeshBuilder {
         else this.idx.push6(a, b, c, a, c, d);
       }
     }
+    if (v.back === undefined && !reversed) this.layBack(base, iFrom);
     if (v.back !== undefined && !reversed) {
       const front = v.colour;
       const dark = (c: Rgb): Rgb => greyed(scaled(c, 0.7), 0.25);

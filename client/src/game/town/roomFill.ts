@@ -11,7 +11,7 @@
  * and a hand-written sign on the floor. Past `PLAIN_FROM` a furnishing is its big shape only. Every small thing stands ON what carries it with its own faces 3 cm or more clear of any parallel face.
  */
 import { withMat } from "./materials.js";
-import { hash01, scaled, type Rgb } from "./meshBuilder.js";
+import { hash01, scaled, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { pickOf } from "./buildingKit.js";
 import { BAKED, fbox, fcyl, glowing, shade, xd, xp, type Ctx } from "./roomKit.js";
 import type { Furnishing } from "../../sim/town/types.js";
@@ -428,7 +428,7 @@ export function counterTop(c: Ctx, f: Furnishing, i: number): void {
       const col = pickOf([[0.62, 0.4, 0.2], [0.8, 0.55, 0.65], [0.85, 0.75, 0.5], [0.45, 0.25, 0.12], [0.9, 0.85, 0.75]] as readonly Rgb[], c.seed + k * 5 + i, 1032);
       fbox(c, s, d, ct + 0.06, 0.05 + (k % 3) * 0.025, (cw / shapes) * 0.8, 0.09, dir, col, up(col, 1.15), BAKED, false);
     }
-    fbox(c, ps, pd2, ct + 0.3, 0.03, cw + 0.02, Math.min(0.26, f.sd * 0.4) + 0.02, dir, [0.62, 0.72, 0.76], [0.75, 0.85, 0.9], c.lit ? 0.9 : BAKED);
+    fbox(c, ps, pd2, ct + 0.3, 0.03, cw + 0.02, Math.min(0.26, f.sd * 0.4) + 0.02, dir, [0.62, 0.72, 0.76], [0.75, 0.85, 0.9], c.lit ? (c.whole === true ? 0.45 : 0.9) : BAKED);
     const [js, jd] = at(-L * 0.38, 0.08);
     fcyl(c, js, jd, ct, 0.05, 0.15, 6, [0.78, 0.82, 0.82], [0.2, 0.5, 0.2]);
     const [cs2, cd2] = at(-L * 0.38, -0.12);
@@ -712,7 +712,7 @@ export function machine(c: Ctx, f: Furnishing, i: number): void {
     // A copier: a body with a lid, a panel that lights.
     fbox(c, f.s, f.d, 0, f.h * 0.85, f.sx / 2, f.sd / 2, dir, [0.8, 0.8, 0.78], [0.86, 0.86, 0.84]);
     fbox(c, f.s, f.d, f.h * 0.85, 0.06, f.sx / 2 - 0.03, f.sd / 2 - 0.03, dir, [0.2, 0.22, 0.25], [0.25, 0.27, 0.3], BAKED, false);
-    if (c.detail === "full") fbox(c, f.s, f.d, f.h * 0.6, 0.1, 0.12, f.sd / 2 + 0.03, dir, [0.3, 0.7, 0.9], [0.3, 0.7, 0.9], c.lit ? 1.6 : 0.2, false);
+    if (c.detail === "full") fbox(c, f.s, f.d, f.h * 0.6, 0.1, 0.12, f.sd / 2 + 0.03, dir, [0.3, 0.7, 0.9], [0.3, 0.7, 0.9], c.lit ? (c.whole === true ? 0.6 : 1.6) : 0.2, false);
     return;
   }
   const jukebox = c.type === "bar";
@@ -720,7 +720,49 @@ export function machine(c: Ctx, f: Furnishing, i: number): void {
   fbox(c, f.s, f.d, 0, f.h, f.sx / 2, f.sd / 2, dir, body, up(body, 1.15));
   if (c.detail === "low") return;
   const win: Rgb = jukebox ? pickOf([[1, 0.55, 0.15], [0.3, 0.8, 1], [1, 0.3, 0.5]] as readonly Rgb[], c.seed + i, 1054) : [0.85, 0.9, 0.95];
+  if (c.whole === true) return machineFace(c, f, dir, win, jukebox);
   fbox(c, f.s, f.d, f.h * 0.45, f.h * 0.42, f.sx * 0.38, f.sd / 2 + 0.03, dir, win, win, c.lit ? 1.8 : 0.25, false);
+}
+
+/**
+ * The lit front of a jukebox or a vending machine as seen from the floor (a room a person stands in): on the face that looks into the room, a panel that has
+ * what it is. A jukebox: a window of its colour with a dark arch of record rows across it and a row of selector buttons under. A vending machine: dark glass with rows of
+ * coloured goods lit from inside and a dark delivery slot. The glow stays under 1, so it does not blow out.
+ */
+function machineFace(c: Ctx, f: Furnishing, dir: { x: number; z: number }, win: Rgb, jukebox: boolean): void {
+  const px = -dir.z;
+  const pd = dir.x;
+  // The face that looks toward the middle of the room.
+  const mid = { s: (c.s0 + c.s1) / 2, d: c.d1 / 2 };
+  const sg = (mid.s - f.s) * px + (mid.d - f.d) * pd >= 0 ? 1 : -1;
+  const off = f.sd / 2 + 0.02;
+  const at = (u: number, y: number, o = off): Vec3 => xp(c.xf, f.s + dir.x * u + px * sg * o, f.d + dir.z * u + pd * sg * o, c.floorY + y);
+  const hint = xd(c.xf, px * sg, pd * sg);
+  const lit = c.lit;
+  const rect = (u0: number, u1: number, y0: number, y1: number, col: Rgb, glow: number, o: number): void => {
+    const lo = lit ? glow : glow * 0.2;
+    c.out.poly([at(u0, y0, o), at(u1, y0, o), at(u1, y1, o), at(u0, y1, o)], hint, col, undefined, { glow: lo });
+  };
+  const w = f.sx * 0.4;
+  const y0 = f.h * 0.4;
+  const y1 = f.h * 0.88;
+  if (jukebox) {
+    rect(-w, w, y0, y1, scaled(win, 0.7), 0.85, off);
+    // The dark arch of the record rows, and the lit rim round it.
+    rect(-w * 0.8, w * 0.8, y0 + (y1 - y0) * 0.3, y1 - 0.06, scaled(win, 0.22), 0.3, off + 0.012);
+    for (let k = 0; k < 4; k++) rect(-w * 0.7, w * 0.7, y0 + (y1 - y0) * 0.35 + k * 0.07, y0 + (y1 - y0) * 0.35 + k * 0.07 + 0.02, scaled(win, 1.05), 0.8, off + 0.024);
+    for (let k = 0; k < 6; k++) rect(-w * 0.7 + k * w * 0.25, -w * 0.7 + k * w * 0.25 + w * 0.16, y0 + 0.03, y0 + (y1 - y0) * 0.24, [0.12, 0.1, 0.1], 0.2, off + 0.012);
+    return;
+  }
+  rect(-w, w, y0, y1, [0.1, 0.13, 0.17], 0.25, off);
+  const cols: readonly Rgb[] = [[0.8, 0.15, 0.1], [0.9, 0.75, 0.1], [0.15, 0.45, 0.2], [0.2, 0.3, 0.6], [0.85, 0.5, 0.1]];
+  for (let r = 0; r < 3; r++) {
+    for (let q = 0; q < 4; q++) {
+      const u = -w + 0.04 + q * ((2 * w - 0.04) / 4);
+      rect(u, u + (2 * w - 0.04) / 4 - 0.04, y0 + 0.05 + r * (y1 - y0 - 0.1) / 3 + 0.12, y0 + 0.05 + r * (y1 - y0 - 0.1) / 3 + 0.2, pickOf(cols, c.seed + r * 7 + q, 1055), 0.7, off + 0.012);
+    }
+  }
+  rect(-w * 0.5, w * 0.5, f.h * 0.08, f.h * 0.22, [0.04, 0.04, 0.05], 0.1, off);
 }
 
 /** One draped dust sheet in a vacant unit: a pale lump over something. */
@@ -763,12 +805,16 @@ export function cbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
   const norms: [number, number][] = [[-bx, -bd], [ax, ad], [bx, bd], [-ax, -ad]];
   for (let i = 0; i < 4; i++) {
     const [ns, nd] = norms[i] as [number, number];
-    if (nd > 0.35) continue;
+    if (nd > 0.35 && c.whole !== true) continue;
     const a = ring[i] as [number, number];
     const b = ring[(i + 1) % 4] as [number, number];
     const alb = nd < -0.5 ? side : scaled(side, 0.82);
     const col: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : glowing(c, alb, cd);
     out.poly([xp(xf, a[0], a[1], yb), xp(xf, b[0], b[1], yb), xp(xf, b[0], b[1], yb + h), xp(xf, a[0], a[1], yb + h)], xd(xf, ns, nd), col, undefined, fx);
+  }
+  // In a room a person stands in, its top too, which a person on a ladder or a tall one sees (unless it lies against the ceiling).
+  if (c.whole === true && y0 + h < c.ceiling - 0.02) {
+    out.poly(ring.map(([s, d]) => xp(xf, s, d, yb + h)), [0, 1, 0], baked ? ring.map(([s, d]) => shade(c, scaled(bottom, 0.8), s, d, y0 + h, 1)) : glowing(c, scaled(bottom, 0.8), cd), undefined, fx);
   }
 }
 

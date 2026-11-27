@@ -1,0 +1,160 @@
+/**
+ * Walking into a building in the game's rules: how a player goes through a door and moves in a room (`rooms.ts` says what a room is). A click at a
+ * street door holds the player still while the screen goes dark, then the host puts the player in the room, which is built `LIFT` metres over the
+ * street; a click at the room's door holds them again and puts them back in the street. It is the car's pattern (`sim/car/rules.ts`): a press on the
+ * host, a held phase that counts ticks, and then the move.
+ *
+ * `insideMove` is the engine's `Rules.move`: it runs on every machine, the host, a client's prediction and its replay of unacknowledged
+ * commands. `insidePressed` and `insideStep` run on the host alone.
+ *
+ * Simulation code: `+ - * /`, `abs`, `min`, `max`, `sqrt` only, and no collection is walked (the host's loop over its players is in `sim.ts`).
+ */
+import { PLAYER_HALF, TICK_DT } from "@csarkosh/engine/sim/constants";
+import { MoveButton, type InputCommand } from "@csarkosh/engine/sim/core";
+import type { Forest } from "@csarkosh/engine/sim/forest";
+import type { GroundField } from "@csarkosh/engine/sim/ground";
+import { stepMovement } from "@csarkosh/engine/sim/movement";
+import type { SimState, SimWorld } from "@csarkosh/engine/sim/tick";
+import { constrainByCars, type CarState, type Rider } from "../car/rules.js";
+import { INTERACT_BIT } from "../car/tuning.js";
+import { FOOT } from "../car/types.js";
+import { townConstrain } from "../town/solid.js";
+import {
+  arriveIn, arriveOut, constrainInRoom, DOOR_TICKS, fitsInRoom, GOING_IN, GOING_OUT, INSIDE, newInside, OUTSIDE, roomDoorAt, roomOf, streetDoorAt, type Inside,
+  type InsideRoom,
+} from "./rooms.js";
+
+/** A player who may be in a room as well as in a car. */
+export type Insider = Rider & { inside: Inside };
+/** A world of such players, with the forest the rooms are made from and the cars that stand in the street. */
+export type InsideWorld = SimWorld<Insider> & { forest: Forest; state: SimState<Insider> & CarState };
+
+/** A walk in a room has no one's boxes to meet: the walls and the furnishings are `constrainInRoom`'s. */
+const NO_BOXES: readonly never[] = [];
+/** The height of the floor of the room a step is for, read by the flat ground below. A step is made whole before another begins. */
+let floorY = 0;
+const FLOOR: GroundField = {
+  heightAt: () => floorY,
+  normalAt: (_x, _z, out) => {
+    out.x = 0;
+    out.y = 1;
+    out.z = 0;
+  },
+};
+const SPOT = { x: 0, y: 0, z: 0 };
+const NO_VEL = { x: 0, y: 0, z: 0 };
+
+/** Whether a player is held still at a door: going in or going out. */
+export function insideHeld(p: { inside: Inside }): boolean {
+  return p.inside.phase === GOING_IN || p.inside.phase === GOING_OUT;
+}
+
+/**
+ * The engine's move, for a player in a room: it walks on the room's flat floor with the engine's own step (no boxes, no water, no jump: the eye would go
+ * through a low ceiling), and is kept in the room's walls and out of its furnishings. Answers false for a player not in a room, so the engine walks them.
+ */
+export function insideMove(world: InsideWorld, p: Insider, cmd: InputCommand): boolean {
+  if (p.inside.phase !== INSIDE) return false;
+  const room = roomOf(world.forest.seed, p.inside.place);
+  if (room === undefined) {
+    p.inside = newInside();
+    return false;
+  }
+  floorY = room.floorY;
+  const walk: InputCommand = { ...cmd, buttons: (cmd.buttons & MoveButton.Jump) !== 0 ? cmd.buttons - MoveButton.Jump : cmd.buttons };
+  const after = stepMovement({ pos: p.pos, vel: p.vel, grounded: p.grounded }, walk, TICK_DT, NO_BOXES, PLAYER_HALF, null, FLOOR);
+  constrainInRoom(room, after.pos, after.vel);
+  if (fitsInRoom(room, after.pos) || !fitsInRoom(room, p.pos)) {
+    p.pos = after.pos;
+    p.vel = after.vel;
+  } else {
+    // A pinch between two pieces of furniture that stand closer than a hull is wide: the player stays where they were, and at rest.
+    p.vel = { x: 0, y: 0, z: 0 };
+  }
+  p.grounded = true;
+  return true;
+}
+
+/**
+ * A press, on the host: the interact bit from a player on foot at a street door starts going in, and from a player in a room at its door starts going out.
+ * Answers whether it acted.
+ */
+export function insidePressed(world: InsideWorld, p: Insider, bits: number): boolean {
+  if ((bits & INTERACT_BIT) === 0 || p.ride.phase !== FOOT) return false;
+  if (p.inside.phase === OUTSIDE) {
+    const room = streetDoorAt(world.forest.seed, p.pos);
+    if (room === undefined) return false;
+    p.inside = { place: room.id, phase: GOING_IN, ticks: DOOR_TICKS };
+    return true;
+  }
+  if (p.inside.phase === INSIDE) {
+    const room = roomOf(world.forest.seed, p.inside.place);
+    if (room === undefined || !roomDoorAt(room, p.pos)) return false;
+    p.inside = { place: room.id, phase: GOING_OUT, ticks: DOOR_TICKS };
+    return true;
+  }
+  return false;
+}
+
+/** Puts a player in a room, at rest on its floor inside the door, grounded. */
+function standIn(room: InsideRoom, p: Insider): void {
+  const at = arriveIn(room);
+  p.pos = { x: at.x, y: at.y, z: at.z };
+  p.vel = { x: 0, y: 0, z: 0 };
+  p.grounded = true;
+  p.inside = { place: room.id, phase: INSIDE, ticks: 0 };
+}
+
+/** Puts a player in the street at a room's door, moved clear of what stands there, on the walked ground, at rest and grounded. */
+function standOut(world: InsideWorld, room: InsideRoom, p: Insider): void {
+  const at = arriveOut(room);
+  SPOT.x = at.x;
+  SPOT.y = at.y;
+  SPOT.z = at.z;
+  NO_VEL.x = 0;
+  NO_VEL.y = 0;
+  NO_VEL.z = 0;
+  constrainByCars(world, SPOT, NO_VEL);
+  townConstrain(world, SPOT, NO_VEL);
+  const ground = world.ground;
+  const y = (ground === null ? room.streetY : ground.heightAt(SPOT.x, SPOT.z)) + PLAYER_HALF.y;
+  p.pos = { x: SPOT.x, y, z: SPOT.z };
+  p.vel = { x: 0, y: 0, z: 0 };
+  p.grounded = true;
+  p.inside = newInside();
+}
+
+/**
+ * The host's step for one player, every tick: a hold counts down, and at its end the player is moved through the door. A hold on a room that does not
+ * exist (it cannot, on a host that made the press) ends with the player in the street.
+ */
+export function insideStep(world: InsideWorld, p: Insider): void {
+  if (!insideHeld(p)) return;
+  p.inside.ticks--;
+  if (p.inside.ticks > 0) return;
+  const room = roomOf(world.forest.seed, p.inside.place);
+  if (room === undefined) {
+    p.inside = newInside();
+    return;
+  }
+  if (p.inside.phase === GOING_IN) standIn(room, p);
+  else standOut(world, room, p);
+}
+
+/**
+ * Puts a player straight into room `id`, or out into the street for 0 (and for an id that is no room), with no hold: for the console's `goin` and for
+ * tests. A player in a car is not moved. Answers whether the player is where was asked.
+ */
+export function insidePut(world: InsideWorld, p: Insider, id: number): boolean {
+  if (p.ride.phase !== FOOT) return false;
+  if (id === 0) {
+    const room = p.inside.phase === OUTSIDE ? undefined : roomOf(world.forest.seed, p.inside.place);
+    if (room !== undefined) standOut(world, room, p);
+    else p.inside = newInside();
+    return true;
+  }
+  const room = roomOf(world.forest.seed, id);
+  if (room === undefined) return false;
+  standIn(room, p);
+  return true;
+}

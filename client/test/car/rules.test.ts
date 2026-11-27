@@ -8,7 +8,7 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { TICK_DT } from "@csarkosh/engine/sim/constants";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv } from "../../src/sim/car/body.js";
-import { carHeld, carHostStep, carMove, carPressed, constrainByCars, newRide, returnCar, type Rider } from "../../src/sim/car/rules.js";
+import { carHeld, carHostStep, carMove, carPressed, constrainByCars, newRide, returnCar } from "../../src/sim/car/rules.js";
 import { SEAT_HEIGHT, doorNear, doorPlace, seatFor, seatPlace } from "../../src/sim/car/seats.js";
 import { carStart, groundCar, newCar } from "../../src/sim/car/start.js";
 import { surfaceAt } from "../../src/sim/car/surface.js";
@@ -21,7 +21,7 @@ import { RAIL_JOIN, baseGround, constrainRails, townDecks } from "../../src/sim/
 import { bearingU } from "../../src/sim/town/bearings.js";
 import { constrainCircle } from "../../src/sim/town/solid.js";
 import { townStart } from "../../src/sim/town/start.js";
-import { WALK_RULES } from "../../src/sim.js";
+import { WALK_RULES, type Walker } from "../../src/sim.js";
 import { promptFor } from "../../src/game/car/side.js";
 import { WORLD_SEEDS, groundOf, planFor, siteFor, worldFor } from "../townWorld/world.js";
 
@@ -64,26 +64,26 @@ function tick(n: number, inputs: Map<number, InputCommand> = new Map()): void {
 }
 
 /** `n` ticks of one player's command, each with the next sequence number. */
-function tickWith(n: number, p: Rider, more: Partial<InputCommand>): void {
+function tickWith(n: number, p: Walker, more: Partial<InputCommand>): void {
   for (let i = 0; i < n; i++) tickPlayers(world, new Map([[p.id, cmd(p.lastProcessedInput + 1, more)]]), WALK_RULES);
 }
 
 /** A player standing on the ground at (x, z). */
-function walkerAt(x: number, z: number): Rider {
+function walkerAt(x: number, z: number): Walker {
   const p = addPlayer(world, WALK_RULES);
   p.pos = { x, y: ground.heightAt(x, z) + PLAYER_HALF.y, z };
   return p;
 }
 
 /** A player at the door of `seat`, on foot. */
-function atDoor(car: Car, seat: number): Rider {
+function atDoor(car: Car, seat: number): Walker {
   const d = { x: 0, z: 0 };
   doorPlace(car, seat, d);
   return walkerAt(d.x, d.z);
 }
 
 /** A player who walks up to a door, presses to get in, and waits until seated: the seat they got. */
-function getIn(car: Car, door: number): Rider {
+function getIn(car: Car, door: number): Walker {
   const p = atDoor(car, door);
   carPressed(world, p, INTERACT_BIT);
   tick(ENTER_TICKS);
@@ -821,7 +821,7 @@ function railedEdges(): { x: number; z: number; nx: number; nz: number }[] {
 
 describe("getting out and in at a deck's edge", () => {
   /** A car on a deck hugging a rail, its driver's door (the left) on the rail's outboard side, the driver seated; or null when the outboard door's ground is not below the deck by more than a rail's join. */
-  function parkedAtRail(e: { x: number; z: number; nx: number; nz: number }): { car: Car; p: Rider } | null {
+  function parkedAtRail(e: { x: number; z: number; nx: number; nz: number }): { car: Car; p: Walker } | null {
     const car = reset();
     // The rail's inboard normal (nx, nz); the left of the heading is outboard.
     car.x = e.x + e.nx * 1.0;

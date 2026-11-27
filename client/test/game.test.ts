@@ -16,6 +16,7 @@ import { CAPE_PAGE, createCapePage } from "../src/page.js";
 import type { WalkState, Walker } from "../src/sim.js";
 import { newRide } from "../src/sim/car/rules.js";
 import { INTERACT_BIT, LAMP_BIT } from "../src/sim/car/tuning.js";
+import { newInside } from "../src/sim/inside/rooms.js";
 import { townStart } from "../src/sim/town/start.js";
 
 /**
@@ -53,7 +54,7 @@ describe("the empty game as the page that runs a session is handed it", () => {
     expect(side.command(sample, undefined, undefined as never)).toBe(sample);
     expect([side.decided(), side.over(), side.holdsFrame(), side.extrasStand(), side.lampOn(undefined), side.applyOwnView("anything", [])]).toEqual([false, false, false, false, false, false]);
     expect([side.progress(), side.matchEnd()]).toEqual([0, {}]);
-    const walker = (id: number): Walker => ({ id, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0, ride: newRide() });
+    const walker = (id: number): Walker => ({ id, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: true, lastProcessedInput: 0, ride: newRide(), inside: newInside() });
     const state: WalkState = { tick: 0, players: new Map([[1, walker(1)], [2, walker(2)]]), nextEntityId: 3, rngSeed: 1, cars: [] };
     expect(side.entities(state)).toBe(2);
   });

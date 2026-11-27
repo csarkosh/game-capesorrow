@@ -21,7 +21,7 @@ import {
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
 import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
-import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
+import { baseColourPlugin, surfaceSplitPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import { noParts, type NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLeaner } from "./leanMesh.js";
 import { townBlurPlugin } from "./townBlur.js";
@@ -53,6 +53,8 @@ import { createViewKeys, type KeyTarget } from "../car/viewKeys.js";
 import { peopleFor, personWorld } from "./people.js";
 import { openDowntownUnits, outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleShade } from "./peopleShade.js";
+import { createInsideParts, hidesTown, insidePeople, whereOf, type InsideParts } from "./insideParts.js";
+import type { Inside } from "../../sim/inside/rooms.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
@@ -189,6 +191,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     if (drawnGround !== null && boxBlocks(propSolids(worldSeed), x, y, z, PROP_THIN_HALF, drawnGround(x, z) + PROP_TOP, BOX_MARGIN)) return true;
     return carBlocks(held.cars, chasedCar, x, y, z);
   };
+  // The room a player walks into, built while the local player is in it (`insideParts.ts`), and where the local player is by the rooms as the last frame said.
+  let inside: InsideParts | null = null;
+  let whereNow = 0;
+  let townHidden = false;
   // The people standing in the open shops (`peopleParts.ts`): loaded with the vehicles, once the town is made, and drawn when near.
   let people: PeopleParts | null = null;
   // The people who walk are made a few milliseconds at a time once the town stands, and shown when they are done (`walkerJob`).
@@ -312,6 +318,11 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       // Whether the rooms are seen through their glass out of focus: the frame behind the glass is kept, and the glass has its plugin.
       const through = behind !== undefined && wearsTextures;
       const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
+      // The material of the room a player walks into: the town's solid one with no wet look (a floor indoors is not wet with the rain; the split of the colour that the wet look ends with is kept). It keeps the air, which also carries the display curve and the grade of the tiers with no post chain.
+      const indoor = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
+      indoor.plugins = [baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, false)] : []), surfaceSplitPlugin(), air()];
+      orders.take(indoor);
+      if (wearsTextures) textured.push(indoor);
       // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
       const glassMaterial = (): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
@@ -361,11 +372,14 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null) });
       const plan = ground.plan;
+      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads });
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       const placed = [
         ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
         ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
+        // The copies of the three rooms' people in the hidden rooms, shown only to a player in that room.
+        ...insidePeople(ground),
       ];
       const walkCap = walkCapacity(openDowntownUnits(plan));
       // The soft dark under each person shown (`peopleShade.ts`): one draw, written by the people's part with the set it shows and each frame for the walkers; not on the low tier.
@@ -380,6 +394,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         },
       );
       people.setHour(shownHour);
+      people.setInside(whereNow);
       {
         const job = walkerJob(plan, ground.anchor);
         const slice = (): void => {
@@ -468,6 +483,12 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const me = state.players.get(localId) as { ride?: Ride } | undefined;
       const driven = me?.ride?.phase === SEATED && me.ride.seat === 0 ? me.ride.car : 0;
       car?.frame((state as { cars?: readonly Car[] }).cars ?? NO_CARS, state.tick, alpha, dt, driven);
+      // Where the local player is by the rooms: the room is built or let go, the people and the town follow.
+      const by = (me as { inside?: Inside } | undefined)?.inside;
+      inside?.frame(by);
+      whereNow = whereOf(by);
+      townHidden = hidesTown(by);
+      people?.setInside(whereNow);
     },
 
     shot(seconds, pose, local, state, localId, alpha) {
@@ -563,6 +584,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         if (m.model !== undefined && vehicles?.ready(m.model) === true) want = false;
         // The standing layer is cover for the rain: shown to the map's pass while it reaches into the map's square.
         if (!want && m.layer === "solid" && cover !== null && Math.abs(m.x - cover.x) <= cover.half + m.radius && Math.abs(m.z - cover.z) <= cover.half + m.radius) want = true;
+        // The town is below the floor of the room the player is in: it is not drawn, nor shown to the rain's map.
+        if (townHidden) want = false;
         if (want !== m.shown) {
           m.shown = want;
           setMeshVisible(m.mesh, want);
@@ -607,6 +630,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       delete (globalThis as { __capeCar?: CarDebug }).__capeCar;
       people?.dispose();
       people = null;
+      inside?.dispose();
+      inside = null;
+      whereNow = 0;
+      townHidden = false;
       lamps = [];
       host.jobs.cancel(owner);
       for (const m of made) {

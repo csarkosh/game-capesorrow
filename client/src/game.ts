@@ -20,7 +20,9 @@ import { createClientSession, type ClientSession } from "@csarkosh/engine/net/cl
 import { createHostSession, type HostSession } from "@csarkosh/engine/net/host";
 import yard from "../levels/yard.json" with { type: "json" };
 import { CAR_COMMANDS, createCapeSide } from "./game/car/side.js";
+import { INSIDE_COMMANDS } from "./game/doors.js";
 import { startClock, stepClock } from "./game/dayClock.js";
+import { createIndoorWeather } from "./game/insideWeather.js";
 import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
 import { CAPE_LOOK } from "./look.js";
@@ -29,8 +31,8 @@ import { INTERACT_BIT, LAMP_BIT } from "./sim/car/tuning.js";
 import { townStart } from "./sim/town/start.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
-// The console's own command, `carhome`, is the game's: known to the bar and to an address before any world stands.
-registerCommands(CAR_COMMANDS);
+// The console's own commands, `carhome` and `goin`, are the game's: known to the bar and to an address before any world stands.
+registerCommands([...CAR_COMMANDS, ...INSIDE_COMMANDS]);
 
 export type WalkRenderer = WorldRenderer<WalkState> & NoPartsApi;
 export type WalkHost = HostSession<WalkWorld, never>;
@@ -81,6 +83,8 @@ export const WALK_SIDE: SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, 
  */
 export function walkSide(host: WalkSessionHost): SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient> {
   let clock = startClock(host.base.hour);
+  // The local player in a room has the weather with no rain (`insideWeather.ts`).
+  const rain = createIndoorWeather(host);
   const restart = (): void => {
     clock = startClock(host.base.hour);
   };
@@ -88,12 +92,13 @@ export function walkSide(host: WalkSessionHost): SessionSide<WalkWorld, WalkStat
     ...WALK_SIDE,
     atRest: restart,
     worldIn: restart,
-    beforeSync: (_world, state) => {
+    beforeSync: (_world, state, localId) => {
+      rain.step(state.players.get(localId)?.inside);
       const step = stepClock(clock, host.base.hour, state.tick, host.appliedHour);
       clock = step.clock;
       if (step.push === null) return;
       host.appliedHour = step.push;
-      host.renderer.setView(step.push, host.appliedWeather);
+      host.renderer.setView(step.push, rain.weather());
     },
   };
 }
