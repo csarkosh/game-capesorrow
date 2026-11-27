@@ -55,9 +55,9 @@ describe("the plan is deterministic", () => {
   it("pins three plans by digest (a change means raising TOWN_GEN)", () => {
     expect(TOWN_GEN).toBe(25);
     expect({ 20261121: digest(townFor(20261121).plan), 1: digest(townFor(1).plan), 7: digest(townFor(7).plan) }).toEqual({
-      20261121: "3eb75796",
-      1: "2eb1d287",
-      7: "eca5f00f",
+      20261121: "1ea0f88a",
+      1: "29303e92",
+      7: "3c999c85",
     });
   });
 
@@ -67,7 +67,7 @@ describe("the plan is deterministic", () => {
   // and were taken again at 13 (4674c34c, b46785b3, 7e9ee956 were version 6's): the town-size change moved the layout, the lots and the buildings
   // themselves, so what they pin now is the plan's own part at 13, and the stages above it still add nothing to it. They were taken again at 25 (1ff43796, 81eb4d1e, 1dfcfc61 were version 13's through 24's): the downtown moved the districts, the lots and the buildings, and `places`, which the business stage makes, is taken out with the rest of what it makes.
   it("changes nothing earlier in the plan: with its new fields removed it is what the layout, lots and buildings made", () => {
-    const BEFORE: Record<number, string> = { 20261121: "9e647d6b", 1: "6d8f1d66", 7: "fc00abee" };
+    const BEFORE: Record<number, string> = { 20261121: "337ecf0f", 1: "af840590", 7: "c66962aa" };
     for (const seed of [20261121, 1, 7]) {
       const rest: Record<string, unknown> = { ...townFor(seed).plan };
       delete rest.version;

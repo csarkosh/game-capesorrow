@@ -159,8 +159,8 @@ function washers(c: Ctx, f: Furnishing): void {
     const px = -dir.z;
     const pd = dir.x;
     const sign = pd > 0 ? -1 : 1;
-    const fs = s + px * sign * (f.sd / 2 + 0.01);
-    const fd = d + pd * sign * (f.sd / 2 + 0.01);
+    const fs = s + px * sign * (f.sd / 2 + 0.03);
+    const fd = d + pd * sign * (f.sd / 2 + 0.03);
     const ring: Vec3[] = [];
     for (let m = 0; m < 8; m++) {
       const ang = (m / 8) * Math.PI * 2 + Math.PI / 8;

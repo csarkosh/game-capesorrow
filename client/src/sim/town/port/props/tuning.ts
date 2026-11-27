@@ -42,7 +42,7 @@ export const PULL_OFF = 0.35;
 export const DRAW: Readonly<Partial<Record<Trade, number>>> = {
   diner: 1, tavern: 1, restaurant: 0.8, "pizza and burgers": 0.7, cafe: 0.6, "espresso stand": 0.6, grocery: 0.8, "convenience store": 0.6,
   bakery: 0.4, hardware: 0.5, "post office": 0.7, bank: 0.5, "credit union": 0.4, pharmacy: 0.5, "medical clinic": 0.6, "liquor store": 0.5,
-  "cannabis shop": 0.5, "thrift store": 0.4, "variety store": 0.4, "auto parts": 0.4, "auto repair": 0.5, "garden and feed": 0.4, "food bank": 0.5,
+  "phone shop": 0.5, "thrift store": 0.4, "variety store": 0.4, "auto parts": 0.4, "auto repair": 0.5, "garden and feed": 0.4, "food bank": 0.5,
   "fish market": 0.5, "bait and tackle": 0.4, "marine supply": 0.4, laundromat: 0.4, "smoke shop": 0.3, motel: 0.5, "gas station": 0.7,
 };
 /** What a building of this kind that is no shop draws: the school, the hospital, the churches, the hall. */

@@ -18,6 +18,7 @@ import { withMat } from "./materials.js";
 import { standOff } from "./faceLedger.js";
 import { hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
 import { accentOf, blockOfLot } from "./accents.js";
+import { MUNICIPAL_DOOR_WIDTH } from "../../sim/town/port/places.js";
 import { cutWall, doorIn, pairedDoors, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { planFront } from "./frontGeometry.js";
 import type { Xf } from "./roomGeometry.js";
@@ -211,15 +212,20 @@ function backDoor(c: PlanCtx, w: WallRef, p: WallPlan, seed: number, floorY: num
   }
 }
 
+/** The municipal building's pair of doors, and how far a window keeps from their centre (the portico's width, and the boards that stand beside the door). */
+export const MUNICIPAL_CLEAR = 4.4;
+
 /** The front of a building with no units and no dwelling records: one door, and windows by the building's kind. */
 function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): void {
   const { b, walls, frontAt, out, glass, floorY, wallTop, vacant } = c;
   const w = walls[frontAt] as WallRef;
   const p = plans[frontAt] as WallPlan;
   const church = c.profile === "church";
-  const dw = church ? 1.8 : 1.1;
-  const doorS = w.length / 2 + (hash01(b.id, 480) - 0.5) * (church ? 0 : w.length * 0.3);
-  const hole: Hole = { s0: doorS - dw / 2, s1: doorS + dw / 2, y0: floorY, y1: floorY + (church ? 3 : 2.2) };
+  // The municipal building's door is a pair, centred under the portico (`landmarkTouch`), with a step or two; the windows keep clear of the door and of the boards about it.
+  const hall = b.kind === "municipal building";
+  const dw = hall ? MUNICIPAL_DOOR_WIDTH : church ? 1.8 : 1.1;
+  const doorS = w.length / 2 + (hash01(b.id, 480) - 0.5) * (church || hall ? 0 : w.length * 0.3);
+  const hole: Hole = { s0: doorS - dw / 2, s1: doorS + dw / 2, y0: floorY, y1: floorY + (hall ? 2.9 : church ? 3 : 2.2) };
   p.holes.push(hole);
   p.draws.push(() => {
     if (vacant) {
@@ -227,7 +233,7 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
       wquad(out, w, hole.s0, hole.y0, hole.s1, hole.y1, 0.02, [0.42, 0.31, 0.18], { layer: "plywood", frame: c.surfaceOf(w).frame, tint: [2.2, 2.2, 2.2], wear: 0.2, wearKind: "peel" });
     } else {
       const col = doorColour(c, b.id, 481);
-      if (church) pairedDoors(out, w, hole, 0.16, col, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
+      if (church || hall) pairedDoors(out, w, hole, 0.16, col, scaled(c.wall, 0.8), [0.4, 0.4, 0.38]);
       else {
         // The leaf fills its hole, and the reveal runs to it: nothing is seen round a door or past it.
         const o = doorIn(out, w, hole, 0.16, col, "boards", scaled(c.wall, 0.8), [0.4, 0.4, 0.38], undefined, ctxW.trim, ctxW.detail === "full");
@@ -240,6 +246,16 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
       }
     }
   });
+  if (hall) {
+    // Two steps up to the door, each its own width and a little out of true, of worn concrete.
+    const j = (salt: number): number => hash01(b.id, salt) - 0.5;
+    const s0 = hole.s0 - 0.35 + j(490) * 0.3;
+    const s1 = hole.s1 + 0.35 + j(491) * 0.3;
+    p.draws.push(() => {
+      wbox(out, w, s0, s1, floorY - 0.42, floorY - 0.02, 0, 0.62 + j(492) * 0.12, [0.46, 0.45, 0.42], [0.5, 0.49, 0.46], undefined, "concrete");
+      wbox(out, w, s0 - 0.3 + j(493) * 0.2, s1 + 0.3 + j(494) * 0.2, floorY - 0.42, floorY - 0.2, 0.62, 1.22 + j(495) * 0.14, [0.44, 0.43, 0.4], [0.48, 0.47, 0.44], undefined, "concrete");
+    });
+  }
   const spacing = church ? 3.6 : b.kind === "school" || b.kind === "hospital" ? 2.6 : 3.4;
   const n = Math.max(0, Math.floor((w.length - 1.6) / spacing) + 1);
   const ww = church ? 0.85 : 1.0;
@@ -248,7 +264,8 @@ function plainFront(c: PlanCtx, plans: WallPlan[], ctxW: WinCtx, fh: number): vo
     for (let j = 0; j < n; j++) {
       // Spacing follows the plan of the building but each bay's own: the rhythm drifts a little, as a hand-built wall does.
       const s = w.length / 2 + (j - (n - 1) / 2) * spacing + (hash01(b.id * 3 + j, 482) - 0.5) * 0.5;
-      if (k === 0 && Math.abs(s - doorS) < 1.5) continue;
+      if (k === 0 && Math.abs(s - doorS) < (hall ? MUNICIPAL_CLEAR : 1.5)) continue;
+      if (hall && k > 0 && Math.abs(s - doorS) < MUNICIPAL_CLEAR) continue;
       const y0 = floorY + k * fh + fh * 0.3 + (church ? 0.2 : 0);
       if (y0 + wh > wallTop - 0.25) continue;
       if (c.g.heightAt(w.ax + w.tx * s, w.az + w.tz * s) > y0 - 0.3) continue;

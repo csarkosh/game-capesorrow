@@ -96,4 +96,29 @@ describe("the simulation's folder", () => {
     expect(seen).toBeGreaterThan(5);
     expect(found).toEqual([]);
   });
+
+  it("keeps the plan's own stages from importing anything that reads the finished plan (an import cycle that the test runner's load order hides)", () => {
+    // What plan.ts reaches, through every import it makes, may not reach the ground, the clearing, the place or the cached plan: those import the plan, so a module of the
+    // plan that named one would be in a cycle, and a constant it read at load could still be unset (the game's `QUAY_BANK` before initialization).
+    const READERS = ["town/ground.ts", "town/planFor.ts", "town/place.ts", "town/clearing.ts", "town/cover.ts", "town/start.ts"];
+    const resolveTs = (from: string, spec: string): string | null => {
+      if (!spec.startsWith(".")) return null;
+      const target = resolve(join(from, ".."), spec.replace(/\.js$/, ".ts"));
+      return existsSync(target) ? target : null;
+    };
+    const seen: string[] = [];
+    const queue = [join(SIM, "town/plan.ts"), join(SIM, "town/recipes.ts")];
+    while (queue.length > 0) {
+      const f = queue.pop() as string;
+      if (seen.includes(f)) continue;
+      seen.push(f);
+      for (const spec of specifiersOf(f)) {
+        const t = resolveTs(f, spec);
+        if (t !== null) queue.push(t);
+      }
+    }
+    expect(seen.length, "the walk reads the plan's files").toBeGreaterThan(20);
+    const bad = seen.map(name).filter((n) => READERS.includes(n));
+    expect(bad, "plan stages that reach a reader of the finished plan").toEqual([]);
+  });
 });

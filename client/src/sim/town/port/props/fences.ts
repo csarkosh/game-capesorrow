@@ -157,6 +157,30 @@ function runs(ctx: Context, out: Out, info: LotInfo, rng: Rng, e: Edge, kind: Fe
   }
 }
 
+/**
+ * The gap a lot's own drive makes in a run along an edge that is not the front (a lot of the downtown with an alley has its drive at the back): where the edge's line, inset as a run is,
+ * passes through the drive's box (a half metre wider than the drive each way), or none.
+ */
+function driveGap(info: LotInfo, e: Edge): { at: number; width: number; leaf: boolean }[] {
+  const d = info.shape.drive;
+  if (d === null) return [];
+  const dx = (e.bx - e.ax) / e.len;
+  const dz = (e.bz - e.az) / e.len;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let s = 0; s <= e.len; s += 0.2) {
+    const px = e.ax - dz * 0.26 + dx * s - d.x;
+    const pz = e.az + dx * 0.26 + dz * s - d.z;
+    const along = px * d.dx + pz * d.dz;
+    const across = -px * d.dz + pz * d.dx;
+    if (along >= -0.5 && along <= d.length + 0.5 && Math.abs(across) <= d.half + 0.5) {
+      lo = Math.min(lo, s);
+      hi = Math.max(hi, s);
+    }
+  }
+  return lo > hi ? [] : [{ at: (lo + hi) / 2 - 0.3, width: hi - lo + 0.6, leaf: false }];
+}
+
 export function planFences(ctx: Context, out: Out): void {
   for (const info of ctx.lots) {
     const b = info.building;
@@ -186,7 +210,7 @@ export function planFences(ctx: Context, out: Out): void {
       const w = 0.2 + range(rng, 0, 0.4);
       for (const e of edges) {
         if (e.kind === "front") runs(ctx, out, info, rng, e, "chain", 0, w, frontGaps(true));
-        else runs(ctx, out, info, rng, e, "chain", 0, w, []);
+        else runs(ctx, out, info, rng, e, "chain", 0, w, driveGap(info, e));
       }
       continue;
     }
@@ -196,15 +220,15 @@ export function planFences(ctx: Context, out: Out): void {
       runs(ctx, out, info, rng, front, "picket", Math.floor(next(rng) * 6), wearOf(), frontGaps(false));
     } else if (front !== undefined && (outlying || yk === "bare" || yk === "tall") && b.state !== "ruin" && chance(rng, T.WIRE_EDGE * (outlying ? 1 : 0.4))) {
       runs(ctx, out, info, rng, front, "wire", 0, wearOf(), frontGaps(true));
-      for (const e of sides) if (chance(rng, 0.6)) runs(ctx, out, info, rng, e, "wire", 0, wearOf(), []);
+      for (const e of sides) if (chance(rng, 0.6)) runs(ctx, out, info, rng, e, "wire", 0, wearOf(), driveGap(info, e));
       continue;
     }
     // A side and the back, in weathered boards.
     if ((house || b.kind === "storefront" || b.kind === "garage") && chance(rng, T.BOARD_SIDE * (b.state === "open" ? 1 : 0.8)) && sides.length > 0) {
       const side = sides[Math.floor(next(rng) * sides.length)] as Edge;
       const w = wearOf();
-      runs(ctx, out, info, rng, side, "board", Math.floor(next(rng) * 3), w, [{ at: side.len * range(rng, 0.3, 0.7) - 0.3, width: 1.1, leaf: true }]);
-      if (back !== undefined && chance(rng, 0.6)) runs(ctx, out, info, rng, back, "board", Math.floor(next(rng) * 3), w, []);
+      runs(ctx, out, info, rng, side, "board", Math.floor(next(rng) * 3), w, [{ at: side.len * range(rng, 0.3, 0.7) - 0.3, width: 1.1, leaf: true }, ...driveGap(info, side)]);
+      if (back !== undefined && chance(rng, 0.6)) runs(ctx, out, info, rng, back, "board", Math.floor(next(rng) * 3), w, driveGap(info, back));
     }
   }
 }

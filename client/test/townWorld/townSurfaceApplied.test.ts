@@ -25,10 +25,10 @@ function layersOf(a: MeshArrays): Map<string, number> {
   return out;
 }
 
-function buildingArrays(b: Building): MeshArrays {
+function buildingArrays(b: Building, g: typeof ground = ground): MeshArrays {
   const builder = new MeshBuilder();
   resetLedger();
-  buildingGeometry(ground, b, null, () => builder, "full");
+  buildingGeometry(g, b, null, () => builder, "full");
   return builder.finish();
 }
 
@@ -147,8 +147,10 @@ describe("the town's first surfaces", () => {
     expect(vacant).toBeDefined();
     expect(layersOf(buildingArrays(vacant as Building)).get("plywood") ?? 0).toBeGreaterThan(0);
     // One with no units of its own (a warehouse that is just stock): its front is a big door.
-    const warehouse = ground.plan.buildings.find((b) => b.state === "open" && (b.kind === "warehouse" || b.kind === "garage" || b.kind === "mill shed") && (ground.plan.uses[b.id]?.units.length ?? 0) === 0);
+    // (The game's town has none open since its garages went downtown and its mill is shut; the town of seed 1, whose mill works, has one.)
+    const other = townGround(1);
+    const warehouse = other.plan.buildings.find((b) => b.state === "open" && (b.kind === "warehouse" || b.kind === "garage" || b.kind === "mill shed") && (other.plan.uses[b.id]?.units.length ?? 0) === 0);
     expect(warehouse).toBeDefined();
-    expect(layersOf(buildingArrays(warehouse as Building)).get("shutter") ?? 0).toBeGreaterThan(0);
+    expect(layersOf(buildingArrays(warehouse as Building, other)).get("shutter") ?? 0).toBeGreaterThan(0);
   });
 });

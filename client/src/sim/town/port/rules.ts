@@ -15,7 +15,7 @@ export const LOT_RULES: Record<District, LotRule> = {
   mill: { rows: 2, widths: [45, 60, 75], alley: false },
   "mill housing": { rows: 2, widths: [12.19, 15, 15], alley: true },
   residential: { rows: 2, widths: [15, 15, 15, 18], alley: true },
-  "highway strip": { rows: 2, widths: [30, 40, 60], alley: false },
+  "highway strip": { rows: 2, widths: [18, 24, 30, 40], alley: false },
   civic: { rows: 0, widths: [60], alley: false },
   industrial: { rows: 2, widths: [30, 45, 60], alley: false },
   // The outskirts' parcels are single lots made by `outskirts.ts`, not cut from a block.

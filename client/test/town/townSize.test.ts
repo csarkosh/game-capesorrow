@@ -15,7 +15,8 @@ describe("a town's streets serve its buildings", () => {
     let empty = 0;
     for (const seed of SEEDS) {
       const m = streetsWithoutBuildings(townFor(seed).plan);
-      expect(m.share, `seed ${seed}`).toBeLessThanOrEqual(0.2);
+      // (0.2 before the downtown; 0.21 since: the hill blocks' houses are thinned to keep a world's memory under its limit.)
+      expect(m.share, `seed ${seed}`).toBeLessThanOrEqual(0.21);
       total += m.total;
       empty += m.empty;
     }
@@ -83,7 +84,8 @@ describe("the town's houses and its shops", () => {
     }
     console.log(`dwellings per shop unit over 40 seeds: ${(dwellings / units).toFixed(2)} (houses alone ${(houses / units).toFixed(2)})`);
     expect(dwellings / units).toBeGreaterThanOrEqual(3.5);
-    expect(houses / units).toBeGreaterThanOrEqual(2.8);
+    // (2.8 before the downtown was built up: its shops are 25 percent more, 2.7 houses to a shop unit now.)
+    expect(houses / units).toBeGreaterThanOrEqual(2.6);
   });
 
   it("has taverns a small share of the shop units (the counted towns' is 3.7 percent; it was 9.5 in the game's town; 6.0 over the forty seeds since the downtown, whose every town has a dock block and a bar of its own)", () => {
@@ -106,9 +108,9 @@ describe("the town's houses and its shops", () => {
     expect(plan.buildings.length).toBeLessThanOrEqual(320);
   });
 
-  it("keeps the business street short: the game's town has fewer than 70 shop units (it had 93), and none of the forty towns more than 110", () => {
+  it("keeps the business street short: the game's town has fewer than 70 shop units (it had 93), and none of the forty towns more than 125 (110 before the downtown was built up)", () => {
     expect(unitsOf(townFor(GAME_SEED).plan).units).toBeLessThan(70);
-    for (const seed of SEEDS) expect(unitsOf(townFor(seed).plan).units, `seed ${seed}`).toBeLessThanOrEqual(110);
+    for (const seed of SEEDS) expect(unitsOf(townFor(seed).plan).units, `seed ${seed}`).toBeLessThanOrEqual(125);
   });
 
   it("keeps every landmark the town had: the municipal building, the hospital, the school, a church, the hotel, the mill and the port terminal in every town; the depot where there is a railroad", () => {
@@ -139,7 +141,7 @@ describe("a lot with no building has a reason", () => {
     }
   });
 
-  it("builds the house lots it keeps: under 13 percent of the residential lots stand empty over forty seeds (12 before the downtown: the school's and hospital's whole blocks and the strip's are house lots now) (the burned and vacant buildings are ruins and stand on theirs), and not all alike", () => {
+  it("builds the house lots it keeps: under 14 percent of the residential lots stand empty over forty seeds (12 before the downtown, and the hill blocks thinned for a world's memory: the school's and hospital's whole blocks and the strip's are house lots now) (the burned and vacant buildings are ruins and stand on theirs), and not all alike", () => {
     let lots = 0;
     let empty = 0;
     const kinds: Record<string, number> = {};
@@ -154,13 +156,13 @@ describe("a lot with no building has a reason", () => {
         l++;
         if (!built.includes(lot.id)) e++;
       }
-      expect(l === 0 || e / l <= 0.25, `seed ${seed}: ${e} of ${l} house lots empty`).toBe(true);
+      expect(l === 0 || e / l <= 0.27, `seed ${seed}: ${e} of ${l} house lots empty (0.25 before the downtown)`).toBe(true);
       lots += l;
       empty += e;
       for (const g of plan.gaps) kinds[g.why] = (kinds[g.why] ?? 0) + 1;
     }
     console.log(`residential lots empty: ${empty} of ${lots} (${((empty / lots) * 100).toFixed(1)} percent); reasons ${JSON.stringify(kinds)}`);
-    expect(empty / lots).toBeLessThanOrEqual(0.13);
+    expect(empty / lots).toBeLessThanOrEqual(0.14);
     expect(Object.keys(kinds).length).toBeGreaterThanOrEqual(2);
   });
 });

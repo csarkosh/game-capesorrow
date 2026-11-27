@@ -212,7 +212,7 @@ export function planUses(input: BizInput, townRng: Rng): BuildingUse[] {
   const downSet = input.downtown;
   const isDown = (d: Draft): boolean => d.b.lot >= 0 && downSet.includes(ctx.lots[d.b.lot]!.block);
   const ensure = (trades: readonly Trade[], kinds: readonly Building["kind"][]): void => {
-    for (const d of drafts) for (let k = 0; k < d.geos.length; k++) if (isDown(d) && d.slots[k] === "open" && d.trades[k] !== null && trades.includes(d.trades[k]!)) return;
+    for (const d of drafts) for (let k = 0; k < d.geos.length; k++) if (isDown(d) && (kinds.length === 0 || kinds.includes(d.b.kind)) && d.slots[k] === "open" && d.trades[k] !== null && trades.includes(d.trades[k]!)) return;
     const set = (d: Draft, k: number, trade: Trade): void => {
       const cur = d.trades[k];
       if (cur) bump(cur, -1);

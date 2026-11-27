@@ -67,13 +67,26 @@ export const SIZING = {
   DT_STRIP_NEAR: 60,
   DT_STRIP_MAX: 2,
   /** In an outer block of the downtown (one added past the old core and the dock, with a street to a block that is no part of it): the chance of a building on a lot, and the weights of a house and an apartment among its kinds. */
-  DT_EDGE_OCC: 0.55,
-  DT_EDGE_HOUSE: 70,
-  DT_EDGE_SHOP: 10,
-  DT_EDGE_APARTMENT: 55,
+  DT_EDGE_OCC: 0.7,
+  /** A strip block's chance of a building on a lot, and how near the highway's centre line, metres, a lot's middle stands for it to be on the strip's highway side. */
+  DT_STRIP_OCC: 0.85,
+  /** The share of a downtown block's lots built, at the least (a vacant or boarded building counts), and the fewest lodging and apartment buildings the downtown holds. */
+  DT_BUILT: 0.65,
+  /** The most buildings a town keeps before the houses of its hill blocks (the company's plat inland of the highway, 6500 m2 and more, near the town) are taken down. */
+  TOWN_CAP: 296,
+  /** ... and no more than this many are taken down (a larger town stays larger). */
+  TOWN_CAP_MOST: 8,
+  DT_LODGING_MIN: 8,
+  DT_APARTMENT_MIN: 8,
+  DT_HIGHWAY_SIDE: 50,
+  /** The weight of a boarding house among the kinds of an outer block. */
+  DT_EDGE_BOARDING: 8,
+  DT_EDGE_HOUSE: 12,
+  DT_EDGE_SHOP: 40,
+  DT_EDGE_APARTMENT: 45,
   DT_EDGE_GARAGE: 4,
   /** The weight of a boarding house among the kinds of a block of the downtown. */
-  DT_BOARDING: 1.5,
+  DT_BOARDING: 3,
   /** The weight of an apartment among the kinds of an inner block (a shop is 86): on a lot of 12 m or more. */
   DT_CORE_APARTMENT: 60,
 

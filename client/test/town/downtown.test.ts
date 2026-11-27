@@ -24,13 +24,13 @@ const BUSINESS: readonly BuildingKind[] = ["storefront", "office", "bank", "big-
  * The groups of the facts' second point, and what they counted over `SEEDS` at generator 24 (before the downtown): the town's size is kept to about 15 percent of each.
  * Measured with a throwaway test on the plans of the day; the groups are by kind.
  */
-const GROUPS: { name: string; kinds: readonly BuildingKind[]; before: number }[] = [
-  { name: "businesses", kinds: ["storefront", "office", "bank", "big-box store", "restaurant", "gas station", "garage", "tavern"], before: 1765 },
-  { name: "lodging", kinds: ["hotel", "motel", "boarding house"], before: 229 },
-  { name: "civic and institutions", kinds: ["municipal building", "courthouse", "customs house", "depot", "fire hall", "lodge hall", "hospital", "school", "church"], before: 279 },
-  { name: "apartments", kinds: ["apartment"], before: 268 },
-  { name: "houses", kinds: ["house"], before: 8640 },
-  { name: "industry", kinds: ["mill shed", "shake mill", "warehouse", "junkyard", "silo"], before: 232 },
+const GROUPS: { name: string; kinds: readonly BuildingKind[]; before: number; min: number; max: number }[] = [
+  { name: "businesses", kinds: ["storefront", "office", "bank", "big-box store", "restaurant", "gas station", "garage", "tavern"], before: 1765, min: 0.85, max: 1.3 },
+  { name: "lodging", kinds: ["hotel", "motel", "boarding house"], before: 229, min: 1, max: 1.8 },
+  { name: "civic and institutions", kinds: ["municipal building", "courthouse", "customs house", "depot", "fire hall", "lodge hall", "hospital", "school", "church"], before: 279, min: 0.85, max: 1.15 },
+  { name: "apartments", kinds: ["apartment"], before: 268, min: 1, max: 1.8 },
+  { name: "houses", kinds: ["house"], before: 8640, min: 0.85, max: 1.15 },
+  { name: "industry", kinds: ["mill shed", "shake mill", "warehouse", "junkyard", "silo"], before: 232, min: 0.85, max: 1.15 },
 ];
 
 function centroidOf(bs: readonly Building[]): { x: number; z: number } {
@@ -148,16 +148,73 @@ describe("the downtown: one set of blocks that holds every business", () => {
     }
   });
 
-  it("keeps the town about the size it was: the buildings of each group within 15 percent of what the forty seeds held before", () => {
+  it("keeps the town about the size it was: the buildings of each group within 15 percent of what the forty seeds held before (the businesses up to 30 percent, since the downtown is built up, and lodging and apartments not below it)", () => {
     const rows: string[] = [];
     for (const g of GROUPS) {
       let n = 0;
       for (const { plan } of towns()) n += plan.buildings.filter((b) => g.kinds.includes(b.kind)).length;
       rows.push(`${g.name}: ${g.before} before, ${n} now (${(((n - g.before) / g.before) * 100).toFixed(1)} percent)`);
-      expect(n / g.before, rows[rows.length - 1]!).toBeGreaterThanOrEqual(0.85);
-      expect(n / g.before, rows[rows.length - 1]!).toBeLessThanOrEqual(1.15);
+      expect(n / g.before, rows[rows.length - 1]!).toBeGreaterThanOrEqual(g.min);
+      expect(n / g.before, rows[rows.length - 1]!).toBeLessThanOrEqual(g.max);
     }
     console.log(rows.join("\n"));
+  });
+});
+
+describe("the downtown is built up", () => {
+  it("leaves no block of it mostly empty: at least 60 percent of every block's lots are built (a vacant or boarded building counts)", () => {
+    for (const { seed, plan } of towns(SIXTY_FOUR)) {
+      for (const id of plan.downtown) {
+        const lots = plan.lots.filter((l) => l.block === id).length;
+        const built = plan.buildings.filter((b) => b.lot >= 0 && plan.lots[b.lot]!.block === id).length;
+        expect(built / Math.max(1, lots), `seed ${seed} block ${id} (${plan.blocks[id]!.district}): ${built} of ${lots} lots`).toBeGreaterThanOrEqual(0.6);
+      }
+    }
+  });
+
+  it("holds apartments, boarding houses and shops ahead of houses in its outer blocks: houses are at most about a third of a block's buildings (45 percent in a block of seven), and a tenth of the downtown's", () => {
+    let houses = 0;
+    let all = 0;
+    for (const { seed, plan } of towns(SIXTY_FOUR)) {
+      for (const id of plan.downtown) {
+        const here = plan.buildings.filter((b) => b.lot >= 0 && plan.lots[b.lot]!.block === id);
+        const h = here.filter((b) => b.kind === "house").length;
+        houses += h;
+        all += here.length;
+        expect(h / Math.max(1, here.length), `seed ${seed} block ${id}: ${h} of ${here.length}`).toBeLessThanOrEqual(0.45);
+      }
+    }
+    expect(houses / all).toBeLessThanOrEqual(0.1);
+  });
+
+  it("has lodging and apartments in every town (three or more of each, and the game's town eight or more of each), and the forty seeds together hold no fewer than before (229 and 268)", () => {
+    let lodging = 0;
+    let apartments = 0;
+    for (const { seed, plan } of towns(SIXTY_FOUR)) {
+      const l = plan.buildings.filter((b) => ["hotel", "motel", "boarding house"].includes(b.kind)).length;
+      const a = plan.buildings.filter((b) => b.kind === "apartment").length;
+      expect(l, `seed ${seed} lodging`).toBeGreaterThanOrEqual(3);
+      expect(a, `seed ${seed} apartments`).toBeGreaterThanOrEqual(3);
+      if (seed === 20261121) {
+        expect(l).toBeGreaterThanOrEqual(8);
+        expect(a).toBeGreaterThanOrEqual(8);
+      }
+      if (SEEDS.includes(seed)) {
+        lodging += l;
+        apartments += a;
+      }
+    }
+    expect(lodging).toBeGreaterThanOrEqual(229);
+    expect(apartments).toBeGreaterThanOrEqual(268);
+  });
+
+  it("puts the municipal building, the hotel, the bank and the lodge hall on a core block, not on the highway strip, wherever a core block has a row for them", () => {
+    for (const { seed, plan } of towns(SIXTY_FOUR)) {
+      for (const role of ["municipal building", "hotel", "bank", "lodge"] as const) {
+        const l = plan.landmarks.find((q) => q.role === role)!;
+        expect(plan.lots[plan.buildings[l.building]!.lot]!.district, `seed ${seed} ${role}`).toBe("core");
+      }
+    }
   });
 });
 
@@ -166,7 +223,11 @@ describe("what every town has, open for business, in the downtown", () => {
     for (const { seed, plan } of towns(SIXTY_FOUR)) {
       const { office, lodging, bar, cafe } = plan.places;
       const hall = plan.landmarks.find((l) => l.role === "municipal building")!;
-      expect(office, `seed ${seed}`).toEqual({ building: hall.building, unit: null });
+      expect(office.building, `seed ${seed}`).toBe(hall.building);
+      expect(office.unit).toBeNull();
+      // The door: a pair, centred on the front, for the next piece of work (entering) to use; the start stands 2 m outside it.
+      const front = plan.uses[office.building]!.frame!;
+      expect(office.door, `seed ${seed}`).toEqual({ s: Math.round((front.width / 2) * 100) / 100, width: 2.3 });
       expect(plan.buildings[office.building]!.kind).toBe("municipal building");
       expect(plan.buildings[office.building]!.state, `seed ${seed}: the office is open`).toBe("open");
       for (const [name, place, trades] of [["lodging", lodging, ["hotel", "motel", "rooming house"]], ["bar", bar, ["tavern"]], ["cafe", cafe, ["cafe"]]] as const) {
@@ -217,16 +278,17 @@ describe("the fallback that cannot fail", () => {
 });
 
 describe("the town says nothing of the FBI", () => {
-  it("has no sign, landmark, history line or map label that names the FBI, a bureau or a federal agency", () => {
-    const bad = /\bFBI\b|bureau|federal agency|resident agency/i;
-    for (const { seed, plan } of towns()) {
+  it("has no sign, landmark, history line, tenant, past tenant, trade or map label that names the FBI, a bureau or a federal agency, or cannabis, marijuana or a dispensary", () => {
+    const bad = /\bFBI\b|bureau|federal agency|resident agency|cannabis|marijuana|dispensary/i;
+    for (const { seed, plan } of towns(SIXTY_FOUR)) {
       const texts: string[] = [plan.name];
       for (const l of plan.landmarks) texts.push(l.name, l.text);
       for (const e of plan.history.events) texts.push(JSON.stringify(e));
       for (const u of plan.uses) {
         for (const s of u.signs) texts.push(...s.lines);
         for (const x of u.units) {
-          if (x.tenant) texts.push(x.tenant.name);
+          if (x.tenant) texts.push(x.tenant.name, x.tenant.trade);
+          for (const q of x.past) texts.push(q.name, q.trade);
           for (const s of x.signs) texts.push(...s.lines);
         }
       }
@@ -236,12 +298,12 @@ describe("the town says nothing of the FBI", () => {
     }
   });
 
-  it("has no text in the game's source that says FBI, Bureau or federal agency", () => {
+  it("has no text in the game's source that says FBI, Bureau, federal agency, cannabis, marijuana or dispensary", () => {
     const SRC = fileURLToPath(new URL("../../src/", import.meta.url));
     const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => (statSync(dir + f).isDirectory() ? walk(`${dir}${f}/`) : [dir + f]));
     for (const path of walk(SRC)) {
       if (!/\.(ts|html|css|json)$/.test(path)) continue;
-      expect(readFileSync(path, "utf8"), path.slice(SRC.length)).not.toMatch(/\bFBI\b|\bBureau\b|federal agency/i);
+      expect(readFileSync(path, "utf8"), path.slice(SRC.length)).not.toMatch(/\bFBI\b|\bBureau\b|federal agency|cannabis|marijuana|dispensary/i);
     }
   });
 });

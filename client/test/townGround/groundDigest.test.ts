@@ -200,19 +200,19 @@ function digests(): Record<string, string> {
 }
 
 const PINNED: Record<string, string> = {
-  "hooks:1": "bb2e34608c4cdf95/360000",
-  "hooks:20261121": "317b3e21cf99bccc/360000",
-  "hooks:6": "fef0197cce51c35a/360000",
-  "town:1": "0699224f02ee5b01/1880000",
-  "town:20261121": "b04860c9646745fc/1880000",
-  "town:6": "a0c20960b65126d3/1880000",
+  "hooks:1": "8bdaeef115d8ade2/360000",
+  "hooks:20261121": "df3512b171564965/360000",
+  "hooks:6": "8b4c527089042edb/360000",
+  "town:1": "a18287d095400f88/1880000",
+  "town:20261121": "874f06b88b86a657/1880000",
+  "town:6": "fa1ad48f2f627179/1880000",
   "walked:1": "8d4a99d4bdee8bec/180000",
-  "walked:20261121": "dace899ea784150e/180000",
-  "walked:6": "6c980c04c3effbc6/180000",
+  "walked:20261121": "214efee6c59fd364/180000",
+  "walked:6": "6cd578ee0f825222/180000",
   windows: "89b5a4c96dc02509/800000",
-  "world:1": "634d3b11d2274417/240000",
-  "world:20261121": "eba88195309d7616/240000",
-  "world:6": "778b4cd89f2768f0/240000",
+  "world:1": "e25e981dc6b3bc9e/240000",
+  "world:20261121": "bff03338147ecdd8/240000",
+  "world:6": "134ad70b14d211aa/240000",
 };
 
 describe("the town's ground", () => {

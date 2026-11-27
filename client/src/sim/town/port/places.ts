@@ -8,6 +8,9 @@
 
 import type { Building, BuildingUse, Landmark, Lot, Place, Places, Trade } from "../types.js";
 
+/** The municipal building's pair of doors: a pair 2.3 m wide, centred on its front under the portico (`game/town/openingsGeometry.ts` draws them there). */
+export const MUNICIPAL_DOOR_WIDTH = 2.3;
+
 /** If no building stands on a lot reserved for the municipal building, makes one of a building of the downtown (a shop or office, the broadest first): its lot's role, its kind and its stock. */
 export function ensureMunicipal(downtown: readonly number[], lots: Lot[], buildings: Building[]): void {
   if (buildings.some((b) => b.lot >= 0 && lots[b.lot]!.role === "municipal")) return;
@@ -31,7 +34,7 @@ export function placesOf(downtown: readonly number[], lots: readonly Lot[], buil
       for (const u of use.units) {
         if (u.state !== "open" || u.tenant === null || !trades.includes(u.tenant.trade)) continue;
         const score = prefer(b);
-        if (best === null || score > best.score) best = { place: { building: b.id, unit: u.id }, score };
+        if (best === null || score > best.score) best = { place: { building: b.id, unit: u.id, door: null }, score };
       }
     }
     if (best === null) throw new Error(`the plan has no open ${trades[0]} in its downtown`);
@@ -41,7 +44,7 @@ export function placesOf(downtown: readonly number[], lots: readonly Lot[], buil
   if (!hall) throw new Error("the plan has no municipal building");
   const hotel = landmarks.filter((l) => l.role === "hotel").map((l) => l.building);
   return {
-    office: { building: hall.building, unit: null },
+    office: { building: hall.building, unit: null, door: { s: Math.round(((uses[hall.building]!.frame?.width ?? 0) / 2) * 100) / 100, width: MUNICIPAL_DOOR_WIDTH } },
     lodging: find(LODGING, (b) => (hotel.includes(b.id) ? 2 : b.kind === "hotel" ? 1 : 0)),
     bar: find(["tavern"], (b) => (b.kind === "tavern" ? 1 : 0)),
     cafe: find(["cafe"], () => 0),

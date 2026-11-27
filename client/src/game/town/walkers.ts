@@ -112,7 +112,7 @@ const OFFICES: readonly Trade[] = [
 ];
 const SHOPS: readonly Trade[] = [
   "clothing", "gift shop", "gallery", "kite shop", "candy shop", "bookstore", "game shop", "jeweler", "antiques", "thrift store", "variety store", "sporting goods",
-  "furniture store", "hardware", "pharmacy", "tattoo parlor", "pawn shop", "marine supply", "bait and tackle", "cannabis shop", "grocery", "barber", "hair salon",
+  "furniture store", "hardware", "pharmacy", "tattoo parlor", "pawn shop", "marine supply", "bait and tackle", "phone shop", "grocery", "barber", "hair salon",
 ];
 /** The rest of what takes customers or has staff: a clinic's, a laundromat's, a vet's, a garage's. */
 const SERVICES: readonly Trade[] = [
@@ -179,7 +179,8 @@ export function walkCeilingAt(hour: number, units: number): number {
       break;
     }
   }
-  return Math.max(1, Math.floor((v * units) / REFERENCE_UNITS + 0.5));
+  // (Never more than the curve's own most, eight: a downtown built up past `REFERENCE_UNITS` has more to walk to, not more walking at once.)
+  return Math.max(1, Math.floor((Math.min(units, REFERENCE_UNITS) * v) / REFERENCE_UNITS + 0.5));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------

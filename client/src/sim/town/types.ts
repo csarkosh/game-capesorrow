@@ -573,8 +573,11 @@ export type Outskirt = {
   readonly where: "north" | "south" | "road";
 };
 
-/** A place in a building: the building, and the unit (`Unit.id`) where the place is one of its bays (null where it is the whole building). */
-export type Place = { readonly building: number; readonly unit: number | null };
+/**
+ * A place in a building: the building, and the unit (`Unit.id`) where the place is one of its bays (null where it is the whole building), and, for a place with no unit, its door:
+ * `s` metres along the front frame (`BuildingUse.frame`, from the left as the street sees it, as a unit's door is) and its width. A place that is a unit has its door in `Unit.door` (null here).
+ */
+export type Place = { readonly building: number; readonly unit: number | null; readonly door: { readonly s: number; readonly width: number } | null };
 
 /** The four places every town always has (`TownPlan.places`). */
 export type Places = {
@@ -744,7 +747,7 @@ export type Trade =
   | "medical clinic" | "dentist" | "veterinarian" | "pharmacy"
   | "auto repair" | "auto parts" | "tire shop" | "saw and chain shop"
   | "hardware" | "garden and feed" | "clothing" | "variety store" | "jeweler" | "bookstore" | "game shop"
-  | "post office" | "cannabis shop" | "liquor store" | "smoke shop" | "food bank"
+  | "post office" | "phone shop" | "liquor store" | "smoke shop" | "food bank"
   | "bait and tackle" | "marine supply" | "fish market" | "boat yard"
   | "antiques" | "thrift store" | "pawn shop" | "sporting goods" | "laundromat" | "furniture store" | "funeral home"
   | "newspaper office" | "print shop" | "movie theater" | "union hall" | "self storage"

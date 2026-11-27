@@ -130,6 +130,9 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
       hallSlots.push({ id, side, rank: (gap <= 5 ? 0 : 6) + (hwy < 70 ? 12 : 0) + (c.x - shoreAt(site, c.z) < 110 ? 4 : 0) + (madeHeight(mid) < 2.3 ? 30 : 0) + where * 2 + (side === toMain(id) ? 0 : 1) + (squarish(b.polygon) ? 0 : 20) + (Math.abs(area0(b)) < 3000 ? 20 : 0) });
     }
   }
+  // On a core block wherever one has a row for it: a block of the highway strip is the edge of the town, and holds it only where no core block can.
+  const coreSlots = hallSlots.filter((x) => blocks[x.id]!.district === "core");
+  if (coreSlots.length > 0) hallSlots.splice(0, hallSlots.length, ...coreSlots);
   hallSlots.sort((p, q) => p.rank - q.rank || dist(centroid(blocks[p.id]!.polygon), layout.coreCentre) - dist(centroid(blocks[q.id]!.polygon), layout.coreCentre) || p.id - q.id);
   const best = hallSlots.filter((x) => x.rank === (hallSlots[0]?.rank ?? 0));
   const hallAt = best.length > 0 ? pick(rng, best.slice(0, 2)) : null;
