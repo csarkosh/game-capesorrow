@@ -8,8 +8,9 @@
  * - **Its own material.** The town's solid material without the wet look (a floor indoors is not wet with the rain), which is the one thing the
  *   engine's air is not: the air also carries the display curve and the grade on the tiers that have no post chain, so a material without it
  *   would come out another colour. It stays.
- * - **Rain.** The mesh is registered as hard cover and the cover map is drawn again when it is made and when it is let go, so no rain falls in
- *   the room (the engine knows nothing of indoors: the rain is hidden under the highest cover at its place).
+ * - **Rain.** The mesh is NOT registered as hard cover. The engine draws drips under hard cover (the canopy's water, a state it keeps ten minutes), which a roof there
+ *   would show in the room; with no cover under the room they are not covered by anything. No streak falls because the view's rain is put out while the player is in a room
+ *   (`insideWeather.ts`, which also says why the lens needs that).
  * - **The town is hidden while the player is inside** (phase INSIDE only): it is below the floor and costs frame time. It is shown again in
  *   GOING_OUT, so the street is there when the screen clears (`hidesTown`, read by `townParts.ts`).
  * - **People.** `insidePeople` stands copies of each room's unit's people in the hidden room, over the whole room, for `peopleParts.ts` to show
@@ -59,8 +60,6 @@ export type InsideHost = {
   readonly textured: boolean;
   readonly ground: TownGround;
   readonly detail: Detail;
-  readonly hardCover: { add(mesh: Mesh): void; remove(mesh: Mesh): void } | undefined;
-  readonly redrawCover: () => void;
   readonly uploads: FrameUploads;
 };
 
@@ -78,13 +77,11 @@ export function createInsideParts(host: InsideHost): InsideParts {
 
   const drop = (): void => {
     if (mesh === null) return;
-    host.hardCover?.remove(mesh);
     removeFromScene(host.scene, mesh);
     disposeMeshGpu(mesh);
     host.uploads.dropped();
     mesh = null;
     room = 0;
-    host.redrawCover();
   };
 
   const build = (r: InsideRoom): void => {
@@ -96,10 +93,8 @@ export function createInsideParts(host: InsideHost): InsideParts {
     addToScene(host.scene, made);
     host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
     host.uploads.made();
-    host.hardCover?.add(made);
     mesh = made;
     room = r.id;
-    host.redrawCover();
   };
 
   return {

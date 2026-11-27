@@ -155,7 +155,7 @@ function pegboard(c: Ctx, wall: WallName, a: number, y: number, w: number, h: nu
 function neonSign(c: Ctx, wall: WallName, a: number, y: number, w: number, col: Rgb): void {
   withMat("painted", () => {
     wallQuad(c, wall, a - w / 2 - 0.03, a + w / 2 + 0.03, y - 0.03, y + 0.2, 0.03, [0.08, 0.08, 0.09]);
-    wallQuad(c, wall, a - w / 2, a + w / 2, y, y + 0.17, 0.045, col, c.lit ? 3 : 0.25);
+    wallQuad(c, wall, a - w / 2, a + w / 2, y, y + 0.17, 0.045, col, c.lit ? (c.whole === true ? 1.8 : 3) : 0.25);
   });
 }
 
@@ -263,7 +263,14 @@ function placeBack(c: Ctx, items: Item[], segs: [number, number][], seed: number
 function passThrough(c: Ctx, a: number, seed: number): void {
   withMat("painted", () => {
     const w = 0.65;
-    wallQuad(c, "back", a - w, a + w, 1.0, 1.75, 0.03, [1, 0.86, 0.58], c.lit ? 0.95 : 0.15);
+    if (c.whole === true) {
+      // The kitchen as seen into from the floor: a warm dim back with a shelf's dark bands and the shapes of someone working, not a sheet of light.
+      const g = c.lit ? 0.5 : 0.1;
+      wallQuad(c, "back", a - w, a + w, 1.0, 1.75, 0.03, [0.7, 0.55, 0.36], g);
+      for (const y of [1.2, 1.45]) wallQuad(c, "back", a - w, a + w, y, y + 0.03, 0.04, [0.25, 0.2, 0.15], g);
+      wallQuad(c, "back", a - 0.35, a - 0.12, 1.0, 1.4, 0.04, [0.3, 0.22, 0.16], g);
+      wallQuad(c, "back", a + 0.2, a + 0.5, 1.0, 1.3, 0.04, [0.34, 0.28, 0.22], g);
+    } else wallQuad(c, "back", a - w, a + w, 1.0, 1.75, 0.03, [1, 0.86, 0.58], c.lit ? 0.95 : 0.15);
     const frame: Rgb = hash01(seed, 790) < 0.5 ? [0.5, 0.5, 0.52] : [0.3, 0.2, 0.12];
     wallQuad(c, "back", a - w - 0.07, a - w, 0.96, 1.8, 0.06, frame);
     wallQuad(c, "back", a + w, a + w + 0.07, 0.96, 1.8, 0.06, frame);
@@ -326,7 +333,37 @@ function mirror(c: Ctx, wall: WallName, a: number, y: number, w: number, h: numb
   });
 }
 
+/**
+ * A dartboard as one reads on a wall at arm's length (a room a person stands in, `RoomIn.whole`): a round backing, a ring of black for the numbers, twenty wedges in
+ * four rings (double and treble in red and green, the singles cream and black, the colours alternating) and a bull. 45 cm across as a real one is.
+ */
+function dartBoardWhole(c: Ctx, wall: WallName, a: number, y: number): void {
+  const n = 20;
+  const rim = 0.225;
+  const at = (k: number, r: number): [number, number] => [a + Math.cos((k / n) * Math.PI * 2) * r, y + Math.sin((k / n) * Math.PI * 2) * r];
+  const disc = (r: number, sides: number): [number, number][] => Array.from({ length: sides }, (_, i) => [a + Math.cos((i / sides) * Math.PI * 2) * r, y + Math.sin((i / sides) * Math.PI * 2) * r]);
+  const cream: Rgb = [0.82, 0.76, 0.58];
+  const black: Rgb = [0.06, 0.06, 0.06];
+  const red: Rgb = [0.7, 0.12, 0.1];
+  const green: Rgb = [0.1, 0.42, 0.2];
+  withMat("painted", () => {
+    wallPoly(c, wall, disc(rim + 0.035, 16), 0.03, [0.12, 0.08, 0.05]);
+    wallPoly(c, wall, disc(rim, 20), 0.06, black);
+    // Each ring from `r0` to `r1`, the wedges alternating between two colours (`odd` swaps them).
+    const ring = (r0: number, r1: number, one: Rgb, two: Rgb, odd: boolean): void => {
+      for (let k = 0; k < n; k++) wallPoly(c, wall, [at(k, r0), at(k + 1, r0), at(k + 1, r1), at(k, r1)], 0.09, (k % 2 === 0) !== odd ? one : two);
+    };
+    ring(0.172, 0.187, red, green, false);
+    ring(0.115, 0.172, black, cream, false);
+    ring(0.1, 0.115, red, green, false);
+    ring(0.03, 0.1, black, cream, false);
+    wallPoly(c, wall, disc(0.03, 10), 0.09, green);
+    wallPoly(c, wall, disc(0.013, 8), 0.12, red);
+  });
+}
+
 function dartBoard(c: Ctx, wall: WallName, a: number, y: number): void {
+  if (c.whole === true) return dartBoardWhole(c, wall, a, y);
   withMat("painted", () => {
     const ring = (r: number): [number, number][] => Array.from({ length: 8 }, (_, i) => [a + Math.cos((i / 8) * Math.PI * 2 + 0.39) * r, y + Math.sin((i / 8) * Math.PI * 2 + 0.39) * r]);
     wallPoly(c, wall, ring(0.3), 0.03, [0.08, 0.08, 0.08]);
@@ -358,6 +395,20 @@ function framesRow(c: Ctx, wall: WallName, a: number, seed: number): void {
 function television(c: Ctx, wall: WallName, a: number): void {
   withMat("painted", () => {
     wallBox(c, wall, a - 0.5, a + 0.5, 1.7, 2.2, 0.12, [0.06, 0.06, 0.07]);
+    if (c.whole === true) {
+      // Seen from a few metres, a screen is a dark frame round a dim picture: a sky, a green field with a line across it, and two small figures, none of it brighter than a lamp's shade.
+      const glow = c.lit ? 0.45 : 0.04;
+      const x0 = a - 0.45, x1 = a + 0.45, y0 = 1.75, y1 = 2.15;
+      wallQuad(c, wall, x0, x1, y0, y1, 0.16, [0.05, 0.06, 0.08], glow);
+      wallQuad(c, wall, x0, x1, y0 + 0.3, y1, 0.19, [0.22, 0.32, 0.46], glow);
+      wallQuad(c, wall, x0, x1, y0, y0 + 0.14, 0.19, [0.12, 0.3, 0.16], glow);
+      wallQuad(c, wall, x0, x1, y0 + 0.14, y0 + 0.16, 0.19, [0.55, 0.55, 0.5], glow);
+      wallQuad(c, wall, a - 0.22, a - 0.17, y0 + 0.16, y0 + 0.27, 0.19, [0.6, 0.15, 0.12], glow);
+      wallQuad(c, wall, a + 0.1, a + 0.15, y0 + 0.16, y0 + 0.27, 0.19, [0.2, 0.25, 0.55], glow);
+      // A score along the foot.
+      wallQuad(c, wall, x0 + 0.04, x0 + 0.3, y0 + 0.02, y0 + 0.06, 0.22, [0.5, 0.5, 0.45], glow);
+      return;
+    }
     wallQuad(c, wall, a - 0.45, a + 0.45, 1.75, 2.15, 0.16, [0.2, 0.35, 0.5], c.lit ? 1.4 : 0.1);
   });
 }
@@ -385,6 +436,15 @@ function beerSign(c: Ctx, wall: WallName, a: number, seed: number): void {
   withMat("painted", () => {
     const col = pickOf([[0.9, 0.7, 0.1], [0.8, 0.15, 0.1], [0.15, 0.5, 0.25], [0.2, 0.4, 0.8]] as readonly Rgb[], seed, 881);
     wallQuad(c, wall, a - 0.32, a + 0.32, 1.55, 2.0, 0.03, [0.08, 0.08, 0.09]);
+    if (c.whole === true) {
+      // A backlit sign at arm's length: the coloured field with a cream label on it that has lines of lettering, and a dark rule across it, at a glow that does not blow out.
+      const g = c.lit ? 0.85 : 0.15;
+      wallQuad(c, wall, a - 0.28, a + 0.28, 1.6, 1.95, 0.06, col, g);
+      wallQuad(c, wall, a - 0.28, a + 0.28, 1.6, 1.64, 0.09, scaled(col, 0.5), g);
+      wallQuad(c, wall, a - 0.2, a + 0.2, 1.72, 1.86, 0.09, [0.9, 0.87, 0.76], g);
+      for (let k = 0; k < 3; k++) wallQuad(c, wall, a - 0.16 + k * 0.02, a + 0.16 - k * 0.04, 1.75 + k * 0.035, 1.775 + k * 0.035, 0.12, [0.15, 0.12, 0.1], g);
+      return;
+    }
     wallQuad(c, wall, a - 0.28, a + 0.28, 1.6, 1.95, 0.06, col, c.lit ? 2.0 : 0.3);
     wallQuad(c, wall, a - 0.2, a + 0.2, 1.72, 1.82, 0.09, [0.95, 0.93, 0.85], c.lit ? 2.2 : 0.3);
   });

@@ -588,14 +588,21 @@ The hidden room is drawn by `insideGeometry.ts` and `insideParts.ts` (`client/sr
   with the day and is dark at night (the hours code 0, the day's glow: `DAY_GLOW_CODE` in `townMaterial.ts`); it shows no street.
 - **Every face has its back.** The builder given `new MeshBuilder(true)` lays the back of everything it lays (the same corners wound the other way, normals reversed, look unchanged), so no
   face is see-through from any side whichever builder laid it; the hidden room is built in that mode and its triangles come in pairs. The street's build is not (`MeshBuilder()` is as it was).
-- **Its own material and the rain.** `insideParts.ts` makes the room one mesh in the town's solid material without the wet look (a floor indoors is not wet); the engine's air stays on it, since on the tiers with
-  no post chain it also carries the display curve and the grade. The mesh is hard cover for the rain and the cover map is drawn again when it is made and when it is let go. The room is built
-  when the local player is `INSIDE` or `GOING_OUT`, or in `GOING_IN` once the hold is past 12 ticks (the screen is dark), at once for a player who is simply `INSIDE`, and let go the frame the
-  phase is `OUTSIDE`: a room is never kept while the player is in the street.
+- **Its own material.** `insideParts.ts` makes the room one mesh in the town's solid material without the wet look (a floor indoors is not wet); the engine's air stays on it, since on the tiers with
+  no post chain it also carries the display curve and the grade. The room is built when the local player is `INSIDE` or `GOING_OUT`, or in `GOING_IN` once the hold is past 12 ticks (the screen is dark), at once for a
+  player who is simply `INSIDE`, and let go the frame the phase is `OUTSIDE`: a room is never kept while the player is in the street.
+- **Rain and sound indoors** (`game/insideWeather.ts`, from `walkSide.beforeSync`). The engine knows nothing of indoors, and two of its rain draws ignore a roof. The lens (the droplets the post chain refracts the frame through) is a
+  function of the weather's rain and the view's pitch alone, with no cover in it. The drips are drawn *under* hard cover (alpha is covered x (1 - canopy) x the canopy's water, a state a minute of rain fills and ten of dry drain),
+  so a roof over the room would show them. So the room is not registered as cover, and from the start of the hold at the street door to the start of the way out the local view's weather is the real weather with no rain
+  (`setView`, at once; a console `weather`, a renderer made again and the clock's pushes of the hour keep it), the world's beds are cut by half (`setHush`) and put back going out. Only the local view changes, and the street's
+  wetness is not touched. The lens eases out over its own second (`lensSmooth`), so a little of it is left when the screen clears.
 - **The town is hidden while inside.** While the phase is `INSIDE`, `townParts.seen` shows none of the town's own batches (they are below the floor), nor to the rain's map; in `GOING_OUT` they are drawn again so the street is there when the screen clears.
 - **People.** `insidePeople` stands copies of each room's unit's people in the hidden room (`roomPeople`, `people.ts`: the same placement as the street's, over the whole room to the back wall less a margin
   and not the front 2 m), tagged with the room's id; `peopleParts` shows a person with a room only while the local player is where that room is (`setInside`), and then shows nobody else, walkers and the
   street's people included. Their bodies are part of the people's capacity.
+- **Seen close.** In a whole room the things that read as lit screens from the street are drawn as what they are: a television is a dark frame round a dim picture, a jukebox or a vending machine a
+  coloured panel with darker bars and buttons (or lit goods behind dark glass), a dartboard has its wedges, rings and bull at a real size, a beer sign a label with lettering, the kitchen's pass-through a dim warm back, a lobby's lamps
+  stand (a foot, a stand and a shade) in place of a glowing box at the height of the shade. The street's build is as it was.
 - **Limits.** The deeper part of a room keeps what the street's build puts there (no chairs past `PLAIN_FROM`, and the clutter the front 4 m have); a pane's glow is a flat sheet, not the day's light
   falling in; the room is lit by its own baked light only.
 

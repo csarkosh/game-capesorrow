@@ -314,6 +314,17 @@ function lights(c: Ctx, list: readonly RoomLight[], ceiling: number, dead: reado
           break;
         }
         case "lamp":
+          if (c.whole === true) {
+            // A lamp as a person sees it: a round foot, a thin stand to the shade, and the shade, a cone of cloth that glows warm and not white.
+            const p = xp(c.xf, l.s, l.d, c.floorY);
+            const shadeH = 0.24;
+            withMat("steel", () => {
+              c.out.cylinder(p[0], p[2], c.floorY, 0.14, 0.03, 8, [0.18, 0.16, 0.14], [0.22, 0.2, 0.18]);
+              c.out.cylinder(p[0], p[2], c.floorY + 0.03, 0.012, y - shadeH - 0.03, 4, [0.2, 0.2, 0.2], [0.2, 0.2, 0.2]);
+            });
+            withMat("cloth", () => c.out.withGlow(on ? 0.7 : 0.1, () => c.out.cylinder(p[0], p[2], c.floorY + y - shadeH, 0.17, shadeH, 8, on ? [0.9, 0.7, 0.4] : [0.45, 0.4, 0.32], on ? [0.95, 0.8, 0.5] : [0.4, 0.35, 0.28], 0.1)));
+            break;
+          }
           fbox(c, l.s, l.d, y - 0.2, 0.2, 0.09, 0.09, AX, on ? [1, 0.85, 0.5] : [0.4, 0.35, 0.28], on ? [1, 0.85, 0.5] : [0.4, 0.35, 0.28], on ? 2.2 : 0.4, false);
           break;
       }
