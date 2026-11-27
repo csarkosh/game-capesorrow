@@ -13,7 +13,7 @@ import { HOUR_S } from "../../src/game/dayClock.js";
 import { hashN } from "../../src/game/town/groundNoise.js";
 import { isOpen, unitHours, wrapHour } from "../../src/game/town/hours.js";
 import { groundOf, inRoadway, isDowntown, isThere, openDowntownUnits, outdoorPeopleFor, rectDist } from "../../src/game/town/outdoorPeople.js";
-import { WALK_WORK, walkerJob, CROSS_WIDTH, DOOR_GAP, END_APART, END_APART_SMALL, MAX_TURN, PAIR_SHARE, SPEED_GAP, SPEED_NEAR, STANDER_CLEAR, TRIP_LENGTH, WALK_PROP, WALK_REASONS, WALK_SPEED, alongAt, crossingsOf, rampsOf, pathPoint, walkCeilingAt, walkNet, walkable, walkHours, walkersFor } from "../../src/game/town/walkers.js";
+import { WALK_WORK, walkerJob, CROSS_WIDTH, DOOR_GAP, END_APART, END_APART_SMALL, MAX_TURN, PAIR_CHANCE, SPEED_GAP, SPEED_NEAR, STANDER_CLEAR, TANDEM, TRIP_LENGTH, WALK_PROP, WALK_REASONS, WALK_SPEED, type Walker, alongAt, crossingsOf, rampsOf, pathPoint, walkCeilingAt, walkNet, walkable, walkHours, walkersFor } from "../../src/game/town/walkers.js";
 import { townGround } from "../../src/game/town/townGeometry.js";
 import { WORLD_SEEDS } from "./world.js";
 
@@ -262,21 +262,34 @@ describe("the people who walk", () => {
       if (crossUsed >= 3) expect(crossSpread / crossUsed).toBeGreaterThanOrEqual(0.7);
     });
 
-    it(`seed ${seed}: a pair walks side by side, the gap between them breathing between 0.6 and 0.9 m`, () => {
+    it(`seed ${seed}: two together walk side by side, the gap between them breathing between 0.6 and 0.9 m, or one behind the other on one line where there is no room abreast`, () => {
+      let abreast = 0;
+      let file = 0;
       for (const w of walkers) {
         if (w.partner < 0) continue;
-        const o = walkers[w.partner];
-        expect(o?.partner).toBe(w.id);
-        expect(o?.speed).toBe(w.speed);
-        expect(o?.t0).toBe(w.t0);
-        expect(o?.model === w.model && o?.offset === w.offset).toBe(false);
-        // Mid-path they are the pair's distance apart.
+        const o = walkers[w.partner] as Walker;
+        expect(o.partner).toBe(w.id);
+        expect(o.speed).toBe(w.speed);
+        expect(o.model === w.model && o.offset === w.offset).toBe(false);
         const mid = (w.length / 2) * (hashN(w.id, 1, 1, 81) * 0.4 + 0.8);
-        const a = pathPoint(w, mid);
-        const b = pathPoint(o as typeof w, Math.min(mid, (o as typeof w).length));
-        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(0.55);
-        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(0.95);
+        if (o.t0 === w.t0) {
+          abreast++;
+          // Mid-path they are the pair's distance apart.
+          const a = pathPoint(w, mid);
+          const b = pathPoint(o, Math.min(mid, o.length));
+          expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(0.55);
+          expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(0.95);
+        } else {
+          file++;
+          // The one line, and the second a pace and a bit behind the first on it.
+          expect(o.pts).toBe(w.pts);
+          expect(o.length).toBe(w.length);
+          const lag = Math.abs(wrapHour(o.t0 - w.t0 + 12) - 12) * HOUR_S * w.speed;
+          expect(lag).toBeGreaterThanOrEqual(TANDEM[0] - 1e-6);
+          expect(lag).toBeLessThanOrEqual(TANDEM[1] + 1e-6);
+        }
       }
+      process.stderr.write(`seed ${seed}: ${abreast / 2} pairs abreast, ${file / 2} in file\n`);
     });
 
     it(`seed ${seed}: each walker's speed is their own, bell-shaped, and two out together within 60 m differ by 0.12 m/s or more`, () => {
@@ -361,9 +374,28 @@ describe("the people who walk", () => {
       }
     });
 
-    it(`seed ${seed}: pairs are rare, and no path is a ruler line: it bends a few centimetres over any straight 20 m, and two going one way on a walk are on lines of their own`, () => {
-      const pairs = walkers.filter((w) => w.partner >= 0).length;
-      expect(pairs / Math.max(1, walkers.length)).toBeLessThanOrEqual(PAIR_SHARE + 1e-9);
+    it(`seed ${seed}: people go for a coffee, to lunch and out for the evening two together and run an errand alone, and no path is a ruler line: it bends a few centimetres over any straight 20 m, and two going one way on a walk are on lines of their own`, () => {
+      // Of the trips that are not errands, most are two walking together; of the errands, few.
+      // Of the people out for anything but an errand, most are with someone; of those on an errand, few.
+      const social = walkers.filter((w) => w.reason !== "errand");
+      const errands = walkers.filter((w) => w.reason === "errand");
+      const together = (list: readonly Walker[]): number => list.filter((w) => w.partner >= 0).length / Math.max(1, list.length);
+      expect(together(social)).toBeGreaterThan(0.5);
+      expect(together(errands)).toBeLessThan(0.4);
+      expect(PAIR_CHANCE.errand).toBeLessThan(0.25);
+      expect(PAIR_CHANCE.evening).toBeGreaterThan(0.7);
+      // Two who are together are within three metres of each other all the way, abreast or one behind the other.
+      for (const w of walkers) {
+        if (w.partner < 0 || w.id > w.partner) continue;
+        const o = walkers[w.partner] as Walker;
+        expect(o.partner).toBe(w.id);
+        for (const share of [0.2, 0.5, 0.8]) {
+          const hour = w.t0 + (share * w.length) / (w.speed * HOUR_S);
+          const a = pathPoint(w, Math.max(0, alongAt(w, hour)));
+          const b = pathPoint(o, Math.max(0, Math.min(o.length, alongAt(o, hour))));
+          expect(Math.hypot(a.x - b.x, a.z - b.z), `#${w.id} with #${o.id}`).toBeLessThan(3);
+        }
+      }
       // The greatest distance from its chord over each 20 m of a path that is straight (its way changes by under ten degrees along it), clear of the doors.
       let windows = 0;
       let flat = 0;
@@ -396,7 +428,7 @@ describe("the people who walk", () => {
           else if (far <= 0.3) bent++;
         }
       }
-      process.stderr.write(`seed ${seed}: ${pairs / 2} pairs; straight 20 m windows ${windows}: ${bent} bend 4 to 30 cm, ${flat} under 4 cm\n`);
+      process.stderr.write(`seed ${seed}: ${walkers.filter((w) => w.partner >= 0).length / 2} pairs; straight 20 m windows ${windows}: ${bent} bend 4 to 30 cm, ${flat} under 4 cm\n`);
       if (windows > 20) expect(flat / windows).toBeLessThanOrEqual(0.1);
       // Two non-partners going one way within 8 m of each other: the mean of their sideways distance, over the moments they share, is 0.2 m or more.
       const shared = new Map<string, { sum: number; n: number }>();

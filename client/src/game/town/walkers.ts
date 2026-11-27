@@ -55,6 +55,8 @@ export const WALKER_CLEAR = 0.65;
 /** How far to the right of the middle of a sidewalk a walker keeps, and how far apart a pair walks (metres). */
 export const LANE = 0.35;
 export const PAIR_SIDE = 0.7;
+/** How far behind the first the second of two walks where there is no room abreast, metres. */
+export const TANDEM: readonly [number, number] = [0.95, 1.3];
 /** The least a trip begins and ends inside the door's plane (a place's own is `doorDepth`, `openDoors.ts`: as far in as the room's clear floor allows, up to 1.9 m), where the door has opened for them. */
 export const DOOR_IN = MIN_IN;
 /** Corners are turned over about this much path on each side of the corner (metres). */
@@ -65,10 +67,13 @@ export const PATH_STEP = 0.2;
 export const TRIP_LENGTH: readonly [number, number] = [30, 220];
 /** Two trips leave one door at least this far apart (game hours: 20 real seconds). */
 export const DOOR_GAP = 20 / HOUR_S;
-/** One trip in this many has two walking side by side. */
-export const PAIR_ONE_IN = 15;
-/** A town's pairs are at most this share of its walkers. */
-export const PAIR_SHARE = 0.06;
+/**
+ * How likely a trip is two walking together, by why they go: people go for a coffee, to lunch and out for the evening with someone, and run an errand
+ * between the shops alone.
+ */
+export const PAIR_CHANCE: { readonly [R in WalkReasonId]: number } = {
+  "coffee": 0.65, "to work": 0.55, "errand": 0.15, "lunch out": 0.85, "lunch back": 0.8, "evening": 0.9, "late": 0.7, "night": 0.3,
+};
 /** No destination or origin has more than about this share of a town's trips. */
 export const END_SHARE = 0.06;
 /** Two trips that share an end are apart by this much (game hours: 30 real seconds either side of the time they are out), or by a quarter hour where a small town cannot. */
@@ -1110,7 +1115,6 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
   let expected = 0;
   for (const [ri, reason] of WALK_REASONS.entries()) for (const [bi, band] of reason.bands.entries()) expected += Math.floor(band.rate * (band.to - band.from) * k + roll(ri, bi, 1, 70));
   const endCap = Math.max(3, Math.ceil(END_SHARE * 0.9 * expected));
-  let pairWalkers = 0;
   for (const [ri, reason] of WALK_REASONS.entries()) {
     for (const [bi, band] of reason.bands.entries()) {
       const want = band.rate * (band.to - band.from) * k;
@@ -1126,7 +1130,6 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
         // A pair is the leader and the one after; each is numbered as it is kept.
         const first = out.length;
         for (const [q, x] of w.entries()) out.push({ ...x, id: first + q, partner: w.length > 1 ? first + (1 - q) : -1 });
-        if (w.length > 1) pairWalkers += 2;
         yield;
       }
     }
@@ -1338,7 +1341,7 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
     WALK_WORK.builds++;
     const route = piecesOf(net, from, reach, to, exit);
     if (route === null) return null;
-    const pair = roll(key, attempt, 5, 72) < 1 / PAIR_ONE_IN && pairWalkers + 2 <= PAIR_SHARE * expected * 0.7;
+    const pair = roll(key, attempt, 5, 72) < PAIR_CHANCE[reason.id];
     const tryPath = (aimM: number, wide = false): { pts: Float32Array; cum: Float32Array; length: number } | null => {
       const poly: Located[] = [{ x: from.x - from.nx * from.depth, z: from.z - from.nz * from.depth }, { x: from.x, z: from.z }];
       let s = from.perp;
@@ -1441,10 +1444,18 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
       const q = (salt: number): number => roll(key, attempt, salt, 74);
       for (const sideOf of [1, -1]) {
         // A pair takes its corners wide, so that the one on the inside has room.
-        const mate = tryPath(0.38 * sideOf, true);
+        // (Each pair a line of its own across the walk, as each walker has: the two a little to one side of the middle or the other.)
+        const mate = tryPath((0.3 + q(6) * 0.16) * sideOf, true);
         if (mate === null) continue;
         const twin = beside(mate, 0.75 * sideOf, 0.15, 6 + q(1) * 8, q(2) * 6.28, 0.25, 26 + q(3) * 26, q(4) * 6.28);
-        if (stepsOk(twin) && pathValid(mate, t0, speed) && pathValid(twin, t0, speed)) return [mk(mate, 10, 1), mk(twin, 20, 0)];
+        // The second's path is the first's moved over: round a tight bend it may stride or turn as nobody does, and then they do not walk abreast.
+        if (stepsOk(twin, true) && turnsOk(twin) && pathValid(mate, t0, speed) && pathValid(twin, t0, speed)) return [mk(mate, 10, 1), mk(twin, 20, 0)];
+      }
+      // No room to walk abreast (a narrow walk, a pole, people standing): they go one behind the other, a pace and a bit apart, on the one line.
+      const file = tryPath(style.aim);
+      if (file !== null && pathValid(file, t0, speed)) {
+        const behind = t0 + (TANDEM[0] + q(5) * (TANDEM[1] - TANDEM[0])) / (speed * HOUR_S);
+        if (pathValid(file, behind, speed)) return [mk(file, 10, 1), { ...mk(file, 20, 0), t0: wrapHour(behind) }];
       }
     }
     const lead = tryPath(style.aim);
@@ -1519,11 +1530,14 @@ function turnsOk(path: { pts: Float32Array; cum: Float32Array }): boolean {
 }
 
 /** Whether a path's points never jump: each step is about `PATH_STEP`, so an offset path of a tight corner is not allowed. */
-function stepsOk(path: { pts: Float32Array; cum: Float32Array }): boolean {
-  // (A door's first and last three metres are left out: the corner there is tight, and a pair's two come through the same door.)
-  for (let i = 15; i < path.cum.length - 15; i++) {
+function stepsOk(path: { pts: Float32Array; cum: Float32Array }, whole = false): boolean {
+  // (A door's first and last three metres are left out of the least a step may be: the corner there is tight, and a pair's two come through the same door.
+  // `whole`: no step anywhere, the doors' included, is longer than the most.)
+  for (let i = 1; i < path.cum.length; i++) {
     const d = Math.hypot((path.pts[i * 2] as number) - (path.pts[i * 2 - 2] as number), (path.pts[i * 2 + 1] as number) - (path.pts[i * 2 - 1] as number));
-    if (d < PATH_STEP * 0.2 || d > PATH_STEP * 2.6) return false;
+    const inner = i >= 15 && i < path.cum.length - 15;
+    if (inner && d < PATH_STEP * 0.2) return false;
+    if ((inner || whole) && d > PATH_STEP * 2.55) return false;
   }
   return true;
 }
