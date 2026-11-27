@@ -9,12 +9,17 @@
  * remodelled in the seventies has panelling; an old building has plank floors and a pressed-tin ceiling; the trade picks the colours
  * (a laundromat's pale blue and white, a bar's dark wood, an office's grey and carpet). What is authored: every colour, the heights and
  * spacings, how much each state stains.
+ *
+ * A room that is `whole` (a person stands in it, `RoomIn.whole`) also has its front wall, on the inside: the wall cut round the unit's own
+ * openings and door, each window a bright pane with its frame (the pane shows the day and no street), and the door shut in its frame.
  */
 import { type Hours } from "./hours.js";
-import { withMat } from "./materials.js";
+import { withMat, type MatRef } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINTS, pickOf } from "./buildingKit.js";
-import { BAKED, fbox, shade, wallPoint, xd, xp, type Ctx, type Xf } from "./roomKit.js";
+import { frameColour } from "./windowGeometry.js";
+import { slatColour } from "./windowDressing.js";
+import { BAKED, FACE_D, fbox, shade, wallPoint, xd, xp, type Ctx, type Xf } from "./roomKit.js";
 import { VEIL_FROM, VEIL_TO } from "./roomLight.js";
 import type { LayerName } from "./townLayers.js";
 import type { Surface, UvFrame } from "./townSurface.js";
@@ -46,7 +51,13 @@ export type RoomIn = {
   readonly remodel: Unit["remodel"];
   readonly past: readonly PastTenant[];
   readonly vacantSince: number | null;
-  readonly door: { readonly s: number; readonly width: number };
+  readonly door: { readonly s: number; readonly width: number; /** Where the door's head is, metres over the floor, as the street side draws it (the front's, 2.2 m or on an old tall front 2.65). None given is 2.2. */ readonly head?: number };
+  /**
+   * A person stands in this room, so it is built whole: as `through` builds it (to its back wall, with no sheet and no haze) and with nothing left
+   * out for being unseen from the street: every side of every box, the underside of what hangs, the back room's doorway closed, and a front
+   * wall on the inside (`roomShell.ts`). It is meant to be built into a `MeshBuilder` that lays backs (`insideGeometry.ts`).
+   */
+  readonly whole?: boolean;
   /** How much deeper than 7 cm the unit's glass stands in its wall (the deeper openings of a masonry front: `glassOffOf`, `windowGeometry.ts`); what hangs in the window (`sillThings`) moves in with it. None given is 0. */
   readonly glassIn?: number;
 };
@@ -206,6 +217,146 @@ const unit3 = (v: Vec3): Vec3 => {
   return l > 1e-9 ? [v[0] / l, v[1] / l, v[2] / l] : v;
 };
 
+/** A finish laid on a surface that runs from `origin` along `u` and `v`: its layer, framed as given, or none for flat paint. */
+function layerSurface(f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | undefined {
+  return f.layer === null ? undefined : { layer: f.layer, frame: { origin, u: unit3(u), v: unit3(v) } as UvFrame, tint: f.gain };
+}
+
+type Band = { y0: number; y1: number; f: Layered; kind: "base" | "wain" | "wall" | "stripe" };
+
+/** The colour of a pane in daylight, a pale overcast one, and how strongly it lights itself (the day's glow: it is dark at night, `DAY_GLOW_CODE` in `townMaterial.ts`). */
+const PANE: Rgb = [0.8, 0.86, 0.92];
+const PANE_GLOW = 1.15;
+/** How much of the day an opening lets through, by what covers it (as the room's own light takes it, `THROUGH` in `roomGeometry.ts`). */
+const LETS: Record<string, number> = { none: 1, display: 0.7, blinds: 0.5, papered: 0.45, boarded: 0, bricked: 0 };
+/** A door's leaf of the tints the back door has, and the window frame's bar, how wide a bar of a frame is, and how far a bar stands proud of the wall (3 cm, the step the depth buffer holds apart: `ladder` in `roomKit.ts`). */
+const BAR = 0.06;
+const PROUD = 0.03;
+
+/**
+ * The front wall of a room a person stands in, on its inside face at `FACE_D` and looking into the room: the wall's bands cut round the openings the
+ * unit has (and its door), a bright pane in each window with its frame (and what covers it: slats, paper, boards), and the door shut in its frame, as
+ * the street side lays them out (`frontGeometry.ts`). A pane shows the day and not the street: it is a sheet that glows with the daylight and is dark at night.
+ */
+function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
+  const { out, xf, floorY, s0, s1 } = c;
+  const top = c.ceiling;
+  const d0 = FACE_D;
+  const full = c.detail === "full";
+  const dw = r.door.width;
+  const doorHead = Math.min(r.door.head ?? 2.2, top - 0.1);
+  type Hole = { a0: number; a1: number; y0: number; y1: number; cover: string };
+  const holes: Hole[] = [{ a0: Math.max(s0, r.door.s - dw / 2), a1: Math.min(s1, r.door.s + dw / 2), y0: 0, y1: doorHead, cover: "door" }];
+  // Each opening the street side has, but a bricked one (which is wall on the inside); one that crosses another is dropped, as `cutWall` drops it.
+  for (const o of r.openings) {
+    if (o.cover === "bricked") continue;
+    const h: Hole = { a0: Math.max(s0, Math.min(o.s0, o.s1)), a1: Math.min(s1, Math.max(o.s0, o.s1)), y0: Math.max(0.02, o.sill), y1: Math.min(top - 0.05, o.head), cover: o.cover };
+    if (h.a1 - h.a0 < 0.1 || h.y1 - h.y0 < 0.1) continue;
+    if (holes.some((k) => h.a0 < k.a1 - 1e-3 && h.a1 > k.a0 + 1e-3 && h.y0 < k.y1 - 1e-3 && h.y1 > k.y0 + 1e-3)) continue;
+    holes.push(h);
+  }
+  const noise = (a: number, b: number, k: number): number => hash01(c.seed * 131 + a * 17 + b * 29, 760 + k) - 0.5;
+  const P = (a: number, y: number, off: number): Vec3 => xp(xf, a, d0 + off, floorY + y);
+  const into = xd(xf, 0, 1);
+
+  // ---- the wall: each band cut into strips at the holes' heights, and each strip into the stretches between the holes that cross it
+  const piece = (a0: number, a1: number, y0: number, y1: number, b: Band, k: number): void => {
+    if (a1 - a0 < 0.03 || y1 - y0 < 0.02) return;
+    const cstep = b.kind === "base" ? 3 : b.kind === "wain" || b.kind === "stripe" ? 1.6 : full ? 1.25 : 5;
+    const us = lines(a0, a1, cstep, [], 43);
+    const rows = b.kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (full ? 0.95 : 3.6))) : 1;
+    const vs: number[] = [];
+    for (let q = 0; q <= rows; q++) vs.push(y0 + ((y1 - y0) * q) / rows);
+    const origin = P(a0, y0, 0);
+    const along = xd(xf, a1 - a0, 0);
+    withMat(b.kind === "base" || b.kind === "stripe" ? "boards" : "plaster", () => out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), into, (i, j) => {
+      const y = vs[j] as number;
+      let mod = 1 + noise(i * 3 + k, j, 3) * 0.12;
+      if (y < 0.5) mod *= 0.9;
+      return shade(c, scaled(b.f.paint, mod * 0.66), us[i] as number, d0, y, 0);
+    }, layerSurface(b.f, origin, along, [0, 1, 0]), { glow: 1 }));
+  };
+  let k = 6;
+  for (const b of bands) {
+    const ys = [b.y0, b.y1];
+    for (const h of holes) for (const y of [h.y0, h.y1]) if (y > b.y0 + 1e-3 && y < b.y1 - 1e-3) ys.push(y);
+    ys.sort((p, q) => p - q);
+    for (let t = 0; t + 1 < ys.length; t++) {
+      const ya = ys[t] as number;
+      const yb = ys[t + 1] as number;
+      if (yb - ya < 1e-3) continue;
+      const mid = (ya + yb) / 2;
+      const blocked = holes.filter((h) => h.y0 <= mid && mid <= h.y1).sort((p, q) => p.a0 - q.a0);
+      let at = s0;
+      for (const h of blocked) {
+        if (h.a0 > at) piece(at, h.a0, ya, yb, b, k++);
+        at = Math.max(at, h.a1);
+      }
+      if (s1 > at) piece(at, s1, ya, yb, b, k++);
+    }
+  }
+
+  // ---- what is laid in the holes
+  /** A flat quad on the wall's plane or `off` into the room, lit by the room. */
+  const flat = (a0: number, a1: number, y0: number, y1: number, off: number, albedo: Rgb, mat: MatRef): void => {
+    const at = (a: number, y: number): Rgb => shade(c, albedo, a, d0 + off, y, 0);
+    withMat(mat, () => out.poly([P(a0, y0, off), P(a1, y0, off), P(a1, y1, off), P(a0, y1, off)], into, [at(a0, y0), at(a1, y0), at(a1, y1), at(a0, y1)], undefined, { glow: 1 }));
+  };
+  /** A pane: a bright sheet on the wall's plane that follows the day (the hours code 0 is the day's glow), `lets` of it let through. */
+  const pane = (a0: number, a1: number, y0: number, y1: number, lets: number, colour: Rgb = PANE, glow: number = PANE_GLOW): void => {
+    withMat("painted", () => out.withHours(0, () => out.poly([P(a0, y0, 0), P(a1, y0, 0), P(a1, y1, 0), P(a0, y1, 0)], into, scaled(colour, lets), undefined, { glow })));
+  };
+  const frame = frameColour(c.seed, c.era, false);
+  /** A bar of a frame, proud of the wall. */
+  const bar = (a0: number, a1: number, y0: number, y1: number, colour: Rgb): void => flat(a0, a1, y0, y1, PROUD, colour, "painted");
+
+  holes.forEach((h, n) => {
+    if (h.cover === "door") return;
+    const lets = LETS[h.cover] ?? 1;
+    if (h.cover === "boarded") {
+      flat(h.a0, h.a1, h.y0, h.y1, 0, [0.6, 0.45, 0.28], "ply");
+      for (const f of [0.25, 0.7]) bar(h.a0 - 0.04, h.a1 + 0.04, h.y0 + (h.y1 - h.y0) * f, h.y0 + (h.y1 - h.y0) * f + 0.1, [0.42, 0.32, 0.2]);
+      return;
+    }
+    if (h.cover === "papered") pane(h.a0, h.a1, h.y0, h.y1, 1, [0.86, 0.8, 0.62], 0.5);
+    else pane(h.a0, h.a1, h.y0, h.y1, lets);
+    if (h.cover === "blinds") {
+      // Slats hanging from the head, part raised, each a thin dark band with the daylight between.
+      const seed = c.seed + n;
+      const drop = (h.y1 - h.y0) * (0.4 + hash01(seed, 432) * 0.55);
+      const col = slatColour(seed);
+      for (let y = h.y1 - 0.06; y > h.y1 - drop; y -= 0.12) flat(h.a0, h.a1, y - 0.07, y, PROUD * 0.5, scaled(col, 0.9), "cloth");
+    }
+    // The frame: four bars round the opening, a bar a pane's height up across an old front's tall window, and a sill board.
+    bar(h.a0 - BAR, h.a1 + BAR, h.y0 - BAR, h.y0, frame);
+    bar(h.a0 - BAR, h.a1 + BAR, h.y1, h.y1 + BAR, frame);
+    bar(h.a0 - BAR, h.a0, h.y0, h.y1, frame);
+    bar(h.a1, h.a1 + BAR, h.y0, h.y1, frame);
+    if (c.era < 1930 && h.y1 - h.y0 > 1.8) bar(h.a0, h.a1, h.y1 - 0.5, h.y1 - 0.45, frame);
+    if (full && h.y0 > 0.3) withMat("wood", () => fbox(c, (h.a0 + h.a1) / 2, d0 + 0.08, h.y0 - 0.04, 0.04, (h.a1 - h.a0) / 2 + 0.06, 0.08, { x: 1, z: 0 }, scaled(frame, 0.9), frame));
+  });
+
+  // ---- the door: its leaf (a board kick panel, glass over it, a board or glass over that) in a frame, with its casing and a brass pull
+  const door = holes[0] as Hole;
+  const leaf: Rgb = c.vacant ? [0.32, 0.28, 0.22] : pickOf([[0.35, 0.22, 0.14], [0.45, 0.45, 0.42], [0.3, 0.34, 0.3]] as readonly Rgb[], c.seed, 742);
+  const leafTop = Math.min(2.05, doorHead - 0.05);
+  flat(door.a0, door.a1, 0, 0.8, 0, leaf, "boards");
+  pane(door.a0, door.a1, 0.8, leafTop, 1);
+  if (doorHead > 2.3) pane(door.a0, door.a1, leafTop, doorHead, 1);
+  else flat(door.a0, door.a1, leafTop, doorHead, 0, leaf, "boards");
+  const w9 = 0.09;
+  bar(door.a0, door.a0 + w9, 0, doorHead, leaf);
+  bar(door.a1 - w9, door.a1, 0, doorHead, leaf);
+  bar(door.a0, door.a1, 0.76, 0.86, leaf);
+  bar(door.a0, door.a1, leafTop - 0.05, leafTop + 0.05, leaf);
+  bar(door.a0, door.a1, doorHead - w9, doorHead, leaf);
+  if (dw > 1.4) bar((door.a0 + door.a1) / 2 - 0.03, (door.a0 + door.a1) / 2 + 0.03, 0, doorHead, leaf);
+  bar(door.a0 - 0.08, door.a0, 0, doorHead + 0.08, frame);
+  bar(door.a1, door.a1 + 0.08, 0, doorHead + 0.08, frame);
+  bar(door.a0 - 0.08, door.a1 + 0.08, doorHead, doorHead + 0.08, frame);
+  withMat("steel", () => fbox(c, door.a1 - 0.17, d0 + 0.05, 0.95, 0.15, 0.02, 0.05, { x: 1, z: 0 }, [0.6, 0.5, 0.2], [0.65, 0.55, 0.25]));
+}
+
 /** What the shell hands back for what stands in it: where the doorway to the back room is. */
 export type ShellOut = { readonly doorS: number; readonly doorW: number; readonly open: boolean };
 
@@ -217,7 +368,7 @@ export type ShellOut = { readonly doorS: number; readonly doorW: number; readonl
 export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]; d: number[] }, dw: { s: number; open: boolean; w: number }): ShellOut {
   const { out, xf, floorY } = c;
   const full = c.detail === "full";
-  const d0 = 0.15;
+  const d0 = FACE_D;
   // Where the room as drawn ends: its back wall, or the painted sheet that stands for the rest of it (`roomBackdrop.ts`).
   const sheet = c.cut !== undefined;
   const d1 = c.cut ?? c.d1;
@@ -226,7 +377,7 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
   const vacant = c.vacant;
   const step = full ? 1.0 : 2.2;
   const noise = (a: number, b: number, k: number): number => hash01(c.seed * 131 + a * 17 + b * 29, 740 + k) - 0.5;
-  const surf = (f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | undefined => (f.layer === null ? undefined : { layer: f.layer, frame: { origin, u: unit3(u), v: unit3(v) } as UvFrame, tint: f.gain });
+  const surf = (f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | undefined => layerSurface(f, origin, u, v);
   const stain = fin.stain;
   // The doorway: at a station of the back wall where no tall furnishing stands, 0.9 m wide; open (a lit back room) or shut (a door).
   const doorW = dw.w;
@@ -326,6 +477,8 @@ export function roomShell(c: Ctx, r: RoomIn, fin: Finish, anchors: { s: number[]
     wallGrid("left", d0, d1, y0, y1, b.f, b.kind, 4);
     wallGrid("right", d0, d1, y0, y1, b.f, b.kind, 5);
   }
+
+  if (c.whole === true) frontWall(c, r, bands);
 
   // ---- the doorway at the back (the low tier's back wall is whole)
   if (!full || sheet) return { doorS: ds, doorW, open: false };

@@ -442,9 +442,9 @@ to stand, they stay seated.
 
 ### The wire
 
-`net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 2. A snapshot is a header (the message type, the tick,
-the last input taken and the count of players, 10 bytes), the players (28 bytes each: the engine's id, place, velocity,
-look and grounded flag, then the ride: a car's id, a seat, a phase and its ticks), a count of cars and the cars (35
+`net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 3. A snapshot is a header (the message type, the tick,
+the last input taken and the count of players, 10 bytes), the players (31 bytes each: the engine's id, place, velocity,
+look and grounded flag, then the ride: a car's id, a seat, a phase and its ticks, then the room: its id, a phase and its ticks, see "Walking into a building"), a count of cars and the cars (35
 bytes each, at these offsets: the id 0, the place 1 to 12, the heading as two 16-bit integers 13 to 16, the speed and the
 slip 17 to 20, the steer 21 to 22, the throttle 23 and the turn 24 as bytes, a flags byte for the handbrake and the lights
 25, the four seats 26 to 33, and the steps the car owes 34). Headings are made unit vectors again after they are read.
@@ -529,6 +529,75 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
 - The "no room to get out" line is decided by a timer on the player's own machine, so it can show wrongly to a joined
   player on a slow link, before the host's answer has come back.
 - `?cmd=carhome` in the address does nothing; the command typed in the command bar works.
+
+## Walking into a building
+
+The bar, the cafe and the lodging of the town can be walked into; the municipal building's inside is not planned yet. A click
+at a building's street door holds the player still while the screen goes dark, the host then moves the player into a copy of
+the room, and a click at the room's own door fades back out to the street. The buildings stay solid to everyone outside: no
+one in the street ever sees a room, and no one in a room sees the street.
+
+### The hidden room
+
+A room a player stands in is not the shop behind the street's glass. It is the same room, as the plan furnished it
+(`Unit.interior`), built again `LIFT` = 60 m over the street at the same place on the map, so the room's frame is its
+unit's front wall in the world and its floor is the walked ground at its street door plus 60 m. It is 60 m up for three
+reasons. Nothing of the town reaches that high, so no roof, tree or crane stands in a room. The engine's rain cover
+reaches 100 m up, so a roof over the room still stops the rain there. And it is not under the ground, where the engine's
+height fog and its water line would be wrong for a player below the sea. The rooms are `insideRooms(seed)`
+(`client/src/sim/inside/rooms.ts`), a pure function of the world's seed: ids 1 the bar, 2 the cafe, 3 the lodging, each with
+its walls, its door and its furnishings as rectangles.
+
+### The phases
+
+A player's place by the rooms is `Inside`: the room's id (0 in the street), a phase and the ticks left of a hold. The phases
+are `OUTSIDE`, `GOING_IN`, `INSIDE` and `GOING_OUT`. It follows the car's pattern (`sim/car/rules.ts`): the interact bit is a
+press on the host (`insidePressed`, from the `pressed` hook, which gives a player in the street to the car first and to the
+door only if the car did not act); a held phase counts `DOOR_TICKS` (27, 450 ms) down in the host's step (`insideStep`),
+during which the engine holds the player still (`held`); then the player is moved: to `arriveIn(room)` for going in, and
+for going out to `arriveOut(room)` moved clear of what stands there by the town's own constraint, on the walked ground.
+A player in a room moves by `insideMove`, the engine's own walking step on a flat floor with no jump (the eye would go
+through a low ceiling), then `constrainInRoom` keeps the hull in the walls and out of the furnishings; where two pieces
+of furniture stand closer than a hull is wide, the player stays where they were. It runs on the host, in a client's
+prediction and in its replay, so it is deterministic from the room and the command. The line at a door ("Click to go in",
+"Click to go out") asks the same `streetDoorAt` and `roomDoorAt` as the host's press, and shows nothing during a hold. The
+screen's black cover (`WalkHud.setDark`: 200 ms to black, 450 ms to clear) follows the phase in the snapshot, going dark
+in `GOING_IN` and `GOING_OUT`, never the click, so the screen is black before the player is moved.
+
+### On the wire
+
+Three bytes more for each player after the ride: the room's id, the phase and its ticks (`MOVER_BYTES` is 31, `WALK_PROTOCOL`
+3). A read refuses a phase outside the four and a room's id that is 0 unless the phase is `OUTSIDE`. The host's word
+corrects the local player's `inside` as it does the ride. `view` leaves out of the frame every other player who is not where
+the local player is (the room's id for `INSIDE` and `GOING_OUT`, else the street), since a player in a room is 60 m up and
+must not be drawn to someone in the street, nor the reverse. The console's `goin bar`, `goin cafe`, `goin lodging` and
+`goin out` put the host's player in a room, with no hold, for looking at one; from an address it waits for the world and
+the player.
+
+### How it is drawn
+
+The hidden room is drawn by `insideGeometry.ts` and `insideParts.ts` (`client/src/game/town/`).
+
+- **Built whole, from the same record.** `insideGeometry(g, room, detail)` calls `roomGeometry`, the builder of the room behind the street's glass,
+  with the unit's own `Unit.interior`, state, hours and finish (so a shop shut for the night is as dark inside as it looks from the street), the
+  building's own frame (`buildingLevels(...).xf`, which a test holds equal to the room's frame to a centimetre) and a floor height such that the drawn floor (the shell draws it
+  8 cm over its `floorY`) is `room.floorY`, where the player's feet stand. `RoomIn.whole` builds it as `through` builds a room (to its back wall, with no painted sheet and no haze)
+  and leaves nothing out for being unseen from the street: `fbox`, `cbox`, `fcyl`, `wallBox` and the shelves' goods draw every side, a box held off the floor has its
+  underside and a ceiling thing its top, a face that lies in a wall's own plane is left out (it would fight the wall), and a front wall is built on the inside at 15 cm from the unit's openings and door
+  (`frontWall` in `roomShell.ts`): the wall's bands cut round the holes, each window a bright pane with its frame bars (slats, paper or boards where the plan covers it) and the door shut in its frame with a pull. A pane glows
+  with the day and is dark at night (the hours code 0, the day's glow: `DAY_GLOW_CODE` in `townMaterial.ts`); it shows no street.
+- **Every face has its back.** The builder given `new MeshBuilder(true)` lays the back of everything it lays (the same corners wound the other way, normals reversed, look unchanged), so no
+  face is see-through from any side whichever builder laid it; the hidden room is built in that mode and its triangles come in pairs. The street's build is not (`MeshBuilder()` is as it was).
+- **Its own material and the rain.** `insideParts.ts` makes the room one mesh in the town's solid material without the wet look (a floor indoors is not wet); the engine's air stays on it, since on the tiers with
+  no post chain it also carries the display curve and the grade. The mesh is hard cover for the rain and the cover map is drawn again when it is made and when it is let go. The room is built
+  when the local player is `INSIDE` or `GOING_OUT`, or in `GOING_IN` once the hold is past 12 ticks (the screen is dark), at once for a player who is simply `INSIDE`, and let go the frame the
+  phase is `OUTSIDE`: a room is never kept while the player is in the street.
+- **The town is hidden while inside.** While the phase is `INSIDE`, `townParts.seen` shows none of the town's own batches (they are below the floor), nor to the rain's map; in `GOING_OUT` they are drawn again so the street is there when the screen clears.
+- **People.** `insidePeople` stands copies of each room's unit's people in the hidden room (`roomPeople`, `people.ts`: the same placement as the street's, over the whole room to the back wall less a margin
+  and not the front 2 m), tagged with the room's id; `peopleParts` shows a person with a room only while the local player is where that room is (`setInside`), and then shows nobody else, walkers and the
+  street's people included. Their bodies are part of the people's capacity.
+- **Limits.** The deeper part of a room keeps what the street's build puts there (no chairs past `PLAIN_FROM`, and the clutter the front 4 m have); a pane's glow is a flat sheet, not the day's light
+  falling in; the room is lit by its own baked light only.
 
 ## The title page
 

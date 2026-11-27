@@ -203,13 +203,16 @@ export function unitSeats(b: Building, unit: Unit): Seat[][] {
   return roomSeats(ctx, unit.interior.furnishings);
 }
 
-/** The people of one open unit. */
-function unitPeople(b: Building, unit: Unit): Person[] {
+/**
+ * The people of one open unit, standing within `zone` metres of the glass (the front of the room, where it is seen from the street, unless a room's
+ * whole depth is asked for: `roomPeople`).
+ */
+function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[] {
   const id = b.id;
   const uid = unit.id;
   const room = unit.interior;
   const furn = room.furnishings;
-  const top = Math.min(room.depth - WALL_MARGIN, FRONT_ZONE);
+  const top = Math.min(room.depth - WALL_MARGIN, zone);
   const inner = { s0: unit.s0 + 0.04, s1: unit.s1 - 0.04 };
   const bounds = { s0: inner.s0, s1: inner.s1, depth: room.depth };
   const doorS0 = unit.door.s - unit.door.width / 2 - DOOR_SIDE;
@@ -488,6 +491,11 @@ function unitPeople(b: Building, unit: Unit): Person[] {
     seat: p.seat === null ? null : { furnishing: p.seat.furnishing, top: p.seat.top, family: p.seat.family },
     target: p.target,
   }));
+}
+
+/** The people of one open unit placed over the whole room, to its back wall less a margin: for the copy of the room a player walks into (`insideParts.ts`), where they are not only seen through the glass. */
+export function roomPeople(b: Building, unit: Unit): readonly Person[] {
+  return unit.state === "open" ? unitPeople(b, unit, Infinity) : [];
 }
 
 const cache = new WeakMap<TownPlan, readonly Person[]>();

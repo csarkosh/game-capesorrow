@@ -14,7 +14,10 @@ import { INTERACT_BIT, LEAVE_SPEED } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
 import { HEARD_WITHIN, earshot, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
-import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
+import { OUTSIDE } from "../../sim/inside/rooms.js";
+import { insidePut } from "../../sim/inside/rules.js";
+import { darkFor, doorLine, goinTarget } from "../doors.js";
+import { CAR_RETURNED, GET_IN, GET_OUT, HOST_PUTS_IN, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
 
 type CapeSide = SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient>;
 type CapeHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud>;
@@ -33,16 +36,22 @@ function slowEnough(ride: Ride, cars: readonly Car[]): boolean {
   return car !== undefined && Math.abs(car.speed) < LEAVE_SPEED;
 }
 
-/** What the line at the door says: to get in beside a door with a seat to take, to get out when seated and nearly stopped, else nothing. */
-export function promptFor(self: Walker | undefined, cars: readonly Car[]): string | null {
+/**
+ * What the line at the door says: the car's line first, to get in beside a door with a seat to take, or to get out when seated and nearly stopped;
+ * else a building's (`doorLine`: go in at a street door, go out at a room's door); else nothing. `seed` is the world's, or null where there is none.
+ */
+export function promptFor(self: Walker | undefined, cars: readonly Car[], seed: number | null = null): string | null {
   if (self === undefined) return null;
   const ride = self.ride;
   if (ride.phase === FOOT) {
-    for (let i = 0; i < cars.length; i++) {
-      const car = cars[i] as Car;
-      if (boardSeat(car, self.pos) >= 0) return GET_IN;
+    // A player in a room is 60 m over the street: no car's door is theirs.
+    if (self.inside.phase === OUTSIDE) {
+      for (let i = 0; i < cars.length; i++) {
+        const car = cars[i] as Car;
+        if (boardSeat(car, self.pos) >= 0) return GET_IN;
+      }
     }
-    return null;
+    return doorLine(self, seed);
   }
   return ride.phase === SEATED && slowEnough(ride, cars) ? GET_OUT : null;
 }
@@ -123,6 +132,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   // The host's own world, once this screen hosts: `carhome` is the host's to say, and the page's active world is its own only then.
   let hostWorld: WalkWorld | null = null;
   const watch = newClickWatch();
+  // What `goin` last asked (a place's name), until the host's local player is in a world to be put there; and that player's id, as the last frame knew it.
+  let goin: string | null = null;
   // What each car was at the last frame that saw it, for the thud; and the local player's ride at that frame, for the door. Cleared with the world.
   const marks = new Map<number, CarMark>();
   let lastPhase = -1;
@@ -218,6 +229,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       line = null;
       shown = null;
       hostWorld = null;
+      goin = null;
       forget();
       host.ambient.car(null);
     },
@@ -229,10 +241,28 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       const ride = self?.ride;
       const down = cmd !== null && (cmd.buttons & INTERACT_BIT) !== 0;
       watchClick(watch, now, down, ride, ride !== undefined && slowEnough(ride, cars));
-      set(lineFor(watch, now, promptFor(self, cars)));
+      const seed = world === undefined ? null : (world as WalkWorld).forest.seed;
+      set(lineFor(watch, now, promptFor(self, cars, seed)));
+      host.hud.setDark(darkFor(self));
+      if (goin !== null && world !== undefined && self !== undefined) {
+        // `goin` is the host's to do, between its ticks, on its own world and its own player.
+        const asked = goin;
+        goin = null;
+        if (world !== hostWorld) host.hud.flash(HOST_PUTS_IN, FLASH_MS);
+        else {
+          const target = goinTarget(seed as number, asked);
+          const mine = (world as WalkWorld).state.players.get(localId);
+          if (target !== undefined && mine !== undefined) insidePut(world as WalkWorld, mine, target);
+        }
+      }
       hear(world as WalkWorld | undefined, state, self);
     },
     applyOwnView(name, args) {
+      if (name === "goin") {
+        // Asked before a world or a player stands (an address read as the page loads), it waits for the first frame that has both.
+        goin = args[0] ?? "out";
+        return true;
+      }
       if (name !== "carhome") return base.applyOwnView(name, args);
       const world = host.activeWorld;
       // Before a world is in (an address read as the page loads) there is nothing to bring back.

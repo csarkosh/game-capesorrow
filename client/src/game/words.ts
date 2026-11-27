@@ -30,3 +30,10 @@ export const NO_ROOM_TO_GET_OUT = "No room to get out here";
 /** What `carhome` says when the car is back, and what a follower is told in its place. */
 export const CAR_RETURNED = "The car is back at the office.";
 export const HOST_RETURNS_CAR = "Only the host can bring the car back.";
+
+/** The line at the door of a bar, a cafe or a lodging: to go in from the street, and to go out from the room. */
+export const GO_IN = "Click to go in";
+export const GO_OUT = "Click to go out";
+
+/** What `goin` says when it is not the host's to do, and when the room is not one of the town's. */
+export const HOST_PUTS_IN = "Only the host can put you in a room.";

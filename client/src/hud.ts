@@ -8,6 +8,7 @@ import type { PageHud } from "@csarkosh/engine/game/sessionGame";
 
 const STYLE = `
 .walk-hud { position: absolute; inset: 0; pointer-events: none; font: 14px/1.4 ui-monospace, Menlo, monospace; color: #e8e8ea; }
+.walk-hud .dark { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 .walk-hud .line { position: absolute; left: 0; right: 0; text-align: center; text-shadow: 0 1px 2px #000; }
 .walk-hud .status { top: 46%; }
 .walk-hud .flash { bottom: 12%; }
@@ -16,8 +17,14 @@ const STYLE = `
 .walk-hud button { position: absolute; top: 12px; right: 12px; pointer-events: auto; font: inherit; color: inherit; background: #0008; border: 1px solid #fff4; border-radius: 4px; padding: 4px 10px; }
 `;
 
-/** The page's HUD with a line at a car's door: the line, or none, and what a press of it does (a touch player's interact). */
-export type WalkHud = PageHud & { setPrompt(line: string | null, press?: { down(): void; up(): void }): void };
+/** How long the screen takes to go black, and to clear, in milliseconds: a door's hold is longer than the first, so the screen is black before a player is moved. */
+export const DARK_MS = 200, CLEAR_MS = 450;
+
+/**
+ * The page's HUD with a line at a door: the line, or none, and what a press of it does (a touch player's interact); and a black cover over the
+ * scene (under the lines) that goes dark and clears by a fade, for walking through a door.
+ */
+export type WalkHud = PageHud & { setPrompt(line: string | null, press?: { down(): void; up(): void }): void; setDark(dark: boolean): void };
 
 /** A line of status alone, for a start's waits and its failure. */
 export function createStatusLine(container: HTMLElement): { setStatus(line: string | null): void; dispose(): void } {
@@ -30,6 +37,9 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
   style.textContent = STYLE;
   const root = document.createElement("div");
   root.className = "walk-hud";
+  // First in the root, so that every line is over it.
+  const cover = document.createElement("div");
+  cover.className = "dark";
   const status = document.createElement("div");
   status.className = "line status";
   const flash = document.createElement("div");
@@ -55,7 +65,7 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
     press.down();
   });
   for (const type of ["pointerup", "pointercancel", "pointerleave"]) prompt.addEventListener(type, release);
-  root.append(status, flash, prompt, pause);
+  root.append(cover, status, flash, prompt, pause);
   container.append(style, root);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   return {
@@ -76,6 +86,10 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
       press = line === null ? null : (next ?? null);
       prompt.textContent = line ?? "";
       prompt.classList.toggle("pressable", press !== null);
+    },
+    setDark(dark) {
+      cover.style.transition = `opacity ${dark ? DARK_MS : CLEAR_MS}ms ease`;
+      cover.style.opacity = dark ? "1" : "0";
     },
     // The empty game carries no lamp, so there is no hint of one to show.
     setLamp: () => undefined,

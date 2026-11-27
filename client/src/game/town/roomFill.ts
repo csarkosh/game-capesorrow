@@ -763,12 +763,16 @@ export function cbox(c: Ctx, cs: number, cd: number, y0: number, h: number, ha: 
   const norms: [number, number][] = [[-bx, -bd], [ax, ad], [bx, bd], [-ax, -ad]];
   for (let i = 0; i < 4; i++) {
     const [ns, nd] = norms[i] as [number, number];
-    if (nd > 0.35) continue;
+    if (nd > 0.35 && c.whole !== true) continue;
     const a = ring[i] as [number, number];
     const b = ring[(i + 1) % 4] as [number, number];
     const alb = nd < -0.5 ? side : scaled(side, 0.82);
     const col: Rgb[] | Rgb = baked ? [shade(c, alb, a[0], a[1], y0, 0), shade(c, alb, b[0], b[1], y0, 0), shade(c, alb, b[0], b[1], y0 + h, 0), shade(c, alb, a[0], a[1], y0 + h, 0)] : glowing(c, alb, cd);
     out.poly([xp(xf, a[0], a[1], yb), xp(xf, b[0], b[1], yb), xp(xf, b[0], b[1], yb + h), xp(xf, a[0], a[1], yb + h)], xd(xf, ns, nd), col, undefined, fx);
+  }
+  // In a room a person stands in, its top too, which a person on a ladder or a tall one sees (unless it lies against the ceiling).
+  if (c.whole === true && y0 + h < c.ceiling - 0.02) {
+    out.poly(ring.map(([s, d]) => xp(xf, s, d, yb + h)), [0, 1, 0], baked ? ring.map(([s, d]) => shade(c, scaled(bottom, 0.8), s, d, y0 + h, 1)) : glowing(c, scaled(bottom, 0.8), cd), undefined, fx);
   }
 }
 

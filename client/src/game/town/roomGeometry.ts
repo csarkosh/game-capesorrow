@@ -6,7 +6,7 @@
  * cans, a lift with a car on it. `roomDressing.ts` hangs what a trade puts on its walls and stands in its window.
  *
  * Everything is drawn in the building's own frame (`Xf`: `s` along the front from its left end, `d` into the building from its face), as
- * the plan gives it, and only the faces a person on the street could see are built. What is authored: the colours of goods by trade, the
+ * the plan gives it, and only the faces a person on the street could see are built (a room that is `whole`, `RoomIn.whole`, has every face). What is authored: the colours of goods by trade, the
  * heights, the number of tiers and items. What the plan causes: which furnishings stand where, which lights are on, whether the unit is
  * open, shut or vacant (the light's, in `roomLight.ts`).
  */
@@ -38,8 +38,8 @@ function plainBands(c: Ctx, f: Furnishing, i: number, dir: { x: number; z: numbe
   const pd = dir.x;
   const tiers = Math.max(2, Math.min(3, Math.floor(f.h / 0.7)));
   for (const sg of [1, -1]) {
-    // A face that points away from the street shows only at a slant; one against a party wall is never seen.
-    if (sg * pd > 0.35) continue;
+    // A face that points away from the street shows only at a slant; one against a party wall is never seen (in a room a person stands in both show).
+    if (sg * pd > 0.35 && c.whole !== true) continue;
     const fsx = f.s + px * sg * (f.sd / 2 + 0.03);
     if (fsx < c.s0 + 0.05 || fsx > c.s1 - 0.05) continue;
     const hint = xd(c.xf, px * sg, pd * sg);
@@ -72,7 +72,7 @@ function shelfRun(c: Ctx, f: Furnishing, i: number): void {
   const face = (sg: number): void => {
     // A face that points away from the street shows only at a slant; both are drawn, each to its own side of the run.
     const nd = sg * pd;
-    if (nd > 0.35) return;
+    if (nd > 0.35 && c.whole !== true) return;
     // A face against a party wall is never seen.
     const fsx = f.s + px * sg * (f.sd / 2 + 0.1);
     if (fsx < c.s0 + 0.05 || fsx > c.s1 - 0.05) return;
@@ -358,6 +358,8 @@ export function roomGeometry(out: MeshBuilder, r: RoomIn): void {
 function room(out: MeshBuilder, r: RoomIn): void {
   const { xf, floorY, interior, detail } = r;
   const full = detail === "full";
+  // A room a person stands in is drawn whole to its back wall, as one seen through its glass is, and with every face of everything.
+  const whole = r.whole === true;
   const vacant = r.state === "vacant for lease" || r.state === "vacant boarded";
   const lit = r.lit;
   // What stands against the back wall hides the stretch behind it: the doorway goes where the partition shows.
@@ -380,8 +382,9 @@ function room(out: MeshBuilder, r: RoomIn): void {
   const c: Ctx = {
     out, xf, floorY, seed: r.id, lit, vacant, detail, trade: r.trade, field, ceiling: interior.ceiling, s0: r.s0, s1: r.s1, d1: interior.depth, era: r.era, glassIn: r.glassIn ?? 0, n: 0, chairs: [],
     // A room that is in use ends, as drawn, at a painted sheet a little behind its front; a vacant one is drawn bare to its back wall.
-    cut: r.through !== true && !vacant && interior.depth > BACKDROP_AT + BACKDROP_MIN_BEHIND ? BACKDROP_AT : undefined,
+    cut: r.through !== true && !whole && !vacant && interior.depth > BACKDROP_AT + BACKDROP_MIN_BEHIND ? BACKDROP_AT : undefined,
     type: interior.type, paint: fin.wall.paint, base: fin.base, door: { s: r.door.s, w: r.door.width }, feet, style: styleOf(r.id, r.trade, r.era, r.opened, r.remodel?.decade ?? 0),
+    ...(whole ? { whole: true } : {}),
   };
   // The furnishings: all of them on the full tier, the largest few on the low.
   let list = interior.furnishings.map((f, i) => ({ f, i }));
@@ -404,8 +407,8 @@ function room(out: MeshBuilder, r: RoomIn): void {
     if (c.cut !== undefined && f.d - ez > c.cut - 0.04) continue;
     // A small thing takes the veil at one depth, its own middle's (`Ctx.veilD`).
     const own: Ctx = ez <= 0.4 ? { ...c, n: i, veilD: f.d } : { ...c, n: i };
-    // Past `PLAIN_FROM` (in a room with no sheet) a furnishing is its big shape, not its small parts.
-    furnishing(full && f.d > PLAIN_FROM && f.kind !== "partition" ? { ...own, detail: "low", plain: true } : own, f, i);
+    // Past `PLAIN_FROM` (in a room with no sheet) a furnishing is its big shape, not its small parts; in a room a person stands in it is all of it.
+    furnishing(full && !whole && f.d > PLAIN_FROM && f.kind !== "partition" ? { ...own, detail: "low", plain: true } : own, f, i);
   }
   floorThings(c, fin.checker);
   dressRoom(c, r, fin, dw);

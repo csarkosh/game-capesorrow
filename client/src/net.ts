@@ -1,7 +1,7 @@
 /**
  * The game as the network's sessions see it (`@csarkosh/engine/net/game`): a snapshot holds the players' places and
- * where each is in a car, and the cars; a press on the host is the car's (`carPressed`: getting in and out, the lamps);
- * the host's word corrects the local player's ride and every car in the predicted world, so that the replay of the
+ * where each is in a car and by the rooms of the town's buildings, and the cars; a press on the host is the car's (`carPressed`: getting in
+ * and out, the lamps) or a door's (`insidePressed`); the host's word corrects the local player's ride and room and every car in the predicted world, so that the replay of the
  * commands not yet acknowledged drives the car as the host does; and a frame is drawn from the state, the local
  * driver's car from the predicted world and the rest from the blended snapshots.
  */
@@ -12,21 +12,26 @@ import {
 } from "@csarkosh/engine/net/wire";
 import { cloneVec3 } from "@csarkosh/engine/sim/core";
 import { carPressed, newRide } from "./sim/car/rules.js";
+import { insidePressed } from "./sim/inside/rules.js";
 import { seatPlace } from "./sim/car/seats.js";
 import { OWED_MAX } from "./sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "./sim/car/types.js";
+import { GOING_IN, GOING_OUT, INSIDE, newInside, OUTSIDE, type Inside } from "./sim/inside/rooms.js";
 import { WALK_RULES, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
 /** What two ends must share to drive and walk together. */
-export const WALK_PROTOCOL = 2;
+export const WALK_PROTOCOL = 3;
 
-export type WalkMover = SnapshotMover & { pitch: number; ride: Ride };
+export type WalkMover = SnapshotMover & { pitch: number; ride: Ride; inside: Inside };
 export type WalkSnapshot = { tick: number; lastProcessedInput: number; players: WalkMover[]; cars: Car[] };
 
 /** The type, the tick, the last input taken, and how many players follow. */
 const HEAD_BYTES = 1 + 4 + 4 + 1;
-/** An id, a place, a velocity, a yaw, a pitch, whether the player stands, and the ride: a car's id, a seat (signed), a phase and its ticks. */
-export const MOVER_BYTES = 2 + 12 + 6 + 2 + 1 + 1 + 4;
+/**
+ * An id, a place, a velocity, a yaw, a pitch, whether the player stands, the ride (a car's id, a seat (signed), a phase and its ticks), and where the
+ * player is by the rooms: the room's id (0 in the street), a phase and its ticks.
+ */
+export const MOVER_BYTES = 2 + 12 + 6 + 2 + 1 + 1 + 4 + 3;
 /**
  * A car, at the offsets from its start: the id (0), the place (1 to 12), the heading (13 to 16), the speed and the slip
  * (17 to 20), the steer (21 to 22), the throttle (23) and the turn (24), a flags byte (25), four seats (26 to 33), and the
@@ -60,6 +65,21 @@ function readRide(car: number, seat: number, phase: number, ticks: number, taken
   return { car, seat, phase, ticks };
 }
 
+/**
+ * A player's place by the rooms as read off the wire, or an error: a phase must be one of the four, and the room's id is 0 exactly when the player is
+ * in the street. (Whether the id names a room is the rules' to find: `insideMove` puts a player of no room back in the street.)
+ */
+function readInside(place: number, phase: number, ticks: number): Inside {
+  if (phase !== OUTSIDE && phase !== GOING_IN && phase !== INSIDE && phase !== GOING_OUT) throw new Error("a snapshot of the game with a player of no phase in a room");
+  if ((place === 0) !== (phase === OUTSIDE)) throw new Error("a snapshot of the game with a player whose room does not fit where they are");
+  return phase === OUTSIDE ? newInside() : { place, phase, ticks };
+}
+
+/** Where a player is for the purpose of who can see whom: the room's id while in a room (or leaving it, still there), else 0, the street. */
+export function whereIs(inside: Inside): number {
+  return inside.phase === INSIDE || inside.phase === GOING_OUT ? inside.place : 0;
+}
+
 function copyCar(car: Car): Car {
   return { ...car, controls: { ...car.controls }, seats: [...car.seats] };
 }
@@ -87,6 +107,9 @@ export function encodeWalkSnapshot(snapshot: WalkSnapshot): ArrayBuffer {
     view.setInt8(o + 25, p.ride.seat);
     view.setUint8(o + 26, p.ride.phase);
     view.setUint8(o + 27, p.ride.ticks);
+    view.setUint8(o + 28, p.inside.place);
+    view.setUint8(o + 29, p.inside.phase);
+    view.setUint8(o + 30, p.inside.ticks);
     o += MOVER_BYTES;
   }
   view.setUint8(o, snapshot.cars.length);
@@ -133,6 +156,7 @@ export function decodeWalkSnapshot(buffer: ArrayBuffer): WalkSnapshot {
       pitch: dequantizePitch(view.getInt8(o + 22)),
       grounded: view.getUint8(o + 23) === 1,
       ride: readRide(view.getUint8(o + 24), view.getInt8(o + 25), view.getUint8(o + 26), view.getUint8(o + 27), taken),
+      inside: readInside(view.getUint8(o + 28), view.getUint8(o + 29), view.getUint8(o + 30)),
     });
     o += MOVER_BYTES;
   }
@@ -198,19 +222,29 @@ export const WALK: NetGame<WalkWorld, Walker, WalkSnapshot, WalkState, never> = 
   snapshot: (world, lastProcessedInput) => ({
     tick: world.state.tick,
     lastProcessedInput,
-    players: [...world.state.players.values()].map((p) => ({ id: p.id, pos: p.pos, vel: p.vel, yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, ride: { ...p.ride } })),
+    players: [...world.state.players.values()].map((p) => ({ id: p.id, pos: p.pos, vel: p.vel, yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, ride: { ...p.ride }, inside: { ...p.inside } })),
     cars: world.state.cars.map(copyCar),
   }),
   tracked: () => [],
-  /** A press is the car's: a door, a seat, the lamps (`carPressed`). It says nothing to the player. */
+  /**
+   * A press is the car's (a door, a seat, the lamps: `carPressed`) or a building's door (`insidePressed`). A player in the street presses the car first,
+   * and the door only if the car's rules did not act on them; a player in a room presses only the door. It says nothing to the player.
+   */
   pressed: (world, player, bits) => {
-    carPressed(world, player, bits);
+    if (player.inside.phase === OUTSIDE) {
+      const before = player.ride;
+      carPressed(world, player, bits);
+      if (player.ride === before) insidePressed(world, player, bits);
+    } else {
+      insidePressed(world, player, bits);
+    }
     return null;
   },
   /** The host's word on the local player's ride and on every car, as copies: the snapshot is kept for blending, and the replay that follows moves the cars. */
   correct: (world, local, truth, snapshot) => {
     // A rider of a car the snapshot does not hold is on foot.
     local.ride = truth.ride.phase === FOOT || snapshot.cars.some((c) => c.id === truth.ride.car) ? { ...truth.ride } : newRide();
+    local.inside = { ...truth.inside };
     world.state.cars = snapshot.cars.map(copyCar);
   },
   blend: (a, b, alpha) => ({
@@ -231,11 +265,13 @@ export const WALK: NetGame<WalkWorld, Walker, WalkSnapshot, WalkState, never> = 
     const driven = local !== undefined && local.ride.phase === SEATED && local.ride.seat === 0 ? local.ride.car : 0;
     const cars = between === null ? world.state.cars : between.cars.map((c) => (c.id === driven ? (world.state.cars.find((w) => w.id === c.id) ?? c) : c));
     const players = new Map<number, Walker>();
+    // A room is built 60 m over the street: a player is shown only to those where they are, the street's players to each other and a room's to those in it.
+    const here = local === undefined ? 0 : whereIs(local.inside);
     // The others stand where the blended pair has them; the local player is the predicted world's own.
     for (const p of between?.players ?? []) {
-      if (p.id === localId) continue;
+      if (p.id === localId || whereIs(p.inside) !== here) continue;
       const known = p.ride.phase === FOOT || cars.some((c) => c.id === p.ride.car);
-      players.set(p.id, { id: p.id, pos: cloneVec3(p.pos), vel: cloneVec3(p.vel), yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, lastProcessedInput: 0, ride: known ? { ...p.ride } : newRide() });
+      players.set(p.id, { id: p.id, pos: cloneVec3(p.pos), vel: cloneVec3(p.vel), yaw: p.yaw, pitch: p.pitch, grounded: p.grounded, lastProcessedInput: 0, ride: known ? { ...p.ride } : newRide(), inside: { ...p.inside } });
     }
     if (local === undefined) return { tick: world.state.tick, players, nextEntityId: world.state.nextEntityId, rngSeed: world.state.rngSeed, cars };
     // A rider other than the driver sits in the car as the blended pair has it, so the body is in the car that is drawn and not where the host's car will be a moment on. With no snapshot the cars are the world's, and the body is already in its seat.
