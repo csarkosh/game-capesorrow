@@ -8,7 +8,8 @@ import { SURFACE_FLOATS } from "../../src/game/town/meshBuilder.js";
 import { NO_LAYER } from "../../src/game/town/townLayers.js";
 import { townGeometry, townGround } from "../../src/game/town/townGeometry.js";
 import { NEVER_CODE, isHome, porchCode, windowCodes, type WindowWindow } from "../../src/game/town/windowNight.js";
-import { lampKind, lampSites } from "../../src/game/town/props/lamps.js";
+import { boatCabin } from "../../src/game/town/boatGeometry.js";
+import { isWorkKind, lampKind, lampSites, workLook } from "../../src/game/town/props/lamps.js";
 import { planFor } from "../../src/sim/town/planFor.js";
 import type { Building, TownPlan } from "../../src/sim/town/types.js";
 
@@ -119,11 +120,15 @@ describe("the evening in the homes", () => {
     const sites = lampSites(ground);
     const plan = ground.plan;
     const street = plan.props.poles.filter((p) => p.light !== null && lampKind(p.seed) !== "dead").length;
-    const harbour = plan.harbour.lights.filter((l) => l.kind !== "day beacon").length;
+    // The harbour's: the headland light, the pier light, and each working lamp that is not dead (a dead one throws nothing).
+    const harbour = plan.harbour.lights.filter((l) => l.kind !== "day beacon" && !(isWorkKind(l.kind) && workLook(l).dead)).length;
+    const cabins = plan.harbour.boats.filter((b) => boatCabin(b) !== null).length;
+    const shops = sites.filter((l) => l.hours !== undefined).length;
     let porches = 0;
     for (const b of plan.buildings) if (porchCode(b, plan.uses[b.id]) !== null && plan.uses[b.id]?.door !== null) porches++;
-    expect(sites.length).toBe(street + harbour + porches);
-    expect(harbour).toBe(2);
+    expect(sites.length).toBe(street + harbour + porches + cabins + shops);
+    expect(harbour).toBeGreaterThan(2);
+    expect(shops).toBeGreaterThan(0);
     const dead = plan.props.poles.filter((p) => p.light !== null && lampKind(p.seed) === "dead").length;
     expect(dead).toBeGreaterThanOrEqual(0);
     for (const l of sites) {

@@ -148,6 +148,8 @@ describe("the props stage (what stands in the streets, yards and docks)", () => 
           const l2 = dx * dx + dz * dz;
           const t = ((v.x - s.a.x) * dx + (v.z - s.a.z) * dz) / l2;
           if (t < 0 || t > 1) continue;
+          // A car lies along its street: where two streets' centre lines are as near as each other (a street shut with a planter against another's curb), the one it lies along is its own.
+          if (Math.abs((v.hx * dx + v.hz * dz) / Math.sqrt(l2)) < 0.9) continue;
           const d = Math.hypot(v.x - (s.a.x + dx * t), v.z - (s.a.z + dz * t));
           if (d < bd) {
             bd = d;

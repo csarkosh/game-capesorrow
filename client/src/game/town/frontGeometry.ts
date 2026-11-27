@@ -18,7 +18,7 @@ import { greyed, hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilde
 import { doorIn, glazed, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { unitHours } from "./hours.js";
 import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
-import { drawWindow, frameColour, type WinCtx } from "./windowGeometry.js";
+import { drawWindow, frameColour, glassOffOf, isMasonry, SILL_OUT, type WinCtx } from "./windowGeometry.js";
 import { slatBlinds, slatColour, verticalBlinds } from "./windowDressing.js";
 import type { Building, BuildingUse, Unit } from "../../sim/town/types.js";
 import type { Detail, FillReport } from "./townTypes.js";
@@ -55,6 +55,24 @@ export type FrontPlan = { readonly holes: Hole[]; draw(): void; /** The lowest t
 const CANVAS: readonly Rgb[] = [[0.5, 0.1, 0.1], [0.12, 0.3, 0.2], [0.14, 0.22, 0.4], [0.62, 0.55, 0.35], [0.3, 0.3, 0.3], [0.65, 0.35, 0.1]];
 const BULKHEAD: readonly Rgb[] = [[0.1, 0.2, 0.14], [0.15, 0.1, 0.08], [0.32, 0.12, 0.1], [0.12, 0.12, 0.13], [0.3, 0.3, 0.28], [0.45, 0.4, 0.3]];
 
+/** How far the stone trim of an old brick front stands out of the wall, in metres, as a real building's does: a stone sill (the same as a house's sill, `SILL_OUT`), the lintel over an upper window, a pilaster between two units, the water table at the foot. */
+const LINTEL_OUT = 0.12;
+const PILASTER_OUT = 0.16;
+const WATER_TABLE_OUT = 0.12;
+/** The cornice under the parapet, on the full tier: the main band, the second band of the two-band shape, the dentils of the dentilled shape, and the cap over them. Their heights and places are unchanged. */
+const CORNICE_OUT = 0.26;
+const CORNICE_SECOND_OUT = 0.14;
+const DENTIL_OUT = 0.2;
+const CAP_OUT = 0.34;
+/** Under a pitched roof the cap would stand a centimetre inside the roof's edge board, which hangs 35 cm out of the wall (`EAVE`, in `buildingGeometry.ts`), and the two faces would fight. So it stands a step (3 cm) clear of the board instead, out to 38 cm: deeper than asked, never shallower. */
+const ROOF_BOARD_OUT = 0.35;
+const CAP_OUT_PITCHED = ROOF_BOARD_OUT + 0.03;
+/** The same four on the low tier, which keeps its shallower cornice. */
+const CORNICE_OUT_LOW = 0.14;
+const CORNICE_SECOND_OUT_LOW = 0.07;
+const DENTIL_OUT_LOW = 0.1;
+const CAP_OUT_LOW = 0.2;
+
 /** A unit's frame, from its age: the first builder's in the building's era, or the remodel's decade where the remodel changed it. */
 function unitFrame(b: Building, u: Unit, widened: boolean): Rgb {
   const rem = u.remodel;
@@ -81,7 +99,7 @@ export function planFront(i: FrontIn): FrontPlan {
   const drawers: (() => void)[] = [];
   const tallest = use.units.reduce((m, u) => Math.max(m, u.fascia), 3.2);
   const groundStoreyTop = tallest + 0.45;
-  const winCtx: WinCtx = { ...(i.report === undefined ? {} : { report: i.report }), out, glass, detail, id: b.id, era: b.era, surface: i.surface, trim: old ? [0.55, 0.52, 0.46] : TRIM_WHITE, wall: i.wall, stoneSill: full && brick };
+  const winCtx: WinCtx = { ...(i.report === undefined ? {} : { report: i.report }), out, glass, detail, id: b.id, era: b.era, surface: i.surface, trim: old ? [0.55, 0.52, 0.46] : TRIM_WHITE, wall: i.wall, stoneSill: full && brick, masonry: isMasonry(b.material) };
 
   // ---- the units
   use.units.forEach((u) => {
@@ -123,7 +141,7 @@ export function planFront(i: FrontIn): FrontPlan {
         if (o.cover === "blinds") {
           // Slats with the room showing between them, part raised; some offices have vertical louvres instead.
           const bseed = b.id * 3 + u.id + k;
-          const behind = { out, w, detail: full ? "full" as const : "low" as const, seed: bseed, glass: -0.07, lit };
+          const behind = { out, w, detail: full ? "full" as const : "low" as const, seed: bseed, glass: glassOffOf(full, winCtx.masonry === true), lit };
           if (u.interior.type === "office" && hash01(bseed, 437) < 0.3) verticalBlinds(behind, sa, sb, y1 - 0.02, y0 + 0.05, slatColour(bseed));
           else slatBlinds(behind, sa, sb, y1 - 0.02, (o.head - o.sill) * (0.4 + hash01(bseed, 432) * 0.55), slatColour(bseed));
         }
@@ -201,7 +219,7 @@ export function planFront(i: FrontIn): FrontPlan {
     if (!boardedUnit && u.interior.type !== undefined) {
       drawers.push(() => {
         const from = out.vertices;
-        roomGeometry(out, { ...(i.haze === undefined ? {} : { haze: i.haze }), ...(i.through === true ? { through: true } : {}), xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, hours: unitHours(b, u), trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, opened: u.tenant?.opened ?? 0, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width } });
+        roomGeometry(out, { ...(i.haze === undefined ? {} : { haze: i.haze }), ...(i.through === true ? { through: true } : {}), xf, floorY, s0: u.s0 + 0.04, s1: u.s1 - 0.04, interior: u.interior, state: u.state, lit, hours: unitHours(b, u), trade: u.tenant?.trade ?? null, id: b.id * 31 + u.id, era: b.era, opened: u.tenant?.opened ?? 0, detail, openings: u.openings, remodel: u.remodel, past: u.past, vacantSince: u.vacantSince, door: { s: u.door.s, width: u.door.width }, glassIn: -glassOffOf(full, winCtx.masonry === true) - 0.07 });
         if (i.report !== undefined) {
           const ext = { s0: Infinity, s1: -Infinity, d0: Infinity, d1: -Infinity, y0: Infinity, y1: -Infinity };
           out.forEachPosition(from, (x, y, z) => {
@@ -266,8 +284,9 @@ export function planFront(i: FrontIn): FrontPlan {
         drawWindow(winCtx, w, sa, sb, y0, y1, wnd.state, wnd.sill, up.storey * 50 + k, replaced, "none", false, { night: nights[k] as number });
         if (full && brick && !replaced) {
           // A stone sill and a lintel course over each opening of an old brick block.
-          wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.1, y0 - 0.02, 0, 0.1, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");
-          wquad(out, w, sa - 0.1, y1, sb + 0.1, y1 + 0.16, 0.09, [0.45, 0.43, 0.4], "concrete");
+          wbox(out, w, sa - 0.08, sb + 0.08, y0 - 0.1, y0 - 0.02, 0, SILL_OUT, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");
+          // The lintel is a block of stone over the opening, closed on every side and with its underside, not a sheet hung off the wall.
+          wbox(out, w, sa - 0.1, sb + 0.1, y1, y1 + 0.16, 0, LINTEL_OUT, [0.45, 0.43, 0.4], [0.45, 0.43, 0.4], true, "concrete");
         }
       });
     });
@@ -283,7 +302,7 @@ export function planFront(i: FrontIn): FrontPlan {
       const tone = scaled([0.4, 0.4, 0.38], 0.9 + hash01(b.id, 436) * 0.2);
       let from = 0;
       for (const [ga, gb] of [...gaps, [w.length, w.length] as [number, number]]) {
-        if (ga - from > 0.12) wbox(out, w, from, ga, floorY - 0.05, floorY + 0.35, 0, 0.08, tone, [0.45, 0.45, 0.43], undefined, { mat: "concrete", ...sky });
+        if (ga - from > 0.12) wbox(out, w, from, ga, floorY - 0.05, floorY + 0.35, 0, WATER_TABLE_OUT, tone, [0.45, 0.45, 0.43], undefined, { mat: "concrete", ...sky });
         from = Math.max(from, gb);
       }
     }
@@ -292,17 +311,17 @@ export function planFront(i: FrontIn): FrontPlan {
       for (const u of use.units) {
         if (u.s0 < 0.1) continue;
         const [sa, sb] = ends(u.s0 - 0.18, u.s0 + 0.18);
-        wbox(out, w, sa, sb, floorY + 0.35, Math.min(wallTop - 0.5, floorY + u.fascia + 0.5), 0, 0.07, scaled(i.wall, 1.12), scaled(i.wall, 1.2), undefined, i.surface(w));
+        wbox(out, w, sa, sb, floorY + 0.35, Math.min(wallTop - 0.5, floorY + u.fascia + 0.5), 0, PILASTER_OUT, scaled(i.wall, 1.12), scaled(i.wall, 1.2), undefined, i.surface(w));
       }
     }
     // The cornice: a corbelled band under the parapet's cap, its shape this building's own (a plain band, two bands, a dentilled course, or none).
     const shape = Math.floor(hash01(b.id, 437) * 4);
     if ((brick || b.era < 1940) && shape < 3) {
       const top = wallTop;
-      wbox(out, w, 0, w.length, top - 0.28, top - 0.08, 0, 0.14, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true, i.surface(w));
-      if (shape === 1) wbox(out, w, 0, w.length, top - 0.55, top - 0.4, 0, 0.07, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true, i.surface(w));
-      if (shape === 2) for (let s = 0.2; s < w.length - 0.2; s += 0.4) wbox(out, w, s, s + 0.2, top - 0.42, top - 0.28, 0, 0.1, scaled(i.wall, 1.15), scaled(i.wall, 1.2), true, i.surface(w));
-      wbox(out, w, -0.1, w.length + 0.1, top - 0.08, top + 0.03, 0, 0.2, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");
+      wbox(out, w, 0, w.length, top - 0.28, top - 0.08, 0, full ? CORNICE_OUT : CORNICE_OUT_LOW, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true, i.surface(w));
+      if (shape === 1) wbox(out, w, 0, w.length, top - 0.55, top - 0.4, 0, full ? CORNICE_SECOND_OUT : CORNICE_SECOND_OUT_LOW, scaled(i.wall, 1.1), scaled(i.wall, 1.2), true, i.surface(w));
+      if (shape === 2) for (let s = 0.2; s < w.length - 0.2; s += 0.4) wbox(out, w, s, s + 0.2, top - 0.42, top - 0.28, 0, full ? DENTIL_OUT : DENTIL_OUT_LOW, scaled(i.wall, 1.15), scaled(i.wall, 1.2), true, i.surface(w));
+      wbox(out, w, -0.1, w.length + 0.1, top - 0.08, top + 0.03, 0, full ? (b.roof === "flat" ? CAP_OUT : CAP_OUT_PITCHED) : CAP_OUT_LOW, [0.5, 0.48, 0.44], [0.55, 0.53, 0.5], true, "concrete");
     }
   });
 

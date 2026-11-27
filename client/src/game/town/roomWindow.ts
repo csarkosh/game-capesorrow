@@ -167,6 +167,8 @@ export function sillThings(c: Ctx, openings: readonly Opening[]): void {
       if (hi - lo < 0.9) continue;
       const r = (n: number): number => hash01(c.seed * 7 + k * 31 + n, 1130);
       const sill = o.sill;
+      // What stands within a hand of the glass (the jars, the cat's bed, the half-curtain, the string lights) is set from it, and the glass stands `c.glassIn` deeper in a masonry front than it did; the plants and the papers stand well behind it and stay.
+      const g = c.glassIn;
       // Hours or a flyer in the glass at the door's end, above the sill's things: a sheet of paper a hand's breadth behind the signs the glass wears (so that none lies over it) and the lines of its lettering 3 cm in front of it.
       if (o.cover !== "display" && c.lit && r(12) < 0.45) {
         const y0 = sill + 0.78 + r(13) * 0.12;
@@ -193,12 +195,14 @@ export function sillThings(c: Ctx, openings: readonly Opening[]): void {
         const x0 = lo + 0.3 + r(3) * 0.4;
         for (let q = 0; q < n && x0 + q * 0.17 < hi - 0.3; q++) {
           const col = pickOf([[0.2, 0.45, 0.3], [0.6, 0.35, 0.15], [0.75, 0.75, 0.7], [0.25, 0.35, 0.6], [0.7, 0.2, 0.15]] as readonly Rgb[], c.seed + k * 9 + q, 1131);
-          withMat("plastic", () => fcyl(c, x0 + q * 0.17, 0.2, sill, 0.05, 0.14 + (q % 3) * 0.06, 5, col, scaled(col, 1.3), 0.03));
+          withMat("plastic", () => fcyl(c, x0 + q * 0.17, 0.2 + g, sill, 0.05, 0.14 + (q % 3) * 0.06, 5, col, scaled(col, 1.3), 0.03));
         }
       } else if (o.cover !== "display" && r(4) < 0.2) {
         const s = lo + 0.35 + r(5) * (hi - lo - 0.7);
-        withMat("cloth", () => fcyl(c, s, 0.3, sill, 0.22, 0.08, 8, [0.5, 0.35, 0.3], [0.62, 0.5, 0.42]));
-        if (r(6) < 0.6) withMat("cloth", () => fcyl(c, s, 0.3, sill + 0.08, 0.1, 0.1, 6, [0.8, 0.5, 0.2], [0.85, 0.6, 0.3], 0.07));
+        // The bed is left out where a furnishing of the plan stands in its place (deeper glass puts the bed further in, over a stand or a counter set close to the glass).
+        const taken = c.feet.some((f) => s > f.s0 - 0.22 && s < f.s1 + 0.22 && 0.3 + g > f.d0 - 0.22 && 0.3 + g < f.d1 + 0.22);
+        if (!taken) withMat("cloth", () => fcyl(c, s, 0.3 + g, sill, 0.22, 0.08, 8, [0.5, 0.35, 0.3], [0.62, 0.5, 0.42]));
+        if (!taken && r(6) < 0.6) withMat("cloth", () => fcyl(c, s, 0.3 + g, sill + 0.08, 0.1, 0.1, 6, [0.8, 0.5, 0.2], [0.85, 0.6, 0.3], 0.07));
       }
       // A plant at an end of the sill: green, or dead and brown.
       if (r(7) < 0.4) {
@@ -213,14 +217,14 @@ export function sillThings(c: Ctx, openings: readonly Opening[]): void {
         const y1 = sill + 0.62;
         const y0 = sill + 0.28;
         const col = pickOf([[0.85, 0.8, 0.7], [0.7, 0.3, 0.3], [0.3, 0.4, 0.5], [0.9, 0.9, 0.85]] as readonly Rgb[], c.seed + k, 1133);
-        withMat("wood", () => fbox(c, (lo + hi) / 2, 0.22, y1, 0.02, (hi - lo) / 2 - 0.05, 0.015, AX, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1], BAKED, false));
+        withMat("wood", () => fbox(c, (lo + hi) / 2, 0.22 + g, y1, 0.02, (hi - lo) / 2 - 0.05, 0.015, AX, [0.2, 0.15, 0.1], [0.2, 0.15, 0.1], BAKED, false));
         const n = Math.max(3, Math.floor((hi - lo) / 0.3));
         for (let q = 0; q < n; q++) {
           const s0 = lo + 0.05 + (q * (hi - lo - 0.1)) / n;
           const s1 = s0 + ((hi - lo - 0.1) / n) * 0.96;
           const tone = scaled(col, q % 2 === 0 ? 1 : 0.82);
           const bot = y0 + (q % 3) * 0.03;
-          const pts: [number, number, number][] = [[s0, 0.18, bot], [s1, 0.18, bot], [s1, 0.18, y1], [s0, 0.18, y1]];
+          const pts: [number, number, number][] = [[s0, 0.18 + g, bot], [s1, 0.18 + g, bot], [s1, 0.18 + g, y1], [s0, 0.18 + g, y1]];
           withMat("cloth", () => c.out.poly(pts.map(([s, d, y]) => xp(c.xf, s, d, c.floorY + y)), xd(c.xf, 0, -1), pts.map(([s, d, y]) => shade(c, tone, s, d, y, 0)), undefined, { glow: 1 }));
         }
       }
@@ -230,7 +234,7 @@ export function sillThings(c: Ctx, openings: readonly Opening[]): void {
         for (let q = 0; q < n; q++) {
           const s = lo + 0.1 + (q * (hi - lo - 0.2)) / (n - 1);
           const col = pickOf([[1, 0.8, 0.4], [1, 0.4, 0.3], [0.5, 0.9, 0.5], [0.5, 0.7, 1]] as readonly Rgb[], c.seed + q, 1134);
-          withMat("painted", () => fbox(c, s, 0.13, o.head - 0.12 - (q % 2) * 0.04, 0.04, 0.02, 0.02, AX, col, col, 2.5, false));
+          withMat("painted", () => fbox(c, s, 0.13 + g, o.head - 0.12 - (q % 2) * 0.04, 0.04, 0.02, 0.02, AX, col, col, 2.5, false));
         }
       }
     }

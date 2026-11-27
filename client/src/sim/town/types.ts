@@ -486,7 +486,21 @@ export type Terminal = {
   readonly spout: Vec | null;
 };
 
-export type Light = { readonly kind: "harbour light" | "day beacon" | "pier light"; readonly x: number; readonly z: number; readonly height: number };
+/**
+ * A light of the harbour. The first three are the headlands' and the longest pier's; the rest are a working port's lamps: a lamp on a post at
+ * a pier's edge, a taller post on the quay's apron, a low dock light on a float, a flood mast at the terminal's yard and a yard light at the
+ * running mill. `dx`, `dz` (a unit vector) is the way an arm reaches or a flood looks; `seed` (a drawn integer) is what the drawing reads
+ * for which are dead, which are white and when each comes on.
+ */
+export type Light = {
+  readonly kind: "harbour light" | "day beacon" | "pier light" | "pier lamp" | "quay lamp" | "float light" | "flood mast" | "yard light";
+  readonly x: number;
+  readonly z: number;
+  readonly height: number;
+  readonly dx?: number;
+  readonly dz?: number;
+  readonly seed?: number;
+};
 
 /** What a working harbour has, as plan data in the town's frame. The floats and gangways are decks (`plan.decks`). */
 export type Harbour = {

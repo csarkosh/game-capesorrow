@@ -30,9 +30,14 @@ export const wallRef = (ax: number, az: number, bx: number, bz: number, nx: numb
 /** The point `s` metres along the wall, at height `y` and `off` metres off its face. */
 export const wat = (w: WallRef, s: number, y: number, off: number): Vec3 => [w.ax + w.tx * s + w.nx * off, y, w.az + w.tz * s + w.nz * off];
 
-/** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). */
+/** A quad standing on the wall between two stations and two heights, `off` off its face, facing out (or in when `inward`). Given `fx.paint` it is a sheet of paint (`paint.ts`), laid exactly where it is asked and left out of the ledger. */
 export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: number, y1: number, off: number, colour: Rgb, surface?: Surface | MatRef, fx?: Fx, inward = false): number {
   const k = inward ? -1 : 1;
+  // Paint lies flush on its face, held by its rank of paint (`paint.ts`): it is no face of the ledger, neither noted by it nor pushed out by it.
+  if (fx?.paint !== undefined) {
+    out.poly([wat(w, s0, y0, off), wat(w, s1, y0, off), wat(w, s1, y1, off), wat(w, s0, y1, off)], [w.nx * k, 0, w.nz * k], colour, surface, fx);
+    return off;
+  }
   // A face asked for where another already stands (a plate over a frame, a sticker over a plate) stands a step further out (`faceLedger.ts`).
   const a = wat(w, s0, y0, off);
   const b = wat(w, s1, y0, off);
@@ -45,9 +50,9 @@ export function wquad(out: MeshBuilder, w: WallRef, s0: number, y0: number, s1: 
 
 /**
  * A box on a wall from `off0` to `off1` (off1 the farther out): its face, its top and its two ends, and its bottom when `under` (by default when it is a hand deep or more: a trim on the wall has none) (an
- * awning's soffit, a canopy's underside, a sill's, which are seen from the street; a bulkhead standing on the ground says false).
+ * awning's soffit, a canopy's underside, a sill's, which are seen from the street; a bulkhead standing on the ground says false). `buttStart` is for a box whose start end stands against another box (a corner board against the one that wraps the corner), so it has no end face there.
  */
-export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: number, y1: number, off0: number, off1: number, colour: Rgb, top: Rgb = colour, under?: boolean, surface?: Surface | MatRef, back = false): void {
+export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: number, y1: number, off0: number, off1: number, colour: Rgb, top: Rgb = colour, under?: boolean, surface?: Surface | MatRef, back = false, buttStart = false): void {
   wquad(out, w, s0, y0, s1, y1, off1, colour, surface);
   // The other faces are of what the face is: the same material, or the face's own surface laid by each face's own lie.
   const side = (pts: readonly Vec3[], n: Vec3, c: Rgb): void => out.poly(pts, n, c, surface === undefined || isMat(surface) ? surface : surfaceOn(surface, pts, n));
@@ -67,9 +72,10 @@ export function wbox(out: MeshBuilder, w: WallRef, s0: number, s1: number, y0: n
   const e0b = wat(w, s0, y0, off1);
   const e1 = wat(w, s1, y0, off0);
   const e1b = wat(w, s1, y0, off1);
-  noteFace(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y1);
+  // A box that butts against another at its start (`buttStart`) has no end face there: it is inside the other box, and is no face of the town.
+  if (!buttStart) noteFace(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y1);
   noteFace(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y1);
-  side([wat(w, s0, y0, off0), wat(w, s0, y0, off1), wat(w, s0, y1, off1), wat(w, s0, y1, off0)], [-w.tx, 0, -w.tz], scaled(colour, 0.85));
+  if (!buttStart) side([wat(w, s0, y0, off0), wat(w, s0, y0, off1), wat(w, s0, y1, off1), wat(w, s0, y1, off0)], [-w.tx, 0, -w.tz], scaled(colour, 0.85));
   side([wat(w, s1, y0, off0), wat(w, s1, y0, off1), wat(w, s1, y1, off1), wat(w, s1, y1, off0)], [w.tx, 0, w.tz], scaled(colour, 0.85));
 }
 
@@ -196,21 +202,28 @@ export function reveal(out: MeshBuilder, w: WallRef, sa: number, sb: number, y0:
   face([wat(w, sa, y1, 0), wat(w, sb, y1, 0), wat(w, sb, y1, -depth), wat(w, sa, y1, -depth)], [0, -1, 0], colour, REVEAL_HEAD);
 }
 
+/** How far a door's casing stands out of the wall: the boards up each side (6 cm) and the one across the head (7 cm). */
+const CASING_SIDE_OUT = 0.06;
+export const CASING_HEAD_OUT = 0.07;
+/** The same on the low tier, which keeps its thinner casing (3 cm at the sides, 4 cm at the head). */
+const CASING_SIDE_OUT_LOW = 0.03;
+const CASING_HEAD_OUT_LOW = 0.04;
+
 /**
  * A door's leaf in its hole: the leaf fills the hole from edge to edge, `depth` in from the wall's face, and the hole's reveal runs exactly to
- * the leaf (wherever the ledger put it), so there is no gap round a door from any angle and nothing is seen past it. The threshold is `sill`.
+ * the leaf (wherever the ledger put it), so there is no gap round a door from any angle and nothing is seen past it. The threshold is `sill`. `full` is the full tier, which gives the casing its deeper boards.
  * Returns the leaf's offset: what is put on the leaf (a panel, a light, a handle) stands off from that.
  */
-export function doorIn(out: MeshBuilder, w: WallRef, h: Hole, depth: number, leaf: Rgb, leafMat: Surface | MatRef, jamb: Rgb, sill: Rgb = jamb, jambMat?: Surface | MatRef, casing?: Rgb): number {
+export function doorIn(out: MeshBuilder, w: WallRef, h: Hole, depth: number, leaf: Rgb, leafMat: Surface | MatRef, jamb: Rgb, sill: Rgb = jamb, jambMat?: Surface | MatRef, casing?: Rgb, full = false): number {
   const o = wquad(out, w, h.s0, h.y0, h.s1, h.y1, -depth, leaf, leafMat);
   reveal(out, w, h.s0, h.s1, h.y0, h.y1, -o, jamb, sill, jambMat, "concrete");
   if (casing !== undefined) {
     // The casing: a board up each side of the hole and one across its head, standing out of the wall with its edges.
     const bar = 0.09;
     // (From a hand over the sill: a porch's deck or a step stands against the wall below that.)
-    wbox(out, w, h.s0 - bar, h.s0, h.y0 + 0.08, h.y1, 0, 0.03, casing, casing, true, "painted");
-    wbox(out, w, h.s1, h.s1 + bar, h.y0 + 0.08, h.y1, 0, 0.03, casing, casing, true, "painted");
-    wbox(out, w, h.s0 - bar - 0.02, h.s1 + bar + 0.02, h.y1, h.y1 + bar + 0.02, 0, 0.04, casing, casing, true, "painted");
+    wbox(out, w, h.s0 - bar, h.s0, h.y0 + 0.08, h.y1, 0, full ? CASING_SIDE_OUT : CASING_SIDE_OUT_LOW, casing, casing, true, "painted");
+    wbox(out, w, h.s1, h.s1 + bar, h.y0 + 0.08, h.y1, 0, full ? CASING_SIDE_OUT : CASING_SIDE_OUT_LOW, casing, casing, true, "painted");
+    wbox(out, w, h.s0 - bar - 0.02, h.s1 + bar + 0.02, h.y1, h.y1 + bar + 0.02, 0, full ? CASING_HEAD_OUT : CASING_HEAD_OUT_LOW, casing, casing, true, "painted");
   }
   return o;
 }

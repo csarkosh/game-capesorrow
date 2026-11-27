@@ -1,11 +1,12 @@
 /**
  * What the street builders draw with: flat polygons laid over the ground, each vertex at the ground's height plus a lift
- * (so a surface follows the ground's roll), cut off the highway's bed (which the engine paints), left out where it lies under the
+ * (so a surface follows the ground's roll), cut off the highway's bed (which the highway's own paving covers: `highwayGeometry.ts`), left out where it lies under the
  * sea, and given to the cell its middle is in. A polygon of any simple outline is cut into triangles (ears) and each is split into
  * four, `depth` times, so no triangle is much longer than a tile whatever the polygon's size; a convex quad that needs no
  * splitting goes in as one polygon.
  */
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
+import { bedIndex, bedTile } from "./highwayBed.js";
 import { type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import type { Surface as Surface_ } from "./townSurface.js";
 import { RANK, faceSurfaceFor, flatSurfaceFor, withOver, type Over } from "./groundSurfaces.js";
@@ -16,6 +17,9 @@ export type P2 = readonly [number, number];
 export type P3 = readonly [number, number, number];
 
 const UP: Vec3 = [0, 1, 0];
+
+/** A polygon this far clear of the bed's edge (the most the tiles' chords stray from the centre line's curve, and more) is not looked at against the tiles, metres. */
+const BED_CLEAR = 0.02;
 
 /** A mark that has been laid, for the marks laid after it to find what lies under them: its outline (a convex polygon in x, z), its box and its rank. */
 type Laid = { readonly pts: readonly P2[]; readonly x0: number; readonly x1: number; readonly z0: number; readonly z1: number; stamp: number };
@@ -31,23 +35,57 @@ export function forgetMarks(g: object): void {
 
 type Corner = { x: number; z: number; u: number; lift: number; y?: number };
 
-/** A convex polygon clipped to one side of the highway's bed edge: `sign` 1 keeps u >= edge, -1 keeps u <= -edge. */
-function clipSide(poly: readonly Corner[], sign: 1 | -1, edge: number): Corner[] {
-  const out: Corner[] = [];
-  const n = poly.length;
-  for (let i = 0; i < n; i++) {
-    const a = poly[i] as Corner;
-    const b = poly[(i + 1) % n] as Corner;
-    const da = a.u * sign - edge;
-    const db = b.u * sign - edge;
-    if (da >= 0) out.push(a);
-    if ((da >= 0) !== (db >= 0)) {
-      const k = da / (da - db);
-      const c: Corner = { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, u: a.u + (b.u - a.u) * k, lift: a.lift + (b.lift - a.lift) * k };
-      if (a.y !== undefined && b.y !== undefined) c.y = a.y + (b.y - a.y) * k;
-      out.push(c);
+/**
+ * A polygon's corners kept off the highway's bed: the polygon less every bed tile (`highwayBed.ts`) it reaches, in convex pieces whose
+ * edges lie along the tiles' sides. A new corner takes its lift (and height) from the polygon's own at that place.
+ */
+function cutBed(g: TownGround, corners: readonly Corner[]): Corner[][] {
+  const poly: P2[] = corners.map((q): P2 => [q.x, q.z]);
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const q of poly) {
+    z0 = Math.min(z0, q[1]);
+    z1 = Math.max(z1, q[1]);
+  }
+  let pieces: P2[][] = [poly];
+  for (let i = bedIndex(z0); i <= bedIndex(z1) && pieces.length > 0; i++) {
+    const tile = bedTile(g, i);
+    pieces = pieces.flatMap((p) => (shareArea(p, tile, 1e-4) ? subtractConvex(p, tile) : [p]));
+  }
+  return pieces.map((p) => (p === poly ? corners.slice() : p.map((q) => cornerAt(corners, q[0], q[1]))));
+}
+
+/** The corner a convex polygon's own lifts (and heights) give at a point of it: the point's barycentric weights in the fan from its first corner, clamped to the polygon. */
+function cornerAt(corners: readonly Corner[], x: number, z: number): Corner {
+  const n = corners.length;
+  const a = corners[0] as Corner;
+  let best: { w: [number, number, number]; i: number } | undefined;
+  let bestLeast = -Infinity;
+  for (let i = 1; i + 1 < n; i++) {
+    const b = corners[i] as Corner;
+    const c = corners[i + 1] as Corner;
+    const det = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+    if (Math.abs(det) < 1e-12) continue;
+    const wa = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / det;
+    const wb = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
+    const wc = 1 - wa - wb;
+    const least = Math.min(wa, wb, wc);
+    if (least > bestLeast) {
+      bestLeast = least;
+      best = { w: [wa, wb, wc], i };
     }
   }
+  if (best === undefined) return { x, z, u: a.u, lift: a.lift, ...(a.y !== undefined ? { y: a.y } : {}) };
+  const t = [a, corners[best.i] as Corner, corners[best.i + 1] as Corner];
+  let [wa, wb, wc] = best.w;
+  wa = Math.max(0, wa);
+  wb = Math.max(0, wb);
+  wc = Math.max(0, wc);
+  const sum = wa + wb + wc;
+  const w = [wa / sum, wb / sum, wc / sum];
+  const mix = (f: (q: Corner) => number): number => f(t[0] as Corner) * (w[0] as number) + f(t[1] as Corner) * (w[1] as number) + f(t[2] as Corner) * (w[2] as number);
+  const out: Corner = { x, z, u: mix((q) => q.u), lift: mix((q) => q.lift) };
+  if (t.every((q) => q.y !== undefined)) out.y = mix((q) => q.y as number);
   return out;
 }
 
@@ -238,6 +276,17 @@ export class Surface {
     }
   }
 
+  /** The convex pieces of a convex polygon (x, z) that lie off the highway's bed: for what lays its own faces (the made ends of streets). */
+  offBed(poly: readonly P2[]): P2[][] {
+    const bed = ROAD_BED_HALF;
+    const us = poly.map((q) => q[0] - this.g.roadX(q[1]));
+    if (us.every((u) => u >= bed + BED_CLEAR) || us.every((u) => u <= -bed - BED_CLEAR)) return [poly.slice()];
+    return cutBed(
+      this.g,
+      poly.map((q, i): Corner => ({ x: q[0], z: q[1], u: us[i] as number, lift: 0 })),
+    ).map((c) => c.map((q): P2 => [q.x, q.z]));
+  }
+
   /** The vertex's height: the ground's plus its lift. */
   y(x: number, z: number, lift: number): number {
     return this.g.heightAt(x, z) + lift;
@@ -248,9 +297,9 @@ export class Surface {
     const bed = ROAD_BED_HALF;
     let pieces: Corner[][];
     const us = corners.map((q) => q.u);
-    if (us.every((u) => u >= bed) || us.every((u) => u <= -bed)) pieces = [corners.slice()];
-    else if (us.every((u) => u > -bed && u < bed)) pieces = [];
-    else pieces = [clipSide(corners, 1, bed), clipSide(corners, -1, bed)];
+    // A polygon clear of the bed by more than the tiles' chords stray from its edge is whole; any other is cut off the tiles.
+    if (us.every((u) => u >= bed + BED_CLEAR) || us.every((u) => u <= -bed - BED_CLEAR)) pieces = [corners.slice()];
+    else pieces = cutBed(this.g, corners);
     for (const raw of pieces) {
       // Corners that repeat make a triangle with no area: left out.
       const piece = raw.filter((q, i) => {
@@ -293,10 +342,20 @@ export class Surface {
     }
   }
 
-  /** A convex polygon laid on the engine's road itself (a crosswalk across the highway): not cut off the bed, and `lift` over the road's own height. */
-  onRoad(pts: readonly P2[], lift: number, colour: Rgb, over?: Over): void {
+  /**
+   * A convex polygon laid on the highway's bed itself (the highway's paving and its markings, `highwayGeometry.ts`): not cut off the bed, at `lift`
+   * over the ground, in the cell its middle is in, at the rank of `over` (a base surface when it has none).
+   */
+  pave(pts: readonly P2[], lift: number, colour: Rgb, over?: Over): void {
     const v: Vec3[] = pts.map((q) => [q[0], this.g.heightAt(q[0], q[1]) + lift, q[1]]);
-    this.lay(this.sink((pts[0] as P2)[0], (pts[0] as P2)[1]), v, v.map(() => lift), colour, flatSurfaceFor(colour, this.g.anchor), over?.rank ?? 0);
+    let cx = 0;
+    let cz = 0;
+    for (const q of pts) {
+      cx += q[0];
+      cz += q[1];
+    }
+    const surface = withOver(flatSurfaceFor(colour, this.g.anchor), colour, this.g.anchor, over);
+    this.lay(this.sink(cx / pts.length, cz / pts.length), v, v.map(() => lift), colour, surface, over?.rank ?? 0, over?.group);
   }
 
   /** A convex polygon (kept as one polygon) at corners' own lifts. */
@@ -393,7 +452,7 @@ export class Surface {
 // ---- Roadways that would overlap: the first laid keeps its ground.
 
 /** Whether two convex polygons share more than a sliver of area (separating axes: the least overlap along any of them exceeds `eps`). */
-function shareArea(p: readonly P2[], q: readonly P2[], eps: number): boolean {
+export function shareArea(p: readonly P2[], q: readonly P2[], eps: number): boolean {
   for (const poly of [p, q]) {
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i] as P2;
@@ -425,7 +484,7 @@ function shareArea(p: readonly P2[], q: readonly P2[], eps: number): boolean {
 }
 
 /** The part of a convex polygon on one side of the line through `a` and `b` (the left of a to b when `keepLeft`). */
-function clipLine(poly: readonly P2[], a: P2, b: P2, keepLeft: boolean): P2[] {
+export function clipLine(poly: readonly P2[], a: P2, b: P2, keepLeft: boolean): P2[] {
   const out: P2[] = [];
   const side = (p: P2): number => ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) * (keepLeft ? 1 : -1);
   for (let i = 0; i < poly.length; i++) {

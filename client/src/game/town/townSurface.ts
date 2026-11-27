@@ -44,6 +44,7 @@ export type Fx = {
   readonly size?: readonly [number, number];
   readonly uvs?: readonly (readonly [number, number])[];
   /** For the flat ground: the depth rank, 0 for a base surface and more for what lies on one (`townMaterial.ts`, `RANK_UNITS`). Rides in the float a tilt's second number uses, which flat ground has no use for. */ readonly rank?: number;
+  /** For paint lying flush on a standing face: its depth rank, 1 and more over the face it is painted on (`paint.ts`). Written in its corners' colour alpha, which nothing else reads. */ readonly paint?: number;
   /** The normal the renderer lights the polygon by (a unit vector), where it is not the polygon's own: a blade of grass is a thin upright triangle lit as if it faced up and out, so the sky lights it. */
   readonly normal?: readonly [number, number, number];
   /**

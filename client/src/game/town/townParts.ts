@@ -48,11 +48,13 @@ import { townSolids } from "../../sim/town/solid.js";
 import { propSolids } from "../../sim/town/propSolid.js";
 import { BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, newChase, seatStep, seatTarget, stepChase, underGround } from "../car/chaseCamera.js";
 import { peopleFor, personWorld } from "./people.js";
+import { outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
 import { RANK_UNITS, emptyTownReady, townSurfacePlugin, writeLamps, type TownReady } from "./townMaterial.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
+import { daylightAt, litGainAt } from "../../look.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 
 /** A cell's mesh with what the view's test needs of it. */
@@ -196,6 +198,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           shownHour = hour;
           if (ready !== null) {
             ready.townHour[0] = hour;
+            ready.townGlow[0] = litGainAt(hour);
+            ready.townDay[0] = daylightAt(hour);
             for (const m of textured) markMaterialUboDirty(m);
           }
           people?.setHour(hour);
@@ -210,6 +214,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             if (lampList.count > 0 || lampsLit) {
               lampsLit = lampList.count > 0;
               writeLamps(ready, lampList);
+              people?.setLamps(lampList, litGainAt(hour));
               for (const m of textured) markMaterialUboDirty(m);
             }
           }
@@ -241,6 +246,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const low = host.tier === "low";
       ready = emptyTownReady();
       ready.townHour[0] = shownHour;
+      ready.townGlow[0] = litGainAt(shownHour);
+      ready.townDay[0] = daylightAt(shownHour);
       const readied = ready;
       try {
         textures = createTownTextures(engine, low, loading.signal, (filled) => {
@@ -319,7 +326,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       people = createPeopleParts(
         { engine, scene, air, clock: skinClock, uploads: host.uploads, eye: host.pose, low },
-        peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person) })),
+        [
+          ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false })),
+          ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true })),
+        ],
       );
       people.setHour(shownHour);
 

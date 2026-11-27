@@ -1,7 +1,7 @@
 /**
  * What the props stage reads of the finished plan, gathered once: each street's frame, each lot's record (its building, yard, trade,
  * the street it fronts and the side), the lots that neighbour each other, how near the harbour each lot is, and the places that nothing
- * may stand on (a junction's pavement and crosswalks, a drive's and an alley's mouth, a street's end, the spawn, every building).
+ * may stand on (a junction's pavement and crosswalks, a drive's and an alley's mouth, a street's end, the spawn, the harbour's lights (a post's or a mast's foot: the harbour stage runs before this one), every building).
  */
 import { bearingU, bearingV } from "../../bearings.js";
 import { orient, segCross, segDist, type Poly } from "../../geom.js";
@@ -234,6 +234,8 @@ export function contextOf(plan: BasePlan, seed0: number): Context {
       const ka = fa.street.kind;
       const kb = fb.street.kind;
       if (ka === "stair" || kb === "stair" || ka === "rail" || kb === "rail" || ka === "alley" || kb === "alley") continue;
+      // Two lengths of the highway's own line join end to end and are no junction.
+      if (ka === "highway" && kb === "highway") continue;
       const x = segCross(fa.street.a, fa.street.b, fb.street.a, fb.street.b);
       const reach = fa.street.width / 2 + fb.street.width / 2 + CLEAR_JUNCTION;
       // Where a junction's own record is, its boxes are made.
@@ -258,6 +260,8 @@ export function contextOf(plan: BasePlan, seed0: number): Context {
   }
   for (const e of plan.ends) occ.add(boxAt(e.x - e.dx * 3, e.z - e.dz * 3, e.dx, e.dz, CLEAR_END * 2 + 6, 14), "keep:end");
   occ.add(boxAt(plan.spawn.x, plan.spawn.z, 1, 0, 9, 9), "keep:spawn");
+  // The harbour's lights stand before this stage: every one keeps its post's place (a lamp's post, a mast's foot).
+  for (const l of plan.harbour.lights) occ.add(boxAt(l.x, l.z, 1, 0, l.kind === "flood mast" ? 2.4 : 1.4, l.kind === "flood mast" ? 2.4 : 1.4), "keep:harbour");
   for (const l of withNeighbours) {
     const d = l.shape.drive;
     if (d !== null) occ.add(boxAt(d.x - d.dx * 3.5, d.z - d.dz * 3.5, d.dx, d.dz, 7, 2 * d.half + 2 * CLEAR_DRIVE), "keep:drive");

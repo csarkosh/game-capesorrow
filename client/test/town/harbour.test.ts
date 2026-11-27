@@ -229,12 +229,12 @@ describe("the harbour's plan, over the forty world seeds", () => {
       expect(told.some((e) => e.text.includes("boat basin"))).toBe(true);
       for (const f of plan.harbour.pilings) expect(told.some((e) => e.text.includes("pilings still stand") && e.year === f.year)).toBe(true);
       // Lights: at most one of each headland and a light on the longest pier; none stands in the water but the pier's.
-      const lights = plan.harbour.lights;
+      const lights = plan.harbour.lights.filter((l) => l.kind === "pier light" || l.kind === "harbour light" || l.kind === "day beacon");
       expect(lights.filter((l) => l.kind === "pier light").length).toBeLessThanOrEqual(1);
       expect(lights.filter((l) => l.kind !== "pier light").length).toBeLessThanOrEqual(2);
     }
     // The headland lights are found for most seeds: the site has two narrow tongues either side of the cove.
-    const both = SEEDS.filter((s) => townFor(s).plan.harbour.lights.filter((l) => l.kind !== "pier light").length === 2).length;
+    const both = SEEDS.filter((s) => townFor(s).plan.harbour.lights.filter((l) => l.kind === "harbour light" || l.kind === "day beacon").length === 2).length;
     expect(both).toBeGreaterThan(SEEDS.length * 0.7);
   });
 });

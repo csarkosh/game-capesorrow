@@ -40,11 +40,14 @@ export function endsGeometry(g: TownGround, flat: Sink, solid: Sink): void {
     const nx = oz;
     const nz = -ox;
     const at = (s: number, t: number): [number, number] => [x + ox * s + nx * t, z + oz * s + nz * t];
-    const lay = (pts: readonly [number, number][], colour: Rgb): void => {
-      const corners = pts.map(([px, pz]): Vec3 => [px, g.heightAt(px, pz) + END_LIFT, pz]);
-      if (corners.every((c) => c[1] - END_LIFT < SEA + 0.1)) return;
-      const [cx, cz] = pts[0] as [number, number];
-      surf.lay(flat(cx, cz), corners, corners.map(() => END_LIFT), colour, flatSurfaceFor(colour, g.anchor), RANK.mark);
+    const lay = (whole: readonly [number, number][], colour: Rgb): void => {
+      // Off the highway's bed, which is paved (`highwayGeometry.ts`): a bulb that reaches it ends at its edge.
+      for (const pts of surf.offBed(whole)) {
+        const corners = pts.map(([px, pz]): Vec3 => [px, g.heightAt(px, pz) + END_LIFT, pz]);
+        if (corners.every((c) => c[1] - END_LIFT < SEA + 0.1)) continue;
+        const [cx, cz] = pts[0] as [number, number];
+        surf.lay(flat(cx, cz), corners, corners.map(() => END_LIFT), colour, flatSurfaceFor(colour, g.anchor), RANK.mark);
+      }
     };
     if (e.kind === "turnaround") {
       // A bulb of gravel whose near edge is the pavement's end line.

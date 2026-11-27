@@ -4,10 +4,11 @@
  * - **Moss in broad patches** on the north slopes of the damp and the neglected.
  * - **An antenna** leaning on the ridge of one house in six, and on a few a satellite dish.
  *
- * (The tarps and the patches of other shingle are `buildingParts.ts`'s: a repair of the building's own.) A decal stands 8 cm and more off the slope along its normal (more than the 2.45 cm the depth buffer is held to). A roof whose ridge sags (an old wooden house's) gets no
+ * (The tarps and the patches of other shingle are `buildingParts.ts`'s: a repair of the building's own.) A decal is paint: it lies flush on the slope, 2 mm a rank off it along its normal (`paint.ts`), and is held from the slope and from the decal under it by its rank of paint. A roof whose ridge sags (an old wooden house's) gets no
  * decal, since its slope is no plane, but may have an antenna.
  */
 import { withMat } from "./materials.js";
+import { paintOff } from "./paint.js";
 import { hash01, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { levelOf, exposureOf } from "./buildingWear.js";
 import type { Surface } from "./townSurface.js";
@@ -15,7 +16,6 @@ import type { Building } from "../../sim/town/types.js";
 
 type Quad = readonly [Vec3, Vec3, Vec3, Vec3];
 
-const LIFT = 0.04;
 
 /** A point on a slope: `u` along its eave, `v` up toward the ridge, 0 to 1 each. */
 function at(q: Quad, u: number, v: number): Vec3 {
@@ -35,9 +35,10 @@ export function roofSlopeDecals(out: MeshBuilder, b: Building, q: Quad, fr: Surf
   const nl = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
   if (!(nl > 1e-6)) return;
   n = n[1] < 0 ? [-n[0] / nl, -n[1] / nl, -n[2] / nl] : [n[0] / nl, n[1] / nl, n[2] / nl];
-  const lift = (p: Vec3, k = 1): Vec3 => [p[0] + n[0] * LIFT * k, p[1] + n[1] * LIFT * k, p[2] + n[2] * LIFT * k];
-  const rect = (u0: number, v0: number, u1: number, v1: number, colour: Rgb, surface: Surface | undefined, k = 1): void => {
-    out.poly([lift(at(q, u0, v0), k), lift(at(q, u1, v0), k), lift(at(q, u1, v1), k), lift(at(q, u0, v1), k)], n, colour, surface);
+  const lift = (p: Vec3, rank: number): Vec3 => [p[0] + n[0] * paintOff(rank), p[1] + n[1] * paintOff(rank), p[2] + n[2] * paintOff(rank)];
+  /** A sheet of paint of rank `rank` (1 and up: the first over the slope, the next over that). */
+  const rect = (u0: number, v0: number, u1: number, v1: number, colour: Rgb, surface: Surface | undefined, rank: number): void => {
+    out.poly([lift(at(q, u0, v0), rank), lift(at(q, u1, v0), rank), lift(at(q, u1, v1), rank), lift(at(q, u0, v1), rank)], n, colour, surface, { paint: rank });
   };
   const eaveLen = Math.sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]);
   const slopeLen = Math.sqrt(e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2]);
@@ -50,7 +51,7 @@ export function roofSlopeDecals(out: MeshBuilder, b: Building, q: Quad, fr: Surf
       const vh = Math.min(0.6, (1.4 + 1.8 * r(24 + m)) / slopeLen);
       const u0 = 0.04 + (0.92 - uw) * r(27 + m);
       const v0 = 0.08 + (0.84 - vh) * r(30 + m);
-      rect(u0, v0, u0 + uw, v0 + vh, [0.22, 0.32, 0.14], { layer: "moss", frame: fr.frame, tint: [0.8, 1.0, 0.5], wear: 0.1 }, 2 + m);
+      rect(u0, v0, u0 + uw, v0 + vh, [0.22, 0.32, 0.14], { layer: "moss", frame: fr.frame, tint: [0.8, 1.0, 0.5], wear: 0.1 }, 1 + m);
     }
   }
 }

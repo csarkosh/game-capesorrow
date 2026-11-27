@@ -16,8 +16,9 @@
  */
 import type { Building, BuildingUse, LandmarkRole, Material } from "../../sim/town/types.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
-import { pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
+import { CASING_HEAD_OUT, pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { isClear, noteFace } from "./faceLedger.js";
+import { paintOff } from "./paint.js";
 import { agingOf } from "./buildingWear.js";
 import { withMat, type MatName, type MatRef } from "./materials.js";
 import { attachmentsGeometry } from "./buildingAttach.js";
@@ -74,6 +75,12 @@ export function wallMatOf(material: Material): MatName {
   }
 }
 
+/** How far a house's corner boards stand out of the siding, in metres (6 cm). */
+const CORNER_BOARD_OUT = 0.06;
+/** A corner board reaches 10 cm along its own wall from the corner. The one at a wall's far end also wraps round the corner by its own thickness, so its end is flush with the face of the next wall's board; that one (at its wall's start) butts against the wrapped board's back, so the two never share a top. */
+const CORNER_BOARD_IN = 0.1;
+const CORNER_BOARD_WRAP = CORNER_BOARD_OUT;
+
 const SIDINGS: readonly Rgb[] = [[0.5, 0.49, 0.45], [0.38, 0.17, 0.12], [0.2, 0.28, 0.36], [0.42, 0.37, 0.25], [0.18, 0.27, 0.2], [0.62, 0.6, 0.55]];
 
 export function partsGeometry(i: PartsIn): void {
@@ -116,8 +123,8 @@ function housePart(i: PartsIn, full: boolean): void {
     i.refs.forEach((w, wk) => {
       // A board on a wall sees the sky its wall sees: darker under the eave (`skyShade.ts`).
       const painted = skyOf(i, wk, "painted");
-      wbox(out, w, -0.07, 0.1, floorY + 0.15, i.wallTop, 0, 0.04, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim, undefined, painted);
-      wbox(out, w, w.length - 0.1, w.length + 0.07, floorY + 0.15, i.wallTop, 0, 0.04, trim, trim, undefined, painted);
+      wbox(out, w, 0, CORNER_BOARD_IN, floorY + 0.15, i.wallTop, 0, CORNER_BOARD_OUT, wk === odd ? oddTrim : trim, wk === odd ? oddTrim : trim, undefined, painted, false, true);
+      wbox(out, w, w.length - CORNER_BOARD_IN, w.length + CORNER_BOARD_WRAP, floorY + 0.15, i.wallTop, 0, CORNER_BOARD_OUT, trim, trim, undefined, painted);
     });
   }
   // Steps and a porch at the front door.
@@ -144,8 +151,8 @@ function housePart(i: PartsIn, full: boolean): void {
       const gs = s1 - s0 > 1.7 ? Math.max(s0 + 0.8, Math.min(s1 - 0.8, sw)) : (s0 + s1) / 2;
       const gap = Math.min(0.55, (s1 - s0) / 2 - 0.2);
       if (closed) {
-        // (Its walls stand clear of the house door's casing behind them.)
-        wbox(out, front, s0, s1, floor + 0.05, top - 0.05, 0.045, pd, scaled(roof, 0.9), scaled(roof, 0.9), undefined, "boards");
+        // (Its walls stand clear of the house door's casing behind them: on the full tier, 3 cm out from the casing's deepest board, the head.)
+        wbox(out, front, s0, s1, floor + 0.05, top - 0.05, CASING_HEAD_OUT + 0.03, pd, scaled(roof, 0.9), scaled(roof, 0.9), undefined, "boards");
         // Its own door, on its front: a leaf of boards with a panel and a pull, standing out of the wall with its edges.
         const leaf = pickOf([[0.16, 0.09, 0.05], [0.12, 0.2, 0.15], [0.3, 0.1, 0.08], [0.4, 0.36, 0.3]] as readonly Rgb[], b.id, 534);
         const dh = Math.min(2.0, top - 0.2 - floor);
@@ -390,11 +397,14 @@ function addition(i: PartsIn): void {
   out.poly([wat(w, s0 - 0.1, top + 0.1, 0), wat(w, s1 + 0.1, top + 0.1, 0), wat(w, s1 + 0.1, low, depth + 0.2), wat(w, s0 - 0.1, low, depth + 0.2)], [w.nx * 0.4, 1, w.nz * 0.4], rc, roofSurf, { back: { colour: [0.42, 0.4, 0.36] } });
 }
 
+/** The rank of paint of a patch of siding: over a sill's streak (rank 2, `windowGeometry.ts`) and the wall's tone (rank 1). */
+const SIDING_PATCH_RANK = 3;
+
 /** A patch of newer siding where boards were replaced, a section of new roof, and a tarp weighed down on a neglected roof. */
 function repairs(i: PartsIn, age: number, neglect: number): void {
   const { b, refs, out } = i;
   if (i.detail !== "full") return;
-  // One wall has a patch of siding of another batch: a rectangle where the owner replaced boards (a roll: one wall of one house in four).
+  // One wall has a patch of siding of another batch: a rectangle where the owner replaced boards, flush with the rest (paint, a different shade of the wall's own surface; a roll: one wall of one house in four).
   if (b.material === "wood" && hash01(b.id, 530) < 0.28 + 0.2 * age) {
     // Not the front, and low on the wall, under the sills: it is a patch of siding, never over a window or the door.
     const k0 = Math.floor(hash01(b.id, 531) * refs.length);
@@ -404,7 +414,7 @@ function repairs(i: PartsIn, age: number, neglect: number): void {
       const s = 0.8 + hash01(b.id, 532) * (w.length - 2.6);
       const sf = i.wallSurface(k);
       const tint: Rgb = hash01(b.id, 533) < 0.5 ? [1.2, 1.18, 1.1] : [0.8, 0.82, 0.85];
-      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, Math.min(s + 1.1 + hash01(b.id, 535) * 0.9, w.length - 0.15), i.floorY + 0.55 + hash01(b.id, 534) * 0.3, 0.07, scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 });
+      wquad(out, w, s, i.floorY + 0.2 + hash01(b.id, 534) * 0.1, Math.min(s + 1.1 + hash01(b.id, 535) * 0.9, w.length - 0.15), i.floorY + 0.55 + hash01(b.id, 534) * 0.3, paintOff(SIDING_PATCH_RANK), scaled(i.wall, 1.15), { ...sf, tint: sf.layer === "siding_painted" ? undefined : tint, wear: 0.02, wear2: 0 }, { paint: SIDING_PATCH_RANK });
     }
   }
   // The roof: a patch of newer shingle, or a tarp. A tarp is on a roof that is neglected or that a storm has taken a part of (a roll for one in eight of the old).

@@ -2,7 +2,7 @@
  * What a working harbour has, other than its decks and boats: pilings (the fields of dead piles, the dolphins), the mill's log
  * pond (boom sticks chained between piles, floating logs, a jack ladder and house), a closed mill's wigwam burner, the terminal's
  * yard (decks of logs in trapezoid stacks, chip piles, silos, a bulk shed, cargo containers, parked cars), its barge and its
- * loading spout, and the lights. Plain arrays, each a function of the plan's data and the ground's height, no random call:
+ * loading spout, and the lights (the headlands', the longest pier's and a working port's lamps: pier lamps, quay lamps, float lights, flood masts, yard lights). Plain arrays, each a function of the plan's data and the ground's height, no random call:
  * what varies comes from `hash01` of an index.
  */
 import { boatGeometry } from "./boatGeometry.js";
@@ -10,8 +10,9 @@ import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBui
 import { withMat } from "./materials.js";
 import { GLASS, PILE, ROOF_METAL, STEEL, STEEL_RUST, TIMBER, TIMBER_WEATHERED } from "./palette.js";
 import { SEA, type Sink, type TownGround } from "./townTypes.js";
-import { HARBOUR_LAMP, LENS_GLOW, PIER_LAMP } from "./props/lamps.js";
-import type { Barge, Piling, YardItem } from "../../sim/town/types.js";
+import { HARBOUR_LAMP, LAMP_COLOUR, LENS_GLOW, PIER_LAMP, WORK_ARM, isWorkKind, workLensAt, workLook, type WorkKind } from "./props/lamps.js";
+import { rnd } from "./props/kit.js";
+import type { Barge, Light, Piling, YardItem } from "../../sim/town/types.js";
 
 const BARK: Rgb = [0.2, 0.14, 0.09];
 const LOG_END: Rgb = [0.55, 0.45, 0.3];
@@ -319,6 +320,65 @@ export function boatsGeometry(g: TownGround, sink: Sink): void {
   for (const b of g.plan.harbour.boats) boatGeometry((x, z) => sink(x, z), { ...b, x: g.anchor.x + b.x, z: g.anchor.z + b.z });
 }
 
+/**
+ * A working lamp: a pier lamp (a steel or timber post with a short arm and a caged fitting), a quay lamp (a taller steel tube with a longer arm),
+ * a float light (a squat pedestal), a flood mast (a tube with a cross-bar of two to four heads) or a yard light (a post with an arm). The lens is
+ * a face that glows by the lamp's own night code (`props/lamps.ts`, `workLook`), dull glass by day; a dead lamp's is grey and never glows.
+ */
+function workLamp(g: TownGround, m: MeshBuilder, l: Light & { kind: WorkKind }): void {
+  const seed = l.seed ?? 0;
+  const look = workLook(l);
+  const at = workLensAt(g, l);
+  const x = g.anchor.x + l.x;
+  const z = g.anchor.z + l.z;
+  const top = at.base + l.height;
+  const lens = look.dead ? LAMP_COLOUR.dead : look.colour;
+  const glow = (fn: () => void): void => (look.dead ? fn() : m.withHours(look.code, () => m.withGlow(LENS_GLOW, fn)));
+  const timber = l.kind !== "quay lamp" && rnd(seed, 73) < 0.4;
+  const postColour = timber ? scaled(TIMBER_WEATHERED, 0.8 + rnd(seed, 74) * 0.3) : rnd(seed, 75) < 0.3 ? STEEL_RUST : STEEL;
+  if (l.kind === "float light") {
+    withMat("painted", () => m.cylinder(x, z, at.base, 0.16, 0.85, 8, [0.3, 0.32, 0.34], [0.22, 0.23, 0.24], 0.13));
+    withMat("steel", () => m.cylinder(x, z, at.base + 0.85, 0.15, 0.1, 8, STEEL, STEEL));
+    withMat("painted", () => glow(() => m.cylinder(x, z, at.base + 0.95, 0.11, 0.2, 8, lens, lens, 0.09)));
+    return;
+  }
+  if (l.kind === "flood mast") {
+    withMat("steel", () => {
+      m.prism([x, at.base - 0.2, z], [x, top, z], 0.2, 8, postColour, postColour);
+      m.cylinder(x, z, at.base - 0.2, 0.42, 0.35, 8, STEEL, STEEL);
+    });
+    // The cross-bar, square to the way the heads look, with two to four heads along it.
+    const heads = 2 + Math.floor(rnd(seed, 76) * 3);
+    const bx = -at.dz;
+    const bz = at.dx;
+    const half = 0.34 * heads;
+    withMat("steel", () => m.prism([x - bx * half, top - 0.1, z - bz * half], [x + bx * half, top - 0.1, z + bz * half], 0.06, 6, STEEL, STEEL));
+    for (let k = 0; k < heads; k++) {
+      const t = heads === 1 ? 0 : -half + 0.34 + (k * (2 * half - 0.68)) / Math.max(1, heads - 1);
+      const hx = x + bx * t + at.dx * 0.25;
+      const hz = z + bz * t + at.dz * 0.25;
+      withMat("steel", () => m.box(hx, hz, top - 0.1, at.dx, at.dz, 0.22, 0.24, 0.4, [0.16, 0.17, 0.18], [0.2, 0.21, 0.22]));
+      withMat("painted", () => glow(() => m.box(hx + at.dx * 0.26, hz + at.dz * 0.26, top, at.dx, at.dz, 0.03, 0.2, 0.26, lens, lens)));
+    }
+    return;
+  }
+  // A post, an arm toward the way the lamp leans, a head and a lens face on its underside.
+  const mat = timber ? "wood" : "steel";
+  const r = l.kind === "quay lamp" ? 0.12 : 0.09;
+  withMat(mat, () => m.prism([x, at.base - 0.1, z], [x, top, z], r, timber ? 6 : 8, postColour, postColour));
+  if (l.kind === "quay lamp") withMat("steel", () => m.cylinder(x, z, at.base - 0.1, 0.17, 0.35, 8, postColour, postColour));
+  const arm = WORK_ARM[l.kind];
+  const ax = x + at.dx * arm;
+  const az = z + at.dz * arm;
+  withMat("steel", () => {
+    m.prism([x, top - 0.18, z], [ax, top - 0.22, az], 0.045, 5, STEEL, STEEL);
+    m.box(ax, az, top - 0.52, at.dx || 1, at.dz, 0.17, 0.12, 0.24, [0.2, 0.21, 0.22], [0.22, 0.23, 0.24]);
+  });
+  // A caged fitting on a pier lamp: three thin bars round the lens.
+  if (l.kind === "pier lamp") for (const k of [-1, 0, 1]) withMat("steel", () => m.prism([ax + (at.dz || 0) * 0.1 * k, top - 0.52, az - (at.dx || 0) * 0.1 * k], [ax + (at.dz || 0) * 0.1 * k, top - 0.74, az - (at.dx || 0) * 0.1 * k], 0.012, 4, STEEL, STEEL));
+  withMat("painted", () => glow(() => m.box(ax, az, top - 0.74, at.dx || 1, at.dz, 0.14, 0.1, 0.22, lens, lens, true)));
+}
+
 /** The lights: a harbour light on a tower, a day beacon on three legs, a light on the end of a pier. */
 export function lightGeometry(g: TownGround, sink: Sink): void {
   for (const l of g.plan.harbour.lights) {
@@ -346,6 +406,8 @@ export function lightGeometry(g: TownGround, sink: Sink): void {
       // The white slat is a little taller than the red, so that their tops and bottoms are not faces in one plane where they cross.
         box3(m, x, z, y + l.height - 0.44, 0.08, 0.9, 1.58, WHITE, WHITE);
       });
+    } else if (isWorkKind(l.kind)) {
+      workLamp(g, m, l as Light & { kind: WorkKind });
     } else {
       withMat("steel", () => m.prism([x, y + 0.03, z], [x, y + l.height - 0.8, z], 0.11, 6, STEEL, STEEL));
       withMat("painted", () => m.withHours(PIER_LAMP.code, () => m.withGlow(LENS_GLOW, () => box3(m, x, z, y + l.height - 0.8, 0.3, 0.3, 0.7, PIER_LAMP.colour, PIER_LAMP.colour))));

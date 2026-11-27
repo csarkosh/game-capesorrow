@@ -16,17 +16,34 @@ import { withMat } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { GLASS_CLEAR, GLASS_TINT, TRIM_WHITE, pane, pickOf, reveal, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
 import { STEP, curtainFolds, patch, paperSheets, slatBlinds, slatColour, verticalBlinds, type Behind } from "./windowDressing.js";
-import type { WindowCover, WindowTreatment } from "../../sim/town/types.js";
+import type { Material, WindowCover, WindowTreatment } from "../../sim/town/types.js";
 import type { Surface } from "./townSurface.js";
 import { standOff } from "./faceLedger.js";
 import { sillStreak } from "./buildingWear.js";
+import { paintOff } from "./paint.js";
 import type { Detail, FillReport } from "./townTypes.js";
 import { NEVER_CODE, windowLight } from "./windowNight.js";
+
+/** How deep a window's opening is cut into a wall: a wall of brick, stone, stucco or concrete is thick, so its openings are 24 cm deep; a wall of boards or sheet metal is thin, so they are 16 cm; and the low tier keeps 8 cm. */
+export const REVEAL_MASONRY = 0.24;
+export const REVEAL_THIN = 0.16;
+export const REVEAL_LOW = 0.08;
+/** How far the glass stands short of the end of the reveal on the full tier (9 cm: the jambs run that far past the pane). The low tier's glass stays 7 cm in. */
+const GLASS_SHORT = 0.09;
+const GLASS_LOW = 0.07;
+
+/** Whether a wall of this material is masonry (thick), as against boards or sheet metal (thin). */
+export const isMasonry = (material: Material): boolean => material !== "wood" && material !== "metal";
+
+/** The depth of a window's reveal, by the tier and by whether the wall is masonry. */
+export const revealOf = (full: boolean, masonry: boolean): number => (full ? (masonry ? REVEAL_MASONRY : REVEAL_THIN) : REVEAL_LOW);
+/** The offset of a window's glass (negative: in from the wall's face), 9 cm short of the reveal's end on the full tier. Whatever hangs in the window is set from it. */
+export const glassOffOf = (full: boolean, masonry: boolean): number => (full ? GLASS_SHORT - revealOf(true, masonry) : -GLASS_LOW);
 
 /** The wall's surface (its texture frame, wear), for a part laid in the same material as the wall. */
 export type SurfaceMaker = (w: WallRef) => Surface;
 
-export type WinCtx = { report?: FillReport; out: MeshBuilder; glass: MeshBuilder; detail: Detail; id: number; era: number; surface: SurfaceMaker; trim: Rgb; wall: Rgb; /** The front draws a stone sill under each window itself. */ stoneSill?: boolean };
+export type WinCtx = { report?: FillReport; out: MeshBuilder; glass: MeshBuilder; detail: Detail; id: number; era: number; surface: SurfaceMaker; trim: Rgb; wall: Rgb; /** The front draws a stone sill under each window itself. */ stoneSill?: boolean; /** The wall is masonry (brick, stone, stucco, concrete), so its openings are deeper (`REVEAL_MASONRY`); none given is a thin wall. */ masonry?: boolean };
 
 /** What a window is told of its place beyond the plan's treatment: whether the room behind is lit by the unit, how grimy the glass is (0 to 1), how old and so how wavy it is. */
 /** `through`: the pane shows a shop's room out of focus (`PaneLook.through`). */
@@ -37,6 +54,8 @@ const CURTAINS: readonly Rgb[] = [
   [0.7, 0.66, 0.55], [0.55, 0.2, 0.18], [0.25, 0.35, 0.5], [0.78, 0.78, 0.74], [0.3, 0.42, 0.3], [0.5, 0.4, 0.55], [0.85, 0.7, 0.35], [0.35, 0.3, 0.27],
 ];
 const DARK_BACK: Rgb = [0.17, 0.19, 0.23];
+/** How far a window's sill ledge stands out of the wall (16 cm, as a real sill does). */
+export const SILL_OUT = 0.16;
 const PLYWOOD: Rgb = [0.6, 0.45, 0.28];
 
 /** The window's frame colour from the building's age (painted wood of the time, or aluminium after 1960); `replaced` is white vinyl. */
@@ -46,6 +65,9 @@ export function frameColour(id: number, era: number, replaced: boolean): Rgb {
   return pickOf([[0.4, 0.42, 0.44], [0.18, 0.14, 0.11], [0.62, 0.62, 0.6]] as readonly Rgb[], id, 401);
 }
 
+/** The rank of paint of a sill's streak: over the wall's tone (rank 1, `wallTone.ts`). */
+const STREAK_RANK = 2;
+
 /** The treatment of a window's own cover (in the plan: paper, boards) is in the shop's front; this is the window's: see the header. */
 export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: number, y1: number, state: WindowTreatment, sill: "none" | "plant" | "lamp", salt: number, replaced: boolean, cover: WindowCover = "none", shop = false, look: WinLook = {}): void {
   const { out, glass, detail } = c;
@@ -54,9 +76,10 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   const fr = frameColour(c.id, c.era, replaced);
   const width = sb - sa;
   const height = y1 - y0;
-  const rv = full ? 0.16 : 0.08;
+  const masonry = c.masonry === true;
+  const rv = revealOf(full, masonry);
   // The glass's own depth, and every layer in front of or behind it a step (STEP) from the next.
-  const gOff = -0.07;
+  const gOff = glassOffOf(full, masonry);
   const entry: FillReport["windows"][number] = { pane: state !== "boarded" && cover !== "boarded", behind: state === "boarded" || cover === "boarded" ? "cover" : shop ? "room" : "cover", closes: state === "boarded" || cover === "boarded" ? "boards" : shop ? "room" : "dark", shop, opening: [sa, sb, y0, y1] };
   c.report?.windows.push(entry);
   if (state === "boarded" || cover === "boarded") {
@@ -71,13 +94,13 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
     return;
   }
   reveal(out, w, sa, sb, y0, y1, rv, scaled(c.wall, 0.8), scaled(c.trim, 0.9));
-  // Under the sill the rain that runs off it leaves a streak of dirt down the wall (its own decal, in the wall's material); more on an older wall.
+  // Under the sill the rain that runs off it leaves a streak of dirt down the wall (paint, lying flush on it: its own sheet, in the wall's material, over the wall's tone); more on an older wall.
   if (full && !shop && hash01(seed, 423) < 0.2 + 0.4 * Math.min(1, (2026 - c.era) / 120)) {
     const base = c.surface(w);
     const cw = Math.min(width * (0.3 + hash01(seed, 424) * 0.4), 0.9);
     const drop = 0.4 + 1.1 * hash01(seed, 426) * hash01(seed, 427);
     const mid = (sa + sb) / 2 + (hash01(seed, 425) - 0.5) * width * 0.25;
-    wquad(out, w, mid - cw / 2, y0 - drop, mid + cw / 2, y0 - 0.14, 0.03, c.wall, sillStreak(base, 0.65, y0, drop));
+    wquad(out, w, mid - cw / 2, y0 - drop, mid + cw / 2, y0 - 0.14, paintOff(STREAK_RANK), c.wall, sillStreak(base, 0.65, y0, drop), { paint: STREAK_RANK });
   }
   if (full && !shop) {
     // Trim boards round it, the sill under it (a replaced window has none: it was fitted in the old opening).
@@ -88,7 +111,7 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
       wquad(out, w, sb, y0 - 0.07, sb + bar, y1, 0.06, c.trim, "painted");
       if (c.stoneSill !== true) {
         // A closed ledge: its face, top, underside and two ends (seen from below on the street, a sill that is only a face and a top is a gap).
-        wbox(out, w, sa - 0.1, sb + 0.1, y0 - 0.07, y0, 0, 0.1, c.trim, c.trim, true, "painted");
+        wbox(out, w, sa - 0.1, sb + 0.1, y0 - 0.07, y0, 0, SILL_OUT, c.trim, c.trim, true, "painted");
       }
     } else {
       wquad(out, w, sa - 0.03, y1, sb + 0.03, y1 + 0.03, 0.06, fr, "painted");
@@ -107,7 +130,8 @@ export function drawWindow(c: WinCtx, w: WallRef, sa: number, sb: number, y0: nu
   const backing = (col: Rgb, glow: number): void => {
     out.poly([wat(w, sa, y0, back), wat(w, sb, y0, back), wat(w, sb, y1, back), wat(w, sa, y1, back)], [w.nx, 0, w.nz], [scaled(col, 0.8), scaled(col, 0.8), col, col], undefined, { glow });
     if (shift > 0) {
-      const r0 = 0.17;
+      // The liner starts a centimetre past the reveal's end, so it runs on from the jambs.
+      const r0 = rv + 0.01;
       const lc = scaled(col, 0.7);
       out.poly([wat(w, sa, y1, -r0), wat(w, sb, y1, -r0), wat(w, sb, y1, back), wat(w, sa, y1, back)], [0, -1, 0], lc, undefined, { glow });
       out.poly([wat(w, sa, y0, -r0), wat(w, sa, y0, back), wat(w, sa, y1, back), wat(w, sa, y1, -r0)], [w.tx, 0, w.tz], lc, undefined, { glow });
