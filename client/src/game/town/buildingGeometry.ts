@@ -360,7 +360,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
     // The signs are drawn once the building's parts are (below), so each is put where no face of the wall's is within 2.45 cm of it (`faceLedger.ts`).
     if (extra !== undefined && use !== undefined && xf !== null) {
       const sign = extra.sign(f.cx, f.cz);
-      drawSigns = () => signsGeometry({ solid: out, face: sign, g, b, use, xf, atlas: extra.atlas, floorY: planCtx.frontFloorY, wallTop, detail });
+      drawSigns = () => signsGeometry({ solid: out, face: sign, g, b, use, xf, atlas: extra.atlas, floorY: planCtx.frontFloorY, wallTop, detail, ...(extra.through === true ? { through: true } : {}) });
     }
   }
 
