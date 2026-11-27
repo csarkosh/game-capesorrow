@@ -1,46 +1,71 @@
 {
   "about": "Written by hand, not by tools/models/build.py (these five models were rigged, given their clips and a cup and a phone for the right hand, and reduced elsewhere; the files are what is shipped, and the manifest says what they are). Metres; the files stand on y = 0 and face +z; `height` is the model's own, from its POSITION bounds. Where a work came from is in CREDITS.md, under the credit id.",
-  "total_bytes": 16018268,
+  "total_bytes": 16151268,
   "people": [
     {
       "id": "person.nathan",
       "file": "person.nathan.glb",
-      "bytes": 2881960,
-      "sha256": "8cfb6ce53e5c4c3e8a5622f5984b5c059928d3156be50746c5f63771878c1c4d",
+      "bytes": 2909772,
+      "sha256": "d39d64d45278fde0eb31407fa6162531c767ef738561cd0b390aa89426b5bcfd",
       "credit": "person.nathan",
-      "height": 1.894
+      "height": 1.894,
+      "walk": {
+        "cycle_s": 1.0,
+        "stride_m": 1.25,
+        "stored": 1
+      }
     },
     {
       "id": "person.eric",
       "file": "person.eric.glb",
-      "bytes": 3492556,
-      "sha256": "7c0ec72b6b596890d04d419d0b2bf522c644032616bc2a15ba825b2b2e056ba9",
+      "bytes": 3516172,
+      "sha256": "8728e65cc198f726869750c541181a2e9d4b19a6113625c78eeb21f7985f5650",
       "credit": "person.eric",
-      "height": 1.862
+      "height": 1.862,
+      "walk": {
+        "cycle_s": 1.0,
+        "stride_m": 1.25,
+        "stored": 1
+      }
     },
     {
       "id": "person.sophia",
       "file": "person.sophia.glb",
-      "bytes": 2586128,
-      "sha256": "39ffcd2c41a36f678960e4056eb212e287bf0f98ec50ddb321cafc8cb6dc31c6",
+      "bytes": 2617668,
+      "sha256": "2d8225a7ae86078d793b9d04e40dd2ad5b89bdd06604f033e80003dde78869dd",
       "credit": "person.sophia",
-      "height": 1.771
+      "height": 1.771,
+      "walk": {
+        "cycle_s": 1.0,
+        "stride_m": 1.25,
+        "stored": 1
+      }
     },
     {
       "id": "person.carla",
       "file": "person.carla.glb",
-      "bytes": 3511852,
-      "sha256": "8cb4cb3fd6cf8763851a76433dc229045071780df7762d822488a7dcd584fb33",
+      "bytes": 3535472,
+      "sha256": "6e08bbe0c7cf1baa82543171121c12a3204025f4eeb69344c3fa41dc7f72f840",
       "credit": "person.carla",
-      "height": 1.728
+      "height": 1.728,
+      "walk": {
+        "cycle_s": 1.0,
+        "stride_m": 1.25,
+        "stored": 1
+      }
     },
     {
       "id": "person.claudia",
       "file": "person.claudia.glb",
-      "bytes": 3545772,
-      "sha256": "9ba804829fb06c0b418dbbb88f812bd90a6dc109e4a0edb0d76fbfc12d95cbbb",
+      "bytes": 3572184,
+      "sha256": "6cc4b995dfdf01b1ae5a10849e4c913c332a6653be039be47957b9247c35a4cf",
       "credit": "person.claudia",
-      "height": 1.776
+      "height": 1.776,
+      "walk": {
+        "cycle_s": 1.0,
+        "stride_m": 1.25,
+        "stored": 1
+      }
     }
   ],
   "clips": [
@@ -64,6 +89,7 @@
     "cup",
     "lean",
     "sit_rest",
-    "sit_phone"
+    "sit_phone",
+    "walk"
   ]
 }
