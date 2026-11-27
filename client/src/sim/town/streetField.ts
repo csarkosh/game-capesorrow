@@ -209,6 +209,16 @@ function fieldOf(plan: TownPlan): Field {
   return f;
 }
 
+/**
+ * The rectangle of the plan's frame the street field's grid spans, null where it has no cell: a point outside it is in no cell, so the
+ * channel there is all zeros (`channelInto`) and the streets cut nothing.
+ */
+export function streetFieldExtentOf(plan: TownPlan): { x0: number; z0: number; x1: number; z1: number } | null {
+  const f = fieldOf(plan);
+  if (!(f.nx > 0 && f.nz > 0)) return null;
+  return { x0: f.x0, z0: f.z0, x1: f.x0 + f.nx * CELL, z1: f.z0 + f.nz * CELL };
+}
+
 /** A value and its partials in the plan's x and z, in one pair of registers; `mul3Into` leaves a product's here. */
 const M3 = { a: 0, b: 0, c: 0 };
 

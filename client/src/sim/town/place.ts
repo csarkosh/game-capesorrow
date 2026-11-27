@@ -10,7 +10,7 @@
 import { COVE_Z, type CoastOverlay } from "@csarkosh/engine/sim/olympic";
 import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
-import { CLEARING_TUNABLES, YARD_LIFT, townClutterStands, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
+import { CLEARING_TUNABLES, YARD_LIFT, beyondTown, townClutterStands, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
 import { GROUND, GROUND_TUNABLES, townGroundInto } from "./ground.js";
 import { townHighwayBedGround } from "./highwayBedGround.js";
 import { VERGE_TUNABLES, vergeMask, vergeWeight, vergeWeightAt } from "./verge.js";
@@ -27,7 +27,15 @@ import { townWildlifeGround } from "./wildlifeGround.js";
  * over it (`railGround.ts`), under the highway's own corridor. Each stage leaves its answer in its own register and the next reads it by number, so the
  * one record made is the one returned; where no stage changes the ground it is `base` itself.
  */
-function shapeD(seed: number, x: number, z: number, u: number, uDz: number, base: TerrainSample): TerrainSample {
+export function shapeD(seed: number, x: number, z: number, u: number, uDz: number, base: TerrainSample): TerrainSample {
+  // Beyond the town's reach (`townReachOf`) the made ground and the streets leave the ground as it is: only the railroad's bed, which runs the whole coast.
+  if (!beyondTown(seed, x, z)) return shapeDFull(seed, x, z, u, uDz, base);
+  if (!railGroundInto(seed, z, u, uDz, base.h, base.dx, base.dz)) return base;
+  return { h: RAIL_GROUND.h, dx: RAIL_GROUND.dx, dz: RAIL_GROUND.dz };
+}
+
+/** `shapeD` with no early answer: every stage asked at every point. */
+export function shapeDFull(seed: number, x: number, z: number, u: number, uDz: number, base: TerrainSample): TerrainSample {
   let h = base.h;
   let dx = base.dx;
   let dz = base.dz;
