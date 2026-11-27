@@ -28,9 +28,9 @@
 import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
 import { UNIT_KEEP } from "@csarkosh/engine/sim/cliffs";
 import { CLUTTER_BUSH, CLUTTER_FERN, CLUTTER_FLOWER, CLUTTER_FUNGUS, CLUTTER_GRASS, CLUTTER_LITTER, CLUTTER_MEADOW, CLUTTER_SHRUB } from "@csarkosh/engine/sim/clutter";
-import type { FeatureMask } from "@csarkosh/engine/sim/features";
+import { NO_FEATURE_MASK, type FeatureMask } from "@csarkosh/engine/sim/features";
 import { bearingU, bearingV } from "./bearings.js";
-import { COVER, coverInto } from "./cover.js";
+import { COVER, COVER_FADE, COVER_HOLD, coverExtentOf, coverInto } from "./cover.js";
 import { FILL, QUAY_BANK, STEP, fillWindowInto, smootherstepInto, type FillArea } from "./fill.js";
 import { isPaved as isPavedDistrict, pavedGround } from "./pavedGround.js";
 import { orient } from "./geom.js";
@@ -40,6 +40,7 @@ import { inYardRect, yardShape, type YardRect } from "./yardShapes.js";
 import { planFor } from "./planFor.js";
 import { readingSite } from "./reading.js";
 import { siteFor } from "./siteFor.js";
+import { streetFieldExtentOf } from "./streetField.js";
 import type { TownPlan, YardKind } from "./types.js";
 
 /** The farthest a tree stands from its cell's centre, in x or z summed as a diagonal (the engine's jitter of 0.7 of a 10 m cell), metres. */
@@ -191,6 +192,19 @@ export const CLEARING_TUNABLES: Readonly<Record<string, number>> = {
  * with no bands and the world lays them over ground with none.
  */
 export function townKeepD(u: number, uDz: number, z: number, seed: number): { v: number; dx: number; dz: number } {
+  if (readingSite()) return townKeepDFull(u, uDz, z, seed);
+  reachFor(seed);
+  const box = reachBox;
+  // Outside the town's reach the bands are all kept: the along-shore coordinate first, which needs no second coast frame.
+  const zr = z - COVE_Z;
+  if (zr < box.z0 || zr > box.z1) return UNIT_KEEP;
+  const xf = roadCenterX(seed, z) + u - reachAx;
+  if (xf < box.x0 || xf > box.x1) return UNIT_KEEP;
+  return townKeepDFull(u, uDz, z, seed);
+}
+
+/** `townKeepD` with no early answer: every stage asked at every point. */
+export function townKeepDFull(u: number, uDz: number, z: number, seed: number): { v: number; dx: number; dz: number } {
   if (readingSite()) {
     smootherstepInto(READ_KEEP_INLAND, READ_KEEP_INLAND + READ_KEEP_EDGE, u);
     const wiV = STEP.v;
@@ -332,6 +346,85 @@ function fillBoxOf(plan: TownPlan): { x0: number; z0: number; x1: number; z1: nu
     FILL_BOXES.set(plan, box);
   }
   return box;
+}
+
+/** A rectangle of the plan's frame (`xf` from the anchor, `zr` from the cove), bounds included. */
+export type TownReach = { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number };
+
+/** The town's reach is grown by this much on every side, metres: far more than any rounding in the stages' own tests. */
+export const REACH_SLACK = 1;
+
+const REACHES = new WeakMap<TownPlan, TownReach>();
+
+/** A reach that holds every point: the early answer never given. */
+const EVERYWHERE: TownReach = Object.freeze({ x0: -Infinity, z0: -Infinity, x1: Infinity, z1: Infinity });
+
+/**
+ * The rectangle of the plan's frame outside which no stage of the town's overlay has anything to say, found once per plan from the
+ * plan's own numbers: the union of the cover's grid (its blocks, outlying lots and spur, each with its fade), the quay's window (its
+ * line grown by `COVER_HOLD + COVER_FADE`), the fill's box with its bank, the street field's grid, the clearing's grid (its blocks,
+ * aprons, buildings, streets, roads out and their destinations, with `REACH`) and the roads' boxes for the cliff bands, grown by
+ * `REACH_SLACK`. Outside it every stage reaches its "nothing here" by the tests it makes today: no grid cell, the quay out of reach,
+ * outside the fill's box, no road's box. A quay of no length (whose window is not a number anywhere) gives a reach of everywhere.
+ */
+export function townReachOf(plan: TownPlan): TownReach {
+  const hit = REACHES.get(plan);
+  if (hit !== undefined) return hit;
+  let reach: TownReach = EVERYWHERE;
+  const { a, b } = plan.quay;
+  const qx = b.x - a.x;
+  const qz = b.z - a.z;
+  if (qx * qx + qz * qz > 0) {
+    const qr = COVER_HOLD + COVER_FADE;
+    let x0 = Math.min(a.x, b.x) - qr;
+    let z0 = Math.min(a.z, b.z) - qr;
+    let x1 = Math.max(a.x, b.x) + qr;
+    let z1 = Math.max(a.z, b.z) + qr;
+    const add = (r: { x0: number; z0: number; x1: number; z1: number } | null): void => {
+      if (r === null) return;
+      x0 = Math.min(x0, r.x0);
+      z0 = Math.min(z0, r.z0);
+      x1 = Math.max(x1, r.x1);
+      z1 = Math.max(z1, r.z1);
+    };
+    add(coverExtentOf(plan));
+    // An empty fill's box is the empty rectangle (+Infinity to -Infinity), which adds nothing.
+    add(fillBoxOf(plan));
+    add(streetFieldExtentOf(plan));
+    const index = indexOf(plan);
+    if (index.nx > 0 && index.nz > 0) add({ x0: index.x0, z0: index.z0, x1: index.x0 + index.nx * CELL, z1: index.z0 + index.nz * CELL });
+    const roads = roadBoxesOf(plan);
+    for (let k = 0; k < roads.length; k++) add(roads[k] as RoadBox);
+    reach = { x0: x0 - REACH_SLACK, z0: z0 - REACH_SLACK, x1: x1 + REACH_SLACK, z1: z1 + REACH_SLACK };
+  }
+  REACHES.set(plan, reach);
+  return reach;
+}
+
+/** The seed last asked about, with its plan's anchor and reach: one world is asked millions of times in a row. */
+let reachSeed = Number.NaN;
+let reachPlan: TownPlan | null = null;
+let reachAx = 0;
+let reachBox: TownReach = EVERYWHERE;
+
+/** Sets `reachAx` and `reachBox` for a seed. */
+function reachFor(seed: number): void {
+  if (seed !== reachSeed || reachPlan === null) {
+    const plan = planFor(seed);
+    reachAx = siteFor(seed).anchor.x;
+    reachBox = townReachOf(plan);
+    reachPlan = plan;
+    reachSeed = seed;
+  }
+}
+
+/** Whether a world point lies outside the town's reach (`townReachOf`), where every stage of the overlay but the railroad's says nothing. */
+export function beyondTown(seed: number, x: number, z: number): boolean {
+  reachFor(seed);
+  const box = reachBox;
+  const xf = x - reachAx;
+  const zr = z - COVE_Z;
+  return xf < box.x0 || xf > box.x1 || zr < box.z0 || zr > box.z1;
 }
 
 /** How much the town covers a world point, 0 to 1: the plan's cover (its blocks and the quay) united with the plan's fill, its bank included. */
@@ -814,6 +907,13 @@ export function clearAt(plan: TownPlan, xf: number, zr: number): Clear {
  * thickened by `meadow`, and nothing loose on the town.
  */
 export function townFeatureMask(seed: number, x: number, z: number): FeatureMask {
+  // Beyond the town's reach the mask is open: the engine's own identity mask, which no caller writes to.
+  if (beyondTown(seed, x, z)) return NO_FEATURE_MASK;
+  return townFeatureMaskFull(seed, x, z);
+}
+
+/** `townFeatureMask` with no early answer. */
+export function townFeatureMaskFull(seed: number, x: number, z: number): FeatureMask {
   const plan = planFor(seed);
   const site = siteFor(seed);
   const xf = x - site.anchor.x;
@@ -844,6 +944,12 @@ export function standClear(cls: number): number {
  * wall, so here each piece is kept `standClear` of such a wall, off the step at the end of the front walk, and off the lot's drive and walk.
  */
 export function townClutterStands(seed: number, cls: number, x: number, z: number): boolean {
+  if (beyondTown(seed, x, z)) return true;
+  return townClutterStandsFull(seed, cls, x, z);
+}
+
+/** `townClutterStands` with no early answer. */
+export function townClutterStandsFull(seed: number, cls: number, x: number, z: number): boolean {
   const plan = planFor(seed);
   const site = siteFor(seed);
   const xf = x - site.anchor.x;
@@ -892,6 +998,12 @@ export function townYardWeight(seed: number, x: number, z: number): number {
  * the drawn surface fails to hide it (an edge, a coarse ring) is dirt at the edge of the asphalt, never a stripe of sand.
  */
 export function townStripWeight(seed: number, x: number, z: number): number {
+  if (beyondTown(seed, x, z)) return 0;
+  return townStripWeightFull(seed, x, z);
+}
+
+/** `townStripWeight` with no early answer. */
+export function townStripWeightFull(seed: number, x: number, z: number): number {
   const plan = planFor(seed);
   const site = siteFor(seed);
   const xf = x - site.anchor.x;
