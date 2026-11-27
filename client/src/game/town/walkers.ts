@@ -121,7 +121,7 @@ const SERVICES: readonly Trade[] = [
 ];
 const ERRANDS: readonly Trade[] = ["bank", "credit union", "post office", "pharmacy", "hardware", "grocery", "variety store", "bakery", "convenience store", "liquor store", "garden and feed", "marine supply"];
 const NIGHT_PLACES: readonly Trade[] = ["convenience store", "gas station", "motel", "tavern", "liquor store"];
-const BOARD: readonly Trade[] = ["hotel", "motel", "rooming house"];
+const BOARD: readonly Trade[] = ["hotel", "motel", "rooming house", "inn"];
 
 /**
  * The reasons a person walks, as the owner reads them. The rates are trips an hour for the town the table was tuned on; a town with half the

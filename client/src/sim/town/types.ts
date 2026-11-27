@@ -751,7 +751,7 @@ export type Trade =
   | "bait and tackle" | "marine supply" | "fish market" | "boat yard"
   | "antiques" | "thrift store" | "pawn shop" | "sporting goods" | "laundromat" | "furniture store" | "funeral home"
   | "newspaper office" | "print shop" | "movie theater" | "union hall" | "self storage"
-  | "gas station" | "motel" | "hotel" | "rooming house" | "lodge"
+  | "gas station" | "motel" | "hotel" | "rooming house" | "inn" | "lodge"
   // Trades of the past only (a ghost sign, an earlier tenant): none of these is open now.
   | "dry goods" | "five and dime" | "shoe repair" | "cigar store" | "photo studio" | "video store" | "feed store" | "hat shop";
 

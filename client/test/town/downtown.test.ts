@@ -219,6 +219,7 @@ describe("the downtown is built up", () => {
 });
 
 describe("what every town has, open for business, in the downtown", () => {
+  // The lodging is where a visitor takes a room for the night: a hotel, a motel or an inn, never a rooming house (rooms by the week and the month).
   it("names the player's office (the municipal building), a lodging, a bar and a cafe, each open, in the downtown, in every one of sixty-four towns", () => {
     for (const { seed, plan } of towns(SIXTY_FOUR)) {
       const { office, lodging, bar, cafe } = plan.places;
@@ -230,7 +231,7 @@ describe("what every town has, open for business, in the downtown", () => {
       expect(office.door, `seed ${seed}`).toEqual({ s: Math.round((front.width / 2) * 100) / 100, width: 2.3 });
       expect(plan.buildings[office.building]!.kind).toBe("municipal building");
       expect(plan.buildings[office.building]!.state, `seed ${seed}: the office is open`).toBe("open");
-      for (const [name, place, trades] of [["lodging", lodging, ["hotel", "motel", "rooming house"]], ["bar", bar, ["tavern"]], ["cafe", cafe, ["cafe"]]] as const) {
+      for (const [name, place, trades] of [["lodging", lodging, ["hotel", "motel", "inn"]], ["bar", bar, ["tavern"]], ["cafe", cafe, ["cafe"]]] as const) {
         const b = plan.buildings[place.building]!;
         expect(plan.downtown, `seed ${seed} ${name}`).toContain(blockOf(plan, b));
         const unit = plan.uses[place.building]!.units[place.unit!]!;

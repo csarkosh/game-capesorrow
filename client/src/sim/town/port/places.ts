@@ -22,9 +22,10 @@ export function ensureMunicipal(downtown: readonly number[], lots: Lot[], buildi
   buildings[b.id] = { ...b, kind: "municipal building", state: "open", era: 1930, material: "brick", storeys: 3, roof: "flat", height: 12.4 };
 }
 
-const LODGING: readonly Trade[] = ["hotel", "motel", "rooming house"];
+/** Where a visitor takes a room for the night. A rooming house (by the week and the month) is not one: the business stage makes one the town's inn where there is no hotel or motel. */
+const LODGING: readonly Trade[] = ["hotel", "motel", "inn"];
 
-/** Finds the four places in the finished plan: the first open unit of the trade in the downtown (an open hotel first, a tavern building for the bar), the municipal building as the office. */
+/** Finds the four places in the finished plan: the first open unit of the trade in the downtown (the landmark hotel first, then a hotel, then a motel or the inn; a tavern building for the bar), the municipal building as the office. */
 export function placesOf(downtown: readonly number[], lots: readonly Lot[], buildings: readonly Building[], uses: readonly BuildingUse[], landmarks: readonly Landmark[]): Places {
   const find = (trades: readonly Trade[], prefer: (b: Building) => number): Place => {
     let best: { place: Place; score: number } | null = null;

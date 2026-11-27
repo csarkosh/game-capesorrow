@@ -243,6 +243,27 @@ export function planUses(input: BizInput, townRng: Rng): BuildingUse[] {
     if (best !== null) set(best.d, best.k, trades[0]!);
   };
   ensure(["hotel", "motel", "rooming house"], ["hotel", "motel", "boarding house"]);
+  // The lodging is one a visitor takes a room at for the night: a hotel, a motel or an inn. Where no hotel's lobby and no motel is open in the downtown, the broadest open rooming house
+  // there is the town's inn (its building is a boarding house still: the trade is the bay's).
+  {
+    let night = false;
+    let rooms: { d: Draft; k: number; w: number } | null = null;
+    for (const d of drafts) {
+      if (!isDown(d)) continue;
+      for (let k = 0; k < d.geos.length; k++) {
+        const cur = d.trades[k];
+        if (d.slots[k] !== "open" || cur === null || cur === undefined) continue;
+        if (cur === "hotel" || cur === "motel") night = true;
+        const w = d.geos[k]!.s1 - d.geos[k]!.s0;
+        if (cur === "rooming house" && (rooms === null || w > rooms.w)) rooms = { d, k, w };
+      }
+    }
+    if (!night && rooms !== null) {
+      bump("rooming house", -1);
+      rooms.d.trades[rooms.k] = "inn";
+      bump("inn", 1);
+    }
+  }
   ensure(["tavern"], ["tavern"]);
   ensure(["cafe"], []);
 

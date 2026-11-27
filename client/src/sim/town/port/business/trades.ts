@@ -156,6 +156,8 @@ export const TRADES: readonly TradeDef[] = [
   t("motel", null, "Motel", null, 1, "lobby", 5, 20, 1940, "", { tagline: ["Weekly Rates"] }),
   t("hotel", null, "Hotel", null, 1, "lobby", 6, 30, 1880, "", { tagline: ["Rooms - Rates by the Week"] }),
   t("rooming house", null, "Rooms", null, 1, "lobby", 4, 20, 1880, "", { tagline: ["Weekly - Monthly"] }),
+  // The rooming house a town with no hotel or motel open in its downtown has as its inn (`business/index.ts`): no building kind's own.
+  t("inn", null, "Inn", null, 1, "lobby", 4, 20, 1880, "", { tagline: ["Rooms by the Night"] }),
   t("lodge", null, "Lodge", null, 1, "lobby", 6, 30, 1880, "", {}),
   // trades of the past only
   t("dry goods", null, "Dry Goods", "DRY GOODS", 10, "retail aisles", 7, 15, 1880, "s", { until: 1950 }),

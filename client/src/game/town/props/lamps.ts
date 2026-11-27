@@ -69,7 +69,7 @@ export const SHOP_HEIGHT = 2.3;
 export const SHOP_RANGE = 8;
 export const SHOP_STRENGTH = 0.85;
 export const SHOP_CODE = nightCode(6, UNTIL_DAWN);
-const SHOP_WARM: readonly Trade[] = ["tavern", "restaurant", "hotel", "motel", "lodge", "rooming house"];
+const SHOP_WARM: readonly Trade[] = ["tavern", "restaurant", "hotel", "motel", "lodge", "rooming house", "inn"];
 const SHOP_WARM_COLOUR: Rgb = [1, 0.8, 0.52];
 const SHOP_COOL_COLOUR: Rgb = [0.84, 0.92, 1];
 
