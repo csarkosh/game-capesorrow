@@ -12,6 +12,7 @@ import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { townBlendEnd, townBlendWindowD, TOWN_BLEND_TUNABLES } from "./blend.js";
 import { CLEARING_TUNABLES, YARD_LIFT, townClutterStands, townFeatureMask, townKeepD, townStripWeight } from "./clearing.js";
 import { GROUND, GROUND_TUNABLES, townGroundInto } from "./ground.js";
+import { townHighwayBedGround } from "./highwayBedGround.js";
 import { VERGE_TUNABLES, vergeMask, vergeWeight, vergeWeightAt } from "./verge.js";
 import { RAIL_CLEARING_TUNABLES, railFeatureMask } from "./railClearing.js";
 import { RAIL_GROUND, RAIL_TUNABLES, railGroundInto } from "./railGround.js";
@@ -94,6 +95,10 @@ export const CAPE_PLACE: CoastOverlay = {
   clearing: { z: COVE_Z, x: townClearingX },
   // Round a yard's building the mask is open to the wall, and each piece of ground cover is kept back by where it stands (`clearing.ts`).
   clutterStands: townClutterStands,
+  // What lies on the beach and the shape it has (the engine's `beach`): the wrack line, cobbles, small driftwood and dune grass at their full density, and the storm ridge, cusps, bars and hummocks.
+  beach: {},
   // Where animals may not be (`wildlifeGround.ts`): the renderer's alone, so no tunable and no part of the level id.
   wildlifeGround: townWildlifeGround,
+  // The highway's bed is the game's own surface: the engine's patches of finer rock make no triangle on it (`highwayBedGround.ts`); the renderer's alone, like the line above.
+  pavedGround: townHighwayBedGround,
 };

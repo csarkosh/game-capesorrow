@@ -343,6 +343,8 @@ describe("the town's made ground", () => {
     // The plan's fill reaches seaward of the natural shore at the cove, and its bank is made ground: a point it
     // reaches is left out here (and tested as the quay's bank in fill.test.ts), and counted.
     let inFill = 0;
+    // Points in the beach's band, where the engine's beach shape moves the coast's own ground (below).
+    let shaped = 0;
     for (const seed of [20261121, 1, 424242]) {
       for (let k = 0; k < 120; k++) {
         const z = (rnd() * 2 - 1) * 900;
@@ -357,7 +359,16 @@ describe("the town's made ground", () => {
         if (Math.abs(x - railCenterX(seed, z)) < RAIL_REACH + 1) continue;
         const own = coastGround(seed, x, z);
         const got = elevationSampleAt(seed, x, z);
-        expect(got).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
+        const plain = roadCorridorOverD(seed, z, own.u, own.uDz, own.ground);
+        // The place asks the engine for the beach's own shape (`CAPE_PLACE.beach`: a storm ridge, cusps, bars, hummocks), which `coastGround`
+        // does not carry: where the coast's plain ground is in the beach's band (0.8 m under the still sea to the sand's top at 4 m) the
+        // ground is the plain one within the shape's reach (its relief is 35 cm at the most, its added slope under 0.35), and outside the
+        // band it is the plain one exactly, as it was everywhere before the shape.
+        if (own.ground.h > -0.85 && own.ground.h < 4.05) {
+          expect(Math.abs(got.h - plain.h), `seed ${seed} at (${x.toFixed(1)}, ${z.toFixed(1)})`).toBeLessThan(0.45);
+          expect(Math.hypot(got.dx - plain.dx, got.dz - plain.dz)).toBeLessThan(0.4);
+          shaped++;
+        } else expect(got).toEqual(plain);
         checked++;
       }
       // Along the shore, past the footprint's far blend.
@@ -371,13 +382,21 @@ describe("the town's made ground", () => {
           if (cover(seed, f.at(s), z) !== 0) continue;
           if (Math.abs(f.at(s) - railCenterX(seed, z)) < RAIL_REACH + 1) continue;
           const own = coastGround(seed, f.at(s), z);
-          expect(elevationSampleAt(seed, f.at(s), z)).toEqual(roadCorridorOverD(seed, z, own.u, own.uDz, own.ground));
+          const got = elevationSampleAt(seed, f.at(s), z);
+          const plain = roadCorridorOverD(seed, z, own.u, own.uDz, own.ground);
+          if (own.ground.h > -0.85 && own.ground.h < 4.05) {
+            expect(Math.abs(got.h - plain.h), `seed ${seed} along the shore at z ${z}`).toBeLessThan(0.45);
+            expect(Math.hypot(got.dx - plain.dx, got.dz - plain.dz)).toBeLessThan(0.4);
+            shaped++;
+          } else expect(got).toEqual(plain);
           checked++;
         }
       }
     }
     expect(checked).toBeGreaterThan(150);
-    process.stderr.write(`the coast's own beyond the cover: ${checked} points checked, ${inFill} left out for lying in the plan's fill or its bank\n`);
+    // Most of what is checked lies outside the beach's band and is still held exactly.
+    expect(checked - shaped).toBeGreaterThan(100);
+    process.stderr.write(`the coast's own beyond the cover: ${checked} points checked (${shaped} of them in the beach's band, held within the shape's reach), ${inFill} left out for lying in the plan's fill or its bank\n`);
   });
 
   it("follows the highway's grade line wherever the plan stands along it: its height at the highway is the grade line's, worst case over ten seeds", () => {

@@ -18,7 +18,7 @@
  *
  * Every value is a first tuning by eye, on two streets.
  */
-import { gameLook, lookGradeAt, type GameLook, type LookFinish, type LookGrade, type LookSward } from "@csarkosh/engine/game/gameLook";
+import { SAND_DEFAULT, gameLook, lookGradeAt, type GameLook, type LookFinish, type LookGrade, type LookSward } from "@csarkosh/engine/game/gameLook";
 import type { PaintPalette } from "@csarkosh/engine/game/gradeParams";
 import { sunPositionAt } from "@csarkosh/engine/game/sky";
 import type { WeatherParams } from "@csarkosh/engine/game/weather";
@@ -108,6 +108,8 @@ export const CAPE_LOOK: Partial<GameLook> = {
   hour: 12,
   finish: FINISH,
   sward: SWARD,
+  // The beach's sand, deeper than the engine's own: every part at its full strength (`LookSand`).
+  sand: { ...SAND_DEFAULT },
   grades: GRADES,
 };
 
