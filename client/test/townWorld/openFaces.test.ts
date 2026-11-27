@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { MeshBuilder } from "../../src/game/town/meshBuilder.js";
 import { townGround } from "../../src/game/town/townGeometry.js";
 import type { TownGround } from "../../src/game/town/townTypes.js";
-import { builderOf, openFaces } from "./openFaces.js";
+import { builderOf, openFaces, type OpenFace } from "./openFaces.js";
 import { trianglesOf } from "./nearPlanes.js";
 import { townFaces, type TownFaces } from "./townFaces.js";
 
@@ -32,9 +32,12 @@ export const OPEN_MIN_AREA = 0.25;
 const LEFT_OUT_BY_COST: readonly string[] = ["loft props/vehicleGeometry.ts"];
 
 function lines(seed: number, detail: "full" | "low", g: TownGround): string[] {
-  const f = townFaces(seed, detail, true);
-  return openFaces(f, g, () => townGround(seed))
-    .filter((o) => o.reachable && o.area >= OPEN_MIN_AREA && !LEFT_OUT_BY_COST.some((n) => o.builder.startsWith(n)))
+  const found = (trace: boolean): OpenFace[] => openFaces(townFaces(seed, detail, trace), g, () => townGround(seed)).filter((o) => o.reachable && o.area >= OPEN_MIN_AREA);
+  // The first pass keeps no trace: a stack trace for each of a town's 800,000 triangles is a third of the time and most of the memory, and
+  // the finder does not read it. Only a town with a face to name is built again with its traces (the finder is the same either way).
+  if (found(false).length === 0) return [];
+  return found(true)
+    .filter((o) => !LEFT_OUT_BY_COST.some((n) => o.builder.startsWith(n)))
     .slice(0, 12)
     .map((o) => `seed ${seed} ${detail} at ${o.at.map((v) => v.toFixed(1)).join(",")} area ${o.area.toFixed(2)} ${builderOf(o.tri)}`);
 }

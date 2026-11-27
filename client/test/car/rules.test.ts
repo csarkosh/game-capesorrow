@@ -956,7 +956,10 @@ describe("walking is unchanged by the car", () => {
     const stride = withCar.slice(1).map((q, i) => Math.hypot(q.x - (withCar[i] as { x: number }).x, q.z - (withCar[i] as { z: number }).z));
     expect(stride.reduce((a, b) => a + b, 0)).toBeGreaterThan(20);
     expect(Math.max(...stride)).toBeGreaterThan(0.05);
-    expect(stride.some((s) => s < 0.01)).toBe(true);
+    // Met something: past the first strides from rest (short with nothing met), some tick moved under a quarter of the longest. From the
+    // municipal building's door the first thing met is its end wall at a glancing angle, slid along at a sixth of a stride and never stopped at.
+    const full = Math.max(...stride);
+    expect(stride.slice(10).some((s) => s < full / 4)).toBe(true);
   }, timeLimit(60_000));
 
   it("is put out of a wall last when a car pins it there: a walker between a car and a wall ends clear of the wall", () => {
