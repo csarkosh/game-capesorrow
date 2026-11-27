@@ -185,10 +185,20 @@ export function bed(g: Geo, it: Item): void {
   // A white duvet over it, turned down at the head in a fold.
   L.box(-0.3, 1.04, -0.96, 0.96, 0.5, 0.58, "cloth", WHITE);
   L.box(-0.42, -0.2, -0.97, 0.97, 0.5, 0.6, "cloth", { tint: [WHITE.tint[0] * 1.1, WHITE.tint[1] * 1.1, WHITE.tint[2] * 1.1] });
-  // Two pairs of pillows: one standing against the headboard and one lying before it, a pair of each.
+  // The duvet drapes over the sides of the bed in a soft edge.
+  for (const sg of [-1, 1]) L.box(-0.3, 1.04, sg > 0 ? 0.92 : -0.99, sg > 0 ? 0.99 : -0.92, 0.36, 0.56, "cloth", WHITE, true, false);
+  // Two pairs of pillows: one standing against the headboard and one lying before it, each of three layers, thicker in the middle than at the edges, so that it reads as a pillow and not a slab.
+  const pillow = (f0: number, f1: number, r0: number, r1: number, y0: number, y1: number): void => {
+    const layers = 3;
+    for (let k = 0; k < layers; k++) {
+      const inset = k === 0 ? 0 : k === 1 ? 0.02 : 0.05;
+      const lift = k === layers - 1 ? 0.012 : 0;
+      L.box(f0 + inset * (y1 - y0 > 0.2 ? 0.4 : 1), f1 - inset * (y1 - y0 > 0.2 ? 0.4 : 1), r0 + inset, r1 - inset, y0 + ((y1 - y0) * k) / layers, y0 + ((y1 - y0) * (k + 1)) / layers + lift, "cloth", { tint: [WHITE.tint[0] * (1.05 + 0.03 * k), WHITE.tint[1] * (1.05 + 0.03 * k), WHITE.tint[2] * (1.05 + 0.03 * k)] });
+    }
+  };
   for (const r of [-0.45, 0.45]) {
-    L.box(-1.0, -0.88, r - 0.36, r + 0.36, 0.5, 0.98, "cloth", WHITE);
-    L.box(-0.86, -0.46, r - 0.34, r + 0.34, 0.58, 0.7, "cloth", { tint: [WHITE.tint[0] * 1.05, WHITE.tint[1] * 1.05, WHITE.tint[2] * 1.05] });
+    pillow(-1.0, -0.88, r - 0.36, r + 0.36, 0.5, 0.98);
+    pillow(-0.86, -0.46, r - 0.34, r + 0.34, 0.58, 0.72);
   }
   // A teal throw across the foot.
   L.box(0.62, 0.92, -0.98, 0.98, 0.58, 0.62, "cloth", TEAL);
@@ -485,7 +495,7 @@ export function curtainPair(g: Geo, dc: Decor): void {
       const b = r0 + side * (k + 1) * 0.05;
       const f0 = k % 2 === 0 ? 0.04 : 0.1;
       const f1 = k % 2 === 0 ? 0.1 : 0.04;
-      L.poly([[f0, a, y0], [f1, b, y0], [f1, b, y1], [f0, a, y1]], [1, 0, 0], "cloth", { tint: [1.5, 1.45, 1.3], k: 1 });
+      L.poly([[f0, a, y0], [f1, b, y0], [f1, b, y1], [f0, a, y1]], [1, 0, 0], "carpet", { tint: [1.7, 1.6, 1.5], k: 1 });
     }
     L.box(0.02, 0.04, Math.min(r0, r0 + side * 0.4), Math.max(r0, r0 + side * 0.4), y1 - 0.02, y1 + 0.02, "steel", { tint: [0.3, 0.3, 0.3] });
   }

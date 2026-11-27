@@ -6,7 +6,7 @@ import type { Decor, Item } from "../../../sim/inside/design.js";
 import { archway, backBar, barCounter, column } from "./bar.js";
 import { acUnit, bistroStool, booth, brassRack, cafeBack, cafeCounter, espresso, floorJoints, flushLight, panel, picture, roundChair, tileWall, wallLamp } from "./cafe.js";
 import { art } from "./art.js";
-import { coastMap, concreteJoints, glassBall, glazing, lampGrid, mural } from "./hall.js";
+import { certificate, coastMap, coatStand, concreteJoints, deskSet, filingCabinet, pinBoard, glassBall, glazing, lampGrid, mural } from "./hall.js";
 import { brochureRack, coffeeStation, downlight, floorLamp, longTable, luggageCart, planter, sideTable, slatScreen, sprinkler, vent } from "./lobby.js";
 import { cornice, curtainPair, firePlan, kettleTray, lightSwitch, luggageRack, smokeDetector, wasteBin, armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
 import { beam, bunting, ceilingFan, chalkboard, coatHooks, crateStack, dartboard, jukebox, kegStack, mirror, neonSign, newspaperRack, pastryCase, sideboard, tabletop, wallShelf, windowBench } from "./dress.js";
@@ -81,6 +81,9 @@ export const ITEMS: Readonly<Record<string, (g: Geo, it: Item) => void>> = {
   smoke_detector: smokeDetector,
   cornice,
   glass_ball: glassBall,
+  filing_cabinet: filingCabinet,
+  coat_stand: coatStand,
+  desk_set: deskSet,
   lamp_grid: lampGrid,
   side_table: sideTable,
   downlight,
@@ -108,6 +111,8 @@ export const DECOR: Readonly<Record<string, (g: Geo, dc: Decor) => void>> = {
   light_switch: lightSwitch,
   fire_plan: firePlan,
   coast_map: coastMap,
+  pin_board: pinBoard,
+  certificate,
   mural,
   concrete_joints: concreteJoints,
   forest_picture: forestPicture,

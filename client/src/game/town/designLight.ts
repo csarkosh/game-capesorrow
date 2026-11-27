@@ -175,7 +175,8 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
       let cone = 1;
       if (l.beam !== undefined) {
         // A downlight: the cosine from straight down to a power below its own height; a halo of a metre or so on what is above it.
-        cone = y < l.y - 0.2 ? Math.pow(Math.max(0, (l.y - y) / len), l.beam) : 0.9 * Math.exp(-(dx * dx + dd * dd) / 1.6);
+        // A ceiling (facing down) is lit by the halo, anything else by the cone alone: the two never meet on one face, so no edge shows at the lamp's own height.
+        cone = ny < -0.5 ? 0.9 * Math.exp(-(dx * dx + dd * dd) / 1.6) : Math.pow(Math.max(0, (l.y - y) / len), l.beam);
       }
       const a = (l.power * wrap * cone * seen(i, s, d, y)) / (k * k);
       out[0] += l.tone[0] * a;
@@ -209,7 +210,9 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
     const eD = Math.min(d - FRONT_WALL, D - d);
     const e = Math.max(0, Math.min(eS, eD));
     const c = Math.sqrt(Math.max(0, eS) * Math.max(0, eS) + Math.max(0, eD) * Math.max(0, eD));
-    let k = 1 - CORNER_DARK * Math.exp(-c / CORNER_REACH);
+    // The designs with a bounce are lit more evenly: their corners are darkened less and over a wider reach.
+    const soft = mood.bounce !== undefined;
+    let k = 1 - (soft ? 0.4 : CORNER_DARK) * Math.exp(-c / (soft ? 1.4 : CORNER_REACH));
     if (ny > 0.5 || ny < -0.5) k *= 1 - EDGE_DARK * Math.exp(-e / EDGE_REACH);
     else k *= (1 - EDGE_DARK * Math.exp(-Math.max(0, y) / EDGE_REACH)) * (1 - EDGE_DARK * Math.exp(-Math.max(0, H - y) / EDGE_REACH));
     return k;
@@ -230,7 +233,9 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
       if (near <= 0) continue;
       // A table's top is dark under it but not on it; a wall's foot and a counter's side are dark close to the floor and lighter up.
       const up = Math.min(1, Math.max(0, 1 - (y - 0.05) / Math.max(0.4, b.y1)));
-      k *= 1 - 0.6 * Math.min(1, near) * (0.35 + 0.65 * up);
+      // Fading out above 2.5 m, so that a tall wall shades smoothly over what stands against its foot.
+      const high = Math.min(1, Math.max(0, (2.5 - y) / 1.0));
+      k *= 1 - 0.6 * Math.min(1, near) * (0.35 + 0.65 * up) * high;
     }
     return Math.max(0.2, k);
   };
@@ -240,9 +245,9 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
   const lit = (s: number, d: number, y: number, ns: number, nd: number, ny: number): Rgb => {
     sum(s, d, y, ns, nd, ny, out);
     if (mood.bounce !== undefined && ny < -0.5 && ceilBase > 0) {
-      // Evenly pale: between 0.6 and 1 of the base by how much of the lights' own light falls here, with no corner or edge darkening and no contact.
+      // Evenly pale: between 0.82 and 1 of the base by how much of the lights' own light falls here, with no corner or edge darkening and no contact.
       const L = ((out[0] + out[1] + out[2]) / 3) * gain;
-      const v = ceilBase * (0.6 + 0.4 * Math.min(1, L / ceilRef));
+      const v = ceilBase * (0.82 + 0.18 * Math.min(1, L / ceilRef));
       scratch[0] = v * mood.ambient[0];
       scratch[1] = v * mood.ambient[1];
       scratch[2] = v * mood.ambient[2];
@@ -271,7 +276,7 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
       top = Math.max(top, ((tmp[0] + tmp[1] + tmp[2]) / 3) * gain);
     }
     ceilRef = top;
-    ceilBase = mood.bounce * mean;
+    ceilBase = mood.bounce;
   }
   return {
     gain,

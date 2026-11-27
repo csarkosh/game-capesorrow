@@ -247,6 +247,6 @@ export function cafeDesign(site: CafeSite): Design {
       floor: "marble_tile",
       ceiling: "painted",
     },
-    mood: { exposure: 1.3, ambient: [1, 0.93, 0.82], ambientK: 0.08, day: 0.3, bounce: 2.0 },
+    mood: { exposure: 1.3, ambient: [1, 0.93, 0.82], ambientK: 0.08, day: 0.3, bounce: 1.6 },
   });
 }

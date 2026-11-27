@@ -97,7 +97,7 @@ export type Finish = {
 /** The room's mood for the light: the brightest floor's luminance the lights are brought to, the ambient colour and strength, and how much of the day the front's panes let in. */
 export type Mood = {
   readonly exposure: number; readonly ambient: readonly [number, number, number]; readonly ambientK: number; readonly day: number;
-  /** A pale ceiling gives back light: the share of the floor's mean light that every ceiling face holds at least (0.6 of it where no light falls, the whole of it under a fixture), so that an open ceiling is evenly pale, brighter round fixtures. None: the ceiling is lit as everything is. */
+  /** A pale ceiling gives back light: the light every ceiling face holds before its paint's own colour is laid over it (0.82 of it where no lamp's light falls, the whole of it under a fixture), so that an open ceiling is evenly pale, gently brighter round fixtures. None: the ceiling is lit as everything is. */
   readonly bounce?: number;
 };
 

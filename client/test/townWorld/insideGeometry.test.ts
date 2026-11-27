@@ -11,7 +11,7 @@ const SEEDS = [20261121, 1175766972];
 /** A vertex may lie this far outside the room's box: a hanging thing's or a trim's own thickness, and the recess of the back room's doorway is allowed on top of the depth. */
 const MARGIN = 0.1;
 /** The most vertices a room may take: the designed bar, cafe and lodging and the municipal hall each have their own (40,000, 40,000, 60,000 and 80,000). */
-const BUDGET: Readonly<Record<string, number>> = { bar: 40000, cafe: 40000, lodging: 60000, office: 80000 };
+const BUDGET: Readonly<Record<string, number>> = { bar: 40000, cafe: 40000, lodging: 70000, office: 80000 };
 
 const pos = (a: MeshArrays, i: number): [number, number, number] => [a.positions[i * 3] as number, a.positions[i * 3 + 1] as number, a.positions[i * 3 + 2] as number];
 

@@ -46,8 +46,27 @@ const SKIRT = 0.12;
 const CELL = 0.75;
 /** The grid of a floor and a ceiling: the light is baked at its corners, so this is the finest a pool of light can be (0.5 m; the bar keeps 0.75 m, its light is as it is; a pool about 1 m across is then two or three vertices wide). */
 const SLAB_CELL = 0.5;
+/** Within this of a narrow pool's centre the lines of a floor or a ceiling are this close (metres). */
+const POOL_REACH = 0.85;
+const POOL_STEP = 1 / 3;
 
 const ONE: Rgb = [1, 1, 1];
+/**
+ * The fractions of a span `[from, from + span]` in steps no longer than `step`, finer (`fine`) within `radius` of any of `centres`: the lines of a floor or a ceiling are closer where a narrow pool of light falls,
+ * so that its edge is smooth over the vertices and no step shows.
+ */
+function linesNear(from: number, span: number, step: number, centres: readonly number[], radius: number, fine: number): number[] {
+  const base = lines(span, step);
+  if (centres.length === 0) return base;
+  const at: number[] = base.map((f) => from + f * span);
+  for (let x = Math.ceil(from / fine) * fine; x < from + span - 1e-6; x += fine) if (centres.some((c) => Math.abs(c - x) < radius)) at.push(x);
+  at.sort((p, q) => p - q);
+  const out: number[] = [];
+  for (const x of at) if (out.length === 0 || x - (out[out.length - 1] as number) > 0.06) out.push(x);
+  out[out.length - 1] = from + span;
+  return out.map((x) => (x - from) / span);
+}
+
 /** The fractions of a span, in steps no longer than `step`. */
 function lines(span: number, step: number): number[] {
   const n = Math.max(1, Math.ceil(span / step - 1e-9));
@@ -95,16 +114,21 @@ export function designGeometry(out: MeshBuilder, r: DrawIn): void {
 // ---- floors and ceilings
 
 function slabs(g: Geo, d: Design): void {
-  for (const sl of d.slabs) slab(g, sl, d.name !== "bar");
+  // The narrow pools of light (a downlight's, a flush light's: a beam of 20 or more) are what the floors and ceilings are finer under.
+  const pools = d.lights.filter((l) => (l.beam ?? 0) >= 20);
+  for (const sl of d.slabs) slab(g, sl, d.name !== "bar", pools);
 }
 
-function slab(g: Geo, sl: Slab, fine: boolean): void {
+function slab(g: Geo, sl: Slab, fine: boolean, pools: readonly { s: number; d: number; y: number }[]): void {
   const w = sl.s1 - sl.s0;
   const l = sl.d1 - sl.d0;
   const up: P3 = [0, 0, 1];
   const dn: P3 = [0, 0, -1];
-  const us = lines(w, fine ? SLAB_CELL : CELL);
-  const vs = lines(l, fine ? SLAB_CELL : CELL);
+  // Only a floor is made finer: a ceiling is held evenly pale (`Mood.bounce`) and shows no steps.
+  const refine = fine && sl.kind === "floor" && sl.y < 0.5;
+  const near = pools.filter((p) => p.y - sl.y < 4.6 && p.y > sl.y);
+  const us = refine ? linesNear(sl.s0, w, SLAB_CELL, near.map((p) => p.s), POOL_REACH, POOL_STEP) : lines(w, fine ? SLAB_CELL : CELL);
+  const vs = refine ? linesNear(sl.d0, l, SLAB_CELL, near.map((p) => p.d), POOL_REACH, POOL_STEP) : lines(l, fine ? SLAB_CELL : CELL);
   const tint = sl.tint;
   const tinted = tint === undefined ? undefined : (): Rgb => tint;
   if (sl.kind === "floor" && (sl.mat === "dark_wood" || sl.mat === "oak")) {

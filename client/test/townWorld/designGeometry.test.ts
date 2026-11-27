@@ -7,6 +7,7 @@ import { designMesh, RISER } from "../../src/game/town/designGeometry.js";
 import { insideGeometry } from "../../src/game/town/insideGeometry.js";
 import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { townGround } from "../../src/game/town/townGeometry.js";
+import { bakeLight } from "../../src/game/town/designLight.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 import { GALLERY, STAIR_FROM, STAIR_TO, testDesign } from "../inside/designHelpers.js";
 
@@ -32,7 +33,7 @@ function unpaired(a: MeshArrays): number {
   return bad;
 }
 
-describe.each([["bar", 0, 40000], ["cafe", 1, 40000], ["lodging", 2, 60000]] as const)("the %s design drawn, on every test seed", (_name, index, budget) => {
+describe.each([["bar", 0, 40000], ["cafe", 1, 40000], ["lodging", 2, 70000]] as const)("the %s design drawn, on every test seed", (_name, index, budget) => {
   const lines: string[] = [];
   it("builds on every seed inside its box, with its backs, under the budget, naming every material", () => {
     for (const seed of SEEDS) {
@@ -230,6 +231,64 @@ describe.each([["cafe", 1], ["lodging", 2]] as const)("the light of the %s is po
     const hi = percentile(vals, 0.95);
     console.log(`[ceiling ${name}] ${vals.length} open vertices, 5th ${lo.toFixed(3)} 95th ${hi.toFixed(3)} ratio ${(lo / Math.max(1e-6, hi)).toFixed(2)}`);
     expect(vals.length, `${name}: ceiling vertices`).toBeGreaterThan(20);
+    // White: the cafe's about 0.75 to 0.85 of white, the lobby's 0.65 to 0.75.
+    const mean = vals.reduce((u, v) => u + v, 0) / vals.length;
+    console.log(`[ceiling ${name}] mean ${mean.toFixed(3)}`);
+    expect(mean, `${name}: mean of the open ceiling`).toBeGreaterThanOrEqual(name === "cafe" ? 0.72 : 0.62);
+    expect(mean, `${name}: mean of the open ceiling`).toBeLessThanOrEqual(name === "cafe" ? 0.9 : 0.8);
     expect(lo / Math.max(1e-6, hi), `${name}: dimmest over brightest of the open ceiling`).toBeGreaterThanOrEqual(name === "cafe" ? 0.5 : 0.45);
+  });
+});
+
+describe.each([["bar", 0], ["cafe", 1], ["lodging", 2], ["office", 3]] as const)("the walls of the %s shade smoothly", (name, index) => {
+  const seed = 1175766972;
+  const d = insideRooms(seed)[index]!.design;
+  it("change by no more than a factor of 1.6 between neighbouring samples of one wall face on the mesh's own grid, away from fixtures", () => {
+    // The day through the front's panes is taken as a pane across the front.
+    const light = bakeLight(d, [{ s0: 0, s1: d.width, through: 0.5 }]);
+    const faces: { key: string; len: number; at: (u: number) => [number, number]; n: [number, number] }[] = [
+      { key: "left", len: d.depth - 0.3, at: (u) => [0.003, 0.15 + u], n: [1, 0] },
+      { key: "right", len: d.depth - 0.3, at: (u) => [d.width - 0.003, 0.15 + u], n: [-1, 0] },
+      { key: "back", len: d.width, at: (u) => [u, d.depth - 0.003], n: [0, -1] },
+      { key: "front", len: d.width, at: (u) => [u, 0.153], n: [0, 1] },
+    ];
+    let worst = 1;
+    let where = "";
+    for (const f of faces) {
+      const nu = Math.floor(f.len / 0.75);
+      const ny = Math.floor((d.height - 0.4 - 2.6) / 0.9);
+      const grid: (number | null)[][] = [];
+      for (let j = 0; j <= ny; j++) {
+        const row: (number | null)[] = [];
+        for (let i = 0; i <= nu; i++) {
+          const [s, dd] = f.at((i * f.len) / nu);
+          const y = 2.6 + (j * (d.height - 0.4 - 2.6)) / ny;
+          // Away from fixtures: no light within 2 m and 2.6 times its reach, to 4.2 m (a lamp's own pool on the wall falls fast, by design).
+          const near = d.lights.some((l) => Math.hypot(l.s - s, l.d - dd, l.y - y) < Math.max(2.0, Math.min(4.2, 2.6 * l.reach)));
+          const c = light.lit(s, dd, y, f.n[0], f.n[1], 0);
+          row.push(near ? null : (c[0] + c[1] + c[2]) / 3);
+        }
+        grid.push(row);
+      }
+      for (let j = 0; j <= ny; j++) for (let i = 0; i <= nu; i++) {
+        const p = (grid[j] as (number | null)[])[i] ?? null;
+        if (p === null) continue;
+        for (const [di, dj] of [[1, 0], [0, 1]] as const) {
+          const q = (grid[j + dj] as (number | null)[] | undefined)?.[i + di] ?? null;
+          if (q === null || Math.max(p, q) < 0.01) continue;
+          // Not across a storey's floor, where the light of one storey ends and the next's begins.
+          const yAt = (jj: number): number => 2.6 + (jj * (d.height - 0.4 - 2.6)) / ny;
+          if ((d.cuts ?? []).some((c) => (yAt(j) - c) * (yAt(j + dj) - c) < 0)) continue;
+          const r = Math.max(p, q) / Math.max(1e-3, Math.min(p, q));
+          if (r > worst) {
+            worst = r;
+            where = `p ${p.toFixed(3)} q ${q.toFixed(3)} ${f.key} at u ${((i * f.len) / nu).toFixed(1)} y ${(2.6 + (j * (d.height - 0.4 - 2.6)) / ny).toFixed(1)}`;
+          }
+        }
+      }
+    }
+    console.log(`[wall steps ${name}] worst neighbour ratio ${worst.toFixed(2)} ${where}`);
+    // The bar's corners are as they were (its light is as it is): held to 2.1.
+    expect(worst, `${name}: ${where}`).toBeLessThanOrEqual(name === "bar" ? 2.1 : 1.6);
   });
 });

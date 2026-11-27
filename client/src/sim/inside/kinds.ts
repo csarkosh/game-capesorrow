@@ -116,6 +116,10 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
   cornice: () => null,
   /** The municipal hall's glass balls of light and the black grid they hang from: hung, no footprint. */
   glass_ball: () => null,
+  /** The player's office: a filing cabinet with a box on top (0.46 by 0.6 m, 1.35 m), a coat stand, and what lies on a desk. */
+  filing_cabinet: () => ({ ha: 0.23, hb: 0.3, h: 1.35 }),
+  coat_stand: () => ({ ha: 0.2, hb: 0.2, h: 1.8 }),
+  desk_set: () => null,
   lamp_grid: () => null,
   vent: () => null,
   sprinkler: () => null,
@@ -134,7 +138,7 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
 };
 
 /** The kinds that hang on a wall (`Decor`). */
-export const DECOR_KINDS: readonly string[] = ["television", "guitar", "poster", "sign", "board", "wall_lamp", "ac_unit", "picture", "panel", "tile_wall", "slat_wall", "lit_letters", "frame_art", "forest_picture", "lit_pane", "closet_front", "door_leaf", "clock", "extinguisher", "art", "glazing", "curtain_pair", "light_switch", "fire_plan", "coast_map", "mural", "concrete_joints", "chalkboard", "neon_sign", "dartboard", "wall_shelf", "mirror", "coat_hooks", "bunting"];
+export const DECOR_KINDS: readonly string[] = ["television", "guitar", "poster", "sign", "board", "wall_lamp", "ac_unit", "picture", "panel", "tile_wall", "slat_wall", "lit_letters", "frame_art", "forest_picture", "lit_pane", "closet_front", "door_leaf", "clock", "extinguisher", "art", "glazing", "curtain_pair", "light_switch", "fire_plan", "coast_map", "pin_board", "certificate", "mural", "concrete_joints", "chalkboard", "neon_sign", "dartboard", "wall_shelf", "mirror", "coat_hooks", "bunting"];
 
 /** A kind's footprint as the builder of a design asks for it. A kind that is not named is a mistake, not a kind without one. */
 export function footOf(kind: string, p: readonly number[]): Foot | null {

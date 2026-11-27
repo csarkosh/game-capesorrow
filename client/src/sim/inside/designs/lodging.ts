@@ -271,10 +271,13 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   b.item("bed", bedS, Y(yb), TOWARD_LEFT, [], { gap: 0, y: roomY });
   for (const sg of [-1, 1]) {
     const dd = Y(yb + sg * 1.2);
+    // Both lamps hang over the head of the bed whether or not a bedside table has the room.
+    if (yb + sg * 0.78 > entry + 0.2 && yb + sg * 0.78 < Ly - 0.2) {
+      b.decorate({ kind: "wall_lamp", s: X(ROOM_W), d: Y(yb + sg * 0.78), y: roomY + 1.45, face: TOWARD_LEFT, w: 0.12, h: 0.2 });
+      b.light({ s: X(ROOM_W - 0.2), d: Y(yb + sg * 0.78), y: roomY + 1.45, kind: "lamp", power: 0.35, reach: 1.5, tone: [1, 0.85, 0.6] });
+    }
     if (Y(yb + sg * 1.2) > D - 0.4 || yb + sg * 1.2 < entry + 0.3) continue;
     b.item("bedside", X(ROOM_W - 0.27), dd, TOWARD_LEFT, [], { gap: 0, y: roomY + 0.0 });
-    b.decorate({ kind: "wall_lamp", s: X(ROOM_W), d: Y(yb + sg * 0.78), y: roomY + 1.45, face: TOWARD_LEFT, w: 0.12, h: 0.2 });
-    b.light({ s: X(ROOM_W - 0.2), d: Y(yb + sg * 0.78), y: roomY + 1.45, kind: "lamp", power: 0.35, reach: 1.5, tone: [1, 0.85, 0.6] });
   }
   if (Ly >= 4.6) {
     b.item("dresser", X(0.3), Y(yb - 0.55), TOWARD_RIGHT, [], { gap: 0, y: roomY });
@@ -338,7 +341,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const battenFrom = cm(deskD - deskLen / 2 - 0.6);
   b.item("batten_ceiling", 2.2, battenFrom, TOWARD_BACK, [cm(min(deskLen + 1.2, lobbyBack - 0.15 - battenFrom)), 3.6, cm(H - 0.4)], { anywhere: true });
   b.item("pendant_lamp", cm(deskS + 1.3), cm(deskD - deskLen * 0.25), TOWARD_RIGHT, [cm(H - 1.4)], { anywhere: true });
-  b.light({ s: cm(deskS + 1.3), d: cm(deskD - deskLen * 0.25), y: cm(H - 1.5), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.92, 0.78] });
+  b.light({ s: cm(deskS + 1.3), d: cm(deskD - deskLen * 0.25), y: cm(H - 1.5), kind: "pendant", beam: 80, power: 2.6, reach: 2.4, tone: [1, 0.92, 0.78] });
   b.item("floor_joints", 0, 0, TOWARD_RIGHT, [W, FRONT_WALL, D, 0.8], { anywhere: true });
 
   let loungeMark = cm(min(Ss - 3.5, max(4.5, Wm * 0.45)));
@@ -348,7 +351,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const downlights = (s0: number, s1: number, d0: number, d1: number, step: number): void => {
     for (let s = s0; s <= s1; s += step) for (let dd = d0; dd <= d1; dd += step) {
       b.item("downlight", cm(s), cm(dd), TOWARD_RIGHT, [], { anywhere: true });
-      b.light({ s: cm(s), d: cm(dd), y: cm(H - 0.05), kind: "tube", beam: 60, power: 1.4, reach: 2.2, tone: [1, 0.93, 0.8] });
+      b.light({ s: cm(s), d: cm(dd), y: cm(H - 0.05), kind: "tube", beam: 80, power: 1.4, reach: 2.2, tone: [1, 0.93, 0.8] });
     }
   };
   if (!small) {
@@ -389,7 +392,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
       b.item("batten_ceiling", cm(sx - 2.3), 2.3, TOWARD_RIGHT, [4.8, 3.6, cm(hang)], { anywhere: true });
       for (let k = 0; k < 3; k++) {
         b.item("pendant_lamp", cm(sx - 1.1 + k * 0.9), cm(2.2 + (k % 2) * 0.7), TOWARD_RIGHT, [cm(H - 1.2 - k * 0.3)], { anywhere: true });
-        b.light({ s: cm(sx - 1.1 + k * 0.9), d: cm(2.2 + (k % 2) * 0.7), y: cm(H - 1.3 - k * 0.3), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
+        b.light({ s: cm(sx - 1.1 + k * 0.9), d: cm(2.2 + (k % 2) * 0.7), y: cm(H - 1.3 - k * 0.3), kind: "pendant", beam: 80, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
       }
       b.light({ s: cm(sx - 0.5), d: 2.3, y: cm(hang), kind: "tube", beam: 40, power: 0.9, reach: 2.2, tone: [1, 0.96, 0.88] });
       if (person) b.person({ s: cm(sx - 0.6), d: 0.95, face: TOWARD_BACK, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
@@ -409,7 +412,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
       b.item("batten_ceiling", cm(mid - 1.9), cm(longD - 0.5), TOWARD_RIGHT, [3.8, 3.4, cm(hang)], { anywhere: true });
       for (let k = 0; k < 3; k++) {
         b.item("pendant_lamp", cm(mid - 1.0 + k * 1.0), longD, TOWARD_RIGHT, [cm(H - 1.0 - 0.35 * (k % 2))], { anywhere: true });
-        b.light({ s: cm(mid - 1.0 + k * 1.0), d: longD, y: cm(H - 1.1 - 0.35 * (k % 2)), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
+        b.light({ s: cm(mid - 1.0 + k * 1.0), d: longD, y: cm(H - 1.1 - 0.35 * (k % 2)), kind: "pendant", beam: 80, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
       }
       b.person({ s: cm(mid - 0.4), d: cm(longD + 0.75), face: TOWARD_FRONT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
     }
@@ -426,7 +429,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
         b.item("shell_chair", cm(s + f.s * 0.78), cm(dd + f.d * 0.78), { s: -f.s, d: -f.d }, [], { gap: 0, mat: shades[(k + j) % 3] as string });
       }
       b.item("pendant_lamp", s, dd, TOWARD_RIGHT, [cm(H - 1.3)], { anywhere: true });
-      b.light({ s, d: dd, y: cm(H - 1.4), kind: "pendant", beam: 60, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
+      b.light({ s, d: dd, y: cm(H - 1.4), kind: "pendant", beam: 80, power: 2.6, reach: 2.4, tone: [1, 0.9, 0.7] });
     }
     const coffeeLen = cm(min(4.2, Ss * 0.2));
     const coffeeS = cm(min(Ss - 3.0, mid + 4.2));
@@ -509,7 +512,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     doorHead: min(2.05, H - 0.2),
     arrive: arrivalOf(W, site.doorS),
     shell: { front: wallFinish, left: wallFinish, right: wallFinish, back: wallFinish, floor: "marble_tile", ceiling: "painted" },
-    mood: { exposure: 2.1, ambient: [1, 0.95, 0.85], ambientK: 0.03, day: 0.55, bounce: 1.6 },
+    mood: { exposure: 2.1, ambient: [1, 0.95, 0.85], ambientK: 0.01, day: 0.75, bounce: 1.55 },
     ...(multi ? { cuts: [cm(F - 0.15)] } : {}),
     frontCurtains: !small,
     marks,

@@ -190,14 +190,35 @@ export function hallDesign(site: HallSite): Design {
     // What stands in each room.
     const mid = (a + c) / 2;
     if (k === 0) {
-      b.item("desk", cm(c - 0.9), cm(Dg + 1.4), TOWARD_LEFT, [], { gap: 0.1, y: Y2 });
-      b.item("chair", cm(c - 1.5), cm(Dg + 1.4), TOWARD_RIGHT, [], { gap: -1, y: Y2, mat: "dark_wood" });
-      b.item("shelf_wall", cm(a + 1.0), cm(D - 0.24), TOWARD_FRONT, [1.4], { gap: 0.05, y: Y2 });
-      b.item("shelf_wall", cm(a + 2.4), cm(D - 0.24), TOWARD_FRONT, [1.2], { gap: 0.05, y: Y2 });
-      b.item("sofa", cm(a + 0.6), cm(Dg + 1.6), TOWARD_RIGHT, [1.6], { gap: 0.05, y: Y2, mat: "grey" });
-      b.decorate({ kind: "coast_map", s: cm(c - 0.0), d: cm(Dg + 1.2), y: Y2 + 1.6, face: TOWARD_LEFT, w: 1.1, h: 0.8 });
-      b.decorate({ kind: "lit_pane", s: cm(mid), d: D, y: Y2 + 1.55, face: TOWARD_FRONT, w: 1.2, h: 1.2 });
-      b.light({ s: cm(mid), d: cm(Dg + 1.5), y: Y2 + F - 0.5, kind: "tube", beam: 40, power: 1.2, reach: 2.2, tone: [1, 0.96, 0.88] });
+      // The player's own room, the most cared-for of the small ones. The way in from the doorway is kept clear.
+      b.reserve({ s0: door - 0.85, s1: door + 0.85, d0: Dg, d1: Dg + 1.3 });
+      const desk = { s: cm(c - 0.9), d: cm(Dg + 1.5) };
+      b.item("desk", desk.s, desk.d, TOWARD_LEFT, [], { gap: 0.05, y: Y2 });
+      b.item("desk_set", desk.s, desk.d, TOWARD_LEFT, [], { anywhere: true, y: cm(Y2 + 0.76) });
+      b.item("chair", cm(c - 1.5), desk.d, TOWARD_RIGHT, [], { gap: -1, y: Y2, mat: "dark_wood" });
+      // A visitor's chair across the desk, a rug between, a bin by the desk.
+      b.item("chair", cm(c - 2.15), cm(Dg + 1.6), TOWARD_RIGHT, [], { gap: 0.05, y: Y2, mat: "leather" });
+      b.item("carpet_inset", cm(c - 1.75), cm(Dg + 2.0), TOWARD_BACK, [2.0, 1.6, 0], { anywhere: true, y: Y2 });
+      b.item("waste_bin", cm(c - 0.35), cm(Dg + 2.35), TOWARD_LEFT, [], { gap: 0.02, y: Y2 });
+      // The back wall: a coat stand with a coat and hat, the window between, two filing cabinets (one with a box on it).
+      b.item("coat_stand", cm(a + 0.4), cm(D - 0.35), TOWARD_FRONT, [], { gap: 0.02, y: Y2 });
+      b.decorate({ kind: "lit_pane", s: cm(a + 1.55), d: D, y: Y2 + 1.55, face: TOWARD_FRONT, w: 1.1, h: 1.2 });
+      b.decorate({ kind: "clock", s: cm(a + 1.55), d: D, y: Y2 + 2.65, face: TOWARD_FRONT, w: 0.32, h: 0.32 });
+      b.item("filing_cabinet", cm(c - 0.62), cm(D - 0.3), TOWARD_FRONT, [], { gap: 0.02, y: Y2 });
+      b.item("filing_cabinet", cm(c - 1.15), cm(D - 0.3), TOWARD_FRONT, [], { gap: 0.02, y: Y2 });
+      // The left wall: the sofa, the cork board with the coast map over it, and a second board with pinned papers and string.
+      b.item("sofa", cm(a + 0.5), cm(Dg + 1.9), TOWARD_RIGHT, [1.6], { gap: 0.05, y: Y2, mat: "grey" });
+      b.decorate({ kind: "coast_map", s: a, d: cm(Dg + 1.9), y: Y2 + 1.75, face: TOWARD_RIGHT, w: 1.2, h: 0.85 });
+      b.decorate({ kind: "pin_board", s: a, d: cm(Dg + 3.15), y: Y2 + 1.6, face: TOWARD_RIGHT, w: 0.85, h: 0.75 });
+      // The right wall: a shelf unit by the back, and a framed certificate above the desk.
+      b.item("shelf_wall", cm(c - 0.24), cm(D - 0.95), TOWARD_LEFT, [0.9], { gap: 0.02, y: Y2 });
+      b.decorate({ kind: "certificate", s: c, d: desk.d, y: Y2 + 1.7, face: TOWARD_LEFT, w: 0.34, h: 0.26 });
+      // Light: a ceiling fixture, the banker's lamp's warm pool, a light over the map, the day from the window.
+      b.item("downlight", cm((a + c) / 2), cm(Dg + 2.0), TOWARD_RIGHT, [Y3 - eps], { anywhere: true });
+      b.light({ s: cm((a + c) / 2), d: cm(Dg + 2.0), y: Y3 - eps - 0.05, kind: "tube", beam: 20, power: 1.6, reach: 2.6, tone: [1, 0.96, 0.88] });
+      b.light({ s: cm(desk.s + 0.18), d: cm(desk.d - 0.05), y: Y2 + 1.15, kind: "lamp", power: 0.9, reach: 1.4, tone: [1, 0.82, 0.5] });
+      b.light({ s: cm(a + 0.5), d: cm(Dg + 1.9), y: Y2 + 2.4, kind: "lamp", power: 0.7, reach: 1.6, tone: [1, 0.92, 0.75] });
+      b.light({ s: cm(a + 1.55), d: cm(D - 0.5), y: Y2 + 1.55, kind: "glow", power: 0.8, reach: 3.0, tone: [0.85, 0.92, 1] });
     } else if (k === 1) {
       b.item("desk", cm(mid), cm(Dg + 1.5), TOWARD_FRONT, [], { gap: 0.1, y: Y2 });
       b.item("shelf_wall", cm(mid), cm(D - 0.24), TOWARD_FRONT, [min(2.2, c - a - 0.8)], { gap: 0.05, y: Y2 });
@@ -284,7 +305,7 @@ export function hallDesign(site: HallSite): Design {
       const y = cm(4.2 + (H - 1.6 - 4.2) * ((ball * 0.61803) % 1));
       const r = cm(0.15 + 0.07 * roll(300 + ball));
       b.item("glass_ball", s, d, TOWARD_RIGHT, [y, r], { anywhere: true });
-      b.light({ s, d, y, kind: "bulb", beam: 6, power: 1.8, reach: 2.6, tone: [1, 0.9, 0.72] });
+      b.light({ s, d, y, kind: "bulb", beam: 2, power: 3.0, reach: 3.6, tone: [1, 0.9, 0.72] });
       ball++;
     }
   }
@@ -333,7 +354,7 @@ export function hallDesign(site: HallSite): Design {
       floor: "concrete",
       ceiling: "painted",
     },
-    mood: { exposure: 1.3, ambient: [1, 0.96, 0.9], ambientK: 0.04, day: 0.6, bounce: 0.8 },
+    mood: { exposure: 1.3, ambient: [1, 0.96, 0.9], ambientK: 0.04, day: 0.6, bounce: 0.95 },
     marks,
   });
 }

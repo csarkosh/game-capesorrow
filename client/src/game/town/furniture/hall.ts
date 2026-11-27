@@ -134,3 +134,99 @@ export function coastMap(g: Geo, dc: Decor): void {
     L.poly([[0.04, r, y], [0.04, r + 0.035, y], [0.04, r + 0.035, y + 0.035], [0.04, r, y + 0.035]], [1, 0, 0], "painted", { tint: [1.3, 0.1, 0.08] });
   }
 }
+
+/** A filing cabinet, 0.45 by 0.6 m and 1.35 m high: a grey steel body of three drawers with handles, a cardboard box on top. */
+export function filingCabinet(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.23, 0.23, -0.3, 0.3, 0, 1.35, "steel", { tint: [0.9, 0.95, 0.95] });
+  for (let k = 0; k < 3; k++) {
+    const y = 0.08 + k * 0.42;
+    L.poly([[0.232, -0.27, y], [0.232, 0.27, y], [0.232, 0.27, y + 0.36], [0.232, -0.27, y + 0.36]], [1, 0, 0], "steel", { tint: [1.0, 1.05, 1.05] });
+    L.box(0.232, 0.25, -0.07, 0.07, y + 0.27, y + 0.3, "steel", { tint: [0.35, 0.35, 0.37] }, false);
+    L.box(0.233, 0.236, -0.12, 0.12, y + 0.13, y + 0.2, "paper", { tint: [1.1, 1.05, 0.9] }, false);
+  }
+  L.box(-0.17, 0.17, -0.22, 0.22, 1.35, 1.6, "paper", { tint: [0.78, 0.62, 0.42] });
+  L.box(-0.172, 0.172, -0.222, 0.222, 1.5, 1.52, "paper", { tint: [0.55, 0.43, 0.28] });
+}
+
+/** A coat stand: a turned post on a cross foot with six hooks, a long coat and a hat on it. */
+export function coatStand(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  L.box(-0.2, 0.2, -0.03, 0.03, 0, 0.04, "dark_wood", { tint: [1.3, 1.2, 1.1] });
+  L.box(-0.03, 0.03, -0.2, 0.2, 0, 0.04, "dark_wood", { tint: [1.3, 1.2, 1.1] });
+  L.box(-0.025, 0.025, -0.025, 0.025, 0.04, 1.8, "dark_wood", { tint: [1.3, 1.2, 1.1] }, true, true);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    g.tube(L.p(0, 0, 1.7), L.p(Math.cos(a) * 0.14, Math.sin(a) * 0.14, 1.78), 0.01, 4, "dark_wood");
+  }
+  // The coat hangs from a hook: a long grey-brown shape wider at the shoulders, and a hat over another.
+  L.poly([[0.1, -0.2, 1.68], [0.1, 0.2, 1.68], [0.14, 0.2, 0.75], [0.14, -0.2, 0.75]], [1, 0, 0], "cloth", { tint: [0.9, 0.8, 0.7] });
+  L.poly([[0.04, -0.17, 1.66], [0.04, 0.17, 1.66], [0.1, 0.2, 1.68], [0.1, -0.2, 1.68]], [0, 0, 1], "cloth", { tint: [0.9, 0.8, 0.7] });
+  L.frustum(-0.12, 0.0, 1.76, 1.8, 0.2, 0.2, 8, "cloth", { tint: [0.7, 0.62, 0.55] }, false, true);
+  L.frustum(-0.12, 0.0, 1.8, 1.9, 0.12, 0.1, 8, "cloth", { tint: [0.7, 0.62, 0.55] }, false, true);
+}
+
+/** What lies on a desk top (its floor `y` the top's height): an old typewriter, a telephone, a mug, a stack of folders, a banker's lamp with a green glass shade; in the desk's own frame. */
+export function deskSet(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  // The typewriter: a dark body with a platen and a row of keys, a sheet in it.
+  L.box(-0.2, 0.05, -0.55, -0.15, 0, 0.1, "steel", { tint: [0.12, 0.12, 0.13] });
+  L.box(-0.2, -0.12, -0.55, -0.15, 0.1, 0.17, "steel", { tint: [0.12, 0.12, 0.13] });
+  L.box(-0.2, -0.1, -0.5, -0.2, 0.17, 0.22, "paper", { tint: [1.3, 1.3, 1.2] });
+  for (let k = 0; k < 4; k++) L.box(0.02, 0.05, -0.52 + k * 0.1, -0.46 + k * 0.1, 0.1, 0.12, "steel", { tint: [0.35, 0.35, 0.37] });
+  // The telephone, black, with its handset.
+  L.box(0.05, 0.25, 0.35, 0.55, 0, 0.07, "steel", { tint: [0.1, 0.1, 0.1] });
+  L.box(0.08, 0.12, 0.33, 0.57, 0.07, 0.1, "steel", { tint: [0.12, 0.12, 0.12] });
+  // A mug, and a stack of folders in manila and one green.
+  L.frustum(0.2, 0.05, 0, 0.1, 0.04, 0.045, 8, "painted", { tint: [1.5, 1.5, 1.4] }, false, true);
+  for (let k = 0; k < 4; k++) L.box(-0.05 + 0.01 * (k % 2), 0.2, 0.05 + 0.01 * (k % 3), 0.35, k * 0.025, (k + 1) * 0.025, "paper", { tint: k === 2 ? [0.4, 0.6, 0.45] : [0.85, 0.7, 0.45] });
+  // The banker's lamp: a brass stem and a green glass shade that glows.
+  L.box(-0.2, -0.05, -0.1, 0.0, 0, 0.03, "brass");
+  L.box(-0.14, -0.11, -0.06, -0.04, 0.03, 0.3, "brass", undefined, true, false);
+  L.box(-0.24, 0.0, -0.1, 0.05, 0.3, 0.36, "painted", { glow: 1.6, tint: [0.3, 0.8, 0.45] });
+  L.box(-0.24, 0.0, -0.1, 0.05, 0.36, 0.38, "brass");
+}
+
+/** A board with papers pinned to it and string between the pins: a timber frame, cork, a dozen sheets of different sizes, red pins and a red string running from one to another. No faces and no names. */
+export function pinBoard(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const y0 = dc.y - dc.h / 2;
+  const y1 = dc.y + dc.h / 2;
+  L.box(0, 0.03, -w, w, y0, y1, "dark_wood", { tint: [0.9, 0.9, 0.9] }, false);
+  L.poly([[0.032, -w + 0.04, y0 + 0.04], [0.032, w - 0.04, y0 + 0.04], [0.032, w - 0.04, y1 - 0.04], [0.032, -w + 0.04, y1 - 0.04]], [1, 0, 0], "painted", { tint: [1.0, 0.7, 0.4] });
+  const pins: [number, number][] = [];
+  for (let k = 0; k < 10; k++) {
+    const r = -w + 0.12 + hash01(k * 7 + dc.id, 150) * (2 * w - 0.34);
+    const y = y0 + 0.1 + hash01(k * 11 + dc.id, 151) * (dc.h - 0.34);
+    const pw = 0.09 + 0.07 * hash01(k, 152);
+    const ph = 0.11 + 0.08 * hash01(k, 153);
+    L.poly([[0.034 + 0.0005 * k, r, y], [0.034 + 0.0005 * k, r + pw, y], [0.034 + 0.0005 * k, r + pw, y + ph], [0.034 + 0.0005 * k, r, y + ph]], [1, 0, 0], "paper", { tint: [1.2 - 0.12 * hash01(k, 154), 1.2 - 0.1 * hash01(k, 155), 1.1] });
+    // Two grey lines of illegible type on each sheet.
+    for (const f of [0.35, 0.65]) L.poly([[0.0365, r + 0.012, y + ph * f], [0.0365, r + pw - 0.012, y + ph * f], [0.0365, r + pw - 0.012, y + ph * f + 0.006], [0.0365, r + 0.012, y + ph * f + 0.006]], [1, 0, 0], "painted", { tint: [0.4, 0.4, 0.4] });
+    pins.push([r + pw / 2, y + ph - 0.015]);
+    L.poly([[0.038, r + pw / 2 - 0.008, y + ph - 0.023], [0.038, r + pw / 2 + 0.008, y + ph - 0.023], [0.038, r + pw / 2 + 0.008, y + ph - 0.007], [0.038, r + pw / 2 - 0.008, y + ph - 0.007]], [1, 0, 0], "painted", { tint: [1.4, 0.1, 0.08] });
+  }
+  // The string from pin to pin, as thin quads.
+  for (let k = 0; k + 1 < pins.length; k++) {
+    const [r0, a0] = pins[k] as [number, number];
+    const [r1, a1] = pins[k + 1] as [number, number];
+    L.poly([[0.039, r0, a0], [0.039, r1, a1], [0.039, r1, a1 + 0.004], [0.039, r0, a0 + 0.004]], [1, 0, 0], "painted", { tint: [1.1, 0.12, 0.1] });
+  }
+}
+
+/** A small framed certificate: a dark frame, a cream sheet, lines of illegible type and a seal. */
+export function certificate(g: Geo, dc: Decor): void {
+  const L = g.at(dc.s, dc.d, dc.face);
+  const w = dc.w / 2;
+  const y0 = dc.y - dc.h / 2;
+  const y1 = dc.y + dc.h / 2;
+  L.box(0, 0.025, -w, w, y0, y1, "dark_wood", { tint: [0.8, 0.8, 0.8] }, false);
+  L.poly([[0.027, -w + 0.02, y0 + 0.02], [0.027, w - 0.02, y0 + 0.02], [0.027, w - 0.02, y1 - 0.02], [0.027, -w + 0.02, y1 - 0.02]], [1, 0, 0], "paper", { tint: [1.25, 1.2, 1.0] });
+  for (let k = 0; k < 6; k++) {
+    const y = y1 - 0.06 - k * (dc.h - 0.14) * 0.13;
+    const half = (w - 0.05) * (k === 0 ? 0.6 : 0.9 - 0.1 * (k % 2));
+    L.poly([[0.029, -half, y], [0.029, half, y], [0.029, half, y + 0.005], [0.029, -half, y + 0.005]], [1, 0, 0], "painted", { tint: [0.35, 0.35, 0.38] });
+  }
+  L.frustum(0.03, w * 0.45, y0 + 0.05, y0 + 0.052, 0.025, 0.025, 8, "painted", { tint: [1.3, 0.2, 0.15] }, false, true);
+}
