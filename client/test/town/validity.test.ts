@@ -195,14 +195,14 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
     }
   }
 
-  // The FBI office exists, fronts a street, and the spawn is at its door.
-  const fbi = plan.landmarks.find((l) => l.role === "fbi");
-  if (!fbi) {
-    fail("no FBI office");
+  // The municipal building exists, fronts a street, and the spawn is at its door.
+  const hall = plan.landmarks.find((l) => l.role === "municipal building");
+  if (!hall) {
+    fail("no municipal building");
     return bad;
   }
-  const office = plan.buildings[fbi.building]!;
-  if (!["federal building", "office"].includes(office.kind)) fail(`the FBI office is a ${office.kind}`);
+  const office = plan.buildings[hall.building]!;
+  if (office.kind !== "municipal building") fail(`the municipal building is a ${office.kind}`);
   let near = Infinity;
   for (const s of roads) near = Math.min(near, segDist(plan.spawn, s.a, s.b) - s.width / 2);
   if (near > 8) fail(`the spawn is ${near.toFixed(2)} m off the road's surface`);
@@ -210,7 +210,7 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
   const fr = rects[office.id]!;
   let wall = Infinity;
   for (let i = 0; i < fr.length; i++) wall = Math.min(wall, segDist(plan.spawn, fr[i]!, fr[(i + 1) % fr.length]!));
-  if (wall > 6 || wall < 1) fail(`the spawn is ${wall.toFixed(2)} m from the FBI office's wall`);
+  if (wall > 6 || wall < 1) fail(`the spawn is ${wall.toFixed(2)} m from the municipal building's wall`);
   const away = { x: plan.spawn.x - office.centre.x, z: plan.spawn.z - office.centre.z };
   const face = { x: Math.sin(plan.spawn.yaw), z: Math.cos(plan.spawn.yaw) };
   if (away.x * face.x + away.z * face.z <= 0) fail("the spawn faces the building");
@@ -219,7 +219,7 @@ function check(plan: TownPlan, seed: number | string, site: TownSite): string[] 
 }
 
 describe("a plan is valid on the world's real sites", () => {
-  it("over forty world seeds: lots, buildings, blocks, streets, shore, network, wharves, FBI office and spawn", () => {
+  it("over forty world seeds: lots, buildings, blocks, streets, shore, network, wharves, municipal building and spawn", () => {
     const bad: string[] = [];
     for (const seed of SEEDS) {
       const { plan, site } = townFor(seed);
@@ -357,7 +357,7 @@ describe("a plan is valid on the world's real sites", () => {
         const site: TownSite = { seed, anchor: { x: 0, z: 0 }, step: 16, z0: -512, shoreX, roadX, inland: 320 };
         const plan = planTown(site, "port");
         expect(plan.blocks.length, `odd ${k}`).toBeGreaterThan(10);
-        expect(plan.landmarks.some((l) => l.role === "fbi")).toBe(true);
+        expect(plan.landmarks.some((l) => l.role === "municipal building")).toBe(true);
       }
     }
   });

@@ -18,8 +18,8 @@ export type SvgOptions = {
   readonly width?: number;
   /** Draw the lots' lines. */
   readonly lots?: boolean;
-  /** Which labels: every landmark, the FBI office alone, or none. */
-  readonly labels?: "all" | "fbi" | "none";
+  /** Which labels: every landmark, the municipal building alone, or none. */
+  readonly labels?: "all" | "hall" | "none";
   /** Draw the scale bar and north arrow. */
   readonly furniture?: boolean;
   /** Draw the plan's frame only (no outer margin), for thumbnails. */
@@ -169,7 +169,7 @@ const KIND_FILL: Partial<Record<BuildingKind, string>> & { default: string } = {
   school: "#78a8f0",
   hospital: "#f08080",
   courthouse: "#a0c0f0",
-  "federal building": "#5cc8ff",
+  "municipal building": "#5cc8ff",
   "tsunami refuge": "#60e0b0",
   depot: "#d0a060",
   "customs house": "#b0d0a0",
@@ -385,6 +385,8 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   for (const b of plan.blocks) {
     out.push(`<polygon points="${poly(b.polygon)}" fill="${DISTRICT_FILL[b.district]}" fill-opacity="0.32" stroke="${DISTRICT_FILL[b.district]}" stroke-opacity="0.55" stroke-width="0.6"/>`);
   }
+  // The downtown's blocks, outlined: the one connected set that holds the town's businesses (`plan.downtown`).
+  for (const id of plan.downtown) out.push(`<polygon points="${poly(plan.blocks[id]!.polygon)}" fill="none" stroke="#ffffff" stroke-opacity="0.8" stroke-width="1.6" stroke-dasharray="7 3"/>`);
   // Lot lines.
   if (options.lots) for (const l of plan.lots) out.push(`<polygon points="${poly(l.polygon)}" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="0.35"/>`);
 
@@ -535,23 +537,23 @@ export function planSvg(plan: TownPlan, site: TownSite, options: SvgOptions = {}
   // The harbour: floats and gangways, the pond, pilings, the yard, boats by kind and state, the barge, the lights.
   harbourSvg(plan, out, X, Y);
 
-  // Landmarks: a marker and a label each, the FBI office the most prominent.
+  // Landmarks: a marker and a label each, the municipal building the most prominent.
   const labels = options.labels ?? "all";
   if (labels !== "none") {
     for (const l of plan.landmarks) {
       const b = plan.buildings[l.building];
-      const fbi = l.role === "fbi";
-      if (labels === "fbi" && !fbi) continue;
-      const fs = fbi ? 20 : 12;
+      const hall = l.role === "municipal building";
+      if (labels === "hall" && !hall) continue;
+      const fs = hall ? 20 : 12;
       // A place that is no building (a road's destination) has its own position.
       const lx = l.at?.x ?? b!.centre.x;
       const lz = l.at?.z ?? b!.centre.z;
       const place = l.at !== undefined;
-      out.push(`<circle cx="${X(lx)}" cy="${Y(lz)}" r="${fbi ? 10 : place ? 6 : 4}" fill="${fbi ? "#ff3030" : place ? "#ffcf7a" : "none"}" fill-opacity="0.35" stroke="${fbi ? "#ff5050" : place ? "#ffcf7a" : "#ffffff"}" stroke-width="${fbi ? 2.5 : 1}"/>`);
-      const tx = lx + (fbi ? 14 : 7);
-      const tz = lz + (fbi ? 4 : 3);
+      out.push(`<circle cx="${X(lx)}" cy="${Y(lz)}" r="${hall ? 10 : place ? 6 : 4}" fill="${hall ? "#30a0ff" : place ? "#ffcf7a" : "none"}" fill-opacity="0.35" stroke="${hall ? "#50b0ff" : place ? "#ffcf7a" : "#ffffff"}" stroke-width="${hall ? 2.5 : 1}"/>`);
+      const tx = lx + (hall ? 14 : 7);
+      const tz = lz + (hall ? 4 : 3);
       out.push(
-        `<text x="${X(tx)}" y="${Y(tz)}" font-size="${fs}" fill="${fbi ? "#ffd0d0" : "#f0f0f0"}" font-weight="${fbi ? 700 : 400}" stroke="#0c1014" stroke-width="${fbi ? 4 : 3}" paint-order="stroke">${esc(l.name)}</text>`,
+        `<text x="${X(tx)}" y="${Y(tz)}" font-size="${fs}" fill="${hall ? "#d0ecff" : "#f0f0f0"}" font-weight="${hall ? 700 : 400}" stroke="#0c1014" stroke-width="${hall ? 4 : 3}" paint-order="stroke">${esc(l.name)}</text>`,
       );
     }
   }
@@ -617,7 +619,7 @@ export function sheetSvg(entries: readonly { plan: TownPlan; site: TownSite; see
     // The town is drawn to fit the cell's picture box, whole, whatever its proportions.
     const boxW = cell - 12;
     const boxH = cellH - capH - 12;
-    const inner = planSvg(e.plan, e.site, { width: boxW, labels: "fbi", furniture: false, bare: true })
+    const inner = planSvg(e.plan, e.site, { width: boxW, labels: "hall", furniture: false, bare: true })
       .replace(/^<svg /, `<svg x="${cx + 6}" y="${cy + 6}" preserveAspectRatio="xMidYMid meet" `)
       .replace(/ width="\d+" height="\d+"/, ` width="${boxW}" height="${boxH}"`);
     out.push(inner);

@@ -569,7 +569,7 @@ function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
     case "lodge hall":
     case "school":
     case "hotel":
-      if (role !== "fbi" && i.xf !== null) {
+      if (role !== "municipal building" && i.xf !== null) {
         // A portico at the door: a slab on two columns, the way a building that means to be taken seriously does it.
         const w = front;
         const s = w.length / 2;

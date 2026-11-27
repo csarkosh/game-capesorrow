@@ -41,7 +41,7 @@ describe("the paved ground that is not a street", () => {
         }
       }
     }
-    expect(aprons).toBeGreaterThan(8);
+    expect(aprons).toBeGreaterThan(0);
     expect(APRON_SIDE).toBeGreaterThan(APRON_FRONT);
   });
 

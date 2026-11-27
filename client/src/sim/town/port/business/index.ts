@@ -23,9 +23,9 @@ import { MIN_BAY, STAIR_STRIP, bayCount, bayGeo, cutFront, type Geo } from "./un
 import { dwelling, upperFloor } from "./windows.js";
 
 /** Kinds that carry units of their own with a fixed trade. */
-const FIXED: Partial<Record<Building["kind"], Trade>> = { bank: "bank", "gas station": "gas station", motel: "motel", "federal building": "post office", tavern: "tavern", "boarding house": "rooming house" };
+const FIXED: Partial<Record<Building["kind"], Trade>> = { bank: "bank", "gas station": "gas station", motel: "motel", tavern: "tavern", "boarding house": "rooming house" };
 /** Kinds that hold ground-floor units (a shop, an office, a lobby). */
-const UNIT_KINDS: readonly Building["kind"][] = ["storefront", "office", "tavern", "restaurant", "garage", "big-box store", "warehouse", "hotel", "lodge hall", "boarding house", "depot", "bank", "gas station", "motel", "federal building"];
+const UNIT_KINDS: readonly Building["kind"][] = ["storefront", "office", "tavern", "restaurant", "garage", "big-box store", "warehouse", "hotel", "lodge hall", "boarding house", "bank", "gas station", "motel"];
 /** A building with a street door to the stairs of its upper floors. */
 const STAIR_KINDS: readonly Building["kind"][] = ["storefront", "office", "tavern", "lodge hall", "bank"];
 /** Never shut for the day: the pump, the vacancy sign and the front desk are on round the clock. */
@@ -207,6 +207,45 @@ export function planUses(input: BizInput, townRng: Rng): BuildingUse[] {
     }
   }
 
+  // What every town has, open for business, in the downtown: a lodging (a hotel, motel or boarding house), a bar (a tavern) and a cafe (`TownPlan.places`). A bay that holds the trade but is shut for
+  // the day or empty is opened; where there is none, the building that is the kind's own gets its bay open, and for the cafe a bay of a shop of the downtown takes the trade.
+  const downSet = input.downtown;
+  const isDown = (d: Draft): boolean => d.b.lot >= 0 && downSet.includes(ctx.lots[d.b.lot]!.block);
+  const ensure = (trades: readonly Trade[], kinds: readonly Building["kind"][]): void => {
+    for (const d of drafts) for (let k = 0; k < d.geos.length; k++) if (isDown(d) && d.slots[k] === "open" && d.trades[k] !== null && trades.includes(d.trades[k]!)) return;
+    const set = (d: Draft, k: number, trade: Trade): void => {
+      const cur = d.trades[k];
+      if (cur) bump(cur, -1);
+      d.slots[k] = "open";
+      d.trades[k] = trade;
+      bump(trade, 1);
+    };
+    // A bay of the trade that is shut for the day.
+    for (const d of drafts) for (let k = 0; k < d.geos.length; k++) if (isDown(d) && d.slots[k] === "closed" && d.trades[k] !== null && trades.includes(d.trades[k]!)) return void (d.slots[k] = "open");
+    // A building of the kind whose bay is empty (a hotel's and the fixed kinds' bays are known: bay 0, and the hotel's widest).
+    for (const d of drafts) {
+      if (!isDown(d) || !kinds.includes(d.b.kind) || d.b.state !== "open" || d.geos.length === 0) continue;
+      const k = d.b.kind === "hotel" ? widest(d) : 0;
+      const fixed = d.b.kind === "hotel" ? "hotel" : d.fixed;
+      if (fixed !== null && trades.includes(fixed)) return set(d, k, fixed);
+    }
+    // No building of that kind to open (the cafe's): the broadest bay of a shop of the downtown.
+    let best: { d: Draft; k: number; w: number } | null = null;
+    for (const d of drafts) {
+      if (!isDown(d) || d.b.kind !== "storefront" || d.b.state !== "open") continue;
+      for (let k = 0; k < d.geos.length; k++) {
+        const cur = d.trades[k];
+        if (cur !== null && cur !== undefined && essentials.includes(cur)) continue;
+        const w = d.geos[k]!.s1 - d.geos[k]!.s0;
+        if (best === null || w > best.w) best = { d, k, w };
+      }
+    }
+    if (best !== null) set(best.d, best.k, trades[0]!);
+  };
+  ensure(["hotel", "motel", "rooming house"], ["hotel", "motel", "boarding house"]);
+  ensure(["tavern"], ["tavern"]);
+  ensure(["cafe"], []);
+
   // ---- Pass C: each building.
   const out: BuildingUse[] = [];
   let apartmentNo = 0;
@@ -340,7 +379,7 @@ function finish(ctx: BizCtx, d: Draft, takeName: (stem: string) => string): Buil
 }
 
 /** Kinds whose signs are the building's own (a church's board, the school's name); a unit's signs are on the unit. */
-const CIVIC: readonly Building["kind"][] = ["church", "school", "hospital", "courthouse", "federal building", "office", "customs house", "depot", "tsunami refuge", "lodge hall", "fire hall", "port terminal shed", "cannery", "mill shed", "silo", "warehouse", "apartment", "junkyard", "shake mill"];
+const CIVIC: readonly Building["kind"][] = ["church", "school", "hospital", "courthouse", "municipal building", "customs house", "depot", "tsunami refuge", "lodge hall", "fire hall", "port terminal shed", "cannery", "mill shed", "silo", "warehouse", "apartment", "junkyard", "shake mill"];
 
 /** The civic or industrial building's own signs (and an untenanted warehouse's). */
 function civicOf(ctx: BizCtx, d: Draft, hasUnits: boolean, rng: Rng, takeName: (stem: string) => string): Sign[] {
@@ -360,7 +399,6 @@ function upperUse(rng: Rng, b: Building, storey: number): UpperUse["use"] {
       return storey === 1 ? "lodge hall" : weighted(rng, [["apartments", 3], ["storage", 3], ["empty", 3]] as const);
     case "warehouse":
       return "storage";
-    case "federal building":
     case "bank":
       return weighted(rng, [["offices", 6], ["empty", 4]] as const);
     default:

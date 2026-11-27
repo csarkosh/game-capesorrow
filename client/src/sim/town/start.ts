@@ -1,6 +1,6 @@
 /**
- * Where the player starts: on the street side of the FBI office's door, facing away from it (the
- * plan's `spawn`, `port/landmarks.ts`). A detective's day begins at the office.
+ * Where the player starts: on the street side of the municipal building's door, facing away from it (the
+ * plan's `spawn`, `port/landmarks.ts`). A detective's day begins at the office in the town's municipal building.
  *
  * A pure function of the world's seed, in world coordinates (the plan's frame plus the site's
  * anchor), so the rules that place the player and the page and the worker that centre the first

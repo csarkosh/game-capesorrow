@@ -29,6 +29,11 @@ import { streetChannelD, streetLiftD, streetLowerD, withStreets } from "../../sr
  * change to any file of the ground's arithmetic, the worlds whose plan moved are pinned again. (Plan 24 opened the
  * streets that were shut at the highway: world 20261121's three were taken again, worlds 1 and 6 stood.)
  *
+ * Plan 25 (the downtown: `TOWN_GEN` 25) moved the `hooks:`, `town:`, `walked:` and `world:` keys of all three worlds, and no other: the grid's streets and the made ground did not move (every block, the fill and
+ * the quay are as they were, and so are the grid's streets bar a trimmed end or two), but the paved districts' blocks did (the downtown's blocks are the core, the highway strip only in it),
+ * a few streets beside shops take the sidewalk-and-curb style (`wayOf`'s `shops`), the outskirts' lots changed (no gas station, motel, tavern or garage out there), and the cover and the
+ * clearing follow the lots. `windows` did not move.
+ *
  * The three `hooks:` keys moved on purpose (the verge, `verge.ts`): they fold the place's shore strip and its feature mask, and the
  * strip now also covers the town's unclaimed made ground and the highway's corridor, and the mask adds weeds and no trees there.
  * No other key moved: the ground's heights, the town's own mask and strip, and the cover are the same arithmetic.
@@ -195,19 +200,19 @@ function digests(): Record<string, string> {
 }
 
 const PINNED: Record<string, string> = {
-  "hooks:1": "d9ce5ee3be2b1dc3/360000",
-  "hooks:20261121": "3320c1ea62da9c82/360000",
-  "hooks:6": "5a2cdcb724420f46/360000",
-  "town:1": "a9dd0d10d83af95a/1880000",
-  "town:20261121": "b698a76dabea4a63/1880000",
-  "town:6": "20a7eabc602ebbb2/1880000",
-  "walked:1": "7e79f52186b829bb/180000",
-  "walked:20261121": "8ccd3eef2f258f0b/180000",
-  "walked:6": "42c0db3ecf00aff1/180000",
+  "hooks:1": "bb2e34608c4cdf95/360000",
+  "hooks:20261121": "317b3e21cf99bccc/360000",
+  "hooks:6": "fef0197cce51c35a/360000",
+  "town:1": "0699224f02ee5b01/1880000",
+  "town:20261121": "b04860c9646745fc/1880000",
+  "town:6": "a0c20960b65126d3/1880000",
+  "walked:1": "8d4a99d4bdee8bec/180000",
+  "walked:20261121": "dace899ea784150e/180000",
+  "walked:6": "6c980c04c3effbc6/180000",
   windows: "89b5a4c96dc02509/800000",
-  "world:1": "89ceaed0fe595fc0/240000",
-  "world:20261121": "2e375361311f48d0/240000",
-  "world:6": "065b514333c89721/240000",
+  "world:1": "634d3b11d2274417/240000",
+  "world:20261121": "eba88195309d7616/240000",
+  "world:6": "778b4cd89f2768f0/240000",
 };
 
 describe("the town's ground", () => {

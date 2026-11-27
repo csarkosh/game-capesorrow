@@ -51,6 +51,7 @@ import { analyseShore, onLand, roadAt, shoreAt, shoreLine } from "../shore.js";
 import type { TownSite } from "../site.js";
 import { ALLEY_WIDTH, wayOf } from "../ways.js";
 import { pruneStreets } from "./ends.js";
+import { planDowntown } from "./downtown.js";
 import { SIZING } from "./sizing.js";
 import { lineDist } from "../railKeepOut.js";
 import { densify, relaxed, roundedPath, leastRadius, SPUR_MIN_RADIUS } from "./spur.js";
@@ -111,6 +112,8 @@ export type BlockMeta = {
   readonly site: "mill" | "terminal" | null;
   /** The block's shore edge stands on the natural shore (a block of the flats that fronts the water). */
   readonly shoreFront: boolean;
+  /** An outer block of the downtown: it has a street to a block outside it, and is built thinner (`downtown.ts`). */
+  readonly edge: boolean;
 };
 
 /** Where a pier may go: its landward end, the way it runs, its width and how far it can run over water. */
@@ -159,6 +162,8 @@ export type Layout = {
   spurs: Spur[];
   /** The grid's blocks near the town that the land or the budget left as woods. */
   woods: Woods[];
+  /** The downtown's block ids, ascending (`downtown.ts`). */
+  downtown: number[];
   coreCentre: Vec;
   millCentre: Vec;
   terminalCentre: Vec;
@@ -1049,32 +1054,41 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     if (inRows.some((p) => BUSINESS_STREET.core(history, p.d, coreRows.indexOf(p.row)))) return null;
     return inRows.slice().sort((p, q) => Math.abs(p.d) - Math.abs(q.d) || coreRows.indexOf(p.row) - coreRows.indexOf(q.row))[0] ?? null;
   })();
+  // The district each block gets before the downtown is planned (`downtown.ts`: the old core and dock, and the strip drawn along the highway), and the one it has if it is no part of the downtown.
+  const plain: District[] = [];
+  const oldPlain = (p: OldPiece): District => (dist(centroid(p.poly), millCentre) <= 260 ? "mill housing" : "residential");
   const oldDistrict = (p: OldPiece): District => {
-    const c = centroid(p.poly);
     if (p === coreBlock || BUSINESS_STREET.core(history, p.d, coreRows.indexOf(p.row))) return "core";
-    if (dist(c, millCentre) <= 260) return "mill housing";
+    if (dist(centroid(p.poly), millCentre) <= 260) return "mill housing";
     if (p.row === 0 && BUSINESS_STREET.dock(p.d)) return "dock";
     return "residential";
   };
   for (const p of oldPieces) {
     blocks.push({ id: blocks.length, plat: "old", polygon: p.poly, district: oldDistrict(p), cell: { col: p.col, row: p.row } });
-    meta.push({ frame: oldFrame, bearing, tag: "old", col: p.col, row: p.row, d: p.d, site: null, shoreFront: false });
+    plain.push(oldPlain(p));
+    meta.push({ frame: oldFrame, bearing, tag: "old", col: p.col, row: p.row, d: p.d, site: null, shoreFront: false, edge: false });
   }
-  const compassDistrict = (cp: CompassPiece, site_: "mill" | "terminal" | null): District => {
+  const compassPlain = (cp: CompassPiece, site_: "mill" | "terminal" | null): District => {
     if (site_ === "mill") return "mill";
     if (site_ === "terminal") return "waterfront";
     const c = centroid(cp.poly);
-    let nearHwy = Infinity;
-    for (const q of cp.poly) nearHwy = Math.min(nearHwy, Math.abs(q.x - roadAt(site, q.z)));
-    if (nearHwy <= 40 && history.present.highwayStrip && chance(rngP, STRIP_SHARE)) return "highway strip";
     if (dist(c, millCentre) <= 280) return "mill housing";
     if (c.x < roadAt(site, c.z) && dist(c, terminalCentre) <= 260) return "industrial";
     return "residential";
   };
+  const compassDistrict = (cp: CompassPiece, site_: "mill" | "terminal" | null): District => {
+    if (site_ === "mill") return "mill";
+    if (site_ === "terminal") return "waterfront";
+    let nearHwy = Infinity;
+    for (const q of cp.poly) nearHwy = Math.min(nearHwy, Math.abs(q.x - roadAt(site, q.z)));
+    if (nearHwy <= 40 && history.present.highwayStrip && chance(rngP, STRIP_SHARE)) return "highway strip";
+    return compassPlain(cp, site_);
+  };
   for (let k = 0; k < comp.pieces.length; k++) {
     const cp = comp.pieces[k]!;
     blocks.push({ id: blocks.length, plat: "company", polygon: cp.poly, district: compassDistrict(cp, siteOf[k]!), cell: { col: cp.i, row: cp.j } });
-    meta.push({ frame: coFrame, bearing: COMPASS, tag: "compass", col: cp.i, row: cp.j, d: 0, site: siteOf[k]!, shoreFront: cp.front });
+    plain.push(compassPlain(cp, siteOf[k]!));
+    meta.push({ frame: coFrame, bearing: COMPASS, tag: "compass", col: cp.i, row: cp.j, d: 0, site: siteOf[k]!, shoreFront: cp.front, edge: false });
   }
 
   // ---- The town's own track (`spur.ts`): it leaves the main line beyond the end of the town on the mill's side, curves to the shore's strip between the water and the
@@ -1267,6 +1281,13 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     return !blocks.some((b) => overlapDepth(r, orient(b.polygon)) > 0.2);
   });
 
+  // The downtown: the blocks that hold every business, and what each block is (`downtown.ts`).
+  const dt = planDowntown({ site, history, blocks, meta, streets, plain, centre: coreCentre });
+  for (const bl of blocks) {
+    blocks[bl.id] = { ...bl, district: dt.districts[bl.id]! };
+    meta[bl.id] = { ...meta[bl.id]!, edge: dt.edge[bl.id]! };
+  }
+
   // A street that runs between shops, yards or the strip has its sidewalk where a street of houses has its verge.
   const SHOPS: readonly District[] = ["core", "dock", "waterfront", "mill", "industrial", "highway strip"];
   const edgeDist = (poly: Poly, a: Vec, b: Vec): number => {
@@ -1314,6 +1335,7 @@ export function layoutPort(site: TownSite, history: History, names: TownNames, r
     pierSpots: clearSpots,
     spurs,
     woods,
+    downtown: dt.downtown,
     coreCentre,
     millCentre,
     terminalCentre,

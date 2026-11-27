@@ -281,7 +281,7 @@ export function planEdges(inp: EdgeInput): StreetEdge[] {
  * junction or the neighbouring sidewalk run, but not further than `SHOP_WALK_REACH` metres from the frontage. The pours are the street's own
  * (a decade after its plat, its own wear), drawn from the `edges` stream after every street's own draws so that none of those is moved.
  */
-const FRONTS: readonly BuildingKind[] = ["storefront", "tavern", "restaurant", "office", "bank", "hotel", "lodge hall", "depot", "church", "school", "hospital", "courthouse", "customs house", "federal building", "boarding house", "gas station", "motel", "big-box store", "garage", "warehouse"];
+const FRONTS: readonly BuildingKind[] = ["storefront", "tavern", "restaurant", "office", "bank", "hotel", "lodge hall", "depot", "church", "school", "hospital", "courthouse", "customs house", "municipal building", "boarding house", "gas station", "motel", "big-box store", "garage", "warehouse"];
 /** How far a shop's sidewalk runs on past its frontage toward a junction or a neighbouring run, metres. AUTHORED, NOT RESEARCHED. */
 export const SHOP_WALK_REACH = SIZING.SHOP_WALK_REACH;
 /** A front is on a street if its middle, 1.5 m out from the wall, is within this of the street's edge, metres. */
@@ -318,9 +318,9 @@ function addShopWalks(edges: StreetEdge[], inp: EdgeInput, platYear: (id: string
     const side: 0 | 1 = -(mid.x - best.a.x) * tz + (mid.z - best.a.z) * tx >= 0 ? 0 : 1;
     const sa = station(f.origin);
     const sb = station({ x: f.origin.x + f.t.x * f.width, z: f.origin.z + f.t.z * f.width });
-    // A front that stands past the street's end is served by its last few metres.
+    // A front that stands past the street's end (either end) is served by its last few metres.
     let s0 = Math.max(0, Math.min(sa, sb));
-    const s1 = Math.min(len, Math.max(sa, sb));
+    const s1 = Math.max(Math.min(4, len), Math.min(len, Math.max(sa, sb)));
     if (s1 - s0 < 4) s0 = Math.max(0, s1 - 4);
     needs.push({ street: best.id, side, s0, s1 });
   }

@@ -28,16 +28,16 @@ describe("the plan's SVG", () => {
     expect(wellFormed(svg)).toBe(true);
   });
 
-  it("labels every landmark, the FBI office most prominently", () => {
+  it("labels every landmark, the municipal building most prominently", () => {
     for (const l of plan.landmarks) expect(svg).toContain(l.name.replace(/&/g, "&amp;"));
-    const fbi = plan.landmarks.find((l) => l.role === "fbi")!;
+    const hall = plan.landmarks.find((l) => l.role === "municipal building")!;
     const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const sizeOf = (name: string): number => {
       const el = svg.split("<text ").find((t) => t.includes(`>${esc(name)}</text>`));
       return Number(/font-size="(\d+)"/.exec(el ?? "")![1]);
     };
-    const others = plan.landmarks.filter((l) => l.role !== "fbi").map((l) => sizeOf(l.name));
-    expect(sizeOf(fbi.name)).toBeGreaterThan(Math.max(...others));
+    const others = plan.landmarks.filter((l) => l.role !== "municipal building").map((l) => sizeOf(l.name));
+    expect(sizeOf(hall.name)).toBeGreaterThan(Math.max(...others));
   });
 
   it("draws the sea, the highway, the rail, the blocks, the buildings, the seam, the spawn, the scale and the north arrow", () => {

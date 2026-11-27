@@ -351,7 +351,7 @@ describe("the town's buildings as walls", () => {
       const start = townStart(seed);
       const plan = planFor(seed);
       for (const b of plan.buildings) expect(distanceTo(seed, b, start.x, start.z), `${seed} building ${b.id}`).toBeGreaterThan(HULL_RADIUS);
-      expect(penetration(seed, plan.landmarks.find((l) => l.role === "fbi")?.building as number, start.x, start.z)).toBe(0);
+      expect(penetration(seed, plan.landmarks.find((l) => l.role === "municipal building")?.building as number, start.x, start.z)).toBe(0);
       const pos = Object.freeze({ x: start.x, y: 5, z: start.z });
       const vel = Object.freeze({ x: 0, y: 0, z: 0 });
       townConstrain({ forest: { seed } }, pos, vel);

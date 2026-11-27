@@ -74,7 +74,7 @@ export function cutBlock(
   rule: LotRule,
   alleyWidth: number | null,
   rng: Rng,
-  reservation: Reservation | undefined,
+  reservations: readonly Reservation[],
 ): { lots: LotDraft[]; alley: { a: Vec; b: Vec; width: number } | null } {
   const loc = poly.map((p) => toLocal(frame, p));
   const bb = bbox(loc.map((l) => ({ x: l.u, z: l.v })));
@@ -138,20 +138,22 @@ export function cutBlock(
   };
 
   let alley: { a: Vec; b: Vec; width: number } | null = null;
-  if (reservation?.whole || rule.rows === 0) {
-    out.push({ polygon: world(st), S, T, swap, frontSign: -1, role: reservation?.whole ? reservation.role : null });
+  const whole = reservations.find((r) => r.whole);
+  if (whole || rule.rows === 0) {
+    out.push({ polygon: world(st), S, T, swap, frontSign: -1, role: whole ? whole.role : null });
     return { lots: out, alley };
   }
-  const res = reservation ?? null;
+  /** The row's own reservation: a block carries at most one for each row. */
+  const resFor = (frontSign: 1 | -1): Reservation | null => reservations.find((r) => r.side === (frontSign === -1 ? "lo" : "hi")) ?? null;
   if (rule.rows === 1) {
     const sign: 1 | -1 = rule.face === "lo" ? -1 : 1;
-    slice(st, sign, res);
+    slice(st, sign, resFor(sign));
     return { lots: out, alley };
   }
   const tm = (ext.z0 + ext.z1) / 2;
   const ah = rule.alley && alleyWidth !== null ? alleyWidth / 2 : 0;
-  slice(clipT(st, -Infinity, tm - ah), -1, res);
-  slice(clipT(st, tm + ah, Infinity), 1, res);
+  slice(clipT(st, -Infinity, tm - ah), -1, resFor(-1));
+  slice(clipT(st, tm + ah, Infinity), 1, resFor(1));
   if (ah > 0) {
     const strip = clipT(st, tm - 0.01, tm + 0.01);
     if (strip.length >= 3) {

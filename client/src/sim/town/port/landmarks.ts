@@ -2,23 +2,24 @@
  * The large port's landmarks: the buildings that are the town's face and the game's anchors. They are
  * chosen in two steps. First a place is reserved for each in the block plan (before lots are cut, so
  * that the lots can be cut around them); then, once buildings stand, each landmark is bound to the
- * building that took its place, and the spawn is put at the FBI office's door.
+ * building that took its place, and the spawn is put at the municipal building's door.
  */
 import { facingYaw } from "@csarkosh/engine/sim/facing";
-import { area, centroid, dist, type Vec } from "../geom.js";
+import { area, bbox, centroid, dist, segDist, toLocal, type Vec } from "../geom.js";
 import type { Reservation } from "../lots.js";
 import type { TownNames } from "../names.js";
 import { chance, int, pick, type Rng } from "../rng.js";
 import type { Block, Building, History, Landmark, LandmarkRole, Lot, Spawn } from "../types.js";
 import type { BlockMeta, Layout } from "./layout.js";
 import { RAIL_OFFSET } from "../rail.js";
-import { roadAt } from "../shore.js";
+import { RELIEF_LIMIT } from "../levels.js";
+import { gradedHeight, heightAt, landOf } from "../land.js";
+import { roadAt, shoreAt } from "../shore.js";
 import type { TownSite } from "../site.js";
 
 export type LandmarkPlan = {
+  /** The reserved lots: a block carries at most one for each of its two rows (`lo` and `hi`). */
   readonly reservations: Reservation[];
-  /** Blocks that become civic (the school's, the hospital's, the courthouse's). */
-  readonly civic: number[];
 };
 
 const area0 = (b: Block): number => area(b.polygon);
@@ -56,55 +57,102 @@ function nearest(blocks: readonly Block[], ids: readonly number[], target: Vec):
 
 export function planLandmarks(site: TownSite, layout: Layout, history: History, rng: Rng): LandmarkPlan {
   const { blocks, meta, old } = layout;
-  const used: boolean[] = [];
+  /** The rows of each block already reserved. */
+  const taken: { lo: boolean; hi: boolean }[] = blocks.map(() => ({ lo: false, hi: false }));
   const reservations: Reservation[] = [];
-  const civic: number[] = [];
   const isOld = (id: number): boolean => meta[id]!.tag === "old";
+  const inDowntown = layout.downtown;
+  /** The blocks that pass the test and have a row free (a block's two rows each take one landmark). */
   const ids = (f: (b: Block, m: BlockMeta) => boolean): number[] => {
     const out: number[] = [];
-    for (const b of blocks) if (!used[b.id] && f(b, meta[b.id]!)) out.push(b.id);
+    for (const b of blocks) if (!(taken[b.id]!.lo && taken[b.id]!.hi) && f(b, meta[b.id]!)) out.push(b.id);
     return out;
   };
-  const reserve = (block: number, role: string, side: "lo" | "hi", width: number, whole = false): void => {
+  /** Reserves a lot in a block, on the wanted row if it is free, else on the other; a block's rows each take one. */
+  const reserve = (block: number, role: string, side: "lo" | "hi", width: number): void => {
     if (block < 0) return;
-    used[block] = true;
-    reservations.push({ block, role, side, at: chance(rng, 0.5) ? "start" : "end", width, whole });
+    const row = !taken[block]![side] ? side : side === "lo" ? "hi" : "lo";
+    taken[block]![row] = true;
+    reservations.push({ block, role, side: row, at: chance(rng, 0.5) ? "start" : "end", width, whole: false });
   };
+  const land = landOf(site);
   const coreRows = old.coreRows;
-  const rowLo = coreRows.length > 0 ? Math.min(...coreRows) : 0;
-  const rowHi = coreRows.length > 0 ? Math.max(...coreRows) : 0;
   /** The side of a block that faces the main street: the core's rows lie either side of it, the lower row's high side and the upper row's low side. */
-  const toMain = (id: number): "lo" | "hi" => (meta[id]!.row >= old.mainLine ? "lo" : "hi");
+  const toMain = (id: number): "lo" | "hi" => (!isOld(id) || meta[id]!.row >= old.mainLine ? "lo" : "hi");
+  /** The blocks of the downtown that are not the dock block: where the town's civic and commercial landmarks stand. */
+  const hosts = (): number[] => ids((b) => inDowntown.includes(b.id) && b.district !== "dock");
 
-  // The FBI office: one block off the main street, beside the core.
-  const fbiVariant: "federal" | "office" = chance(rng, 0.6) ? "federal" : "office";
-  let fbiBlocks = ids((b, x) => isOld(b.id) && (x.row === rowHi + 1 || x.row === rowLo - 1) && Math.abs(x.d) < 1.5);
-  if (fbiBlocks.length === 0) fbiBlocks = ids((b) => isOld(b.id) && b.district === "core");
-  if (fbiBlocks.length === 0) fbiBlocks = ids((b) => isOld(b.id));
-  if (fbiBlocks.length === 0) fbiBlocks = ids(() => true);
-  // A whole four-cornered block, so that the lot at its street is a plain one.
-  const plain = fbiBlocks.filter((id) => blocks[id]!.polygon.length === 4);
-  const fbi = fbiBlocks.length > 0 ? pick(rng, plain.length > 0 ? plain : fbiBlocks) : -1;
-  reserve(fbi, fbiVariant === "federal" ? "fbi-federal" : "fbi-office", "lo", fbiVariant === "federal" ? int(rng, 26, 30) : int(rng, 22, 26));
-
-  // The boom-era hotel, the bank and the lodge hall, on the blocks that face the main street. The business street is short (`layout.ts`), so where the core has
-  // fewer blocks than these three want, the next blocks along the main street, nearest the wharf street, take the rest: the main street's own blocks of houses.
-  const coreAny = ids((b) => b.district === "core");
-  const facing = ids((b) => isOld(b.id) && b.district === "core");
-  const mainStreet = (): number[] => {
-    const here = ids((b, x) => isOld(b.id) && coreRows.includes(x.row));
-    return here.sort((p, q) => dist(centroid(blocks[p]!.polygon), layout.wharfFoot) - dist(centroid(blocks[q]!.polygon), layout.wharfFoot) || p - q);
+  // The municipal building, shared by the sheriff and the town's government: on a street (not the highway) in one of the downtown's core blocks, a whole four-cornered block
+  // of the old plat's core rows preferred so that the lot at the street is a plain one, away from the water and the highway.
+  // The made ground's height at a point, as the land can guess it: the graded plane, pulled toward the land's own height by at most the relief (`ground.ts`); a start under 2 m is no start.
+  const madeHeight = (p: Vec): number => {
+    const plane = gradedHeight(site, land, p.x, p.z);
+    return plane + Math.max(-RELIEF_LIMIT, Math.min(RELIEF_LIMIT, heightAt(land, p.x, p.z) - plane));
   };
-  const hotel = facing.length > 0 ? nearest(blocks, facing, layout.wharfFoot) : coreAny.length > 0 ? nearest(blocks, coreAny, layout.wharfFoot) : (mainStreet()[0] ?? -1);
-  if (hotel >= 0) reserve(hotel, "hotel", toMain(hotel), int(rng, 26, 32));
-  const rest = facing.filter((id) => !used[id]);
-  const bankAt = rest.length > 0 ? pick(rng, rest) : (mainStreet()[0] ?? -1);
+  // Its street is a street (a lot that fronts the highway stands a lane's width and the railroad's corridor off it, too far for a door on the sidewalk): the row's frontage is measured.
+  const frontGap = (id: number, side: "lo" | "hi"): { gap: number; mid: Vec } => {
+    const m = meta[id]!;
+    const loc = blocks[id]!.polygon.map((p) => toLocal(m.frame, p));
+    const bb = bbox(loc.map((l) => ({ x: l.u, z: l.v })));
+    const swap = bb.x1 - bb.x0 < bb.z1 - bb.z0;
+    const ts = loc.map((l) => (swap ? l.u : l.v));
+    const t0 = Math.min(...ts);
+    const t1 = Math.max(...ts);
+    const reach = (t1 - t0) * 0.2;
+    // The middle of the row's frontage: the mean of the corners at its edge of the block.
+    let mx = 0;
+    let mz = 0;
+    let n = 0;
+    for (let i = 0; i < ts.length; i++) {
+      if (side === "lo" ? ts[i]! > t0 + reach : ts[i]! < t1 - reach) continue;
+      mx += blocks[id]!.polygon[i]!.x;
+      mz += blocks[id]!.polygon[i]!.z;
+      n++;
+    }
+    const mid = { x: mx / Math.max(1, n), z: mz / Math.max(1, n) };
+    let gap = Infinity;
+    for (const st of layout.streets) if (st.kind !== "highway" && st.kind !== "rail" && st.kind !== "alley" && st.kind !== "stair") gap = Math.min(gap, segDist(mid, st.a, st.b) - st.width / 2);
+    return { gap, mid };
+  };
+  const rowsFree = (id: number): ("lo" | "hi")[] => (["lo", "hi"] as const).filter((r) => !taken[id]![r]);
+  const hallSlots: { id: number; side: "lo" | "hi"; rank: number }[] = [];
+  for (const id of ids((b) => inDowntown.includes(b.id))) {
+    const b = blocks[id]!;
+    for (const side of rowsFree(id)) {
+      const { gap, mid } = frontGap(id, side);
+      // Core blocks of the old plat beside the main street first, then any core block, then any other; a front on a street (within 5 m of its pavement) before one that is not.
+      const where = b.district === "core" && isOld(id) && coreRows.includes(meta[id]!.row) ? 0 : b.district === "core" ? 1 : 2;
+      // A block near the highway has the railroad's clearance to keep: the building would stand back from its street, too far for a door on the sidewalk.
+      let hwy = Infinity;
+      for (const q of b.polygon) hwy = Math.min(hwy, Math.abs(q.x - roadAt(site, q.z)));
+      // ... and one by the water stands low: the player's start is on ground above the sea.
+      const c = centroid(b.polygon);
+      hallSlots.push({ id, side, rank: (gap <= 5 ? 0 : 6) + (hwy < 70 ? 12 : 0) + (c.x - shoreAt(site, c.z) < 110 ? 4 : 0) + (madeHeight(mid) < 2.3 ? 30 : 0) + where * 2 + (side === toMain(id) ? 0 : 1) + (squarish(b.polygon) ? 0 : 20) + (Math.abs(area0(b)) < 3000 ? 20 : 0) });
+    }
+  }
+  hallSlots.sort((p, q) => p.rank - q.rank || dist(centroid(blocks[p.id]!.polygon), layout.coreCentre) - dist(centroid(blocks[q.id]!.polygon), layout.coreCentre) || p.id - q.id);
+  const best = hallSlots.filter((x) => x.rank === (hallSlots[0]?.rank ?? 0));
+  const hallAt = best.length > 0 ? pick(rng, best.slice(0, 2)) : null;
+  if (hallAt) reserve(hallAt.id, "municipal", hallAt.side, int(rng, 26, 30));
+
+  // The boom-era hotel, the bank and the lodge hall: on the downtown's core blocks, the hotel nearest the wharf street's foot, facing the main street where a row is free.
+  const coreHosts = (): number[] => ids((b) => inDowntown.includes(b.id) && b.district === "core");
+  const anyHost = (): number[] => {
+    const c = coreHosts();
+    if (c.length > 0) return c;
+    const h = hosts();
+    return h.length > 0 ? h : ids((b) => inDowntown.includes(b.id));
+  };
+  const hotelAt = nearest(blocks, anyHost(), layout.wharfFoot);
+  if (hotelAt >= 0) reserve(hotelAt, "hotel", toMain(hotelAt), int(rng, 26, 32));
+  const bankList = anyHost();
+  const bankAt = bankList.length > 0 ? pick(rng, bankList) : -1;
   if (bankAt >= 0) reserve(bankAt, "bank", toMain(bankAt), 15);
-  const lodges = ids((b) => b.district === "core");
-  const lodgeAt = lodges.length > 0 ? pick(rng, lodges) : (mainStreet()[0] ?? -1);
+  const lodgeList = anyHost();
+  const lodgeAt = lodgeList.length > 0 ? pick(rng, lodgeList) : -1;
   if (lodgeAt >= 0) reserve(lodgeAt, "lodge", "hi", 15);
   if (history.founding.purpose === "customs") {
-    const c = ids((b) => isOld(b.id) && b.district === "core");
+    const c = anyHost();
     if (c.length > 0) {
       const b = pick(rng, c);
       reserve(b, "customs", toMain(b), 24);
@@ -120,7 +168,7 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
       return d;
     };
     // A plain four-cornered block, so that the depot's lot is a plain one.
-    const cand0 = ids((b, x) => b.district !== "civic" && x.site !== "terminal" && b.polygon.length === 4 && b.polygon.every((q) => q.x < railX(q.z)) && Math.abs(area0(b)) >= 1500);
+    const cand0 = ids((b, x) => x.site !== "terminal" && b.polygon.length === 4 && b.polygon.every((q) => q.x < railX(q.z)) && Math.abs(area0(b)) >= 1500);
     // A block cut oblique by the shore or the highway can give the depot's lot only a sliver: a block of right angles is preferred.
     // The old plat's quay row, where the track meets the wharf street, is the first choice; then the blocks of right angles seaward of the line.
     const quayOnes = ids((b, x) => isOld(b.id) && x.row === 0 && x.site !== "terminal" && b.district !== "core" && squarish(b.polygon));
@@ -148,8 +196,8 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
     reserve(best, "terminal", "hi", 45);
   }
 
-  // Churches: two, on residential blocks near the core.
-  const resid = ids((b) => b.district === "residential" || b.district === "mill housing");
+  // Churches: two, on residential blocks near the core (outside the downtown: churches stay spread out).
+  const resid = ids((b) => !inDowntown.includes(b.id) && (b.district === "residential" || b.district === "mill housing"));
   const nearCore = resid
     .map((id) => ({ id, d: dist(centroid(blocks[id]!.polygon), layout.coreCentre) }))
     .filter((x) => x.d > 90 && x.d < 460)
@@ -162,48 +210,34 @@ export function planLandmarks(site: TownSite, layout: Layout, history: History, 
     if (second.length > 0) reserve(pick(rng, second).id, "church", "hi", 22);
   }
 
-  // The civic blocks, whole, on the hill inland of the highway: the high school, the hospital, the courthouse if the town is the seat.
-  const hill = (min: number) => (b: Block): boolean => {
-    const c = centroid(b.polygon);
-    return b.plat === "company" && (b.district === "residential" || b.district === "mill housing") && c.x > roadAt(site, c.z) + 25 && Math.abs(area0(b)) >= min;
+  // The high school, the hospital and, where the town is the county seat, the courthouse: lots in the downtown's outer blocks (a free row of a block that is not the dock's).
+  const civicAt = (role: string, lo: number, hi: number): void => {
+    const list = hosts().sort((p, q) => (meta[p]!.edge === meta[q]!.edge ? 0 : meta[p]!.edge ? -1 : 1) || dist(centroid(blocks[q]!.polygon), layout.coreCentre) - dist(centroid(blocks[p]!.polygon), layout.coreCentre) || p - q);
+    if (list.length === 0) return;
+    const id = pick(rng, list.slice(0, 3));
+    reserve(id, role, toMain(id) === "lo" ? "hi" : "lo", int(rng, lo, hi));
   };
-  const hillAt = (dx: number, dz: number): Vec => {
-    const z = layout.coreCentre.z + dz;
-    return { x: roadAt(site, z) + dx, z };
-  };
-  const bigAny = (min: number): number[] => {
-    for (const mn of [min, 4500, 3000, 1800]) {
-      const found = ids(hill(mn));
-      if (found.length > 0) return found;
-    }
-    return ids((b) => b.plat === "company" && (b.district === "residential" || b.district === "mill housing") && Math.abs(area0(b)) >= 1800);
-  };
-  const school = nearest(blocks, bigAny(6500), hillAt(150, int(rng, -150, 150)));
-  if (school >= 0) {
-    reserve(school, "school", "lo", 0, true);
-    civic.push(school);
-  }
-  const hospital = nearest(blocks, bigAny(6500), hillAt(230, int(rng, -250, 250)));
-  if (hospital >= 0) {
-    reserve(hospital, "hospital", "lo", 0, true);
-    civic.push(hospital);
-  }
-  if (history.countySeat.isSeat) {
-    const ch = nearest(blocks, bigAny(4500), hillAt(90, int(rng, -60, 60)));
-    if (ch >= 0) {
-      reserve(ch, "courthouse", "lo", 0, true);
-      civic.push(ch);
-    }
-  }
+  civicAt("school", 46, 60);
+  civicAt("hospital", 42, 54);
+  if (history.countySeat.isSeat) civicAt("courthouse", 40, 50);
   if (history.present.tsunamiRefuge) {
-    const cand = ids(hill(1800));
-    const r = nearest(blocks, cand.length > 0 ? cand : ids((b) => b.district === "residential" && b.plat === "company"), hillAt(60, int(rng, 60, 200)));
+    // On high ground inland of the highway: a block of the land company's plat.
+    const hill = (b: Block): boolean => {
+      const c = centroid(b.polygon);
+      return b.plat === "company" && !inDowntown.includes(b.id) && (b.district === "residential" || b.district === "mill housing") && c.x > roadAt(site, c.z) + 25 && Math.abs(area0(b)) >= 1800;
+    };
+    const hillAt = (dx: number, dz: number): Vec => {
+      const z = layout.coreCentre.z + dz;
+      return { x: roadAt(site, z) + dx, z };
+    };
+    const cand = ids((b) => hill(b));
+    const r = nearest(blocks, cand.length > 0 ? cand : ids((b) => !inDowntown.includes(b.id) && b.district === "residential" && b.plat === "company"), hillAt(60, int(rng, 60, 200)));
     if (r >= 0) reserve(r, "refuge", "hi", 22);
   }
-  return { reservations, civic };
+  return { reservations };
 }
 
-/** The FBI office's lot's front, door and the spawn: on the street side of the door, 2 m out, facing away from the building. */
+/** The municipal building's lot's front, door and the spawn: on the street side of the door, 2 m out, facing away from the building. */
 export function spawnAt(b: Building): Spawn {
   const f = b.front ?? { x: 0, z: 1 };
   // The front wall's distance from the centre along the front vector: the half extent along the axis the front lies on.
@@ -216,8 +250,7 @@ export function spawnAt(b: Building): Spawn {
 }
 
 const ROLE_OF: Record<string, LandmarkRole> = {
-  "fbi-federal": "fbi",
-  "fbi-office": "fbi",
+  municipal: "municipal building",
   hotel: "hotel",
   bank: "bank",
   lodge: "lodge",
@@ -250,7 +283,7 @@ export function bindLandmarks(
   const byLot = (lotId: number): Building | undefined => buildings.find((b) => b.lot === lotId);
   let saint = 0;
   let lodge = 0;
-  // The FBI office first, so that it is landmark 0.
+  // The municipal building first, so that it is landmark 0.
   const order = lots
     .filter((l) => l.role !== null)
     .slice()
@@ -261,17 +294,14 @@ export function bindLandmarks(
     if (!b || !role) continue;
     const era = `${b.era}s`;
     switch (lot.role) {
-      case "fbi-federal":
-        add("fbi", "FBI Resident Agency", b.id, `A small resident agency on a leased floor of the old Federal Building and Post Office (built in the ${era}), one block off the main street.`);
-        break;
-      case "fbi-office":
-        add("fbi", "FBI Resident Agency", b.id, `A small resident agency on a leased floor of a ${era} office block, one block off the main street.`);
+      case "municipal":
+        add("municipal building", `${townName} Municipal Building`, b.id, `The municipal building (built in the ${era}), where the sheriff and the town's government share a roof, on a block of the downtown beside the main street.`);
         break;
       case "hotel":
         add("hotel", names.hotel, b.id, history.boom.bust1893 ? `The boom-era hotel, built on the hope of the ${history.boom.peakYear} boom and never filled after 1893.` : `The hotel of the ${history.boom.peakYear} boom.`);
         break;
       case "bank":
-        add("bank", `${townName} Savings Bank`, b.id, `The bank of the core, built in the ${era}.`);
+        add("bank", `${townName} Savings Bank`, b.id, `The bank of the downtown, built in the ${era}.`);
         break;
       case "lodge":
         add("lodge", `${names.lodges[lodge++ % names.lodges.length]!} Lodge`, b.id, `The lodge hall, built in the ${era}.`);
@@ -289,13 +319,13 @@ export function bindLandmarks(
         add("church", `${names.saints[saint++ % names.saints.length]!} Church`, b.id, `A church of the old town.`);
         break;
       case "school":
-        add("high school", `${townName} High School`, b.id, `The high school, on a block of the land company's plat.`);
+        add("high school", `${townName} High School`, b.id, `The high school, on a block at the edge of the downtown.`);
         break;
       case "hospital":
-        add("hospital", `${townName} Community Hospital`, b.id, `The hospital, built in the ${era} at the edge of the old town.`);
+        add("hospital", `${townName} Community Hospital`, b.id, `The hospital, built in the ${era} at the edge of the downtown.`);
         break;
       case "courthouse":
-        add("courthouse", `${history.countySeat.county} Courthouse`, b.id, `The county courthouse on the hill: ${townName} is the county seat.`);
+        add("courthouse", `${history.countySeat.county} Courthouse`, b.id, `The county courthouse, beside the downtown: ${townName} is the county seat.`);
         break;
       case "refuge":
         add("tsunami refuge", `${townName} Tsunami Refuge Tower`, b.id, `A vertical refuge for the tsunami, on high ground.`);
@@ -329,7 +359,7 @@ export function bindLandmarks(
 }
 
 function rank(role: string): number {
-  if (role.startsWith("fbi")) return 0;
+  if (role === "municipal") return 0;
   const order = ["hotel", "bank", "lodge", "customs", "depot", "terminal", "church", "school", "hospital", "courthouse", "refuge"];
   const i = order.indexOf(role);
   return i < 0 ? 99 : i + 1;

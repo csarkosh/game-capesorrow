@@ -352,7 +352,12 @@ describe("signs", () => {
           expect(use.signs.some((s) => s.kind === "board" && s.lines.length >= 2 && /(WORSHIP|SERVICE|MASS)/.test(s.lines.join(" "))), "a church's board gives its name and service times").toBe(true);
         }
         if (b.kind === "school") expect(use.signs.some((s) => s.lines.some((l) => /HOME OF THE/.test(l))) && use.signs.length >= 2).toBe(true);
-        if (b.kind === "federal building") expect(use.signs.some((s) => s.lines[0] === "UNITED STATES POST OFFICE")).toBe(true);
+        if (b.kind === "municipal building") {
+          // The town's name over the door, and a smaller board each for the town's government and the sheriff.
+          expect(use.signs.some((s) => s.lines[0] === `${plan.name} MUNICIPAL BUILDING`.toUpperCase())).toBe(true);
+          expect(use.signs.some((s) => s.lines[0] === "CITY HALL")).toBe(true);
+          expect(use.signs.some((s) => s.lines[0] === "SHERIFF")).toBe(true);
+        }
         if (b.kind === "fire hall") expect(use.signs.some((s) => /FIRE DISTRICT No\. \d+/.test(s.lines.join(" ")))).toBe(true);
         if (b.kind === "port terminal shed" && b.lot >= 0) {
           terminal++;

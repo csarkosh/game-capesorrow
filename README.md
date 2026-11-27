@@ -20,7 +20,7 @@ npm run dev
 ```
 
 `npm run dev` starts the game's development server and the dev client together, and serves the title page at
-<http://localhost:5174/>. Press Play: you start at the door of the FBI office in a port town generated on the engine's
+<http://localhost:5174/>. Press Play: you start at the door of the municipal building in a port town generated on the engine's
 coast, with its streets, buildings, quay and piers to walk through (the buildings are walls). There is a car at the curb
 near the office. Walk up to a door and click to get in; the first to the car sits at the wheel, and another player takes
 a seat beside. Drive with W, A, S and D (forward, left, back for brake and reverse, right) and hold Space for the

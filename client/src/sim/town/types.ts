@@ -280,7 +280,7 @@ export type BuildingKind =
   | "school"
   | "hospital"
   | "office"
-  | "federal building"
+  | "municipal building"
   | "courthouse"
   | "tsunami refuge"
   | "tavern"
@@ -322,7 +322,7 @@ export type Building = {
 };
 
 export type LandmarkRole =
-  | "fbi"
+  | "municipal building"
   | "mill"
   | "port terminal"
   | "hotel"
@@ -571,6 +571,21 @@ export type Outskirt = {
   readonly reason: string;
   /** Where it lies: beside the highway north or south of the town, or on a road out of it. */
   readonly where: "north" | "south" | "road";
+};
+
+/** A place in a building: the building, and the unit (`Unit.id`) where the place is one of its bays (null where it is the whole building). */
+export type Place = { readonly building: number; readonly unit: number | null };
+
+/** The four places every town always has (`TownPlan.places`). */
+export type Places = {
+  /** The player's office: the municipal building (the whole building). */
+  readonly office: Place;
+  /** Where the player stays: an open hotel, motel or boarding house's unit. */
+  readonly lodging: Place;
+  /** An open tavern. */
+  readonly bar: Place;
+  /** An open cafe. */
+  readonly cafe: Place;
 };
 
 export type Spawn = { readonly x: number; readonly z: number; readonly yaw: number };
@@ -1023,6 +1038,10 @@ export type TownPlan = {
   /** What is in each building (its trades, names, signs, rooms and windows), one entry a building, by building id. */
   readonly uses: readonly BuildingUse[];
   readonly landmarks: readonly Landmark[];
+  /** The downtown: the ids of its blocks, ascending. One connected set of blocks (each shares a street with another of the set) that holds every business of the town (`port/downtown.ts`). */
+  readonly downtown: readonly number[];
+  /** Four places every town has, open for business, in the downtown: the player's office, lodging, and the town's bar and cafe (`port/places.ts`). */
+  readonly places: Places;
   /** The railroad: where streets cross the main line, and the town's own spur. */
   readonly rail: TownRail;
   /** The scattered buildings of the town's thinning edge: each on its own lot (a block of one lot, in `blocks`), with its reason. */

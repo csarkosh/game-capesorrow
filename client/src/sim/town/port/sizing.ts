@@ -30,8 +30,8 @@ export const SIZING = {
   /** Past a random cap in this range, houses thin out, one a lot (it was 330 to 430, over a town that held about 300). */
   HOUSE_CAP: [340, 420] as readonly [number, number],
   /** The weight of a tavern among the core's and the dock's building kinds (it was 6 and 25 of about 100 each), and of a tavern's trade in the dock's bays (it was 1.5). */
-  TAVERN_CORE: 2,
-  TAVERN_DOCK: 8,
+  TAVERN_CORE: 1.2,
+  TAVERN_DOCK: 7,
   TAVERN_TRADE_DOCK: 0.7,
   /** The highway strip's weights of a motel, a gas station and a shop strip (they were 26, 24 and 14), and the most bays a strip of shops has (it was 6). */
   STRIP_MOTEL: 16,
@@ -50,6 +50,32 @@ export const SIZING = {
   // ---- Shops' sidewalks (`edges.ts`).
   /** A shop's sidewalk runs on past its frontage to the nearest junction or run, but no further than this, metres. */
   SHOP_WALK_REACH: 60,
+
+  // ---- The downtown (`downtown.ts`). AUTHORED, NOT RESEARCHED: every business, lodging, apartment, the school, the hospital and the municipal building stand in one connected set of blocks.
+  /** The area of block, m2, a downtown building takes (core lots are 7.6 to 15 m wide and about 25 m deep, a share of the alley and the corners). */
+  DT_LOT: 300,
+  /** The downtown grows until its blocks hold this many lots more than the blocks the old plan gave to shops, the dock and the highway strip (it makes room for the apartments, the school, the hospital and the courthouse the old plan spread over the town). */
+  DT_EXTRA: 2,
+  /** Two blocks are neighbours when they stand beside one street and no more than this far apart (a street's width, a cross street and a corner), metres. */
+  DT_LINK: 30,
+  /** The highway joins blocks too: a block is beside it within this far of its centre line, and two blocks across it are neighbours within this far apart, metres (the railroad's corridor and the highway lie between). */
+  DT_BESIDE_HIGHWAY: 45,
+  DT_LINK_HIGHWAY: 60,
+  /** A block of fewer m2 than this is never added to the downtown (a sliver the land left). */
+  DT_MIN_AREA: 1500,
+  /** An added block within this of the highway, metres, is the highway strip (motels, gas stations, a big-box store, garages): as many as the old plan drew, at most this many. */
+  DT_STRIP_NEAR: 60,
+  DT_STRIP_MAX: 2,
+  /** In an outer block of the downtown (one added past the old core and the dock, with a street to a block that is no part of it): the chance of a building on a lot, and the weights of a house and an apartment among its kinds. */
+  DT_EDGE_OCC: 0.55,
+  DT_EDGE_HOUSE: 70,
+  DT_EDGE_SHOP: 10,
+  DT_EDGE_APARTMENT: 55,
+  DT_EDGE_GARAGE: 4,
+  /** The weight of a boarding house among the kinds of a block of the downtown. */
+  DT_BOARDING: 1.5,
+  /** The weight of an apartment among the kinds of an inner block (a shop is 86): on a lot of 12 m or more. */
+  DT_CORE_APARTMENT: 60,
 
   // ---- The thin edge of the town (`outskirts.ts`): how far the highway's single buildings reach past the last block, metres (it was 560).
   OUT_REACH: 300,

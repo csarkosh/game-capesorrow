@@ -15,6 +15,7 @@ import { CROSSING_MIN_SIN } from "./railCrossings.js";
 import { cutBlock, type LotDraft } from "./lots.js";
 import { makeNames } from "./names.js";
 import { stageRng } from "./rng.js";
+import { ensureMunicipal, placesOf } from "./port/places.js";
 import { findEnds } from "./port/ends.js";
 import { remapSeams, trimStreets } from "./port/trim.js";
 import { planOutskirts } from "./port/outskirts.js";
@@ -95,7 +96,6 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
 
   // Landmarks reserve their places before the lots are cut.
   const lmPlan = recipe.landmarkPlan(site, layout, history, streams.landmarks);
-  for (const id of lmPlan.civic) blocks[id] = { ...blocks[id]!, district: "civic" };
 
   // Lots, and the alleys between them.
   const lots: Lot[] = [];
@@ -104,7 +104,7 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   for (const block of blocks) {
     const meta = layout.meta[block.id]!;
     const plat = layout.plats.find((p) => p.id === block.plat)!;
-    const res = lmPlan.reservations.find((r) => r.block === block.id);
+    const res = lmPlan.reservations.filter((r) => r.block === block.id);
     const rule = recipe.lotRule(block, meta, layout);
     // An alley only runs through a plain four-cornered block: where a block is cut oblique its alley would end on no street.
     const cut = cutBlock(block.polygon, meta.frame, rule, block.polygon.length === 4 ? plat.alley : null, streams.lots, res);
@@ -126,6 +126,9 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
 
   // The buildings stand on the lots (nothing in them reads the streets' ends or the roads out), and then the streets are cut back to what they serve (`trim.ts`).
   const { buildings, gaps } = recipe.buildings({ site, history, layout, blocks, lots, drafts }, streams.buildings);
+  // The municipal building always stands: where its lot gave none, a building of the downtown is made it.
+  const downSet = layout.downtown;
+  ensureMunicipal(downSet, lots, buildings);
   const trimmed = trimStreets(streets, buildings, lots, blocks);
   streets = trimmed.streets;
   const seams = remapSeams(layout.seams, trimmed.map);
@@ -138,9 +141,9 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
   // The roads out: a sentence of the history for each, and each destination among the landmarks.
   const described = describeRoads(roads, streets, names, townName, history.founding.year, rngRoads);
   const landmarks: Landmark[] = [...bound, ...described.landmarks.map((l, i) => ({ ...l, id: bound.length + i }))];
-  const fbi = landmarks.find((l) => l.role === "fbi");
-  if (!fbi) throw new Error("the plan has no FBI office");
-  const spawn = recipe.spawn(buildings[fbi.building]!);
+  const hall = landmarks.find((l) => l.role === "municipal building");
+  if (!hall) throw new Error("the plan has no municipal building");
+  const spawn = recipe.spawn(buildings[hall.building]!);
 
   const oldDecks = recipe.decks(layout, buildings, streets);
   const harbourOut = recipe.harbour({ site, layout, history, buildings, streets, decks: oldDecks }, streams.harbour);
@@ -171,7 +174,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     else ruin++;
   }
   // What is in the buildings, from the finished plan and the business stream alone: nothing above it changes.
-  const uses = recipe.uses({ history: fullHistory, townName, names, buildings, lots, blocks, streets, landmarks, harbour: harbourOut.harbour }, stageRng(seed, "business"));
+  const uses = recipe.uses({ history: fullHistory, townName, names, buildings, lots, blocks, streets, landmarks, harbour: harbourOut.harbour, downtown: layout.downtown }, stageRng(seed, "business"));
+  const places = placesOf(downSet, lots, buildings, uses, landmarks);
   const crossings = railCrossings(site, streets, roads);
   // What stands beside each street's roadway (sidewalks, curbs, repaving), then the junctions that follow it, then each lot's yard.
   const edges = planEdges({ streets, blocks, lots, buildings, history, rng: stageRng(seed, "edges"), uses });
@@ -193,6 +197,8 @@ export function planTown(site: TownSite, kind: TownKind): TownPlan {
     buildings,
     uses,
     landmarks,
+    downtown: layout.downtown,
+    places,
     rail: { crossings, spurs, main: mainLineOf(site) },
     outskirts: edge.outskirts,
     woods: layout.woods,

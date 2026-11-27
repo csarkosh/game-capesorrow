@@ -13,3 +13,9 @@ export const FLOAT_TOP = 0.4;
 export const QUAY_APRON = 5;
 /** The sea's level. */
 export const SEA_HEIGHT = 0;
+
+/**
+ * The most the made ground keeps of the land's own relief, in metres either way of its graded plane (`ground.ts`, which documents it with the other relief constants and
+ * exports it again). It is here, in a module that imports nothing, because the plan's landmarks read it too, and the ground reads the plan.
+ */
+export const RELIEF_LIMIT = 2;

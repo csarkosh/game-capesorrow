@@ -44,7 +44,7 @@ describe("the town's wildlife ground", () => {
     expect(Object.keys(CAPE_PLACE.tunables).length).toBeGreaterThan(0);
     // The generator's version as `test/town/determinism.test.ts` pins it: the wildlife ground raised it by nothing, and this follows that pin
     // when the plan itself changes (22: the street lights; 24: no street is shut at the highway).
-    expect(TOWN_GEN).toBe(24);
+    expect(TOWN_GEN).toBe(25);
   });
 
   for (const seed of SEEDS) {
@@ -108,7 +108,7 @@ describe("the town's wildlife ground", () => {
         expect(n).toBeGreaterThan(20);
       });
 
-      it("refuses rabbits at every commercial door and at the FBI office's spawn", () => {
+      it("refuses rabbits at every commercial door and at the municipal building's spawn", () => {
         const shops = builtBuildings(plan).filter((b) => COMMERCIAL.includes(b.kind));
         expect(shops.length).toBeGreaterThan(5);
         for (const b of shops) {

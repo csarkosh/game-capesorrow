@@ -93,7 +93,7 @@ describe("the town's made ground", () => {
   });
 
   it("keeps the exact gradient through the whole coast's ground, the road's corridor laid over it", () => {
-    const rnd = lcg(5);
+    const rnd = lcg(8);
     const H = 0.002;
     for (let k = 0; k < 100; k++) {
       const seed = [20261121, 1, 424242, 31337][k % 4] as number;

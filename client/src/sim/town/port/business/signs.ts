@@ -272,12 +272,11 @@ export function civicSigns(i: CivicInput): Sign[] {
     case "courthouse":
       add("board", [(landmark ?? `${ctx.history.countySeat.county} Courthouse`).toUpperCase()], dec(b.era), wall(W / 2, Math.min(b.height - 1.2, 8)), "hand-painted");
       break;
-    case "federal building":
-      add("board", ["UNITED STATES POST OFFICE"], dec(b.era), wall(W / 2, 4.2), "hand-painted", "post office");
-      add("board", ["FEDERAL BUILDING", `ERECTED ${b.era}`], dec(b.era), wall(W * range(rng, 0.7, 0.85), 1.5, "right"), "hand-painted");
-      break;
-    case "office":
-      if (landmark !== null) add("board", [landmark, "AUTHORIZED PERSONNEL ONLY"], 1990, wall(range(rng, 0.7, 0.9) * W, 1.5, "right"), "backlit box");
+    case "municipal building":
+      // The town's name over the door, and a smaller board on each side of it: the town's government and the sheriff share the building.
+      add("board", [`${town} MUNICIPAL BUILDING`.toUpperCase()], dec(b.era), wall(W / 2, Math.min(b.height - 1.2, 6.5)), "hand-painted");
+      add("board", ["CITY HALL"], dec(b.era), wall(W * 0.16, 2.6, "left"), "hand-painted");
+      add("board", ["SHERIFF"], dec(b.era), wall(W * 0.84, 2.6, "right"), "hand-painted");
       break;
     case "customs house":
       add("board", [`${town} CUSTOMS HOUSE`, "PORT OF ENTRY"], dec(b.era), wall(W / 2, Math.min(b.height - 1.5, 6)), "hand-painted");

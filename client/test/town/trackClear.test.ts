@@ -36,7 +36,7 @@ describe("the railroad's corridor is clear", () => {
   it("keeps every landmark and a lot beside the track as a yard, not a lawn", () => {
     for (const seed of ALL) {
       const { plan, site } = townFor(seed);
-      for (const role of ["fbi", "port terminal", "mill", "high school", "hospital"] as const) expect(plan.landmarks.some((l) => l.role === role), `seed ${seed} ${role}`).toBe(true);
+      for (const role of ["municipal building", "port terminal", "mill", "high school", "hospital"] as const) expect(plan.landmarks.some((l) => l.role === role), `seed ${seed} ${role}`).toBe(true);
       for (const lot of plan.lots) {
         const crossed = [mainLineOf(site), ...plan.rail.spurs.map((sp) => sp.points)].some((l) => lineShapeDist(l, lot.polygon) < PROP_OFFSET);
         const paved = ["core", "dock", "waterfront", "mill", "industrial", "highway strip"].includes(plan.blocks[lot.block]!.district);
