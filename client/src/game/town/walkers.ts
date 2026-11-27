@@ -4,7 +4,10 @@
  *
  * A WALKER is one end of a TRIP: out of the door of an open business at game hour `t0`, along the sidewalks, across a street at a corner if it must,
  * and in at the door of another open business. The trip's path is made once (`walkersFor`) as a polyline; where a walker is at an hour is the
- * distance `(hour - t0) * HOUR_S * speed` along it. A walker walks at 1.15 to 1.45 m/s of real time, so a trip of 150 m is a game hour.
+ * distance `(hour - t0) * HOUR_S * speed` along it. A walker walks at a speed of their own, 0.95 to 1.7 m/s of real time (`speedOf`), so a trip of 150 m is about a game hour.
+ *
+ * NOT A MATCHED SET. Each walker has a speed, a line across the walk, a way round a corner and a pair of ends of their own (`speedOf`, `styleOf`, `fit`): two out
+ * together differ in speed, none shares a destination or an origin with another out at once, and a faster one that catches a slower takes a line round them.
  *
  * WHY THEY GO is `WALK_REASONS`, a table of data for the owner: a coffee in the morning and on to work, errands between the bank, the post office
  * and the shops, lunch out and back, an evening at a restaurant or a tavern, the night's convenience store. A reason says what it goes from, what it
@@ -25,7 +28,7 @@
  */
 import { HOUR_S } from "../dayClock.js";
 import { hashN } from "./groundNoise.js";
-import { MIN_IN, doorDepth, doorFits, doorWalkS } from "./openDoors.js";
+import { MIN_IN, doorDepth, doorFits, doorLook, doorSet, doorWalkS, leafOf } from "./openDoors.js";
 import { isOpen, unitHours, wrapHour, type Hours } from "./hours.js";
 import {
   REFERENCE_UNITS, groundOf, inRoadway, isDowntown, openDowntownUnits, outdoorPeopleFor, rectDist, standable, stayHolds, type Disc, type Ground, type OutdoorPerson, type Rect, type Seg,
@@ -34,8 +37,16 @@ import { PERSON_MODELS, type PersonModel, type PersonWorld } from "./people.js";
 import type { TownGround } from "./townTypes.js";
 import type { Building, BuildingUse, Junction, TownPlan, Trade, Unit } from "../../sim/town/types.js";
 
-/** A walker's real speed, metres a second, and the game hours' length in real seconds is the day clock's. */
-export const WALK_SPEED: readonly [number, number] = [1.15, 1.45];
+/**
+ * A walker's real speed, metres a second, is the person's own: bell-shaped about `SPEED_MEAN` and kept to the band, so most are between 1.15 and 1.5, about
+ * one in eight is a slow walker under 1.1 and about one in eight a brisk one over 1.55. Two who are out together within `SPEED_NEAR` of each other differ by
+ * at least `SPEED_GAP` (the game hours' length in real seconds is the day clock's).
+ */
+export const WALK_SPEED: readonly [number, number] = [0.95, 1.7];
+export const SPEED_MEAN = 1.31;
+export const SPEED_SD = 0.17;
+export const SPEED_GAP = 0.12;
+export const SPEED_NEAR = 60;
 /** Clear of a prop's box, a building's wall, a stander and another walker (metres). */
 export const WALK_PROP = 0.45;
 export const WALK_WALL = 0.3;
@@ -55,8 +66,20 @@ export const TRIP_LENGTH: readonly [number, number] = [30, 220];
 /** Two trips leave one door at least this far apart (game hours: 20 real seconds). */
 export const DOOR_GAP = 20 / HOUR_S;
 /** One trip in this many has two walking side by side. */
-export const PAIR_ONE_IN = 6;
+export const PAIR_ONE_IN = 15;
+/** A town's pairs are at most this share of its walkers. */
+export const PAIR_SHARE = 0.06;
+/** No destination or origin has more than about this share of a town's trips. */
+export const END_SHARE = 0.06;
+/** Two trips that share an end are apart by this much (game hours: 30 real seconds either side of the time they are out), or by a quarter hour where a small town cannot. */
+export const END_APART = 30 / HOUR_S;
+export const END_APART_SMALL = 0.25;
 
+/**
+ * What making a plan's walkers has cost, in work and not seconds (a test holds it to a bound that fits the budget): paths built, lines found, points of a path checked,
+ * and fine steps of two walkers compared. Reset when a job begins.
+ */
+export const WALK_WORK = { builds: 0, lines: 0, points: 0, steps: 0 };
 const STATION = 0.25;
 const OFF_STEP = 0.15;
 const JC = 13;
@@ -64,6 +87,8 @@ const NJ = 27;
 /** The corner's zone, where the sidewalk is a corner's and not a street's: its ends are this near a node. */
 const CORNER_ZONE = 6;
 const CELL = 4;
+/** How far either side of a crossing's line a walker may cross (metres): the crossing's width, within which each has a line of their own. */
+export const CROSS_WIDTH = 1.5;
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Why they go
@@ -89,6 +114,11 @@ const SHOPS: readonly Trade[] = [
   "clothing", "gift shop", "gallery", "kite shop", "candy shop", "bookstore", "game shop", "jeweler", "antiques", "thrift store", "variety store", "sporting goods",
   "furniture store", "hardware", "pharmacy", "tattoo parlor", "pawn shop", "marine supply", "bait and tackle", "cannabis shop", "grocery", "barber", "hair salon",
 ];
+/** The rest of what takes customers or has staff: a clinic's, a laundromat's, a vet's, a garage's. */
+const SERVICES: readonly Trade[] = [
+  "laundromat", "veterinarian", "auto repair", "auto parts", "tire shop", "saw and chain shop", "food bank", "funeral home", "bail bonds", "smoke shop", "fish market", "boat yard",
+  "garden and feed", "liquor store", "convenience store", "lodge", "self storage",
+];
 const ERRANDS: readonly Trade[] = ["bank", "credit union", "post office", "pharmacy", "hardware", "grocery", "variety store", "bakery", "convenience store", "liquor store", "garden and feed", "marine supply"];
 const NIGHT_PLACES: readonly Trade[] = ["convenience store", "gas station", "motel", "tavern", "liquor store"];
 const BOARD: readonly Trade[] = ["hotel", "motel", "rooming house"];
@@ -100,36 +130,36 @@ const BOARD: readonly Trade[] = ["hotel", "motel", "rooming house"];
 export const WALK_REASONS: readonly WalkReason[] = [
   {
     id: "coffee", why: "to a cafe, a bakery or the espresso stand for a coffee before work, from a shop or an office or the room they sleep in",
-    from: [...OFFICES, ...SHOPS, ...BOARD], to: COFFEE, bands: [{ from: 6.5, to: 9.8, rate: 8.4 }],
+    from: [...OFFICES, ...SHOPS, ...SERVICES, ...BOARD], to: COFFEE, bands: [{ from: 6.5, to: 9.8, rate: 11.47 }],
   },
   {
     id: "to work", why: "from the coffee on to an office, a bank or a shop that is opening",
-    from: COFFEE, to: [...OFFICES, ...SHOPS], bands: [{ from: 7, to: 10.2, rate: 6.4 }],
+    from: COFFEE, to: [...OFFICES, ...SHOPS, ...SERVICES], bands: [{ from: 7, to: 10.2, rate: 8.73 }],
   },
   {
     id: "errand", why: "between the bank, the post office, the pharmacy, the hardware store and the shops in the middle of the morning and the afternoon",
-    from: [...ERRANDS, ...OFFICES, ...SHOPS], to: ERRANDS, bands: [{ from: 9.5, to: 11.5, rate: 6.4 }, { from: 11.5, to: 14, rate: 3.2 }, { from: 14, to: 17, rate: 7.2 }],
+    from: [...ERRANDS, ...OFFICES, ...SHOPS, ...SERVICES, ...COFFEE], to: [...ERRANDS, ...OFFICES, ...SHOPS, ...SERVICES], bands: [{ from: 9.5, to: 11.5, rate: 8.73 }, { from: 11.5, to: 14, rate: 4.37 }, { from: 14, to: 17, rate: 9.83 }],
   },
   {
     id: "lunch out", why: "from an office or a shop to a diner, a restaurant, a pizza place or a cafe at noon",
-    from: [...OFFICES, ...SHOPS], to: DINING, bands: [{ from: 11.2, to: 13.2, rate: 8.4 }],
+    from: [...OFFICES, ...SHOPS, ...SERVICES], to: DINING, bands: [{ from: 11.2, to: 13.2, rate: 11.47 }],
   },
   {
     id: "lunch back", why: "from lunch back to an office or a shop",
-    from: DINING, to: [...OFFICES, ...SHOPS], bands: [{ from: 12.1, to: 14.4, rate: 7.2 }],
+    from: DINING, to: [...OFFICES, ...SHOPS, ...SERVICES], bands: [{ from: 12.1, to: 14.4, rate: 9.83 }],
   },
   {
     id: "evening", why: "to a restaurant, the tavern or the theater after work, and on from one to another",
-    from: [...DINING, "tavern", "movie theater", ...OFFICES, ...SHOPS, ...BOARD], to: [...DINING, "tavern", "movie theater"],
-    bands: [{ from: 16.8, to: 19, rate: 8.8 }, { from: 19, to: 21.5, rate: 6.4 }],
+    from: [...DINING, "tavern", "movie theater", ...OFFICES, ...SHOPS, ...SERVICES, ...BOARD], to: [...DINING, "tavern", "movie theater"],
+    bands: [{ from: 16.8, to: 19, rate: 12.01 }, { from: 19, to: 21.5, rate: 8.73 }],
   },
   {
     id: "late", why: "late: from the tavern to the convenience store, the gas station or the motel",
-    from: NIGHT_PLACES, to: NIGHT_PLACES, bands: [{ from: 21.5, to: 24, rate: 3.2 }],
+    from: NIGHT_PLACES, to: NIGHT_PLACES, bands: [{ from: 21.5, to: 24, rate: 4.37 }],
   },
   {
     id: "night", why: "in the dead of night, the rare one between a motel and the gas station",
-    from: ["motel", "gas station", "hotel"], to: ["motel", "gas station", "hotel"], bands: [{ from: 0, to: 5, rate: 0.24 }],
+    from: ["motel", "gas station", "hotel"], to: ["motel", "gas station", "hotel"], bands: [{ from: 0, to: 5, rate: 0.33 }],
   },
 ];
 
@@ -519,8 +549,10 @@ function feasOf(net: Net, e: Edge): Uint8Array {
  * station; a `fixed` end must be at the middle (a node's). `extra` says a point is taken (a stander, at the time the walker is there). Null where there is no way.
  */
 function lateral(
-  net: Net, e: Edge, from: number, to: number, aim: number, fixedStart: boolean, fixedEnd: boolean, extra: ((x: number, z: number, s: number) => boolean) | null, sBase: number,
+  net: Net, e: Edge, from: number, to: number, aim: (k: number) => number, fixedStart: boolean, fixedEnd: boolean, extra: ((x: number, z: number, s: number) => boolean) | null, sBase: number,
+  crowded: ((x: number, z: number) => boolean) | null = null,
 ): Int16Array | null {
+  WALK_WORK.lines++;
   const feas = feasOf(net, e);
   const dir = to >= from ? 1 : -1;
   const reversed = dir < 0;
@@ -528,21 +560,32 @@ function lateral(
   const INF = 1e9;
   let cost = new Float32Array(NJ).fill(INF);
   const back = new Int8Array(m * NJ);
+  // Whether anyone stands near a station at all (known once for each): where no one does, `extra` is not asked of its cells.
+  const crowd = new Uint8Array(m);
   const free = (idx: number, j: number): boolean => {
     const k = from + dir * idx;
     const jab = reversed ? 2 * JC - j : j;
     if (feas[k * NJ + jab] === 0) return false;
     if (extra === null) return true;
+    if (crowded !== null) {
+      if (crowd[idx] === 0) {
+        const c = pointOn(e, stationAt(e, k), 0);
+        crowd[idx] = crowded(c.x, c.z) ? 1 : 2;
+      }
+      if (crowd[idx] === 2) return true;
+    }
     const s = stationAt(e, k);
     const p = pointOn(e, s, (jab - JC) * OFF_STEP);
     return !extra(p.x, p.z, sBase + Math.abs(s - stationAt(e, from)));
   };
   for (let j = 0; j < NJ; j++) {
     if (fixedStart && j !== JC) continue;
-    if (free(0, j)) cost[j] = Math.abs(j - aim) * 0.05;
+    if (free(0, j)) cost[j] = Math.abs(j - aim(from)) * 0.05;
   }
+  let next = new Float32Array(NJ);
   for (let idx = 1; idx < m; idx++) {
-    const next = new Float32Array(NJ).fill(INF);
+    next.fill(INF);
+    const a = aim(from + dir * idx);
     for (let j = 0; j < NJ; j++) {
       if (!free(idx, j)) continue;
       let bestC = INF;
@@ -550,16 +593,21 @@ function lateral(
       for (let d = -1; d <= 1; d++) {
         const q = j + d;
         if (q < 0 || q >= NJ) continue;
-        const c = (cost[q] as number) + (d === 0 ? 0 : 0.35) + Math.abs(j - aim) * 0.05;
+        const prev = cost[q] as number;
+        if (prev >= INF) continue;
+        const c = prev + (d === 0 ? 0 : 0.35);
         if (c < bestC) {
           bestC = c;
           bestD = d;
         }
       }
-      next[j] = bestC;
+      if (bestC >= INF) continue;
+      next[j] = bestC + Math.abs(j - a) * 0.05;
       back[idx * NJ + j] = bestD;
     }
+    const swap = cost;
     cost = next;
+    next = swap;
   }
   let end = -1;
   let endC = INF;
@@ -584,7 +632,7 @@ function lateral(
 function usableEdge(net: Net, e: Edge): boolean {
   if (e.usable !== null) return e.usable;
   const nk = stationsOf(e);
-  e.usable = lateral(net, e, 0, nk - 1, JC, true, true, null, 0) !== null;
+  e.usable = lateral(net, e, 0, nk - 1, () => JC, true, true, null, 0) !== null;
   return e.usable;
 }
 
@@ -609,6 +657,8 @@ type Place = {
   readonly perp: number;
   /** How far inside the door's plane a trip begins and ends here (`doorDepth`). */
   readonly depth: number;
+  /** The fastest a walker leaves by this door: the leaf opens in about 0.6 s as they begin to walk, and a faster walker would reach its sweep before it is open (`exitCap`). */
+  readonly cap: number;
 };
 
 export type Walker = {
@@ -628,6 +678,8 @@ export type Walker = {
   readonly cum: Float32Array;
   /** The other of a pair walking side by side, or -1. */
   readonly partner: number;
+  /** Whether the quarter-hour rule for ends was used for this trip in place of the strict one (a small town with too few open units). */
+  readonly relaxed: boolean;
   readonly from: { readonly building: number; readonly unit: number };
   readonly to: { readonly building: number; readonly unit: number };
 };
@@ -694,10 +746,29 @@ export function walkerWorld(g: TownGround, w: Walker, hour: number): PersonWorld
 
 const roll = (a: number, b: number, c: number, d: number): number => hashN(a, b, c, d);
 
+/** A bell-shaped draw about 0, with a spread of 1: four rolls summed. */
+const bell = (a: number, b: number, c: number): number => (roll(a, b, c, 75) + roll(a, b, c + 1, 75) + roll(a, b, c + 2, 75) + roll(a, b, c + 3, 75) - 2) * Math.sqrt(3);
+
+/** A walker's own speed, metres a second of real time. */
+export const speedOf = (key: number, attempt: number): number => Math.min(WALK_SPEED[1], Math.max(WALK_SPEED[0], SPEED_MEAN + SPEED_SD * bell(key, attempt, 2)));
+
+/** What is a walker's own about their way: the line across the walk (metres right of its middle) and how it wanders, how they take a corner, and how far they bow across a roadway. */
+type Style = { readonly aim: number; readonly wander: number; readonly lambda: number; readonly phase: number; readonly radius: number; readonly bow: number; readonly shift: number; readonly corner: number };
+const styleOf = (key: number, attempt: number): Style => ({
+  aim: Math.max(-1.3, Math.min(1.3, LANE + 0.65 * bell(key, attempt, 10))),
+  wander: 0.12 + 0.13 * roll(key, attempt, 14, 76),
+  lambda: 8 + 12 * roll(key, attempt, 15, 76),
+  phase: 2 * Math.PI * roll(key, attempt, 16, 76),
+  radius: 0.9 + 1.3 * roll(key, attempt, 17, 76),
+  bow: (roll(key, attempt, 18, 76) - 0.5) * 1.2,
+  shift: (roll(key, attempt, 19, 76) - 0.5) * 1.8,
+  corner: Math.max(-1, Math.min(1, 0.7 * bell(key, attempt, 20))),
+});
+
 type Piece = { readonly e: number; readonly from: number; readonly to: number; readonly fixedStart: boolean; readonly fixedEnd: boolean };
 
 /** Round the corners of a polyline over `TURN_RADIUS` each side and resample it at `PATH_STEP`: the points, and the length reached at each. */
-function smooth(poly: readonly { x: number; z: number }[]): { pts: Float32Array; cum: Float32Array; length: number } | null {
+function smooth(poly: readonly { x: number; z: number }[], radius = TURN_RADIUS): { pts: Float32Array; cum: Float32Array; length: number } | null {
   // Drop repeated points.
   const p: { x: number; z: number }[] = [];
   for (const q of poly) {
@@ -705,6 +776,24 @@ function smooth(poly: readonly { x: number; z: number }[]): { pts: Float32Array;
     if (last === undefined || Math.hypot(q.x - last.x, q.z - last.z) > 0.02) p.push(q);
   }
   if (p.length < 2) return null;
+  // A corner's two sides may meet in a spur or a loop (a walker's line comes to the curb at one spot and the next sidewalk begins at another): a point that
+  // turns the way back on itself within a couple of metres of its neighbours is taken out, apart from the door's own first and last.
+  for (let again = true; again && p.length > 6; ) {
+    again = false;
+    for (let i = 3; i < p.length - 3; i++) {
+      const a = p[i - 1] as { x: number; z: number };
+      const v = p[i] as { x: number; z: number };
+      const b = p[i + 1] as { x: number; z: number };
+      const l1 = Math.hypot(v.x - a.x, v.z - a.z);
+      const l2 = Math.hypot(b.x - v.x, b.z - v.z);
+      if (l1 > 2.5 && l2 > 2.5) continue;
+      if ((v.x - a.x) * (b.x - v.x) + (v.z - a.z) * (b.z - v.z) < -0.2 * l1 * l2) {
+        p.splice(i, 1);
+        again = true;
+        break;
+      }
+    }
+  }
   // The lane's stations are a quarter metre apart: take out those a hand's breadth off the line between their neighbours, so a corner's two sides are long
   // straight runs and its arc has room.
   const keep = new Uint8Array(p.length);
@@ -752,7 +841,8 @@ function smooth(poly: readonly { x: number; z: number }[]): { pts: Float32Array;
       continue;
     }
     // A bend: the quadratic curve from `r` before the corner to `r` after it, with the corner for its control.
-    const r = Math.min(TURN_RADIUS, 0.45 * l1, 0.45 * l2);
+    // The first and last bends are the door's own (the way out and in is the one the door was made for); the rest are the walker's.
+    const r = Math.min(i <= 2 || i >= p.length - 3 ? TURN_RADIUS : radius, 0.45 * l1, 0.45 * l2);
     const sx = v.x - d1x * r;
     const sz = v.z - d1z * r;
     const ex = v.x + d2x * r;
@@ -795,18 +885,36 @@ function smooth(poly: readonly { x: number; z: number }[]): { pts: Float32Array;
   return { pts, cum, length };
 }
 
-/** A walker's path with a pair's other, offset `side` metres to the left of travel at every point (the points keep their count and their length). */
-function beside(w: { pts: Float32Array; cum: Float32Array; length: number }, side: number): { pts: Float32Array; cum: Float32Array; length: number } {
+/**
+ * A pair's second walker's path, beside the leader's: to the left by `side` metres (negative for the right), the gap breathing about `side` by up to
+ * `breathe` over a wavelength of its own, and the partner drifting up to `drift` metres ahead or behind the leader over a longer one. Index for index with
+ * the leader's (they stay abreast in time), so its ground speed differs where it goes round a bend or drifts, and its clip rate follows (`pathSpeed`).
+ */
+function beside(
+  w: { pts: Float32Array; cum: Float32Array; length: number }, side: number, breathe: number, lambdaGap: number, phaseGap: number, drift: number, lambdaDrift: number, phaseDrift: number,
+): { pts: Float32Array; cum: Float32Array; length: number } {
   const n = w.cum.length;
   const pts = new Float32Array(n * 2);
+  const at = (f: number): { x: number; z: number } => {
+    const c = Math.min(Math.max(f, 0), n - 1);
+    const i = Math.min(Math.floor(c), n - 2);
+    const u = c - i;
+    return { x: (w.pts[i * 2] as number) + ((w.pts[i * 2 + 2] as number) - (w.pts[i * 2] as number)) * u, z: (w.pts[i * 2 + 1] as number) + ((w.pts[i * 2 + 3] as number) - (w.pts[i * 2 + 1] as number)) * u };
+  };
   for (let i = 0; i < n; i++) {
-    const a = Math.max(i - 2, 0);
-    const b = Math.min(i + 2, n - 1);
-    const dx = (w.pts[b * 2] as number) - (w.pts[a * 2] as number);
-    const dz = (w.pts[b * 2 + 1] as number) - (w.pts[a * 2 + 1] as number);
+    const along = i * PATH_STEP;
+    // The drift and the breathing both die away at a door, so that the two come out of one and go in at one as they did.
+    const edge = Math.min(1, Math.min(along, w.length - along) / 6);
+    const f = i + (edge * drift * Math.sin((2 * Math.PI * along) / lambdaDrift + phaseDrift)) / PATH_STEP;
+    const gap = side + Math.sign(side) * edge * breathe * Math.sin((2 * Math.PI * along) / lambdaGap + phaseGap);
+    const a = at(f - 2);
+    const b = at(f + 2);
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
     const l = Math.hypot(dx, dz) || 1;
-    pts[i * 2] = (w.pts[i * 2] as number) + (-dz / l) * side;
-    pts[i * 2 + 1] = (w.pts[i * 2 + 1] as number) + (dx / l) * side;
+    const p = at(f);
+    pts[i * 2] = p.x + (-dz / l) * gap;
+    pts[i * 2 + 1] = p.z + (dx / l) * gap;
   }
   return { pts, cum: w.cum, length: w.length };
 }
@@ -896,7 +1004,7 @@ function piecesOf(net: Net, from: Place, reach: Reach, to: Place, exit: number):
   return { pieces, crossings };
 }
 
-type Standers = { readonly hit: (x: number, z: number, t: number) => boolean };
+type Standers = { readonly hit: (x: number, z: number, t: number) => boolean; readonly any: (x: number, z: number, r: number) => boolean };
 
 function standersOf(people: readonly OutdoorPerson[]): Standers {
   const cells = new Map<number, OutdoorPerson[]>();
@@ -908,6 +1016,17 @@ function standersOf(people: readonly OutdoorPerson[]): Standers {
   }
   // Whether a stander within `STANDER_CLEAR` of the point is there at hour `t`: the cell of the point and its neighbours are looked at.
   return {
+    // Whether anyone stands (at any hour) within `r` of the point: a station with no one near it has no one to keep from.
+    any(x, z, r) {
+      const cx = Math.floor(x / CELL);
+      const cz = Math.floor(z / CELL);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        const list = cells.get((cx + dx + 4096) * 8192 + (cz + dz + 4096));
+        if (list === undefined) continue;
+        for (const p of list) if (Math.abs(p.px - x) < r && Math.abs(p.pz - z) < r) return true;
+      }
+      return false;
+    },
     hit(x, z, t) {
       const cx = Math.floor(x / CELL);
       const cz = Math.floor(z / CELL);
@@ -945,6 +1064,10 @@ export const walkCapacity = (units: number): number => Math.max(1, walkCeilingAt
  * a few milliseconds at a time (`walkersFor` runs it to the end). The same plan gives the same walkers either way.
  */
 export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonly z: number }): Generator<void, readonly Walker[]> {
+  WALK_WORK.builds = 0;
+  WALK_WORK.lines = 0;
+  WALK_WORK.points = 0;
+  WALK_WORK.steps = 0;
   const net = walkNet(plan);
   yield;
   // Each edge's walkability is made once, wanted by every trip: made here an edge at a time.
@@ -968,19 +1091,32 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
     }
     return r;
   };
-  // How many are walking at each twentieth of an hour (a pair counts two), and when each door last had someone leave it.
+  // How many are walking at each twentieth of an hour (a pair counts two), when each door last had someone leave it, and where the trips have been: by origin
+  // and by destination, how many and when (so that no two trips out together share an end, and no end has more than its share).
   const load = new Int16Array(24 * 20);
   const leaves = new Map<number, number[]>();
+  const hasDests = new Map<number, boolean>();
+  // What stands at a point, made once for the point (`staticsAt`).
+  const statics = new Map<number, number>();
+  const origUse = new Map<number, number>();
+  const destUse = new Map<number, number>();
+  const origOut = new Map<number, (readonly [number, number])[]>();
+  const destOut = new Map<number, (readonly [number, number])[]>();
   const k = units / REFERENCE_UNITS;
   const slot = (t: number): number => Math.floor(wrapHour(t) * 20) % (24 * 20);
   let tripNo = 0;
+  // How many trips the day is likely to have, which the share of any one end and the share of the pairs are held to.
+  let expected = 0;
+  for (const [ri, reason] of WALK_REASONS.entries()) for (const [bi, band] of reason.bands.entries()) expected += Math.floor(band.rate * (band.to - band.from) * k + roll(ri, bi, 1, 70));
+  const endCap = Math.max(3, Math.ceil(END_SHARE * 0.9 * expected));
+  let pairWalkers = 0;
   for (const [ri, reason] of WALK_REASONS.entries()) {
     for (const [bi, band] of reason.bands.entries()) {
       const want = band.rate * (band.to - band.from) * k;
       const n = Math.floor(want + roll(ri, bi, 1, 70));
       for (let i = 0; i < n; i++) {
         const key = ri * 100000 + bi * 1000 + i;
-        const w = tripFor(reason, band, key, tripNo);
+        const w = yield* tripFor(reason, band, key, tripNo);
         tripNo++;
         if (w === null) {
           yield;
@@ -989,69 +1125,143 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
         // A pair is the leader and the one after; each is numbered as it is kept.
         const first = out.length;
         for (const [q, x] of w.entries()) out.push({ ...x, id: first + q, partner: w.length > 1 ? first + (1 - q) : -1 });
+        if (w.length > 1) pairWalkers += 2;
         yield;
       }
     }
   }
   return out;
 
+  /** Whether `n` more walkers fit under the town's count, in twentieths of an hour from `t0` to `t1`. */
+  function loadFits(t0: number, t1: number, n: number): boolean {
+    const a = slot(t0);
+    const b = slot(t1);
+    for (let s = a; ; s = (s + 1) % load.length) {
+      if ((load[s] as number) + n > walkCeilingAt(s / 20, units)) return false;
+      if (s === b) break;
+    }
+    return true;
+  }
+
+  /** A choice from a list by weights and a roll. */
+  function weighted<T>(list: readonly T[], weight: (t: T) => number, at: number): T {
+    let sum = 0;
+    for (const t of list) sum += weight(t);
+    let pickAt = at * sum;
+    for (const t of list) {
+      pickAt -= weight(t);
+      if (pickAt < 0) return t;
+    }
+    return list[list.length - 1] as T;
+  }
+
+  /** Whether the hours [a0, a1] (on a clock that comes round) come within `pad` of [b0, b1]. */
+  function near(a0: number, a1: number, b0: number, b1: number, pad: number): boolean {
+    for (const sh of [-24, 0, 24]) if (a0 - pad < b1 + sh && b0 + sh < a1 + pad) return true;
+    return false;
+  }
+
+  /** Whether an end (a door) is free for a trip out from t0 to t1: no trip is out from or to it then, 30 real seconds either side; or, relaxed, none within a quarter hour. */
+  function endFree(list: readonly (readonly [number, number])[] | undefined, t0: number, t1: number, relaxed: boolean, end: "from" | "to"): boolean {
+    if (list === undefined) return true;
+    for (const [a, b] of list) {
+      if (relaxed ? (end === "from" ? near(t0, t0, a, a, END_APART_SMALL) : near(t1, t1, b, b, END_APART_SMALL)) : near(t0, t1, a, b, END_APART)) return false;
+    }
+    return true;
+  }
+
   /** One trip of a reason in a band: its walkers (the pair's two, or one), or null where it could not be made. */
-  function tripFor(reason: WalkReason, band: WalkReason["bands"][number], key: number, no: number): Walker[] | null {
-    for (let attempt = 0; attempt < 12; attempt++) {
+  function* tripFor(reason: WalkReason, band: WalkReason["bands"][number], key: number, no: number): Generator<void, Walker[] | null> {
+    for (let attempt = 0; attempt < 64; attempt++) {
+      // (Each attempt may be a few milliseconds: the job gives the frame back between them.)
+      yield;
+      // The first attempts keep the ends apart as the rule says; later ones, where the town has too few open units for it, only a quarter hour apart.
+      const relaxed = attempt >= 40;
       const r = (salt: number): number => roll(key, attempt, salt, 71);
       const t0 = band.from + r(1) * (band.to - band.from);
-      const speed = WALK_SPEED[0] + r(2) * (WALK_SPEED[1] - WALK_SPEED[0]);
-      const origins = places.filter((p) => reason.from.includes(p.trade) && isOpen(p.hours, t0) && isOpen(p.hours, t0 + 0.05) && usable(p));
-      if (origins.length === 0) return null;
-      const from = origins[Math.floor(r(3) * origins.length)] as Place;
+      const speed0 = speedOf(key, attempt);
+      const origins = places.filter((p) => reason.from.includes(p.trade) && isOpen(p.hours, t0) && isOpen(p.hours, t0 + 0.05) && usable(p) && hasDest(p, reason) && (origUse.get(p.id) ?? 0) < (relaxed ? endCap * 1.15 : endCap));
+      if (origins.length === 0) {
+        if (attempt < 48) continue;
+        return null;
+      }
+      const from = weighted(origins, (p) => 1 / (1 + (origUse.get(p.id) ?? 0)) ** 2, r(3));
+      const speedTop = from.cap;
       const gaps = leaves.get(from.id) ?? [];
       if (gaps.some((g) => Math.abs(g - t0) < DOOR_GAP || Math.abs(Math.abs(g - t0) - 24) < DOOR_GAP)) continue;
       const reach = reachOf(from);
-      // The ends it may go to: open on arrival, 30 to 220 m of walking, the nearer the likelier.
-      const cands: { p: Place; way: ReturnType<typeof wayTo>; w: number }[] = [];
+      // The ends it may go to: open on arrival, 30 to 220 m of walking, the nearer the likelier, those with fewer trips likelier still; none that is out
+      // with another trip then (see `endFree`), or has had its share.
+      const cands: { p: Place; way: ReturnType<typeof wayTo>; w: number; len: number }[] = [];
       for (const q of places) {
         if (q.id === from.id || !reason.to.includes(q.trade) || !usable(q)) continue;
+        if ((destUse.get(q.id) ?? 0) >= (relaxed ? endCap * 1.15 : endCap)) continue;
         const way = wayTo(net, from, reach, q);
         const length = way.length + from.perp + q.perp + from.depth + q.depth;
         if (!Number.isFinite(way.length)) continue;
         if (length < TRIP_LENGTH[0] || length > TRIP_LENGTH[1]) continue;
-        if (!isOpen(q.hours, t0 + length / (speed * HOUR_S))) continue;
-        cands.push({ p: q, way, w: 1 / (1 + (length / 70) ** 2) });
+        const t1 = t0 + length / (speed0 * HOUR_S);
+        if (!isOpen(q.hours, t1)) continue;
+        if (!endFree(destOut.get(q.id), t0, t1, relaxed, "to")) continue;
+        cands.push({ p: q, way, w: 1 / (1 + (length / 70) ** 2) / (1 + (destUse.get(q.id) ?? 0)) ** 2, len: length });
       }
       if (cands.length === 0) continue;
-      let sum = 0;
-      for (const c of cands) sum += c.w;
-      let pickAt = r(4) * sum;
-      let chosen = cands[cands.length - 1] as (typeof cands)[number];
-      for (const c of cands) {
-        pickAt -= c.w;
-        if (pickAt < 0) {
-          chosen = c;
-          break;
+      const chosen = weighted(cands, (c) => c.w, r(4));
+      // The cheap gates before the path is made: the origin free then, and room in the town's count, at the speed it will most likely have.
+      const t1e = t0 + chosen.len / (Math.min(speed0, speedTop) * HOUR_S);
+      if (!endFree(origOut.get(from.id), t0, t1e, relaxed, "from") || !loadFits(t0, t1e, 1)) continue;
+      // The trip, at its walker's speed; where that is within `SPEED_GAP` of another walker's who is near them at the same time, at a speed that is not.
+      let speed = Math.min(speed0, speedTop);
+      for (let tries = 0; tries < 4; tries++) {
+        const made = fit(reason, from, chosen.p, chosen.way.exit, reach, t0, speed, key, attempt, no);
+        if (made === null) break;
+        const length = (made[0] as Walker).length;
+        const t1 = t0 + length / (speed * HOUR_S);
+        const clash = out.filter((o) => made.every((m) => o.partner !== m.id) && nearInTime(o, made[0] as Walker) && Math.abs(o.speed - speed) < SPEED_GAP);
+        if (clash.length > 0) {
+          const alt = [0.14, -0.14, 0.28, -0.28, 0.42, -0.42].map((d) => speed + d).find((v) => v >= WALK_SPEED[0] && v <= speedTop && clash.every((o) => Math.abs(o.speed - v) >= SPEED_GAP));
+          if (alt === undefined) break;
+          speed = alt;
+          continue;
         }
+        if (!isOpen(chosen.p.hours, t1)) break;
+        if (!endFree(destOut.get(chosen.p.id), t0, t1, relaxed, "to") || !endFree(origOut.get(from.id), t0, t1, relaxed, "from")) break;
+        if (!loadFits(t0, t1, made.length)) break;
+        const a = slot(t0);
+        const b = slot(t1);
+        for (let s = a; ; s = (s + 1) % load.length) {
+          load[s] = (load[s] as number) + made.length;
+          if (s === b) break;
+        }
+        leaves.set(from.id, [...gaps, wrapHour(t0)]);
+        origUse.set(from.id, (origUse.get(from.id) ?? 0) + 1);
+        destUse.set(chosen.p.id, (destUse.get(chosen.p.id) ?? 0) + 1);
+        origOut.set(from.id, [...(origOut.get(from.id) ?? []), [t0, t1]]);
+        destOut.set(chosen.p.id, [...(destOut.get(chosen.p.id) ?? []), [t0, t1]]);
+        return made.map((m) => ({ ...m, relaxed }));
       }
-      const made = build(reason, from, chosen.p, chosen.way.exit, reach, t0, speed, key, attempt, no);
-      if (made === null) continue;
-      const ends = t0 + walkHours(made[0] as Walker);
-      // The town's count, in twentieths of an hour from leaving to arriving.
-      const a = slot(t0);
-      const b = slot(ends);
-      let fits = true;
-      for (let s = a; ; s = (s + 1) % load.length) {
-        if ((load[s] as number) + made.length > walkCeilingAt(s / 20, units)) fits = false;
-        if (s === b) break;
-      }
-      if (!fits) continue;
-      // Clear of the walkers already made at every instant.
-      if (out.some((o) => made.some((m) => collide(o, m)))) continue;
-      for (let s = a; ; s = (s + 1) % load.length) {
-        load[s] = (load[s] as number) + made.length;
-        if (s === b) break;
-      }
-      leaves.set(from.id, [...gaps, wrapHour(t0)]);
-      return made;
     }
     return null;
+  }
+
+  /** Whether a trip of a reason from a place has anywhere to go, whatever the hour: a place of the kind it goes to within its lengths (made once). */
+  function hasDest(p: Place, reason: WalkReason): boolean {
+    const key = p.id * 16 + WALK_REASONS.indexOf(reason);
+    const known = hasDests.get(key);
+    if (known !== undefined) return known;
+    const reach = reachOf(p);
+    let any = false;
+    for (const q of places) {
+      if (q.id === p.id || !reason.to.includes(q.trade) || !usable(q)) continue;
+      const way = wayTo(net, p, reach, q);
+      const length = way.length + p.perp + q.perp + p.depth + q.depth;
+      if (Number.isFinite(way.length) && length >= TRIP_LENGTH[0] && length <= TRIP_LENGTH[1]) {
+        any = true;
+        break;
+      }
+    }
+    hasDests.set(key, any);
+    return any;
   }
 
   /** Whether a place can be walked from at all (its door's edge is usable). */
@@ -1059,12 +1269,76 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
     return usableEdge(net, net.edges[p.edge] as Edge);
   }
 
+  /** Whether two walkers come within `SPEED_NEAR` of each other at some moment when both are out. */
+  function nearInTime(a: Walker, b: Walker): boolean {
+    const ha = walkHours(a);
+    const hb = walkHours(b);
+    const gap = wrapHour(b.t0 - a.t0);
+    for (const shift of [gap, gap - 24]) {
+      const lo = Math.max(0, shift);
+      const hi = Math.min(ha, shift + hb);
+      for (let u = lo; u <= hi; u += 2 / HOUR_S) {
+        WALK_WORK.steps++;
+        const pa = pathPoint(a, u * HOUR_S * a.speed);
+        const pb = pathPoint(b, (u - shift) * HOUR_S * b.speed);
+        if (Math.hypot(pa.x - pb.x, pa.z - pb.z) < SPEED_NEAR) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether two walkers going one way near each other (within 8 m, their ways within 18 degrees) are on one line: the mean of their sideways distance over the
+   * moments they share, taken every second, is under 0.2 m. Too short a time together (under two moments) is not one line.
+   */
+  function sameLine(a: Walker, b: Walker): boolean {
+    const ha = walkHours(a);
+    const hb = walkHours(b);
+    const gap = wrapHour(b.t0 - a.t0);
+    let sum = 0;
+    let n = 0;
+    for (const shift of [gap, gap - 24]) {
+      const lo = Math.max(0, shift);
+      const hi = Math.min(ha, shift + hb);
+      for (let u = lo; u <= hi; u += 1 / HOUR_S) {
+        WALK_WORK.steps++;
+        const p = pathPoint(a, u * HOUR_S * a.speed);
+        const q = pathPoint(b, (u - shift) * HOUR_S * b.speed);
+        if (Math.hypot(p.x - q.x, p.z - q.z) > 8 || Math.cos(p.yaw - q.yaw) < 0.95) continue;
+        sum += Math.abs((q.x - p.x) * Math.cos(p.yaw) - (q.z - p.z) * Math.sin(p.yaw));
+        n++;
+      }
+    }
+    return n >= 2 && sum / n < 0.2;
+  }
+
+  /** The trip with a line of its own, and kept clear of the walkers already made: a faster one that catches a slower takes a line round it, or the trip is given up. */
+  function fit(reason: WalkReason, from: Place, to: Place, exit: number, reach: Reach, t0: number, speed: number, key: number, attempt: number, no: number): Walker[] | null {
+    const style = styleOf(key, attempt);
+    // What the line-finding made for this trip: the variants differ only in what is not about the line along a sidewalk.
+    const memo = new Map<string, Int16Array | null>();
+    // (Three ways that fail to make a path at all are enough: what stood in the way stands in the way of the rest.)
+    let none = 0;
+    for (const [move, bow, shift] of [[0, style.bow, style.shift], [0, style.bow, style.shift / 2], [0, 0, 0], [0.9, 0, 0], [-0.9, 0, 0], [1.5, 0, 0], [-1.5, 0, 0]] as const) {
+      if (none >= 3) break;
+      const made = build(reason, from, to, exit, reach, t0, speed, key, attempt, no, { ...style, bow, shift, aim: Math.max(-1.3, Math.min(1.3, style.aim + move)) }, memo);
+      if (made === null) {
+        none++;
+        continue;
+      }
+      if (out.some((o) => made.some((m) => collide(o, m)) || made.some((m) => sameLine(o, m)))) continue;
+      return made;
+    }
+    return null;
+  }
+
   /** Makes the trip's path and checks it; its walkers, or null. */
-  function build(reason: WalkReason, from: Place, to: Place, exit: number, reach: Reach, t0: number, speed: number, key: number, attempt: number, no: number): Walker[] | null {
+  function build(reason: WalkReason, from: Place, to: Place, exit: number, reach: Reach, t0: number, speed: number, key: number, attempt: number, no: number, style: Style, memo: Map<string, Int16Array | null>): Walker[] | null {
+    WALK_WORK.builds++;
     const route = piecesOf(net, from, reach, to, exit);
     if (route === null) return null;
-    const pair = roll(key, attempt, 5, 72) < 1 / PAIR_ONE_IN;
-    const tryPath = (aim: number): { pts: Float32Array; cum: Float32Array; length: number } | null => {
+    const pair = roll(key, attempt, 5, 72) < 1 / PAIR_ONE_IN && pairWalkers + 2 <= PAIR_SHARE * expected * 0.7;
+    const tryPath = (aimM: number, wide = false): { pts: Float32Array; cum: Float32Array; length: number } | null => {
       const poly: Located[] = [{ x: from.x - from.nx * from.depth, z: from.z - from.nz * from.depth }, { x: from.x, z: from.z }];
       let s = from.perp;
       for (const piece of route.pieces) {
@@ -1074,48 +1348,107 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
           const nb = piece.from === 0 ? e.b : e.a;
           const A = net.nodes[na] as Node;
           const B = net.nodes[nb] as Node;
-          poly.push({ x: A.x, z: A.z }, { x: B.x, z: B.z });
+          // Its own line across: parallel to the crossing, shifted along the curb by their own spot within its width (`shift`), and bowed a little in the way across
+          // the roadway. A link round a corner is the plain way.
+          const sx = e.kind === "cross" ? -e.tz * style.shift : 0;
+          const sz = e.kind === "cross" ? e.tx * style.shift : 0;
+          if (e.kind === "cross" && Math.abs(style.bow) > 0.05) poly.push({ x: A.x + sx, z: A.z + sz }, { x: (A.x + B.x) / 2 + sx - e.tz * style.bow, z: (A.z + B.z) / 2 + sz + e.tx * style.bow }, { x: B.x + sx, z: B.z + sz });
+          else if (e.kind === "cross") poly.push({ x: A.x + sx, z: A.z + sz }, { x: B.x + sx, z: B.z + sz });
+          // (A link round a corner has no point of its own: the walker goes from where they leave one sidewalk to where they join the next.)
           s += e.len;
           continue;
         }
         const extra = (x: number, z: number, along: number): boolean => standerIn(x, z, t0 + along / (speed * HOUR_S));
-        const offs = lateral(net, e, piece.from, piece.to, JC + aim, piece.fixedStart, piece.fixedEnd, extra, s);
+        const base = s;
+        const s0 = stationAt(e, piece.from);
+        // Their line: the aim across the walk, and a slow wander about it, from their own place along the way.
+        const last = piece.fixedEnd ? Number.POSITIVE_INFINITY : 0;
+        // Near a door the line is the usual one, so the way out and in is clear of what stands by it; the line of their own comes in over six metres.
+        const rampAt = (kk: number): number => Math.min(1, Math.max(0, (base + Math.abs(stationAt(e, kk) - s0) - 2) / 6), last === 0 ? Math.max(0, Math.abs(stationAt(e, piece.to) - stationAt(e, kk)) - 2) / 6 : last);
+        // Coming to a corner (a node, not a door) they reach it at a spot of their own: their line is moved over the last four metres, up to a metre either way.
+        const nodeAt = (kk: number): number => {
+          const toEnd = piece.fixedEnd ? Math.abs(stationAt(e, piece.to) - stationAt(e, kk)) : Number.POSITIVE_INFINITY;
+          const fromStart = piece.fixedStart ? Math.abs(stationAt(e, kk) - s0) : Number.POSITIVE_INFINITY;
+          return Math.max(0, 1 - Math.min(toEnd, fromStart) / 4);
+        };
+        const aimAt = (kk: number): number => (LANE + (aimM - LANE) * rampAt(kk) + style.corner * nodeAt(kk)) / OFF_STEP + JC;
+        // Neither end is held to the node's own point: a walker keeps their own offset through a corner, and comes to the curb at a spot of their own.
+        const memoKey = `${piece.e}:${piece.from}:${piece.to}:${aimM.toFixed(3)}:${s.toFixed(2)}`;
+        let offs = memo.get(memoKey);
+        if (offs === undefined) {
+          offs = lateral(net, e, piece.from, piece.to, aimAt, false, false, extra, s, (x, z) => standers.any(x, z, 2.7));
+          memo.set(memoKey, offs);
+        }
         if (offs === null) return null;
         const dir = piece.to >= piece.from ? 1 : -1;
-        for (let i = 0; i < offs.length; i++) {
+        const feas = feasOf(net, e);
+        const m = offs.length;
+        for (let i = 0; i < m; i++) {
           const kk = piece.from + dir * i;
-          const jab = dir < 0 ? 2 * JC - (offs[i] as number) : (offs[i] as number);
+          // The cells' offsets are a step apart: the line is eased between them (the mean over a metre and a half), where that is still clear.
+          let jt = offs[i] as number;
+          if (i >= 4 && i < m - 4) {
+            let sum = 0;
+            let count = 0;
+            for (let q = Math.max(0, i - 6); q <= Math.min(m - 1, i + 6); q++) {
+              sum += offs[q] as number;
+              count++;
+            }
+            const eased = sum / count;
+            const lo = Math.floor(eased);
+            const hi = Math.ceil(eased);
+            const jl = dir < 0 ? 2 * JC - lo : lo;
+            const jh = dir < 0 ? 2 * JC - hi : hi;
+            if (feas[kk * NJ + jl] === 1 && feas[kk * NJ + jh] === 1) jt = eased;
+          }
+          // The slow wander of their own about it, where the way is clear to either side of it; a smaller one where it is not; none where it is not.
+          const wob = (rampAt(kk) * style.wander * Math.sin((2 * Math.PI * (base + Math.abs(stationAt(e, kk) - s0))) / style.lambda + style.phase)) / OFF_STEP;
+          for (const part of [1, 0.5]) {
+            const jw = jt + part * wob;
+            const jlo = dir < 0 ? 2 * JC - Math.floor(jw) : Math.floor(jw);
+            const jhi = dir < 0 ? 2 * JC - Math.ceil(jw) : Math.ceil(jw);
+            if (jlo >= 0 && jlo < NJ && jhi >= 0 && jhi < NJ && feas[kk * NJ + jlo] === 1 && feas[kk * NJ + jhi] === 1) {
+              jt = jw;
+              break;
+            }
+          }
+          const jab = dir < 0 ? 2 * JC - jt : jt;
           const p = pointOn(e, stationAt(e, kk), (jab - JC) * OFF_STEP);
           poly.push({ x: p.x, z: p.z });
         }
         s += Math.abs(stationAt(e, piece.to) - stationAt(e, piece.from));
       }
       poly.push({ x: to.x, z: to.z }, { x: to.x - to.nx * to.depth, z: to.z - to.nz * to.depth });
-      const sm = smooth(poly);
-      if (sm === null || sm.length < TRIP_LENGTH[0] * 0.8 || sm.length > TRIP_LENGTH[1] * 1.25 || !turnsOk(sm)) return null;
-      return sm;
+      // Their own way round a corner; a tighter one than the way allows is given a wider.
+      for (const radius of wide ? [2.2] : [style.radius, 1.4, 2.2]) {
+        const sm = smooth(poly, radius);
+        if (sm === null || sm.length < TRIP_LENGTH[0] * 0.8 || sm.length > TRIP_LENGTH[1] * 1.25) return null;
+        if (turnsOk(sm)) return sm;
+      }
+      return null;
     };
-    const aim = Math.round(LANE / OFF_STEP);
-    const lead = tryPath(aim);
-    if (lead === null) return null;
-    if (!pathValid(lead, t0, speed)) return null;
-    const head = (path: { pts: Float32Array; cum: Float32Array; length: number }, side: number): { pts: Float32Array; cum: Float32Array; length: number } => (side === 0 ? path : beside(path, side));
     const model = (salt: number): PersonModel => PERSON_MODELS[Math.floor(roll(key, attempt, salt, 73) * PERSON_MODELS.length)] as PersonModel;
     const mk = (path: { pts: Float32Array; cum: Float32Array; length: number }, salt: number, partner: number): Walker => ({
       id: 0, reason: reason.id, model: model(salt), scale: 0.95 + roll(key, attempt, salt + 1, 73) * 0.09, offset: roll(key, attempt, salt + 2, 73) * 60, speed,
-      t0: wrapHour(t0), length: path.length, pts: path.pts, cum: path.cum, partner,
+      t0: wrapHour(t0), length: path.length, pts: path.pts, cum: path.cum, partner, relaxed: false,
       from: { building: from.building.id, unit: from.unit.id }, to: { building: to.building.id, unit: to.unit.id },
     });
     void no;
     if (pair) {
-      // Two side by side, 0.7 m apart about the middle of the walk: the leader to the right of the middle and the other to the left, or the other way about where the first does not fit.
+      // Two people, not a mirrored unit: the gap between them breathes between 0.6 and 0.9 m and the second drifts a little ahead and behind. The leader is to the
+      // right of the middle and the other to its left, or the other way about where the first does not fit.
+      const q = (salt: number): number => roll(key, attempt, salt, 74);
       for (const sideOf of [1, -1]) {
-        const mate = sideOf === 1 ? lead : tryPath(-aim);
+        // A pair takes its corners wide, so that the one on the inside has room.
+        const mate = tryPath(0.38 * sideOf, true);
         if (mate === null) continue;
-        const twin = head(mate, PAIR_SIDE * sideOf);
+        const twin = beside(mate, 0.75 * sideOf, 0.15, 6 + q(1) * 8, q(2) * 6.28, 0.25, 26 + q(3) * 26, q(4) * 6.28);
         if (stepsOk(twin) && pathValid(mate, t0, speed) && pathValid(twin, t0, speed)) return [mk(mate, 10, 1), mk(twin, 20, 0)];
       }
     }
+    const lead = tryPath(style.aim);
+    if (lead === null) return null;
+    if (!pathValid(lead, t0, speed)) return null;
     return [mk(lead, 10, -1)];
   }
 
@@ -1124,25 +1457,44 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
     return standers.hit(x, z, t);
   }
 
+  /**
+   * What stands at a point, as bits, made once for the point (the plan's, to a hundredth of a metre): bit 0 inside a building or a prop's clear, bit 1 the same with
+   * a wall's clear besides, bit 2 not walkable, bit 3 in a roadway, bit 4 near a wall. A path is checked at hundreds of points, and most of them are points
+   * the paths before it were at.
+   */
+  function staticsAt(x: number, z: number): number {
+    const key = (Math.round(x * 50) + 100000) * 200003 + (Math.round(z * 50) + 100000);
+    const known = statics.get(key);
+    if (known !== undefined) return known;
+    let bits = 0;
+    if (net.obst.blocked(x, z, 0, WALK_PROP)) bits |= 1;
+    if (net.obst.blocked(x, z, WALK_WALL, WALK_PROP)) bits |= 2;
+    if (!walkable(net, x, z)) bits |= 4;
+    if (inRoadway(net.plan, x, z, 0)) bits |= 8;
+    if (net.obst.wallNear(x, z, WALK_WALL)) bits |= 16;
+    statics.set(key, bits);
+    return bits;
+  }
+
   /** Whether the path stays out of everything it must at every point: its first and last metres are the door's, the rest is walkable, clear and apart from standers. */
   function pathValid(path: { pts: Float32Array; cum: Float32Array; length: number }, t0: number, speed: number): boolean {
     const n = path.cum.length;
-    const xAt = (i: number): number => path.pts[i * 2] as number;
-    const zAt = (i: number): number => path.pts[i * 2 + 1] as number;
+    WALK_WORK.points += n;
     // A door's lead: from inside the building out across its forecourt (and back in): until the walker is on the walk and clear of the wall.
-    const onWalk = (i: number): boolean => walkable(net, xAt(i), zAt(i)) && !net.obst.wallNear(xAt(i), zAt(i), WALK_WALL);
+    const onWalk = (i: number): boolean => (staticsAt(path.pts[i * 2] as number, path.pts[i * 2 + 1] as number) & 20) === 0;
     let head = 0;
     while (head < n && !onWalk(head)) head++;
     let tail = n - 1;
     while (tail > 0 && !onWalk(tail)) tail--;
     if (head > 45 || n - 1 - tail > 45 || head >= tail) return false;
     for (let i = 0; i < n; i++) {
-      const x = xAt(i);
-      const z = zAt(i);
+      const x = path.pts[i * 2] as number;
+      const z = path.pts[i * 2 + 1] as number;
       const inDoor = i < head || i > tail;
-      if (net.obst.blocked(x, z, inDoor ? 0 : WALK_WALL, WALK_PROP)) return false;
+      const bits = staticsAt(x, z);
+      if ((bits & (inDoor ? 1 : 2)) !== 0) return false;
       // The roadway and the walk are looked at every third point (0.6 m), the people who stand every other (0.4 m): nothing there is smaller.
-      if (i % 3 === 0 && (inDoor ? inRoadway(net.plan, x, z, 0) : !walkable(net, x, z))) return false;
+      if (i % 3 === 0 && (bits & (inDoor ? 8 : 4)) !== 0) return false;
       if (i % 2 === 0 && standerIn(x, z, t0 + (path.cum[i] as number) / (speed * HOUR_S))) return false;
     }
     return true;
@@ -1170,7 +1522,7 @@ function stepsOk(path: { pts: Float32Array; cum: Float32Array }): boolean {
   // (A door's first and last three metres are left out: the corner there is tight, and a pair's two come through the same door.)
   for (let i = 15; i < path.cum.length - 15; i++) {
     const d = Math.hypot((path.pts[i * 2] as number) - (path.pts[i * 2 - 2] as number), (path.pts[i * 2 + 1] as number) - (path.pts[i * 2 - 1] as number));
-    if (d < PATH_STEP * 0.3 || d > PATH_STEP * 2.2) return false;
+    if (d < PATH_STEP * 0.2 || d > PATH_STEP * 2.6) return false;
   }
   return true;
 }
@@ -1187,6 +1539,7 @@ export function collide(a: Walker, b: Walker): boolean {
     if (hi <= lo) continue;
     const step = 0.1 / HOUR_S;
     for (let u = lo; u <= hi; u += step) {
+      WALK_WORK.steps++;
       const pa = pathPoint(a, u * HOUR_S * a.speed);
       const pb = pathPoint(b, (u - shift) * HOUR_S * b.speed);
       if (Math.hypot(pa.x - pb.x, pa.z - pb.z) < WALKER_CLEAR) return true;
@@ -1223,7 +1576,7 @@ export function walkable(net: Net, x: number, z: number): boolean {
   for (const i of near) {
     const e = net.edges[i] as Edge;
     if (e.kind !== "cross") continue;
-    if (nearSegment(e.ax, e.az, e.ax + e.tx * e.len, e.az + e.tz * e.len, x, z) <= 0.9) return true;
+    if (nearSegment(e.ax, e.az, e.ax + e.tx * e.len, e.az + e.tz * e.len, x, z) <= CROSS_WIDTH) return true;
   }
   if (inRoadway(net.plan, x, z, 0)) return false;
   for (const i of near) {
@@ -1232,6 +1585,32 @@ export function walkable(net: Net, x: number, z: number): boolean {
     if (nearSegment(e.ax, e.az, e.ax + e.tx * e.len, e.az + e.tz * e.len, x, z) < 3.2 && (onWalkOf(e, x, z) || Math.hypot(x - e.ax, z - e.az) < CORNER_ZONE + 1 || Math.hypot(x - e.ax - e.tx * e.len, z - e.az - e.tz * e.len) < CORNER_ZONE + 1)) return true;
   }
   return false;
+}
+
+/**
+ * The fastest a walker may leave a door at: the leaf begins to open as they begin to walk and takes its own `openS` to open, so a walker too fast is in the
+ * leaf's sweep (and nearer than a body's width of it) before it is open. Found by walking the leaf's opening against walkers of each speed.
+ */
+function exitCap(building: number, unit: Unit): number {
+  const look = doorLook(building, unit.id);
+  const leaf = leafOf(unit.door, look);
+  const a0 = Math.abs(doorWalkS(unit.door) - (leaf.hingeLow ? leaf.s0 : leaf.s1));
+  const b0 = doorDepth(unit) - doorSet(unit);
+  for (let v = WALK_SPEED[1]; v > WALK_SPEED[0]; v -= 0.025) {
+    let clear = true;
+    for (let t = 0; t <= look.openS + 0.1 && clear; t += 1 / 60) {
+      const u = Math.min(1, t / look.openS);
+      const ang = look.maxAngle * u * u * (3 - 2 * u);
+      if (ang < 0.01) continue;
+      const lx = Math.cos(ang);
+      const ly = Math.sin(ang);
+      const b = b0 - v * t;
+      const along = Math.min(Math.max(a0 * lx + b * ly, 0), leaf.width);
+      if (Math.hypot(a0 - along * lx, b - along * ly) < 0.32) clear = false;
+    }
+    if (clear) return v;
+  }
+  return WALK_SPEED[0];
 }
 
 /** The door's places of a net: every open downtown unit with a door on a sidewalk edge. */
@@ -1274,7 +1653,7 @@ export function placesOf(net: Net): Place[] {
       if (best < 0 || !usableEdge(net, net.edges[best] as Edge)) continue;
       // The door opens into the room, so a room with less clear floor before it than the leaf sweeps has no walkers.
       if (!doorFits(unit)) continue;
-      out.push({ id: out.length, building: b, unit, use, trade: unit.tenant.trade, hours, x, z, nx: fr.n.x, nz: fr.n.z, edge: best, s: bestS, perp: bestD, depth: doorDepth(unit) });
+      out.push({ id: out.length, building: b, unit, use, trade: unit.tenant.trade, hours, x, z, nx: fr.n.x, nz: fr.n.z, edge: best, s: bestS, perp: bestD, depth: doorDepth(unit), cap: exitCap(b.id, unit) });
     }
   }
   return out;
