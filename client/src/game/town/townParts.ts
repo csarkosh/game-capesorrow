@@ -227,7 +227,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
   const side: RenderSide<RenderState<RenderPlayer>, RenderPlayer> = {
     ...base.side,
-    // The shops' glass reads the frame the opaque draws left, to show each room out of focus (`townBlur.ts`): the medium tier keeps it too.
+    // The shops' glass reads the frame the opaque draws left, to show each room out of focus (`townBlur.ts`): the medium and low tiers keep it too (the low tier's scene pass is broken by the engine's renderer, `lite/renderer.ts`).
     keepsFrame: true,
 
     // The renderer hands the hour of day with the view each frame (the console's `time`): the town's shaders and its people follow it.
@@ -326,9 +326,18 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
       const glassMaterial = (): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, alphaBlend: true, usePhysicalLightFalloff: true });
-        // Where the frame behind the glass is kept, a shop's pane reads its room from it, out of focus (`townBlur.ts`).
-        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, readied, low)] : []), ...(through && behind !== undefined ? [townBlurPlugin(behind, shared)] : []), air()];
+        m.plugins = [baseColourPlugin(), ...(textures !== null ? [townSurfacePlugin(textures, readied, low)] : []), air()];
         if (textures !== null) textured.push(m);
+        return m;
+      };
+      // The glass of a shop's pane where the frame behind the glass is kept (`townBlur.ts`): the same, opaque. It reads its room from the kept frame, out of focus, and writes the whole pixel, its own depth,
+      // and in the frame's alpha how much of the lines behind it it hides, which the engine's line reads (`look.ts`, `lineThrough`).
+      const throughMaterial = (): PbrMaterialProps | null => {
+        if (!through || behind === undefined || textures === null) return null;
+        const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.1, usePhysicalLightFalloff: true });
+        m.plugins = [baseColourPlugin(), townSurfacePlugin(textures, readied, low), townBlurPlugin(behind, shared, low), air()];
+        orders.take(m);
+        textured.push(m);
         return m;
       };
       // The lettering's atlas (`signAtlas.ts`): empty until it is painted, as the layers' arrays are until they land.
@@ -352,7 +361,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         if (textures !== null) textured.push(m);
         return m;
       };
-      const seeThrough = wearsTextures ? { glass: glassMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
+      const seeThrough = wearsTextures ? { glass: glassMaterial(), through: throughMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
       // The railroad's own materials (its draw order is its own, after the town's), reading the same texture layers and wear.
       const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       worldSeed = forest.seed;
@@ -432,7 +441,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         for (const batch of batches) {
           if (disposed) return;
           const a = batch.arrays;
-          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null)) || (batch.layer === "shade" && (seeThrough === null || seeThrough.shade === null))) {
+          if (((batch.layer === "glass" || batch.layer === "haze") && seeThrough === null) || (batch.layer === "through" && (seeThrough === null || seeThrough.through === null)) || (batch.layer === "sign" && (seeThrough === null || seeThrough.sign === null)) || (batch.layer === "shade" && (seeThrough === null || seeThrough.shade === null))) {
             left--;
             continue;
           }
@@ -441,15 +450,20 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           if (batch.layer === "shade") {
             mesh.material = (seeThrough as NonNullable<typeof seeThrough>).shade as PbrMaterialProps;
             mesh.renderOrder = SHADE_ORDER;
+          } else if (batch.layer === "through") {
+            // A marked pane is an opaque draw, first in the half of the frame after the break: it writes its own depth and the whole pixel (`townBlur.ts`).
+            const own = (seeThrough as NonNullable<typeof seeThrough>).through as PbrMaterialProps;
+            mesh.material = own;
+            mesh.renderOrder = orders.of(own) ?? DRAW_ORDER.scenery;
+            mesh.afterBreak = true;
           } else if (batch.layer === "glass" || batch.layer === "sign" || batch.layer === "haze") {
             // A blended mesh stands at the world's origin among the see-through draws (`drawOrder.ts`); its place says where in them.
             const set = seeThrough as NonNullable<typeof seeThrough>;
             // A room's haze is the glass's material (its sheets say what they are), drawn before the lettering and the glass, which are laid over it.
             mesh.material = batch.layer === "sign" ? (set.sign as PbrMaterialProps) : set.glass;
-            // Where a pane reads the frame behind it, it is drawn in the half after the break and writes its whole pixel: the lettering is then
-            // drawn after the glass, not before it.
+            // Where a pane reads the frame behind it, it is drawn in the half after the break and writes its whole pixel (its layer above): the lettering is
+            // then drawn after the glass, not before it, and stands in front of the pane's depth.
             mesh.renderOrder = batch.layer === "glass" ? SEE_THROUGH_ORDER.glass : batch.layer === "sign" ? (through ? LETTERING_OVER_GLASS : SEE_THROUGH_ORDER.lettering) : HAZE_ORDER;
-            if (through && batch.layer === "glass") mesh.afterBreak = true;
           } else {
             mesh.material = town[batch.layer];
             mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;

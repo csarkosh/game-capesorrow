@@ -15,7 +15,7 @@
 import { withMat } from "./materials.js";
 import { accentOf, QUIET_FADE } from "./accents.js";
 import { greyed, hash01, scaled, type MeshBuilder, type Rgb } from "./meshBuilder.js";
-import { doorIn, glazed, glazedLeaf, leafSlab, TRIM_WHITE, frameBars, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
+import { doorIn, glazed, glazedLeaf, leafSlab, TRIM_WHITE, frameBars, OPEN_BEHIND, pane, pickOf, reveal, wat, wbox, wquad, type Hole, type WallRef } from "./buildingKit.js";
 import { unitHours } from "./hours.js";
 import { roomGeometry, xp, type Xf } from "./roomGeometry.js";
 import { drawWindow, frameColour, glassOffOf, isMasonry, SILL_OUT, type WinCtx } from "./windowGeometry.js";
@@ -243,6 +243,10 @@ export function planFront(i: FrontIn): FrontPlan {
           leaf(fa, fb, false, hingeAtLow);
         } else o = leaf(da, db, true, !hingeAtLow);
         reveal(out, w, da, db, floorY, dHead, -o, scaled(i.wall, 0.8), [0.35, 0.34, 0.32], rec > 0 ? i.surface(w) : undefined, "concrete");
+        // The doorway's own pane, where the rooms are read through their glass: the room seen through the opening of the leaf as it is seen through the window, out of focus by how far
+        // behind it each place is, with none of the glass's look (`PaneLook.open`). It stands fixed to the opening, just behind the shut leaf's inner face (so a shut leaf, its glass,
+        // its lettering and its plates are all in front of it and it is hidden), and is not tagged as the leaf's: the leaf swings through it and goes behind it.
+        if (i.through === true && u.interior.type !== undefined) pane(glass, w, da, floorY, db, dHead, o - T - OPEN_BEHIND, 1, undefined, { through: true, open: true });
         return;
       }
       const o = wquad(out, w, da, floorY, db, floorY + 0.8, -depth, scaled(timber, 0.9), leafMat);
