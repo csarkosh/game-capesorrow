@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GEAR_SPEEDS, HEARD_WITHIN, THUD_DROP, carSound, carVoice, thudStrength, type CarMark } from "../../src/game/car/carSound.js";
+import { GEAR_SPEEDS, HEARD_WITHIN, SLIDE_FULL, THUD_DROP, carSound, carVoice, slideShare, thudStrength, tyreHz, type CarMark } from "../../src/game/car/carSound.js";
 import { GRAVEL, OPEN, PAVED, TRACKS } from "../../src/sim/car/types.js";
 import { FakeContext, FakeNode, reaches } from "./fakeAudio.js";
 
@@ -262,5 +262,32 @@ describe("the car's graph", () => {
     const live = ctx.of("oscillator").filter((o) => o.stopped === 0);
     expect(live).toHaveLength(2);
     for (const o of live) expect(reaches(o, bus)).toBe(true);
+  });
+});
+
+describe("a slide, heard", () => {
+  it("raises the tyres to their loudest as the car slides, on any surface, and leaves a car that grips as it was", () => {
+    const out = { hz: 0, engine: 0, tyres: 0 };
+    for (const surface of [PAVED, GRAVEL, TRACKS, OPEN] as const) {
+      const gripping = carVoice(10, 1, surface, 0).tyres;
+      expect(carVoice(10, 1, surface, 0, true, out, 0).tyres).toBe(gripping);
+      expect(carVoice(10, 1, surface, 0, true, out, SLIDE_FULL / 2).tyres).toBeGreaterThanOrEqual(gripping);
+      expect(carVoice(10, 1, surface, 0, true, out, -SLIDE_FULL).tyres).toBe(1);
+      expect(carVoice(10, 1, surface, 0, true, out, 40).tyres).toBe(1);
+    }
+    // A car that has stopped along its heading and still slides is still heard; one out of earshot is not.
+    expect(carVoice(0, 0, PAVED, 0, true, out, 3).tyres).toBeCloseTo(3 / SLIDE_FULL, 6);
+    expect(carVoice(0, 0, PAVED, HEARD_WITHIN, true, out, 5).tyres).toBe(0);
+  });
+
+  it("brightens the tyres with the slide, most on pavement, and takes what is not a number for no slide", () => {
+    expect(slideShare(0)).toBe(0);
+    expect(slideShare(-SLIDE_FULL * 2)).toBe(1);
+    expect(slideShare(NaN)).toBe(0);
+    for (const surface of [PAVED, GRAVEL, TRACKS, OPEN] as const) {
+      expect(tyreHz(surface, 1)).toBeGreaterThan(tyreHz(surface, 0));
+      expect(tyreHz(surface, 0.5)).toBeCloseTo((tyreHz(surface, 0) + tyreHz(surface, 1)) / 2, 6);
+    }
+    expect(tyreHz(PAVED, 1) / tyreHz(PAVED, 0)).toBeGreaterThan(tyreHz(GRAVEL, 1) / tyreHz(GRAVEL, 0));
   });
 });

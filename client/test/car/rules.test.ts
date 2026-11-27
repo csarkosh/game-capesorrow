@@ -608,11 +608,12 @@ describe("the car with no driver", () => {
     onHighway(car);
     car.speed = 6;
     tick(30);
-    // Half a second: the handbrake and rolling resistance together take (HANDBRAKE + COAST) * 0.5 = 4.1 m/s off; rolling resistance alone 0.6.
+    // Half a second: the handbrake and rolling resistance together take (HANDBRAKE + COAST) * 0.5 = 2.85 m/s off; rolling resistance alone 0.6.
     // The road's grade moves the speed a little either way.
     expect(Math.abs(car.speed - (6 - (HANDBRAKE + COAST) * 30 * TICK_DT))).toBeLessThan(0.3);
     expect(car.speed).toBeLessThan(6 - COAST * 30 * TICK_DT - 2);
-    tick(30);
+    // At rest within another second: 6 m/s at 5.7 m/s² is 1.05 s.
+    tick(60);
     expect(car.speed).toBe(0);
   }, timeLimit(60_000));
 
