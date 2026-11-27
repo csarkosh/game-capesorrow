@@ -15,18 +15,18 @@ import { SIZING } from "../sizing.js";
 
 export type Group =
   | "restaurant" | "grocery" | "cafe" | "medical" | "auto" | "fast food" | "bank" | "office" | "gift" | "hair" | "hardware" | "tavern" | "clothing"
-  | "post" | "cannabis" | "food bank" | "marine" | "antiques" | "sporting" | "laundromat" | "furniture" | "funeral" | "newspaper" | "video" | "theater";
+  | "post" | "liquor" | "phones" | "food bank" | "marine" | "antiques" | "sporting" | "laundromat" | "furniture" | "funeral" | "newspaper" | "video" | "theater";
 
 /** Storefront businesses counted per group over the 21 extracts (846 in all). */
 export const OSM_GROUP_COUNT: Readonly<Record<Group, number>> = {
   restaurant: 115, grocery: 98, cafe: 73, medical: 58, auto: 53, "fast food": 51, bank: 51, office: 42, gift: 40, hair: 38, hardware: 35, tavern: 31,
-  clothing: 30, post: 18, cannabis: 18, "food bank": 17, marine: 15, antiques: 12, sporting: 11, laundromat: 11, furniture: 10, funeral: 7, newspaper: 6,
+  clothing: 30, post: 18, liquor: 8, phones: 10, "food bank": 17, marine: 15, antiques: 12, sporting: 11, laundromat: 11, furniture: 10, funeral: 7, newspaper: 6,
   video: 3, theater: 3,
 };
 export const OSM_TOTAL = 846;
 export const GROUPS: readonly Group[] = [
   "restaurant", "grocery", "cafe", "medical", "auto", "fast food", "bank", "office", "gift", "hair", "hardware", "tavern", "clothing",
-  "post", "cannabis", "food bank", "marine", "antiques", "sporting", "laundromat", "furniture", "funeral", "newspaper", "video", "theater",
+  "post", "liquor", "phones", "food bank", "marine", "antiques", "sporting", "laundromat", "furniture", "funeral", "newspaper", "video", "theater",
 ];
 
 /** Where a trade may be drawn: s storefront (and the ground floor of a hotel, a lodge hall), o office building, f restaurant, g garage, b big-box, w warehouse. */
@@ -140,9 +140,9 @@ export const TRADES: readonly TradeDef[] = [
   t("furniture store", "furniture", "Furniture", "FURNITURE", 10, "retail aisles", 10, 30, 1890, "sbw", { m: [0.8, 0.4, 1.5, 0.4], tagline: ["Appliances - Mattresses"] }),
   t("movie theater", "theater", "Theatre", "THEATRE", 3, "lobby", 10, 16, 1910, "s", { cap: 1, m: [1.5, 0.1, 0.2, 0.1] }),
   // the state's and the county's trades of vice and virtue
-  t("cannabis shop", "cannabis", "Cannabis", "CANNABIS", 10, "retail aisles", 5, 11, 2010, "s", { m: [0.6, 1, 2.5, 0.5] }),
-  t("liquor store", "cannabis", "Liquor", "LIQUOR", 5, "retail aisles", 6, 12, 1930, "s", { m: [0.8, 1.3, 1.5, 0.5], tagline: ["Beer - Wine - Spirits"] }),
-  t("smoke shop", "cannabis", "Smoke Shop", "SMOKES", 3, "retail aisles", 4, 8, 1990, "s", { m: [0.6, 1.3, 1.4, 0.3] }),
+  t("phone shop", "phones", "Wireless", "PHONES", 10, "retail aisles", 5, 11, 2000, "s", { m: [0.6, 1, 2.5, 0.5], tagline: ["Repairs - Prepaid - Plans"] }),
+  t("liquor store", "liquor", "Liquor", "LIQUOR", 5, "retail aisles", 6, 12, 1930, "s", { m: [0.8, 1.3, 1.5, 0.5], tagline: ["Beer - Wine - Spirits"] }),
+  t("smoke shop", "liquor", "Smoke Shop", "SMOKES", 3, "retail aisles", 4, 8, 1990, "s", { m: [0.6, 1.3, 1.4, 0.3] }),
   t("food bank", "food bank", "Food Bank", "FOOD BANK", 17, "retail aisles", 8, 20, 1980, "sbw", { cap: 1, m: [0.6, 1.2, 0.8, 0.5], tagline: ["Tues - Thurs 10 to 2"] }),
   // marine trades (a fishing port's)
   t("bait and tackle", "marine", "Bait & Tackle", "BAIT ICE TACKLE", 5, "retail aisles", 5, 12, 1900, "sw", { tag: "marine", m: [0.8, 3, 1, 0.5], tagline: ["Live Bait - Ice - Licenses"] }),
@@ -156,6 +156,8 @@ export const TRADES: readonly TradeDef[] = [
   t("motel", null, "Motel", null, 1, "lobby", 5, 20, 1940, "", { tagline: ["Weekly Rates"] }),
   t("hotel", null, "Hotel", null, 1, "lobby", 6, 30, 1880, "", { tagline: ["Rooms - Rates by the Week"] }),
   t("rooming house", null, "Rooms", null, 1, "lobby", 4, 20, 1880, "", { tagline: ["Weekly - Monthly"] }),
+  // The rooming house a town with no hotel or motel open in its downtown has as its inn (`business/index.ts`): no building kind's own.
+  t("inn", null, "Inn", null, 1, "lobby", 4, 20, 1880, "", { tagline: ["Rooms by the Night"] }),
   t("lodge", null, "Lodge", null, 1, "lobby", 6, 30, 1880, "", {}),
   // trades of the past only
   t("dry goods", null, "Dry Goods", "DRY GOODS", 10, "retail aisles", 7, 15, 1880, "s", { until: 1950 }),

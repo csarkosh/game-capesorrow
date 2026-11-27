@@ -131,7 +131,7 @@ export type Reason = {
 const COFFEE: readonly Trade[] = ["cafe", "espresso stand", "bakery"];
 const WINDOWS: readonly Trade[] = [
   "clothing", "gift shop", "gallery", "kite shop", "candy shop", "bookstore", "game shop", "jeweler", "antiques", "thrift store", "variety store", "sporting goods",
-  "furniture store", "hardware", "pharmacy", "tattoo parlor", "pawn shop", "marine supply", "bait and tackle", "cannabis shop",
+  "furniture store", "hardware", "pharmacy", "tattoo parlor", "pawn shop", "marine supply", "bait and tackle", "phone shop",
 ];
 const OFFICES: readonly Trade[] = [
   "bank", "credit union", "post office", "insurance office", "real estate office", "law office", "tax office", "title company", "medical clinic", "dentist", "newspaper office", "print shop",
@@ -307,7 +307,8 @@ export function ceilingAt(hour: number, units: number): number {
       break;
     }
   }
-  return Math.max(2, Math.floor((v * units) / REFERENCE_UNITS));
+  // (Never more than the curve's own most, 28 with the quay's: a downtown built up past `REFERENCE_UNITS` has more places to stand at, not more people out at once.)
+  return Math.max(2, Math.floor((v * Math.min(units, REFERENCE_UNITS)) / REFERENCE_UNITS));
 }
 
 /** A person outside: where and which way, what they are doing, and the hours they are there. */

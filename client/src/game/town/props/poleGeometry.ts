@@ -160,12 +160,20 @@ export function wireGeometry(g: TownGround, solid: Sink, a: Pole, b: Pole, detai
 export function dropGeometry(g: TownGround, solid: Sink, d: Drop, pole: Pole, detail: Detail): void {
   if (detail === "low") return;
   const A = attachments(g, pole, null);
-  const from = A[3] as Vec3;
+  const at = A[3] as Vec3;
   const wx = g.anchor.x + d.x;
   const wz = g.anchor.z + d.z;
   const to: Vec3 = [wx, g.heightAt(wx, wz) + d.y, wz];
-  const len = Math.sqrt((to[0] - from[0]) * (to[0] - from[0]) + (to[2] - from[2]) * (to[2] - from[2]));
+  const len = Math.sqrt((to[0] - at[0]) * (to[0] - at[0]) + (to[2] - at[2]) * (to[2] - at[2]));
   if (len < 2) return;
+  // The wire is hung from the bracket on the pole's side that faces the house: from the other it would cross the pole itself, its sides along the pole's facets.
+  const { nx, nz } = lineAxes(g, pole, null);
+  const px = g.anchor.x + pole.x;
+  const pz = g.anchor.z + pole.z;
+  const lat = (at[0] - px) * nx + (at[2] - pz) * nz;
+  const side = (to[0] - px) * nx + (to[2] - pz) * nz >= 0 ? 1 : -1;
+  const shift = side * Math.abs(lat) - lat;
+  const from: Vec3 = [at[0] + nx * shift, at[1], at[2] + nz * shift];
   const segs = 4;
   const sag = len * 0.02;
   const pts: Vec3[] = [];

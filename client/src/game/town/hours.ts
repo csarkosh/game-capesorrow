@@ -71,8 +71,8 @@ const EARLY = h(8, 17);
  * now; they have a line so that a table with a missing one is a failing test) keep a shop's day.
  */
 const TABLE: Readonly<Record<Trade, Hours>> = {
-  "gas station": always, "motel": always, "hotel": always, "rooming house": always, "lodge": always, "bail bonds": always, "self storage": always,
-  "convenience store": h(6, 0), "tavern": h(11, 2), "laundromat": h(6, 23), "cannabis shop": h(9, 23), "liquor store": h(10, 23),
+  "gas station": always, "motel": always, "hotel": always, "rooming house": always, "inn": always, "lodge": always, "bail bonds": always, "self storage": always,
+  "convenience store": h(6, 0), "tavern": h(11, 2), "laundromat": h(6, 23), "phone shop": h(10, 19), "liquor store": h(10, 23),
   "pizza and burgers": h(11, 23), "movie theater": h(16, 0), "smoke shop": h(10, 22), "restaurant": h(11, 22), "grocery": h(7, 22),
   "diner": h(6, 21), "pharmacy": h(9, 21), "tattoo parlor": h(12, 20), "union hall": h(9, 21),
   "insurance office": OFFICE, "real estate office": OFFICE, "law office": OFFICE, "tax office": OFFICE, "title company": OFFICE, "bank": OFFICE,

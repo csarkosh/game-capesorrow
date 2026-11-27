@@ -34,7 +34,6 @@ export type Streams = {
 
 export type LandmarkPlanOut = {
   readonly reservations: Reservation[];
-  readonly civic: number[];
 };
 
 export type Recipe = {
@@ -45,7 +44,7 @@ export type Recipe = {
   /** The buildings on the lots, and why each lot left empty is. */
   buildings(input: { site: TownSite; history: History; layout: Layout; blocks: readonly Block[]; lots: readonly Lot[]; drafts: readonly LotDraft[] }, rng: Rng): { buildings: Building[]; gaps: Gap[] };
   bindLandmarks(history: History, names: TownNames, townName: string, lots: readonly Lot[], buildings: readonly Building[]): Landmark[];
-  spawn(fbi: Building): Spawn;
+  spawn(hall: Building): Spawn;
   /** The decks of the old harbour: the quay's apron, the piers, the sheds' platforms and the wharf. */
   decks(layout: Layout, buildings: readonly Building[], streets: readonly Street[]): Deck[];
   /** The boat basin, boats, pilings, the mill's water, the terminal and the lights, and the floats' and gangways' decks. */
@@ -59,7 +58,7 @@ const PORT: Recipe = {
   layout: (site, history, names, s) => layoutPort(site, history, names, s.plats, s.streets),
   landmarkPlan: (site, layout, history, rng) => {
     const p = planLandmarks(site, layout, history, rng);
-    return { reservations: p.reservations, civic: p.civic };
+    return { reservations: p.reservations };
   },
   lotRule: (block) => LOT_RULES[block.district],
   buildings: buildPort,

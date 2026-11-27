@@ -175,7 +175,9 @@ export function wallTone(c: WallToneCtx): void {
       if (rh < 1.5 || w.length < rw + 1) continue;
       const s0 = 0.4 + (w.length - rw - 0.8) * hash01(b.id * 5 + i * 3 + j, 5160);
       const y1 = topLow - 1.3;
-      if (!free(s0, s0 + rw, y1 - rh, y1)) continue;
+      // The run's second half may reach lower than its first: the room it takes is looked for too.
+      const rh2 = rh * (0.55 + 0.6 * r(100 + j));
+      if (!free(s0, s0 + rw, y1 - Math.max(rh, rh2), y1)) continue;
       if (dark && r(110 + j) < 0.3) {
         // Rust-brown, from a fixing: narrow, ragged at its foot.
         wquad(out, w, s0, baseY + y1 - rh * 0.8, s0 + Math.min(rw, 0.3), baseY + y1, paintOff(TONE_RANK), [0.3, 0.15, 0.08], { layer: "siding_painted", frame: base.frame, wear: 0.1, wear2: 0, ...sky }, { paint: TONE_RANK });
@@ -186,7 +188,6 @@ export function wallTone(c: WallToneCtx): void {
       const k = dark ? 1.4 + 0.3 * r(95 + j) : 0.8 - 0.14 * L - 0.06 * r(95 + j);
       const ov = dark ? { wear: 0.05, wear2: 0 } : { wear: 0.2, wearKind: "grime" as const, streaks: true };
       put(s0, y1 - rh, s0 + half, y1, tone(k, ov));
-      const rh2 = rh * (0.55 + 0.6 * r(100 + j));
       put(s0 + half, y1 - rh2, s0 + rw, y1, tone(k * 1.03, ov));
     }
 

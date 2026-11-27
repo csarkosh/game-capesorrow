@@ -1,8 +1,8 @@
 /**
  * The town thins out instead of stopping. Past the last full blocks, along the highway north and south, and along the roads out, there
- * are scattered single buildings on their own lots, each with a reason to be there: a gas station and a motel on the highway where the
- * through traffic is, a tavern just past the limits, a church on land given for it, houses on large lots, a junkyard where land is cheap,
- * a shake mill, a volunteer fire hall. There are fewer the further out (`OUT_P0` falling to nothing at `OUT_REACH`), and each stands only on
+ * are scattered single buildings on their own lots, each with a reason to be there: a church on land given for it, houses on large lots,
+ * a junkyard where land is cheap, a shake mill, a volunteer fire hall. No business stands out here (no gas station, motel, tavern or garage):
+ * every shop, tavern, lodging and gas station is in the downtown (`downtown.ts`). There are fewer the further out (`OUT_P0` falling to nothing at `OUT_REACH`), and each stands only on
  * land the plan can build on (`land.ts`: gentle, high enough, off the railroad's corridor and the highway's bed, not on a headland's tongue).
  *
  * Each building stands in a lot that is a block of its own (district `outskirts`), so its ground and its clearing come through the cover and
@@ -62,15 +62,11 @@ type Kind = {
 };
 
 const KINDS: Record<string, Kind> = {
-  gas: { kind: "gas station", lotW: [40, 60], lotD: [35, 50], w: [12, 14], d: [9, 10], setback: [14, 20], storeys: 1, roof: "flat", height: [4.4, 4.8], materials: ["stucco", "metal"], era: [1950, 1990], reason: "a gas station on the highway where the last blocks end, for the through traffic" },
-  motel: { kind: "motel", lotW: [70, 90], lotD: [40, 55], w: [34, 40], d: [11, 12.5], setback: [10, 16], storeys: 1, roof: "hip", height: [4, 5], materials: ["stucco", "wood"], era: [1950, 1975], reason: "a motel on the highway beyond the last blocks, for travellers who do not stop in town" },
   house: { kind: "house", lotW: [36, 60], lotD: [45, 75], w: [9, 12], d: [8, 11], setback: [10, 20], storeys: 1, roof: "gable", height: [4.5, 6], materials: ["wood", "stucco"], era: [1920, 1990], reason: "a house on a large lot, from before the town's lots reached it or by those who wanted room" },
   church: { kind: "church", lotW: [50, 70], lotD: [60, 80], w: [12, 15], d: [24, 30], setback: [12, 20], storeys: 1, roof: "gable", height: [12, 15], materials: ["wood"], era: [1900, 1960], reason: "a church on land given for it, outside the town's lots" },
-  tavern: { kind: "tavern", lotW: [45, 60], lotD: [40, 55], w: [14, 18], d: [10, 13], setback: [10, 16], storeys: 1, roof: "gable", height: [5, 6.5], materials: ["wood", "stucco"], era: [1930, 1975], reason: "a tavern just past the town's limits, where the town's rules end" },
   junkyard: { kind: "junkyard", lotW: [60, 85], lotD: [60, 85], w: [10, 14], d: [7, 10], setback: [10, 20], storeys: 1, roof: "shed", height: [3, 4], materials: ["metal"], era: [1950, 1990], reason: "a junkyard, where land is cheap and nobody minds the view" },
   shake: { kind: "shake mill", lotW: [60, 85], lotD: [55, 80], w: [26, 32], d: [13, 16], setback: [8, 14], storeys: 1, roof: "gable", height: [7, 9], materials: ["wood", "metal"], era: [1920, 1965], reason: "a shake mill beside the highway, near the cedar and the road to take the shakes out" },
   fire: { kind: "fire hall", lotW: [45, 60], lotD: [45, 60], w: [15, 18], d: [16, 20], setback: [8, 14], storeys: 1, roof: "flat", height: [6, 7.5], materials: ["concrete", "stucco"], era: [1950, 1985], reason: "a volunteer fire hall at the town's edge, where the district's engines stand" },
-  garage: { kind: "garage", lotW: [40, 55], lotD: [40, 50], w: [12, 16], d: [13, 16], setback: [8, 14], storeys: 1, roof: "gable", height: [4.5, 6], materials: ["metal", "wood"], era: [1930, 1980], reason: "a repair garage on the highway, for those the town's garages do not reach" },
 };
 
 export type OutskirtsInput = {
@@ -174,14 +170,9 @@ export function planOutskirts(input: OutskirtsInput, rng: Rng): OutskirtsOut {
   };
 
   /** Chooses what stands on a place: `near` is how far from the town, `road` for a place on a road out. */
-  const choose = (near: number, road: boolean, gasLeft: boolean, motelLeft: boolean): string => {
-    const hwy = history.present.highwayStrip;
+  const choose = (near: number, road: boolean): string => {
     const table: [string, number][] = [["house", road ? 14 : 9]];
-    if (!road && hwy && gasLeft && near < 200) table.push(["gas", 40]);
-    if (!road && hwy && motelLeft && near < 300) table.push(["motel", 24]);
-    if (!road) table.push(["garage", 1.2]);
     if (!used.includes("church")) table.push(["church", 1.2]);
-    if (!used.includes("tavern") && !road) table.push(["tavern", 1.6]);
     if (!used.includes("junkyard")) table.push(["junkyard", road ? 3 : 1.4]);
     if (!used.includes("shake") && !road) table.push(["shake", 1.6]);
     if (!used.includes("fire") && !road && near < 260) table.push(["fire", 2.2]);
@@ -224,13 +215,11 @@ export function planOutskirts(input: OutskirtsInput, rng: Rng): OutskirtsOut {
     });
     out.outskirts.push({ building: id, reason: k.reason, where });
     taken.push(lot);
-    if (key === "church" || key === "tavern" || key === "junkyard" || key === "shake" || key === "fire") used.push(key);
+    if (key === "church" || key === "junkyard" || key === "shake" || key === "fire") used.push(key);
   };
 
   // Along the highway, north and south of the town: from its last block outward, fewer the further out.
   for (const north of [true, false]) {
-    let gas = true;
-    let motel = true;
     for (let off = OUT_START; off <= OUT_REACH; off += OUT_STEP) {
       const z = north ? zHi + off : zLo - off;
       if (z > zEdge || z < zFar) break;
@@ -240,7 +229,7 @@ export function planOutskirts(input: OutskirtsInput, rng: Rng): OutskirtsOut {
       for (const side of ["east"] as const) {
         if (!chance(rng, p)) continue;
         const near = off;
-        const key = choose(near, false, gas, motel);
+        const key = choose(near, false);
         const k = KINDS[key] as Kind;
         const lotW = range(rng, k.lotW[0], k.lotW[1]);
         const lotD = range(rng, k.lotD[0], k.lotD[1]);
@@ -263,8 +252,6 @@ export function planOutskirts(input: OutskirtsInput, rng: Rng): OutskirtsOut {
         }
         if (lot === null) continue;
         make(key, lot, { x: side === "east" ? -1 : 1, z: 0 }, north ? "north" : "south");
-        if (key === "gas") gas = false;
-        if (key === "motel") motel = false;
       }
     }
   }
@@ -284,7 +271,7 @@ export function planOutskirts(input: OutskirtsInput, rng: Rng): OutskirtsOut {
         s += OUT_ROAD_STEP;
         flip = !flip;
         if (!chance(rng, OUT_ROAD_P0 * (1 - (s - OUT_ROAD_STEP) / OUT_ROAD_REACH))) continue;
-        const key = choose(s, true, false, false);
+        const key = choose(s, true);
         const k = KINDS[key] as Kind;
         const lotW = range(rng, k.lotW[0], k.lotW[1]);
         const lotD = range(rng, k.lotD[0], k.lotD[1]);

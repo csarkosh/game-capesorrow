@@ -13,7 +13,7 @@
  *   **wear** (`buildingWear.ts`) by kind, age and history.
  * - **Colour** from `material` and the building's id (`vary`): no random call anywhere.
  * - **The sky a wall sees** is baked into its corners (`skyShade.ts`): darker at its foot and under its eave.
- * - **A landmark** carries one touch: the FBI office a flagpole, a portico and a cornice; a church a steeple; the tsunami
+ * - **A landmark** carries one touch: the municipal building a flagpole, a portico and a cornice; a church a steeple; the tsunami
  *   refuge is an open platform on legs with stairs; the mill a smokestack.
  */
 import { bearingU, bearingV } from "../../sim/town/bearings.js";
@@ -29,7 +29,7 @@ import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
 import { blockedWalls, cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
 import { wallTone } from "./wallTone.js";
 import { roofGear, roofSlopeDecals } from "./roofTone.js";
-import { lotDepthOut, partsGeometry, wallMatOf } from "./buildingParts.js";
+import { lotDepthOut, partsGeometry, porticoAt, wallMatOf } from "./buildingParts.js";
 import type { Xf } from "./roomGeometry.js";
 import { signsGeometry } from "./shopSigns.js";
 import {
@@ -66,7 +66,7 @@ const PROFILE: Record<BuildingKind, Profile> = {
   school: "civic",
   hospital: "civic",
   office: "civic",
-  "federal building": "civic",
+  "municipal building": "civic",
   courthouse: "civic",
   "tsunami refuge": "civic",
   tavern: "shop",
@@ -345,7 +345,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const refs: WallRef[] = walls.map((w) => wallRef(w.ax, w.az, w.bx, w.bz, w.nx, w.nz));
   const use = g.plan.uses[b.id];
   const planCtx: PlanCtx = {
-    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }), ...(haze === undefined ? {} : { haze }), ...(extra?.through === true ? { through: true } : {}),
+    g, b, use, walls: refs, frontAt, xf, portico: porticoAt(b, role, xf !== null, refs[frontAt] as WallRef), floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }), ...(haze === undefined ? {} : { haze }), ...(extra?.through === true ? { through: true } : {}),
     surfaceOf: (r, band) => wallSurface(refs.indexOf(r), band), bandY: baseY + FOOT,
   };
   let drawSigns = (): void => {};
@@ -556,12 +556,12 @@ function landmarkTouch(
   const tx = (w.bx - w.ax) / w.length;
   const tz = (w.bz - w.az) / w.length;
   const mid: [number, number] = [(w.ax + w.bx) / 2, (w.az + w.bz) / 2];
-  if (role === "fbi") {
+  if (role === "municipal building") {
     withMat("concrete", () => {
       // A plain, formal front: a stone cornice along the top of the front wall, a portico over the door, a flagpole with its flag.
       const top = Math.max(w.topA, w.topB);
       out.box(mid[0] + w.nx * 0.15, mid[1] + w.nz * 0.15, top - 0.46, tx, tz, w.length / 2 + 0.1, 0.25, 0.5, STONE_TRIM, STONE_TRIM);
-      // Over the street door where the ground floor has one (the old Federal Building's post office door is at the end of its front, not its middle); over the middle otherwise.
+      // Over the street door where the ground floor has one (a unit's door can be at the end of its front, not its middle); over the middle otherwise.
       const slab = floorY + 3.3;
       if (streetDoor === null) {
         const px = mid[0] + w.nx * 1.2;

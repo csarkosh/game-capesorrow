@@ -404,7 +404,7 @@ export class MeshBuilder {
 
   /**
    * A flat polygon mapped to explicit UVs (one per corner, in the corners' order): for a face of the sign atlas (`signAtlas.ts`), whose
-   * texels the sign's own plugin reads by the UV as given. It carries no layer (`NO_LAYER`), a tint, a glow and, from `withHours`, the hours the glow follows (a lit sign's: the sign layer's material reads them as a room's).
+   * texels the sign's own plugin reads by the UV as given. It carries no layer (`NO_LAYER`), a tint, a glow and, from `withHours`, the hours the glow follow (a face that does not glow has no hours to follow)s (a lit sign's: the sign layer's material reads them as a room's).
    */
   polyUv(points: readonly Vec3[], uvs: readonly (readonly [number, number])[], hint: Vec3, tint: Rgb, fx?: Fx): void {
     const base = this.vertices;
@@ -431,7 +431,7 @@ export class MeshBuilder {
       this.col.push4(tint[0], tint[1], tint[2], this.leaf ? DOOR_ALPHA : fx?.paint === undefined ? 1 : paintAlpha(fx.paint));
       const uv = uvs[i] as readonly [number, number];
       this.uv.push2(uv[0], uv[1]);
-      this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? this.glowBase, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, this.hoursCode, 0);
+      this.srf.push12(NO_LAYER, 0, 0, fx?.glow ?? this.glowBase, tint[0], tint[1], tint[2], fx?.clear ?? 0, 0, 0, (fx?.glow ?? this.glowBase) > 0 ? this.hoursCode : 0, 0);
     });
     for (let i = 1; i < n - 1; i++) {
       if (flip) this.idx.push3(base, base + i, base + i + 1);

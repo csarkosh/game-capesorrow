@@ -1,7 +1,7 @@
 /**
  * The props as walls the player cannot pass, as the buildings are (`solid.ts`): the plan's `props.solids` (oriented boxes of the plan's
  * frame: vehicles, trailers, fence runs, poles, bins, mailboxes, the heavy gear) in the world, on the same grid and pushed out of by
- * the same rule, with the same hull. Called from `townConstrain`, in its passes. A box is a column from the ground to the sky, like a building.
+ * the same rule, with the same hull. A parked vehicle the ground cannot hold (`parked.ts`) has no box. Called from `townConstrain`, in its passes. A box is a column from the ground to the sky, like a building.
  *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only; the cache is only a lookup.
  */
@@ -9,6 +9,7 @@ import { gridOf, pushOut, SOLID_CELL, STRIDE, type TownSolids } from "./solid.js
 import { HULL_RADIUS } from "./hull.js";
 import { planFor } from "./planFor.js";
 import { siteFor } from "./siteFor.js";
+import { absentVehicles, isVehicleBox } from "./parked.js";
 
 type PropGrid = Omit<TownSolids, "ids"> & { readonly full: TownSolids };
 
@@ -19,7 +20,9 @@ export function propSolids(worldSeed: number): PropGrid {
   let made = SOLIDS.get(worldSeed);
   if (made === undefined) {
     const { anchor } = siteFor(worldSeed);
-    const boxes = planFor(worldSeed).props.solids;
+    // A parked vehicle the ground cannot hold is not in the world (`parked.ts`), and neither is its box.
+    const absent = absentVehicles(worldSeed);
+    const boxes = planFor(worldSeed).props.solids.filter((b) => !absent.some((v) => isVehicleBox(b, v)));
     const n = boxes.length;
     const rects = new Float64Array(n * STRIDE);
     const lowX = new Float64Array(n);

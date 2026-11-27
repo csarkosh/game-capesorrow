@@ -256,17 +256,22 @@ export function returnCar(world: RiderWorld, id: number): void {
   car.lights = false;
   car.owed = 0;
   groundCar(world.ground, car);
+  // The doors a rider has been put out at already: no two riders are put at one door (where the curb side is blocked, the passenger is not stood on the driver).
+  let taken = 0;
   for (let seat = 0; seat < 4; seat++) {
     const pid = car.seats[seat] as number;
     car.seats[seat] = 0;
     if (pid === 0) continue;
     const p = world.state.players.get(pid);
     if (p === undefined) continue;
-    // The seat's own door, then the others', and the seat's own whether it is free or not if none is.
+    // The seat's own door, then the others' that no rider stands at, and the seat's own whether it is free or not if none is.
     let found = false;
     for (let k = 0; k < 4 && !found; k++) {
-      doorPlace(car, seat ^ k, DOOR);
+      const door = seat ^ k;
+      if ((taken & (1 << door)) !== 0) continue;
+      doorPlace(car, door, DOOR);
       found = standFree(world, DOOR.x, DOOR.z, car.y);
+      if (found) taken |= 1 << door;
     }
     if (!found) doorPlace(car, seat, DOOR);
     p.pos = { x: DOOR.x, y: heightAt(world, DOOR.x, DOOR.z) + PLAYER_HALF.y, z: DOOR.z };

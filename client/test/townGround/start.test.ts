@@ -20,7 +20,7 @@ import { TEN_SEEDS } from "./seeds.js";
 const SRC = fileURLToPath(new URL("../../src/", import.meta.url));
 
 describe("the player's start in the town", () => {
-  it("is the plan's spawn at the FBI office's door: the site's anchor plus the spawn, with its yaw, standing on the made ground above the sea", () => {
+  it("is the plan's spawn at the municipal building's door: the site's anchor plus the spawn, with its yaw, standing on the made ground above the sea", () => {
     for (const seed of TEN_SEEDS) {
       const start = townStart(seed);
       const { anchor } = siteFor(seed);

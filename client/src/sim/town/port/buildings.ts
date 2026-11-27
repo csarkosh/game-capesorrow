@@ -10,7 +10,8 @@
  * dock end, the canneries and the rough waterfront. The building mixes and their shares are authored
  * too: the research has no building inventories for large ports.
  */
-import { orientedRect, type Vec } from "../geom.js";
+import { area, centroid, dist, orientedRect, type Vec } from "../geom.js";
+import { roadAt } from "../shore.js";
 import { buildingClear, footprint, type Line } from "../railKeepOut.js";
 import { mainLineOf } from "../railLine.js";
 import { COMPASS, bearingU, bearingV } from "../bearings.js";
@@ -45,11 +46,14 @@ type Draft = {
   occ: number;
   /** The lot is the public port's terminal yard: the town's fill does not raise its chance (the cargo needs the open ground). */
   yard: boolean;
+  /** The lot is in an outer block of the downtown: the town's fill does not raise its chance either (the edge of the downtown keeps its vacant lots), but an empty one is a gap. */
+  thin: boolean;
+  /** The lot is on a hill block of the company's plat (where the school and the hospital stood): its houses are the first taken down where the town grows past `TOWN_CAP`. */
+  soft: boolean;
 };
 
 const ROLE_KIND: Record<string, BuildingKind> = {
-  "fbi-federal": "federal building",
-  "fbi-office": "office",
+  municipal: "municipal building",
   hotel: "hotel",
   bank: "bank",
   lodge: "lodge hall",
@@ -113,10 +117,8 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
   const stockFor = (kind: BuildingKind, district: string, m: BlockMeta, lotRole: string | null): { era: number; material: Material } => {
     if (lotRole) {
       switch (lotRole) {
-        case "fbi-federal":
+        case "municipal":
           return { era: 1930, material: pick(rng, ["brick", "stone"] as const) };
-        case "fbi-office":
-          return { era: 1970, material: "concrete" };
         case "hotel":
           if (!fire && bust) return { era: dec(history.boom.peakYear), material: "brick" };
           return coreStockNoInfill();
@@ -186,28 +188,50 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     return { era: dec(y), material: y < 1895 && chance(rng, 0.5) ? "wood" : "brick" };
   };
 
-  const kindFor = (district: string, m: BlockMeta, lotW: number): BuildingKind => {
+  const kindFor = (district: string, m: BlockMeta, lotW: number, beside: boolean): BuildingKind => {
     const cannery = history.founding.purpose === "cannery";
     switch (district) {
-      case "core":
-        return weighted<BuildingKind>(rng, [["storefront", 78], ["tavern", SIZING.TAVERN_CORE], ["office", 8], ["storefront", 8]]);
+      case "core": {
+        // The downtown's blocks: shops, offices and taverns, and a few apartments; in an outer block (`m.edge`) fewer of them, with houses and garages among them.
+        const room = lotW >= 12;
+        return m.edge
+          ? weighted<BuildingKind>(rng, [["storefront", SIZING.DT_EDGE_SHOP], ["tavern", SIZING.TAVERN_CORE], ["office", 3], ["boarding house", SIZING.DT_EDGE_BOARDING], ["house", lotW >= 9 ? SIZING.DT_EDGE_HOUSE : 0], ["apartment", room ? SIZING.DT_EDGE_APARTMENT : 0], ["garage", SIZING.DT_EDGE_GARAGE]])
+          : weighted<BuildingKind>(rng, [["storefront", 78], ["tavern", SIZING.TAVERN_CORE], ["office", 4], ["storefront", 8], ["boarding house", SIZING.DT_BOARDING], ["apartment", room ? SIZING.DT_CORE_APARTMENT : 0]]);
+      }
       case "dock":
-        return weighted<BuildingKind>(rng, [["tavern", SIZING.TAVERN_DOCK], ["boarding house", 22], ["storefront", 33], ["warehouse", 20], ["cannery", cannery ? 25 : 4]]);
+        return weighted<BuildingKind>(rng, [["tavern", SIZING.TAVERN_DOCK], ["boarding house", 9], ["storefront", 25], ["warehouse", 2], ["cannery", cannery ? 14 : 1]]);
       case "waterfront":
-        return weighted<BuildingKind>(rng, [["port terminal shed", 55], ["warehouse", 30], ["silo", history.port.handles === "grain" ? 25 : 0], ["garage", 5]]);
+        return weighted<BuildingKind>(rng, [["port terminal shed", 55], ["warehouse", 30], ["silo", history.port.handles === "grain" ? 25 : 0]]);
       case "mill":
         return chance(rng, 0.9) ? "mill shed" : "warehouse";
       case "mill housing":
         return "house";
       case "residential":
-        return lotW >= 15 && chance(rng, 0.06) ? "apartment" : "house";
+        return "house";
       case "highway strip":
-        return weighted<BuildingKind>(rng, [["motel", SIZING.STRIP_MOTEL], ["gas station", SIZING.STRIP_GAS], ["restaurant", 18], ["storefront", SIZING.STRIP_SHOPS], ["big-box store", lotW >= 40 ? 10 : 0], ["garage", 8]]);
+        // The strip's highway side holds what the highway brings (a motel, a gas station, a garage, a big-box store, a restaurant); the lots behind it are the downtown's: shops, apartments, a boarding house.
+        return beside
+          ? weighted<BuildingKind>(rng, [["motel", SIZING.STRIP_MOTEL], ["gas station", SIZING.STRIP_GAS], ["restaurant", 12], ["storefront", SIZING.STRIP_SHOPS], ["big-box store", lotW >= 40 ? 10 : 0], ["garage", 8]])
+          : weighted<BuildingKind>(rng, [["storefront", 30], ["office", 6], ["apartment", 34], ["boarding house", 12], ["restaurant", 4], ["garage", 3]]);
       case "industrial":
-        return weighted<BuildingKind>(rng, [["warehouse", 70], ["garage", 30]]);
+        return "warehouse";
       default:
         return "warehouse";
     }
+  };
+
+  /** The company plat's house blocks inland of the highway, on the hill (where the school and the hospital stood before the downtown took them): built thinner, and not raised by the town's fill, to keep the town the size it was. */
+  const hill = (block: Block): boolean => {
+    if (layout.meta[block.id]!.tag !== "compass") return false;
+    const c = centroid(block.polygon);
+    // The big blocks (6500 m2 and more) near the town, where the school and the hospital stood.
+    return c.x > roadAt(site, c.z) + 25 && Math.abs(area(block.polygon)) >= 6500 && dist(c, layout.coreCentre) < 420;
+  };
+
+  /** Whether a lot stands on the highway's side of its block: the highway is within 50 m of its middle. */
+  const besideHighway = (lot: Lot): boolean => {
+    const c = centroid(lot.polygon);
+    return Math.abs(c.x - roadAt(site, c.z)) < SIZING.DT_HIGHWAY_SIDE;
   };
 
   const wantFor = (kind: BuildingKind, W: number, D: number, alley: boolean): Want => {
@@ -248,18 +272,18 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
       case "church":
         return { width: r(12, 15), depth: r(24, 30), setback: 5 };
       case "school":
-        return { width: Math.min(W * 0.7, 80), depth: Math.min(D * 0.35, 30), setback: D * 0.15 };
+        return { width: Math.min(W - 4, 60), depth: Math.min(D * 0.75, 30), setback: Math.min(D * 0.1, 4) };
       case "hospital":
-        return { width: Math.min(W * 0.7, 70), depth: Math.min(D * 0.5, 45), setback: D * 0.12 };
+        return { width: Math.min(W - 4, 54), depth: Math.min(D * 0.75, 40), setback: 3 };
       case "courthouse":
-        return { width: Math.min(W * 0.55, 50), depth: Math.min(D * 0.3, 30), setback: D * 0.2 };
+        return { width: Math.min(W - 4, 46), depth: Math.min(D * 0.7, 30), setback: Math.min(D * 0.15, 5) };
       case "tsunami refuge":
         return { width: 12, depth: 12, setback: 5 };
       case "depot":
         return { width: W - 3, depth: 10, setback: 3 };
       case "customs house":
         return { width: W - 1, depth: D * 0.7, setback: 1 };
-      case "federal building":
+      case "municipal building":
         return { width: W - 1, depth: D * 0.75, setback: 0 };
       default:
         return { width: W - 2, depth: D * 0.7, setback: 0 };
@@ -289,7 +313,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
         return weighted(rng, [[1, 6], [2, 4]]);
       case "motel":
         return weighted(rng, [[1, 5], [2, 5]]);
-      case "federal building":
+      case "municipal building":
         return 3;
       case "courthouse":
         return int(rng, 2, 3);
@@ -314,7 +338,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
       case "bank":
       case "hotel":
       case "lodge hall":
-      case "federal building":
+      case "municipal building":
       case "school":
       case "hospital":
       case "big-box store":
@@ -358,7 +382,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
       case "bank":
       case "hotel":
       case "lodge hall":
-      case "federal building":
+      case "municipal building":
         h = 4.5 + (storeys - 1) * 3.6;
         break;
       case "house":
@@ -433,7 +457,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     if (m.site === "terminal" && district !== "civic") return 0.42;
     switch (district) {
       case "core":
-        return fire ? 0.92 : 0.95;
+        return m.edge ? SIZING.DT_EDGE_OCC : fire ? 0.92 : 0.95;
       case "dock":
         return 0.86 - decline;
       case "waterfront":
@@ -447,9 +471,9 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
         return (claim ? 0.8 : 0.62) - decline;
       }
       case "highway strip":
-        return kind === "big-box store" ? 0.9 : 0.6;
+        return SIZING.DT_STRIP_OCC;
       case "industrial":
-        return 0.7;
+        return 0.5;
       default:
         return 0.7;
     }
@@ -467,7 +491,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     const D = ext.tb - ext.ta;
     const role = lot.role;
     const district = block.district;
-    const kind: BuildingKind = role ? ROLE_KIND[role]! : lot.id === largestMillLot ? "mill shed" : kindFor(district, m, W);
+    const kind: BuildingKind = role ? ROLE_KIND[role]! : lot.id === largestMillLot ? "mill shed" : kindFor(district, m, W, besideHighway(lot));
     const forced = role !== null || lot.id === largestMillLot;
     const occ = occupancy(district, kind, m);
     const u = next(rng);
@@ -479,7 +503,8 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
       buildingClear(tracks, footprint(f.centre, draft.swap ? f.halfT : f.halfS, draft.swap ? f.halfS : f.halfT, m.bearing, front0, kind));
     let fit = fitRect(draft, want, clear);
     // A landmark's place is held for it: if the building wanted will not fit, a smaller one will.
-    if (!fit && forced) fit = fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }, clear) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 }, clear);
+    // (A lot of the downtown that the building wanted will not fit gets a smaller one too: its blocks are not left mostly empty.)
+    if (!fit && (forced || layout.downtown.includes(lot.block))) fit = fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }, clear) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 }, clear);
     if (!fit) {
       // Where it would have fitted but for the track, the lot is the railroad's (a yard of gravel and weeds), and a landmark keeps its place whatever the track says.
       const free = fitRect(draft, want) ?? (forced ? fitRect(draft, { width: W * 0.6, depth: D * 0.5, setback: 0 }) ?? fitRect(draft, { width: W * 0.35, depth: D * 0.3, setback: 0 }) : null);
@@ -528,6 +553,8 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
       u,
       occ,
       yard: m.site === "terminal" && district !== "civic",
+      thin: district === "core" && m.edge,
+      soft: district === "residential" && hill(block),
     });
   }
 
@@ -540,21 +567,43 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
   const MIN_BUILT = MIN_BUILDINGS;
   let boost = 0;
   const wanted = Math.max(MIN_BUILT, Math.floor(FILL * lots.length));
-  while (boost < 0.6 && onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost)).length < wanted) boost += 0.03;
-  let kept = onLand.filter((d) => d.keep || d.u < d.occ + (d.yard ? 0 : boost));
+  while (boost < 0.6 && onLand.filter((d) => d.keep || d.u < d.occ + (d.yard || d.thin ? 0 : boost)).length < wanted) boost += 0.03;
+  let kept = onLand.filter((d) => d.keep || d.u < d.occ + (d.yard || d.thin ? 0 : boost));
+  // No block of the downtown is left mostly empty: where under `DT_BUILT` of a block's lots stand built (a vacant or boarded building counts), the lots the draw left out are built, in the order of their draws.
+  for (const id of layout.downtown) {
+    const total = lots.filter((l) => l.block === id).length;
+    const need = Math.floor(SIZING.DT_BUILT * total + 0.999);
+    let have = kept.filter((d) => d.lot >= 0 && lots[d.lot]!.block === id).length;
+    if (have >= need) continue;
+    const spare = onLand.filter((d) => !kept.includes(d) && !d.yard && lots[d.lot]!.block === id).sort((p, q) => p.u - q.u || p.lot - q.lot);
+    for (const d of spare) {
+      if (have >= need) break;
+      kept = [...kept, d];
+      have++;
+    }
+  }
   // A lot the town did not build is a house taken down (or a plot never built) and left to brush; the terminal's open yard is the harbour's, not a gap.
   for (const d of onLand) if (!kept.includes(d) && !d.yard) gaps.push({ lot: d.lot, why: "demolished" });
 
-  // The core's vacancy, exactly: the share of its storefronts the present layer says stand empty.
-  const shops = kept.filter((d) => !d.keep && SHOP_KINDS.includes(d.kind) && blocks[lots[d.lot]!.block]!.district === "core");
-  const nVacant = Math.round(shops.length * history.present.vacantShare);
-  const order = shuffled(rng, shops);
-  for (let i = 0; i < order.length; i++) order[i]!.state = i < nVacant ? "vacant" : "open";
+  // The town is kept the size it was (the downtown is built up, and a world's memory is the game's tight limit): past `TOWN_CAP` buildings the houses of the hill blocks, where the school and the hospital stood, are the first taken down.
+  {
+    let excess = Math.min(kept.length - SIZING.TOWN_CAP, SIZING.TOWN_CAP_MOST);
+    if (excess > 0) {
+      const dropped: Draft[] = [];
+      for (const h of shuffled(rng, kept.filter((d) => !d.keep && d.soft && d.kind === "house"))) {
+        if (excess <= 0) break;
+        dropped.push(h);
+        excess--;
+      }
+      kept = kept.filter((d) => !dropped.includes(d));
+      for (const d of dropped) gaps.push({ lot: d.lot, why: "demolished" });
+    }
+  }
 
   // The town is condensed: past a cap, the houses thin out (they are what a map can lose without losing the story).
   const cap = int(rng, HOUSE_CAP[0], HOUSE_CAP[1]);
   if (kept.length > cap) {
-    const houses = shuffled(rng, kept.filter((d) => !d.keep && HOUSE_KINDS.includes(d.kind)));
+    const houses = shuffled(rng, kept.filter((d) => !d.keep && d.kind === "house" && !layout.downtown.includes(lots[d.lot]!.block)));
     let excess = kept.length - cap;
     const dropped: Draft[] = [];
     for (const h of houses) {
@@ -565,6 +614,69 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     kept = kept.filter((d) => !dropped.includes(d));
     for (const d of dropped) gaps.push({ lot: d.lot, why: "demolished" });
   }
+
+  // ---- What the downtown always has, whatever the draws gave: an open lodging (a hotel, motel or boarding house) and an open tavern. Where one stands but is shut or vacant it is opened; where
+  // none stands, a shop of the downtown becomes one. (The cafe and the places' units are the business stage's: `business/index.ts`.)
+  /** The tavern the downtown is guaranteed: the core's vacancy leaves it open. */
+  const guarded: Draft[] = [];
+  {
+    const downSet = layout.downtown;
+    const inDown = (d: Draft): boolean => d.lot >= 0 && downSet.includes(lots[d.lot]!.block);
+    const area = (d: Draft): number => d.halfAlong * d.halfAcross;
+    /** The shop of the downtown that becomes the missing building: an open one that is no landmark, the broadest first. */
+    const shopToConvert = (prefer: (d: Draft) => number): Draft | null => {
+      const open = kept.filter((d) => inDown(d) && !d.keep && d.state === "open" && (d.kind === "storefront" || d.kind === "office"));
+      const pool = open.length > 0 ? open : kept.filter((d) => inDown(d) && !d.keep && d.state !== "ruin" && !HOUSE_KINDS.includes(d.kind) && d.kind !== "tavern" && !["hotel", "motel", "boarding house"].includes(d.kind));
+      pool.sort((p, q) => prefer(q) - prefer(p) || area(q) - area(p) || p.lot - q.lot);
+      return pool[0] ?? null;
+    };
+    const convert = (d: Draft, kind: BuildingKind, storeys: number): void => {
+      d.kind = kind;
+      d.storeys = Math.max(d.storeys, storeys);
+      d.roof = roofFor(kind, d.era);
+      d.height = heightFor(kind, d.storeys, d.roof);
+      d.state = "open";
+    };
+    const LODGING: readonly BuildingKind[] = ["hotel", "motel", "boarding house"];
+    if (!kept.some((d) => inDown(d) && LODGING.includes(d.kind) && d.state === "open")) {
+      const had = kept.filter((d) => inDown(d) && LODGING.includes(d.kind) && d.state !== "ruin").sort((p, q) => Number(q.keep) - Number(p.keep) || area(q) - area(p) || p.lot - q.lot);
+      if (had.length > 0) had[0]!.state = "open";
+      else {
+        const shop = shopToConvert((d) => (d.kind === "storefront" ? 1 : 0));
+        if (shop) convert(shop, "boarding house", int(rng, 2, 3));
+      }
+    }
+    // Lodging and apartments of the downtown are not fewer than `DT_LODGING_MIN` and `DT_APARTMENT_MIN`: shops of its outer blocks, then of the rest, are made them.
+    const edgeOf = (d: Draft): number => (layout.meta[lots[d.lot]!.block]!.edge ? 2 : 0);
+    const have = (ks: readonly BuildingKind[]): number => kept.filter((d) => inDown(d) && ks.includes(d.kind) && d.state !== "ruin").length;
+    while (have(LODGING) < SIZING.DT_LODGING_MIN) {
+      const shop = shopToConvert((d) => edgeOf(d) + (d.kind === "storefront" ? 1 : 0));
+      if (!shop) break;
+      convert(shop, "boarding house", int(rng, 2, 3));
+    }
+    while (have(["apartment"]) < SIZING.DT_APARTMENT_MIN) {
+      const shop = shopToConvert((d) => edgeOf(d) + (d.kind === "storefront" ? 1 : 0));
+      if (!shop) break;
+      convert(shop, "apartment", int(rng, 2, 3));
+    }
+    if (!kept.some((d) => inDown(d) && d.kind === "tavern" && d.state === "open")) {
+      const had = kept.filter((d) => inDown(d) && d.kind === "tavern" && d.state !== "ruin").sort((p, q) => area(q) - area(p) || p.lot - q.lot);
+      if (had.length > 0) had[0]!.state = "open";
+      else {
+        // The dock's shops first (the rough waterfront is where a tavern stands), then the core's.
+        const shop = shopToConvert((d) => (blocks[lots[d.lot]!.block]!.district === "dock" ? 2 : 0) + (d.kind === "storefront" ? 1 : 0));
+        if (shop) convert(shop, "tavern", 1);
+      }
+    }
+    const bar = kept.find((d) => inDown(d) && d.kind === "tavern" && d.state === "open");
+    if (bar) guarded.push(bar);
+  }
+
+  // The core's vacancy, exactly: the share of its storefronts the present layer says stand empty.
+  const shops = kept.filter((d) => !d.keep && !guarded.includes(d) && SHOP_KINDS.includes(d.kind) && blocks[lots[d.lot]!.block]!.district === "core");
+  const nVacant = Math.round(shops.length * history.present.vacantShare);
+  const order = shuffled(rng, shops);
+  for (let i = 0; i < order.length; i++) order[i]!.state = i < nVacant ? "vacant" : "open";
 
   // ---- Piers, and the sheds on piles at their ends, where the layout found water for them: from the quay and from the flats' shore.
   const piers: Draft[] = [];
@@ -606,6 +718,8 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
         u: 0,
         occ: 1,
         yard: false,
+        thin: false,
+        soft: false,
       };
     };
     const pierState: BuildingState = millClosed && shoreSite === "mill" && chance(rng, 0.5) ? "ruin" : "open";

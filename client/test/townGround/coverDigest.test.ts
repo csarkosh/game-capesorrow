@@ -10,7 +10,7 @@ import { planFor } from "../../src/sim/town/planFor.js";
  * change no number: these digests are of the value and both slopes at 200,000 points a seed, with the outlying lots'
  * windows and without, as they were before it.
  */
-const DIGESTS: readonly (readonly [number, string])[] = [[20261121, "4e088711"], [1, "5045be8d"], [6, "dfe43565"]];
+const DIGESTS: readonly (readonly [number, string])[] = [[20261121, "5f8ce0dd"], [1, "6fd0a614"], [6, "50f7b90a"]];
 
 describe("the town's cover", () => {
   it("is to the bit what it was, on three seeds", () => {

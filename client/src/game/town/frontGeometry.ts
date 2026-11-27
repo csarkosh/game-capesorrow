@@ -36,6 +36,8 @@ export type FrontIn = {
   readonly through?: boolean;
   readonly w: WallRef;
   readonly xf: Xf;
+  /** Where along this front a portico stands (`porticoAt`, `buildingParts.ts`): no awning or canopy is hung under it. */
+  readonly portico?: readonly [number, number];
   readonly b: Building;
   /** The block the building stands on, which the accent colours are keyed by (`accents.ts`); the building's own id where it is not given. */
   readonly block?: number;
@@ -274,7 +276,8 @@ export function planFront(i: FrontIn): FrontPlan {
       const a = Math.min(...u.openings.map((o) => Math.min(o.s0, o.s1))) - 0.1;
       const c = Math.max(...u.openings.map((o) => Math.max(o.s0, o.s1))) + 0.1;
       const head = floorY + Math.max(...u.openings.map((o) => o.head));
-      drawers.push(() => (kind === "awning" ? awning(out, w, ends(a, c), head, b.id * 23 + u.id, block) : canopy(out, w, ends(a, c), head, b.id * 29 + u.id, block)));
+      const portico = i.portico;
+      if (portico === undefined || c < portico[0] - 0.05 || a > portico[1] + 0.05) drawers.push(() => (kind === "awning" ? awning(out, w, ends(a, c), head, b.id * 23 + u.id, block) : canopy(out, w, ends(a, c), head, b.id * 29 + u.id, block)));
     }
   });
 

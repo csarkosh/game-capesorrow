@@ -205,8 +205,11 @@ export function sillThings(c: Ctx, openings: readonly Opening[]): void {
         if (!taken && r(6) < 0.6) withMat("cloth", () => fcyl(c, s, 0.3 + g, sill + 0.08, 0.1, 0.1, 6, [0.8, 0.5, 0.2], [0.85, 0.6, 0.3], 0.07));
       }
       // A plant at an end of the sill: green, or dead and brown.
-      if (r(7) < 0.4) {
-        const end = r(8) < 0.5 ? lo + 0.2 : hi - 0.2;
+      // Not where a furnishing stands by the glass: a window bar's counter and rail (a hand wider than its footprint) have their tops at the height of a pot's rim.
+      const plantEnd = r(8) < 0.5 ? lo + 0.2 : hi - 0.2;
+      const plantTaken = c.feet.some((f) => plantEnd > f.s0 - 0.3 && plantEnd < f.s1 + 0.3 && 0.28 > f.d0 - 0.3 && 0.28 < f.d1 + 0.3);
+      if (r(7) < 0.4 && !plantTaken) {
+        const end = plantEnd;
         const dead = r(9) < 0.3;
         const leaf: Rgb = dead ? [0.4, 0.3, 0.15] : [0.18, 0.4, 0.16];
         withMat("painted", () => fcyl(c, end, 0.28, sill, 0.1, 0.2, 6, pickOf([[0.55, 0.28, 0.16], [0.7, 0.7, 0.66], [0.2, 0.25, 0.4]] as readonly Rgb[], c.seed + k, 1132), [0.2, 0.12, 0.08]));

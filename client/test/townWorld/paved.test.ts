@@ -37,7 +37,21 @@ describe("the paved ground between the buildings", () => {
         expect(y - lift).toBeGreaterThan(SEA);
       }
       expect(onYard).toBe(0);
-      for (let t = 0; t < a.indices.length; t += 3) expect(a.normals[(a.indices[t] as number) * 3 + 1] as number, `seed ${seed}`).toBeGreaterThan(0.75);
+      // A paved block follows a bank of the made ground, so a triangle faces the way the ground under its centroid faces, not straight up.
+      for (let t = 0; t < a.indices.length; t += 3) {
+        const i = [0, 1, 2].map((k) => a.indices[t + k] as number);
+        const cx = i.reduce((s, v) => s + (a.positions[v * 3] as number), 0) / 3;
+        const cz = i.reduce((s, v) => s + (a.positions[v * 3 + 2] as number), 0) / 3;
+        const e = 0.05;
+        const gx = (g.heightAt(cx + e, cz) - g.heightAt(cx - e, cz)) / (2 * e);
+        const gz = (g.heightAt(cx, cz + e) - g.heightAt(cx, cz - e)) / (2 * e);
+        const gl = Math.sqrt(gx * gx + 1 + gz * gz);
+        const n = (a.indices[t] as number) * 3;
+        const ny = a.normals[n + 1] as number;
+        const dot = ((a.normals[n] as number) * -gx + ny - (a.normals[n + 2] as number) * gz) / gl;
+        expect(dot, `seed ${seed} triangle at ${cx.toFixed(1)}, ${cz.toFixed(1)}`).toBeGreaterThanOrEqual(0.93);
+        expect(ny, `seed ${seed}`).toBeGreaterThan(0.5);
+      }
     }
   });
 

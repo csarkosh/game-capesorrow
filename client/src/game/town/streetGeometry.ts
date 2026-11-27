@@ -58,6 +58,8 @@ export const ROADWAY_LIFT = 0.012;
 export const OPEN_GROUND_LIFT = 0.04;
 /** How far out of the asphalt's edge a shoulder still lies under the asphalt's level, metres: within the cut the terrain has under a roadway. */
 const SHOULDER_UNDER = 0.1;
+/** The steepest a shoulder's outer strip rises where it narrows to nothing, metres per metre (a normal of 0.89). */
+const SHOULDER_GRADE = 0.5;
 /** The curb's top and the sidewalk's lie this much over the ground at the lots' level, so a sidewalk is level with the lot behind it. */
 export const WALK_LIFT = 0.012;
 /** The curb's width. */
@@ -493,7 +495,9 @@ export function streetGeometry(g: TownGround, flat: Sink, solid: Sink = flat, de
       const m1 = Math.min(edge + e1 + SHOULDER_UNDER, o1);
       surf.flat([q(s0, edge + e0 - 0.08), q(s1, edge + e1 - 0.08), q(s1, m1), q(s0, m0)], low, GRAVEL, over);
       const c = (pt: P2, lift: number): P3 => [pt[0], pt[1], lift];
-      if (o0 - m0 > 0.01 || o1 - m1 > 0.01) surf.poly([c(q(s0, m0), low), c(q(s1, m1), low), c(q(s1, o1), OPEN_GROUND_LIFT), c(q(s0, o0), OPEN_GROUND_LIFT)], GRAVEL, over);
+      // Where the strip runs out to nothing at one end, its rise there is held to a grade a person stands on (a sliver a centimetre wide rising the whole step would face the street, not the sky).
+      const rise = (width: number): number => low + Math.min(OPEN_GROUND_LIFT - low, Math.max(0, width) * SHOULDER_GRADE);
+      if (o0 - m0 > 0.01 || o1 - m1 > 0.01) surf.poly([c(q(s0, m0), low), c(q(s1, m1), low), c(q(s1, o1), rise(o1 - m1)), c(q(s0, o0), rise(o0 - m0))], GRAVEL, over);
     }
   }
 

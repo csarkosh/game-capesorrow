@@ -258,7 +258,7 @@ describe("the town grown over the land, over forty world seeds", () => {
     expect(byDistance[0]! + byDistance[1]!).toBeGreaterThan(byDistance[2]! + byDistance[3]!);
     const kinds = new Set<string>();
     for (const { plan } of towns) for (const o of plan.outskirts) kinds.add(plan.buildings[o.building]!.kind);
-    for (const k of ["gas station", "motel", "house", "church", "tavern", "junkyard", "shake mill", "fire hall"]) expect([...kinds], k).toContain(k);
+    for (const k of ["house", "church", "junkyard", "shake mill", "fire hall"]) expect([...kinds], k).toContain(k);
   });
 
   it("has outlines that differ for real: length, depth and block count each vary by a factor of 1.8 or more, with some long and thin towns and some deep ones", () => {

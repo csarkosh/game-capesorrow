@@ -9,6 +9,7 @@
  * one the slope across, and it is raised by whatever the worst wheel is sunk under the plane, so no tyre is in the ground and none stands
  * off it by more than the ground's own twist under the car (a few centimetres). The plan's position is the centre of the model's footprint.
  */
+import { standingVehicles } from "../../../sim/town/parked.js";
 import type { Vehicle } from "../../../sim/town/types.js";
 import type { TownGround } from "../townTypes.js";
 import { groundAt } from "./kit.js";
@@ -101,10 +102,10 @@ export function placeVehicle(g: TownGround, v: Vehicle, entry: ManifestVehicle):
   return { vehicle: v, model: entry.id, matrix, x: wx, y: oy + f.height / 2, z: wz, radius, data, look, contacts };
 }
 
-/** Every vehicle of the plan that is drawn as a model on this tier, as instances, in the plan's order. */
+/** Every vehicle of the plan that the ground holds (`standingVehicles`) and that is drawn as a model on this tier, as instances, in the plan's order. */
 export function fleetOf(g: TownGround, detail: "full" | "low"): FleetInstance[] {
   const out: FleetInstance[] = [];
-  for (const v of g.plan.props.vehicles) {
+  for (const v of standingVehicles(g.seed, g.plan, g.anchor)) {
     if (!drawnAsModel(v, detail)) continue;
     out.push(placeVehicle(g, v, manifestOf(v.model)));
   }

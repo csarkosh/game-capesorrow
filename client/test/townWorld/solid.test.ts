@@ -298,7 +298,14 @@ describe("the town's buildings as walls", () => {
 
   it("pushes a hull that meets a corner along the line from the corner, and a hull inside out by the nearest side", () => {
     const seed = WORLD_SEEDS[0] as number;
-    const b = planFor(seed).buildings.find((q) => solid(q) && q.bearing.deg !== 0) as Building;
+    // A turned building whose +u +v corner stands clear (no other wall near it: the downtown's buildings stand wall to wall, and a corner between two is the next test's).
+    const cornerOf = (q: Building): { x: number; z: number } => {
+      const cq = centreOf(seed, q);
+      const uq = bearingU(q.bearing);
+      const vq = bearingV(q.bearing);
+      return { x: cq.x + uq.x * (q.halfAlong + 0.15) + vq.x * (q.halfAcross + 0.15), z: cq.z + uq.z * (q.halfAlong + 0.15) + vq.z * (q.halfAcross + 0.15) };
+    };
+    const b = planFor(seed).buildings.find((q) => solid(q) && q.bearing.deg !== 0 && solidsNear(seed, cornerOf(q).x, cornerOf(q).z).every((id) => id === q.id)) as Building;
     const c = centreOf(seed, b);
     const u = bearingU(b.bearing);
     const v = bearingV(b.bearing);
@@ -323,7 +330,8 @@ describe("the town's buildings as walls", () => {
     let settled = 0;
     for (const seed of WORLD_SEEDS) {
       const plan = planFor(seed);
-      for (const p of meetingPairs(seed).slice(0, 8)) {
+      // (The first 24 pairs: in a downtown built up the first eight are walls that meet along their whole length, with no open corner to settle a hull at.)
+      for (const p of meetingPairs(seed).slice(0, 24)) {
         // A hull gets near a corner by walking: from a place it stood clear at, a step of a tick (at most 0.15 m at a sprint).
         for (let k = 0; k < 36; k++) {
           const angle = (k / 36) * Math.PI * 2;
@@ -351,7 +359,7 @@ describe("the town's buildings as walls", () => {
       const start = townStart(seed);
       const plan = planFor(seed);
       for (const b of plan.buildings) expect(distanceTo(seed, b, start.x, start.z), `${seed} building ${b.id}`).toBeGreaterThan(HULL_RADIUS);
-      expect(penetration(seed, plan.landmarks.find((l) => l.role === "fbi")?.building as number, start.x, start.z)).toBe(0);
+      expect(penetration(seed, plan.landmarks.find((l) => l.role === "municipal building")?.building as number, start.x, start.z)).toBe(0);
       const pos = Object.freeze({ x: start.x, y: 5, z: start.z });
       const vel = Object.freeze({ x: 0, y: 0, z: 0 });
       townConstrain({ forest: { seed } }, pos, vel);

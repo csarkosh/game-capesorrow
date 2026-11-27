@@ -17,7 +17,8 @@ import type { TerrainSample } from "@csarkosh/engine/sim/terrain";
 import { fbm2d } from "@csarkosh/engine/sim/field";
 import { COVER, COVER_FADE, COVER_HOLD, COVER_OUT_FADE, COVER_OUT_HOLD, COVER_SPUR_FADE, COVER_SPUR_HOLD, coverInto } from "./cover.js";
 import { FILL, QUAY_BANK, STEP, fillWindowInto, smootherstepD, smootherstepInto, type FillArea } from "./fill.js";
-import { QUAY_HEIGHT } from "./levels.js";
+import { QUAY_HEIGHT, RELIEF_LIMIT } from "./levels.js";
+export { RELIEF_LIMIT };
 import { planFor } from "./planFor.js";
 import { SITE_HALF, SITE_INLAND, SITE_STEP, siteFor } from "./siteFor.js";
 import { SHORE, shoreSplineOf, shoreXAtInto, type ShoreSpline } from "./shoreSpline.js";
@@ -98,7 +99,6 @@ export const QUAY_JOIN = 8;
  */
 export const RELIEF_FLATS = 0.2;
 export const RELIEF_HILL = 0.3;
-export const RELIEF_LIMIT = 2;
 export const RELIEF_HILL_FROM = 0;
 export const RELIEF_HILL_TO = 80;
 export const OWN_FLATS = 3.0;

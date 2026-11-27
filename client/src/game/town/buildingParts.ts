@@ -17,11 +17,12 @@
 import type { Building, BuildingUse, LandmarkRole, Material } from "../../sim/town/types.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { CASING_HEAD_OUT, pane, pickOf, wat, wbox, wquad, type WallRef } from "./buildingKit.js";
-import { isClear, noteFace } from "./faceLedger.js";
+import { isClear, noteFace, standOff } from "./faceLedger.js";
 import { paintOff } from "./paint.js";
 import { agingOf } from "./buildingWear.js";
 import { withMat, type MatName, type MatRef } from "./materials.js";
-import { attachmentsGeometry } from "./buildingAttach.js";
+import { attachmentsGeometry, nearFence } from "./buildingAttach.js";
+import { insideOther } from "./openingsGeometry.js";
 import type { Xf } from "./roomGeometry.js";
 import type { Surface } from "./townSurface.js";
 import type { Detail, TownGround } from "./townTypes.js";
@@ -132,7 +133,20 @@ function housePart(i: PartsIn, full: boolean): void {
   let seamDoor: { s: number; floorY: number; half: number; out: number; porch: { s0: number; s1: number } | null } | null = null;
   if (i.xf !== null && door !== null) {
     const sw = stationOf(front, i.xf, door.s);
-    const porch = hasPorch(b);
+    // A porch is not built where a pile of the yard's gear stands in its place (a stack of pallets would stand through its deck): the house has steps only.
+    const gearOnPorch = (): boolean => {
+      const pw0 = Math.min(front.length - 0.6, 3.6);
+      const p0 = Math.max(0.2, sw - pw0 / 2) - 0.8;
+      const p1 = Math.min(front.length - 0.2, Math.max(0.2, sw - pw0 / 2) + pw0) + 0.8;
+      return i.g.plan.props.gear.some((o) => {
+        const gx = o.x + i.g.anchor.x - front.ax;
+        const gz = o.z + i.g.anchor.z - front.az;
+        const gs = gx * front.tx + gz * front.tz;
+        const go = gx * front.nx + gz * front.nz;
+        return gs > p0 && gs < p1 && go > -0.8 && go < 1.7 + 0.8;
+      });
+    };
+    const porch = hasPorch(b) && !gearOnPorch();
     const rise = Math.max(0, i.frontFloorY - i.g.heightAt(front.ax + front.tx * sw + front.nx * 1.0, front.az + front.tz * sw + front.nz * 1.0));
     if (porch) {
       // A porch: a deck at the floor's height, two posts and a roof of its own sloping to the front, a rail. One in six was closed in, in another siding.
@@ -253,21 +267,31 @@ function housePart(i: PartsIn, full: boolean): void {
           const e0b = wat(w, at - 0.4, 0, 0.72);
           const e1 = wat(w, at + 0.4, 0, 0.28);
           const e1b = wat(w, at + 0.4, 0, 0.72);
-          return isClear(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y0 + 0.75) && isClear(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y0 + 0.75) && isClear(w.nx, w.nz, e0b[0], e0b[2], e1b[0], e1b[2], y0, y0 + 0.75);
+          // And the fan's grille in front of it, its face and its two ends.
+          const g0 = wat(w, at - 0.3, 0, 0.73);
+          const g0b = wat(w, at - 0.3, 0, 0.77);
+          const g1 = wat(w, at + 0.3, 0, 0.73);
+          const g1b = wat(w, at + 0.3, 0, 0.77);
+          const grille = isClear(-w.tx, -w.tz, g0[0], g0[2], g0b[0], g0b[2], y0 + 0.3, y0 + 0.7) && isClear(w.tx, w.tz, g1[0], g1[2], g1b[0], g1b[2], y0 + 0.3, y0 + 0.7) && isClear(w.nx, w.nz, g0b[0], g0b[2], g1b[0], g1b[2], y0 + 0.3, y0 + 0.7);
+          return grille && isClear(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y0 + 0.75) && isClear(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y0 + 0.75) && isClear(w.nx, w.nz, e0b[0], e0b[2], e1b[0], e1b[2], y0, y0 + 0.75);
         };
         for (let tries = 0; tries < 12 && !clear(s); tries++) s += 0.1;
-        seam.occupied.push({ k: side, s0: s - 0.7, s1: s + 0.7 });
-        const p = wat(w, s, 0, 0.5);
-        withMat("steel", () => {
-          i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
-          i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
-        });
+        // Where no place along the wall is clear (an addition stands over it), there is no heat pump.
+        if (clear(s)) {
+          seam.occupied.push({ k: side, s0: s - 0.7, s1: s + 0.7 });
+          const p = wat(w, s, 0, 0.5);
+          withMat("steel", () => {
+            i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
+            i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
+          });
+        }
       } else if (hash01(b.id, 511) < 0.3) {
         const s = w.length * (0.2 + 0.6 * hash01(b.id, 512));
         seam.occupied.push({ k: side, s0: s - 1.2, s1: s + 1.2 });
         const p = wat(w, s, 0, 1.2);
         const y = i.g.heightAt(p[0], p[2]);
-        withMat("steel", () => {
+        // A fence's post is not put through the tank: where a fence runs within the tank's reach, there is no tank.
+        if (!nearFence(i, p[0], p[2], 1.2)) withMat("steel", () => {
           i.out.prism([p[0] - w.tx * 0.9, y + 0.5, p[2] - w.tz * 0.9], [p[0] + w.tx * 0.9, y + 0.5, p[2] + w.tz * 0.9], 0.4, 6, [0.85, 0.85, 0.82], [0.8, 0.8, 0.78]);
           i.out.box(p[0], p[2], y + 0.05, w.tx, w.tz, 0.5, 0.04, 0.2, [0.3, 0.3, 0.3], [0.3, 0.3, 0.3]);
         });
@@ -315,7 +339,17 @@ function additionPlan(i: PartsIn): { k: number; s0: number; s1: number; depth: n
   if (w.length < 2) return null;
   const along = Math.min(w.length * (0.4 + 0.4 * hash01(b.id, 522)), 6, w.length - 0.8);
   const s0 = 0.4 + (w.length - along - 0.8) * hash01(b.id, 523);
-  return { k, s0, s1: s0 + along, depth: 2.3 + hash01(b.id, 524) * 1.2 };
+  const depth = 2.3 + hash01(b.id, 524) * 1.2;
+  // No addition where a fence of the yard runs into its place (the fence's wire, rails and posts would pass through its walls): the house has none.
+  // Nor where it would stand in, or within a hand of, another building (a lot's neighbour built to the line): its walls would lie in the neighbour's.
+  for (let s = s0 - 0.1; s <= s0 + along + 0.1 + 1e-6; s += 0.4) {
+    for (let o = -0.1; o <= depth + 0.25 + 1e-6; o += 0.25) {
+      const p = wat(w, s, 0, o);
+      if (o <= depth + 0.1 && nearFence(i, p[0], p[2], 0.3)) return null;
+      if (o > 0.2 && insideOther(i.g.plan, b.id, p[0] - i.g.anchor.x, p[2] - i.g.anchor.z)) return null;
+    }
+  }
+  return { k, s0, s1: s0 + along, depth };
 }
 
 /** A lean-to at the back, or a carport at the side: the one thing an owner added, in a different siding and roof. */
@@ -323,12 +357,27 @@ function addition(i: PartsIn): void {
   const { b, refs, out } = i;
   const plan = additionPlan(i);
   if (plan === null) return;
-  const { k, s0, s1, depth } = plan;
+  const { k } = plan;
+  let { depth } = plan;
   const w = refs[k] as WallRef;
   const { age } = agingOf(b);
   const top = i.floorY + 2.7;
   const low = i.floorY + 2.3;
   const base = i.baseY;
+  let { s0, s1 } = plan;
+  // A lean-to's ends and its face are put clear of the faces already laid (a neighbour's pane in a wall of the same plane): they stand a step further out (`faceLedger.ts`).
+  if (!(hash01(b.id, 527) < 0.4 && k !== i.frontAt)) {
+    const a0 = wat(w, s0, base, 0);
+    const a1 = wat(w, s0, base, depth);
+    const c0 = wat(w, s1, base, 0);
+    const c1 = wat(w, s1, base, depth);
+    s0 -= standOff(-w.tx, -w.tz, a0[0], a0[2], a1[0], a1[2], base, top);
+    s1 += standOff(w.tx, w.tz, c0[0], c0[2], c1[0], c1[2], base, top);
+    // And its face stands clear of a pane or a wall of a neighbour in its plane.
+    const f0 = wat(w, s0, base, depth);
+    const f1 = wat(w, s1, base, depth);
+    depth += standOff(w.nx, w.nz, f0[0], f0[2], f1[0], f1[2], base, low);
+  }
   const siding = pickOf(SIDINGS, b.id, 525);
   const sf = i.wallSurface(k);
   const layer = hash01(b.id, 526) < 0.5 ? "planks_weathered" : "siding_painted";
@@ -346,7 +395,8 @@ function addition(i: PartsIn): void {
   const g = (s: number, off: number): number => i.g.heightAt(w.ax + w.tx * s + w.nx * off, w.az + w.tz * s + w.nz * off) - 0.3;
   if (carport) {
     // Posts and a roof: open on three sides, at the side of the house.
-    for (const [s0p, off0] of [[s0, depth], [s1, depth], [s1, 0]] as const) {
+    // The post by the wall stands with its back 2 cm off the wall's face, never into the wall (where a window's reveal is).
+    for (const [s0p, off0] of [[s0, depth], [s1, depth], [s1, 0.1]] as const) {
       // Moved out from the wall (and along it) until the post's faces are clear of the wall's own and the house's (`faceLedger.ts`).
       let off = off0;
       let s = s0p;
@@ -537,6 +587,16 @@ function fireEscape(i: PartsIn): void {
 }
 
 // ---- By kind
+/**
+ * Where along the front a building's portico stands (stations of the front wall), or null where it has none: a bank, a courthouse, a lodge
+ * hall, a school or a hotel that is not the municipal building has one at the middle of its front. The front's awnings and canopies keep off it.
+ */
+export function porticoAt(b: Building, role: LandmarkRole | null, hasXf: boolean, front: WallRef): readonly [number, number] | null {
+  if (role === "municipal building" || !hasXf) return null;
+  if (b.kind !== "bank" && b.kind !== "courthouse" && b.kind !== "lodge hall" && b.kind !== "school" && b.kind !== "hotel") return null;
+  return [front.length / 2 - 2.0, front.length / 2 + 2.0];
+}
+
 function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
   const { b, out, refs, frontAt } = i;
   const front = refs[frontAt] as WallRef;
@@ -569,7 +629,7 @@ function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
     case "lodge hall":
     case "school":
     case "hotel":
-      if (role !== "fbi" && i.xf !== null) {
+      if (porticoAt(b, role, i.xf !== null, front) !== null) {
         // A portico at the door: a slab on two columns, the way a building that means to be taken seriously does it.
         const w = front;
         const s = w.length / 2;

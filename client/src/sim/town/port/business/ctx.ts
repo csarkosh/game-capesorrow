@@ -20,6 +20,8 @@ export type BizInput = {
   readonly streets: readonly Street[];
   readonly landmarks: readonly Landmark[];
   readonly harbour: Harbour;
+  /** The downtown's block ids (`port/downtown.ts`): the town's lodging, bar and cafe are always open in them. */
+  readonly downtown: readonly number[];
 };
 
 export type BizCtx = BizInput & {

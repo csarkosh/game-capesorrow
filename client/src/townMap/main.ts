@@ -210,7 +210,7 @@ function legend(): HTMLElement {
     box.append(el("div", {}, i, label));
   };
   for (const d of Object.keys(DISTRICT_FILL) as (keyof typeof DISTRICT_FILL)[]) swatch(DISTRICT_FILL[d], d);
-  const kinds = ["storefront", "hotel", "tavern", "house", "warehouse", "mill shed", "cannery", "port terminal shed", "motel", "big-box store", "church", "school", "hospital", "federal building", "tsunami refuge", "pier"] as const;
+  const kinds = ["storefront", "hotel", "tavern", "house", "warehouse", "mill shed", "cannery", "port terminal shed", "motel", "big-box store", "church", "school", "hospital", "municipal building", "tsunami refuge", "pier"] as const;
   for (const k of kinds) swatch(buildingFill(k), k);
   swatch("repeating-linear-gradient(45deg, #2a2a2e 0 2px, #e8c050 2px 3px)", "vacant");
   swatch("repeating-linear-gradient(-45deg, #1a0e0e 0 2px, #d04040 2px 3px)", "ruin");
@@ -270,7 +270,7 @@ function showTown(root: HTMLElement, seed: number, opts: { lots: boolean; labels
   const ms = performance.now() - t0;
   root.replaceChildren();
   const map = el("div", { class: "map" });
-  map.innerHTML = planSvg(plan, site, { width: 1600, lots: opts.lots, labels: opts.labels ? "all" : "fbi", ...(params().get("site") === "synthetic" ? {} : { seed }) });
+  map.innerHTML = planSvg(plan, site, { width: 1600, lots: opts.lots, labels: opts.labels ? "all" : "hall", ...(params().get("site") === "synthetic" ? {} : { seed }) });
   const aside = el("aside");
 
   const input = el("input", { type: "number", value: String(seed) });
@@ -367,7 +367,7 @@ function showSheet(root: HTMLElement, count: number, from: number): void {
     const { plan, site } = makePlan(seed);
     const cap = sheetCaption(plan, site, params().get("site") === "synthetic" ? undefined : seed);
     const a = el("a", { href: `?seed=${seed}` });
-    a.innerHTML = planSvg(plan, site, { width: 480, labels: "fbi", furniture: false, bare: true });
+    a.innerHTML = planSvg(plan, site, { width: 480, labels: "hall", furniture: false, bare: true });
     a.querySelector("svg")?.removeAttribute("height");
     const figcaption = el("figcaption", {}, el("b", { textContent: cap[0]! }), ...cap.slice(1).flatMap((c) => [c, el("br")]));
     grid.append(el("figure", {}, a, figcaption));

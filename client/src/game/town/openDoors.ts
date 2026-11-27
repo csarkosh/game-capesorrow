@@ -64,7 +64,8 @@ export function doorLook(building: number, unit: number): DoorLook {
 }
 
 /** A door this wide or wider is a pair of leaves of half its width, and the one at the right as you go in (the higher stations of the frame) is the one that opens. */
-export const PAIR_FROM = 1.1;
+/** (The plan rolls a single door 0.95 to 1.1 m and a wide one 1.8 m: 1.4 parts them. At 1.1 a single door that rolled its top width was a pair of 0.55 m leaves, and a walker through the open half passed 0.25 m from the open leaf, a body's own radius.) */
+export const PAIR_FROM = 1.4;
 export const isPair = (width: number): boolean => width >= PAIR_FROM;
 
 /** The leaf that opens, in the frame's stations: from `s0` to `s1`, with its hinge at the low end (`hingeLow`) or the high; a pair's is the right-hand half, hinged at its outer jamb. */

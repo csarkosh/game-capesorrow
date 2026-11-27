@@ -280,7 +280,7 @@ export type BuildingKind =
   | "school"
   | "hospital"
   | "office"
-  | "federal building"
+  | "municipal building"
   | "courthouse"
   | "tsunami refuge"
   | "tavern"
@@ -322,7 +322,7 @@ export type Building = {
 };
 
 export type LandmarkRole =
-  | "fbi"
+  | "municipal building"
   | "mill"
   | "port terminal"
   | "hotel"
@@ -573,6 +573,24 @@ export type Outskirt = {
   readonly where: "north" | "south" | "road";
 };
 
+/**
+ * A place in a building: the building, and the unit (`Unit.id`) where the place is one of its bays (null where it is the whole building), and, for a place with no unit, its door:
+ * `s` metres along the front frame (`BuildingUse.frame`, from the left as the street sees it, as a unit's door is) and its width. A place that is a unit has its door in `Unit.door` (null here).
+ */
+export type Place = { readonly building: number; readonly unit: number | null; readonly door: { readonly s: number; readonly width: number } | null };
+
+/** The four places every town always has (`TownPlan.places`). */
+export type Places = {
+  /** The player's office: the municipal building (the whole building). */
+  readonly office: Place;
+  /** Where the player stays: an open hotel, motel or boarding house's unit. */
+  readonly lodging: Place;
+  /** An open tavern. */
+  readonly bar: Place;
+  /** An open cafe. */
+  readonly cafe: Place;
+};
+
 export type Spawn = { readonly x: number; readonly z: number; readonly yaw: number };
 
 /**
@@ -729,11 +747,11 @@ export type Trade =
   | "medical clinic" | "dentist" | "veterinarian" | "pharmacy"
   | "auto repair" | "auto parts" | "tire shop" | "saw and chain shop"
   | "hardware" | "garden and feed" | "clothing" | "variety store" | "jeweler" | "bookstore" | "game shop"
-  | "post office" | "cannabis shop" | "liquor store" | "smoke shop" | "food bank"
+  | "post office" | "phone shop" | "liquor store" | "smoke shop" | "food bank"
   | "bait and tackle" | "marine supply" | "fish market" | "boat yard"
   | "antiques" | "thrift store" | "pawn shop" | "sporting goods" | "laundromat" | "furniture store" | "funeral home"
   | "newspaper office" | "print shop" | "movie theater" | "union hall" | "self storage"
-  | "gas station" | "motel" | "hotel" | "rooming house" | "lodge"
+  | "gas station" | "motel" | "hotel" | "rooming house" | "inn" | "lodge"
   // Trades of the past only (a ghost sign, an earlier tenant): none of these is open now.
   | "dry goods" | "five and dime" | "shoe repair" | "cigar store" | "photo studio" | "video store" | "feed store" | "hat shop";
 
@@ -1023,6 +1041,10 @@ export type TownPlan = {
   /** What is in each building (its trades, names, signs, rooms and windows), one entry a building, by building id. */
   readonly uses: readonly BuildingUse[];
   readonly landmarks: readonly Landmark[];
+  /** The downtown: the ids of its blocks, ascending. One connected set of blocks (each shares a street with another of the set) that holds every business of the town (`port/downtown.ts`). */
+  readonly downtown: readonly number[];
+  /** Four places every town has, open for business, in the downtown: the player's office, lodging, and the town's bar and cafe (`port/places.ts`). */
+  readonly places: Places;
   /** The railroad: where streets cross the main line, and the town's own spur. */
   readonly rail: TownRail;
   /** The scattered buildings of the town's thinning edge: each on its own lot (a block of one lot, in `blocks`), with its reason. */

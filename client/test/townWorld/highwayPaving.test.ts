@@ -258,21 +258,21 @@ describe("the highway's paving", () => {
     }
   });
 
-  it("meets the streets that the plan once shut at the highway, in the game's own world: School Street (junction 35) and the two beyond it (junction 45), each by a mouth that fills its edge, no gap and nothing drawn twice", () => {
+  it("meets the streets that the plan once shut at the highway, in the game's own world: School Street (junction 36) and the two beyond it (junction 46: one junction more stands before them than at generator 24), each by a mouth that fills its edge, no gap and nothing drawn twice", () => {
     const g = groundFor(GAME_SEED);
-    const joined = g.plan.junctions.filter((j) => j.kind === "highway" && (j.id === 35 || j.id === 45));
-    expect(joined.map((j) => j.id)).toEqual([35, 45]);
+    const joined = g.plan.junctions.filter((j) => j.kind === "highway" && (j.id === 36 || j.id === 46));
+    expect(joined.map((j) => j.id)).toEqual([36, 46]);
     for (const j of joined) {
       // Open: a street leg that stops, and no leg closed.
       expect(j.closed, `junction ${j.id}`).toHaveLength(0);
       expect(j.legs.filter((l) => !l.engine && l.stops).length, `junction ${j.id}`).toBeGreaterThanOrEqual(1);
     }
     expect(joined.flatMap((j) => j.legs.filter((l) => !l.engine).map((l) => l.street)).sort((p, q) => p - q)).toEqual([130, 131, 144]);
-    const { checked, contacts } = meetings(GAME_SEED, [35, 45]);
-    // Each junction's pavement meets the edge by a stretch of its own at least (the two streets of junction 45 share one when no corner of lot is left between them).
+    const { checked, contacts } = meetings(GAME_SEED, [36, 46]);
+    // Each junction's pavement meets the edge by a stretch of its own at least (the two streets of junction 46 share one when no corner of lot is left between them).
     expect(contacts).toBeGreaterThanOrEqual(2);
     const strip = highwayStrip(g) as HighwayStrip;
-    for (const id of [35, 45]) expect(strip.contacts.some((c) => c.junction === id), `junction ${id} meets the edge`).toBe(true);
+    for (const id of [36, 46]) expect(strip.contacts.some((c) => c.junction === id), `junction ${id} meets the edge`).toBe(true);
     expect(checked).toBeGreaterThan(300);
   });
 

@@ -137,7 +137,8 @@ describe("the front of each open shop's room", () => {
 
     it(`seed ${seed}: no open unit that is not deliberately thin is under 0.45 furnished, and every one 2.6 m wide or more has something tall in the band`, () => {
       for (const r of rows) {
-        if (!r.thin) expect(r.share, `building ${r.building} unit ${r.unit} (${r.type})`).toBeGreaterThanOrEqual(0.45);
+        // (A unit of the "empty" kind, a self-storage's, is bare by design: it has nothing to put in its band.)
+        if (!r.thin && r.type !== "empty") expect(r.share, `building ${r.building} unit ${r.unit} (${r.type})`).toBeGreaterThanOrEqual(0.45);
         if (r.wide >= 2.6) expect(r.tall, `building ${r.building} unit ${r.unit} (${r.type}) has nothing 0.9 m or taller in the band`).toBeGreaterThan(0);
       }
     });

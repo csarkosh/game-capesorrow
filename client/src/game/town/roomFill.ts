@@ -939,12 +939,13 @@ export function floorThings(c: Ctx, checker: Rgb | null): void {
       const s = dw.s + (H(c, k, 45) - 0.5) * 1.1;
       const d = 0.45 + H(c, k, 46) * 0.7;
       const col = pickOf([[0.88, 0.88, 0.84], [0.8, 0.75, 0.55], [0.7, 0.8, 0.85], [0.85, 0.5, 0.45]] as readonly Rgb[], c.seed + k, 1071);
-      floorSheet(c, s, d, 0.2, 0.28, Math.cos(a), Math.sin(a), 0.11 + k * 0.03, col);
+      // Where nothing stands (a partition's baseboard is laid 1 cm over the sheet's own plane).
+      if (!standing(s, d, 0.2)) floorSheet(c, s, d, 0.2, 0.28, Math.cos(a), Math.sin(a), 0.11 + k * 0.03, col);
     }
     const tile = c.d1 > 5 ? 2.2 + H(c, 7, 47) * (c.d1 - 4.4) : 2.2;
     const ts = c.s0 + 0.8 + H(c, 8, 48) * Math.max(0.2, W - 1.6);
     const a = H(c, 9, 49) * 1.5;
-    floorSheet(c, ts, tile, 0.6, 0.6, Math.cos(a), Math.sin(a), 0.11, [0.72, 0.7, 0.62]);
+    if (!standing(ts, tile, 0.45)) floorSheet(c, ts, tile, 0.6, 0.6, Math.cos(a), Math.sin(a), 0.11, [0.72, 0.7, 0.62]);
     // The hole it left in the ceiling, dark, 3 cm under the ceiling's plane.
     const hs0 = c.s0 + 0.8 + H(c, 10, 50) * Math.max(0.2, W - 1.6);
     const hd = 1.8 + H(c, 11, 51) * Math.max(0.2, c.d1 - 3.6);

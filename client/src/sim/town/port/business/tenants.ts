@@ -8,7 +8,7 @@
  *  - a union hall where the town's mill was or is a working one (every town's is), and a saw and chain shop likewise;
  *  - lawyers, a title company and a bail bondsman at the county seat, and none of the last two elsewhere;
  *  - kites and taffy only on the tourist road (the history's highway strip), and more galleries and gift shops there;
- *  - trades never open before their invention: an espresso stand after 1990, a cannabis shop after 2010, a credit union after 1950.
+ *  - trades never open before their invention: an espresso stand after 1990, a phone shop after 2000, a credit union after 1950.
  */
 import { chance, weighted, type Rng } from "../../rng.js";
 import type { Trade } from "../../types.js";

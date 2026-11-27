@@ -5,6 +5,7 @@
 import type { Detail, TownGround } from "../townTypes.js";
 import type { MeshBuilder } from "../meshBuilder.js";
 import { bearingU, bearingV } from "../../../sim/town/bearings.js";
+import { standingVehicles } from "../../../sim/town/parked.js";
 import { fenceGeometry, type PostBook } from "./fenceGeometry.js";
 import { dropGeometry, poleGeometry, wireGeometry } from "./poleGeometry.js";
 import { trailerGeometry } from "./trailerGeometry.js";
@@ -21,7 +22,8 @@ export function* propsGeometry(g: TownGround, sinks: PropSinks, detail: Detail, 
   const ax = g.anchor.x;
   const az = g.anchor.z;
   const world: PropSinks = { solid: (x, z) => sinks.solid(x + ax, z + az), glass: (x, z) => sinks.glass(x + ax, z + az), flat: (x, z) => sinks.flat(x + ax, z + az), ...(sinks.shade === undefined ? {} : { shade: (x, z) => sinks.shade!(x + ax, z + az) }) };
-  for (const v of p.vehicles) {
+  // Only the vehicles the ground holds (`parked.ts`): the fleet, the stains and the solids read the same list.
+  for (const v of standingVehicles(g.seed, g.plan, g.anchor)) {
     vehicleGeometry(g, world, v, detail);
     if (slice()) yield;
   }

@@ -43,8 +43,12 @@ export function slatBlinds(b: Behind, sa: number, sb: number, top: number, drop:
     const y0 = top - stack;
     const hang = Math.max(0.05, drop - stack);
     if (!full) {
-      // The low tier: one band, the head rail and the slats as a single face (the stack above it is left out).
-      out.poly([wat(w, sa, top - drop, off), wat(w, sb, top - drop, off), wat(w, sb, top, off), wat(w, sa, top, off)], [w.nx, 0, w.nz], scaled(warm, 0.9), undefined, { glow });
+      // The low tier: one band, the head rail and the slats as a single face (the stack above it is left out), clear of the faces noted on the
+      // wall and noted itself, as the full tier's slats are, so that a sign hung in the glass after it stands clear of it.
+      const la = wat(w, sa, 0, off);
+      const lb = wat(w, sb, 0, off);
+      const band = off - standOff(w.nx, w.nz, la[0], la[2], lb[0], lb[2], top - drop, top, -1);
+      out.poly([wat(w, sa, top - drop, band), wat(w, sb, top - drop, band), wat(w, sb, top, band), wat(w, sa, top, band)], [w.nx, 0, w.nz], scaled(warm, 0.9), undefined, { glow });
       return;
     }
     const pitch = Math.max(0.05, hang / 20);

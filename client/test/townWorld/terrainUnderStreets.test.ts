@@ -149,8 +149,9 @@ describe("the terrain the engine draws under the town's paved ground", () => {
       const g = townGround(seed);
       const plan = g.plan;
       const polys = pavedGround(plan);
-      const apron = polys.find((q) => q.kind === "apron");
-      expect(apron, "an apron on the plan").toBeDefined();
+      // (A lone fire hall's apron, where the town has one: no gas station or motel stands past the last blocks, so most plans have none, and the camera stands at a paved block's corner.)
+      const apron = polys.find((q) => q.kind === "apron") ?? polys.find((q) => q.kind === "block");
+      expect(apron, "paved ground on the plan").toBeDefined();
       const c = (apron as (typeof polys)[number]).polygon[0] as { x: number; z: number };
       const cam = { x: c.x + g.anchor.x, z: c.z + g.anchor.z };
       const batches = finish(townGeometry(g, "full", cam));
@@ -209,7 +210,7 @@ describe("the terrain the engine draws under the town's paved ground", () => {
         });
       for (const tier of ["medium", "low"] as const) {
         const T = drawnTerrain(seed, cam.x, cam.z, tier);
-        for (const kind of ["apron", "block"] as const) {
+        for (const kind of polys.some((q) => q.kind === "apron") ? (["apron", "block"] as const) : (["block"] as const)) {
           let pts = 0;
           let bare = 0;
           let bareGrass = 0;
