@@ -31,8 +31,11 @@ import type { Building, Furnishing, FurnishingKind, InteriorType, TownPlan, Unit
 export const PERSON_MODELS = ["person.nathan", "person.eric", "person.sophia", "person.carla", "person.claudia"] as const;
 export type PersonModel = (typeof PERSON_MODELS)[number];
 
-/** The clips every model carries (`people.json`): what a person can be doing. */
-export const ACTIVITIES = ["idle", "browse", "till", "phone", "talk", "drink", "wipe", "fold", "sit_table", "sit_eat", "sit_type", "sit_stool"] as const;
+/** The clips the models carry: what a person can be doing. A model that lacks one plays `idle` in its place (said once on the console). */
+export const ACTIVITIES = [
+  "idle", "browse", "till", "phone", "talk", "drink", "wipe", "fold", "sit_table", "sit_eat", "sit_type", "sit_stool",
+  "wait", "arms", "lean", "call", "cup", "listen", "look", "sit_rest", "sit_phone",
+] as const;
 export type Activity = (typeof ACTIVITIES)[number];
 
 export type PersonRole = "staff" | "customer";

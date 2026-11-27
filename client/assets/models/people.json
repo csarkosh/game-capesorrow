@@ -1,44 +1,44 @@
 {
-  "about": "Written by hand, not by tools/models/build.py (these five models were rigged, given an idle clip and reduced elsewhere; the files are what is shipped, and the manifest says what they are). Metres; the files stand on y = 0 and face +z; `height` is the model's own, from its POSITION bounds. Where a work came from is in CREDITS.md, under the credit id.",
-  "total_bytes": 13563392,
+  "about": "Written by hand, not by tools/models/build.py (these five models were rigged, given their clips and a cup and a phone for the right hand, and reduced elsewhere; the files are what is shipped, and the manifest says what they are). Metres; the files stand on y = 0 and face +z; `height` is the model's own, from its POSITION bounds. Where a work came from is in CREDITS.md, under the credit id.",
+  "total_bytes": 16018268,
   "people": [
     {
       "id": "person.nathan",
       "file": "person.nathan.glb",
-      "bytes": 2372896,
-      "sha256": "430301e12ef26d71ae9cca70414abe3483267244868e4b049ff36c4e05d68043",
+      "bytes": 2881960,
+      "sha256": "8cfb6ce53e5c4c3e8a5622f5984b5c059928d3156be50746c5f63771878c1c4d",
       "credit": "person.nathan",
       "height": 1.894
     },
     {
       "id": "person.eric",
       "file": "person.eric.glb",
-      "bytes": 3016256,
-      "sha256": "f611b71b15ecb9b272f95c321ff9c4543dac97feafb6cd335c15ae622a62ac07",
+      "bytes": 3492556,
+      "sha256": "7c0ec72b6b596890d04d419d0b2bf522c644032616bc2a15ba825b2b2e056ba9",
       "credit": "person.eric",
       "height": 1.862
     },
     {
       "id": "person.sophia",
       "file": "person.sophia.glb",
-      "bytes": 2060708,
-      "sha256": "8e806d1fda879433eadedae77fb581979c6038a407771c5cfe405d28d99d1980",
+      "bytes": 2586128,
+      "sha256": "39ffcd2c41a36f678960e4056eb212e287bf0f98ec50ddb321cafc8cb6dc31c6",
       "credit": "person.sophia",
       "height": 1.771
     },
     {
       "id": "person.carla",
       "file": "person.carla.glb",
-      "bytes": 3044732,
-      "sha256": "63c5749e5389895c62ab817b9e0c038180dc65b74b72e24d691f9f251600a953",
+      "bytes": 3511852,
+      "sha256": "8cb4cb3fd6cf8763851a76433dc229045071780df7762d822488a7dcd584fb33",
       "credit": "person.carla",
       "height": 1.728
     },
     {
       "id": "person.claudia",
       "file": "person.claudia.glb",
-      "bytes": 3068800,
-      "sha256": "888f43595bb9988a567f3fca9c875128629843245341d011341d638d90ebf478",
+      "bytes": 3545772,
+      "sha256": "9ba804829fb06c0b418dbbb88f812bd90a6dc109e4a0edb0d76fbfc12d95cbbb",
       "credit": "person.claudia",
       "height": 1.776
     }
@@ -55,6 +55,15 @@
     "sit_table",
     "sit_eat",
     "sit_type",
-    "sit_stool"
+    "sit_stool",
+    "wait",
+    "arms",
+    "listen",
+    "look",
+    "call",
+    "cup",
+    "lean",
+    "sit_rest",
+    "sit_phone"
   ]
 }

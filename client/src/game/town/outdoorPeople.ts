@@ -4,12 +4,13 @@
  * on every machine (every draw is a hash of a unit's, a bench's or a corner's id and the slot's index, never a random function or the clock).
  * `people.ts` keeps the people inside the rooms; this file is the street's.
  *
- * A person outside is a SLOT: a place, a reason, a clip (one of the twelve the models carry; there is no walking clip) and the hours of the day
+ * A person outside is a SLOT: a place, a reason, a clip (one of the models' clips; there is no walking clip) and the hours of the day
  * they are there. `REASONS` is the table of reasons as data, a row each, for the owner to read and change: what a reason needs near it, where the
- * person stands against it, the clips and how often each, and its bands (the stretches of the day it holds, each with how many people it gives a
- * place, and how long each stays). A slot's own start and its length are drawn from its band by a hash, and its edges are moved by up to a quarter
- * hour, so that a street does not fill or empty on the stroke of an hour; most stays are twenty minutes to an hour, so a place has several people
- * in a row through the day, not one standing from nine to five.
+ * person stands against it, the clips and how often each, how many it puts at one place at once, and its bands (the stretches of the day it holds,
+ * each with how many stays it tries at a place, and how long each lasts). A slot's own start and its length are drawn from its band by a hash, and its
+ * edges are moved by up to a quarter hour, so that a street does not fill or empty on the stroke of an hour. A game hour is two real minutes, so a
+ * stay is half an hour at the least (a real minute), mostly 0.6 to 1.5 hours, a bench's 1 to 3 and a corner's 0.3 to 0.5: what the eye turns away
+ * from it finds again, and a street changes slowly, since nobody walks in or out.
  *
  * DOWNTOWN is the core, dock and waterfront districts' lots, the benches and corners beside them, and the quay's apron where they stand on it.
  * No one is put on a house street, the highway strip or at the mill.
@@ -20,8 +21,16 @@
  * WHERE EXACTLY. On the sidewalk or the apron: out of every roadway (each street's own width and the curb returns' discs), out of every building,
  * more than `PROP_CLEAR` from any prop's box (`plan.props`, the benches but their own, the sidewalk's signs, the harbour's lights and the quay's
  * bollards), out of every door's way (its width and a step each side, a person's depth in front), at least `PEOPLE_APART` from anyone there at the
- * same time but a pair talking (`PAIR_APART`, facing each other), and where the walk is wide enough, with a metre of it clear to pass. Every place
- * is a world place, and its height is the town ground's (`outdoorWorld`).
+ * same time but a pair talking (0.9 to 1.1 m apart, each turned to the other and opened toward the street), and where the walk is wide enough, with a
+ * metre of it clear to pass. Every place is a world place, and its height is the town ground's (`outdoorWorld`).
+ *
+ * HOW MANY. A small rural town's street has a person at a shop's window, not a row of them: a reason caps how many it puts at one place at once
+ * (`cap`), a trade caps all the reasons at one unit (`unitCap`), and the whole downtown is held under a ceiling that follows the hour of the day and
+ * the town's open units (`ceilingAt`): the means are tuned to sit under it, and a last pass drops, in the order of a hash, whoever would take it over.
+ *
+ * WHICH WAY. Nobody faces a blank wall or a pole with their nose at it (`facingClear`). A person who waits faces the street or along it, a person
+ * on a phone or with a cup anywhere but into the wall, a window shopper the glass of a display window, a leaner straight out from the wall they lean
+ * on, a bench's sitter as the bench does.
  *
  * The same trade of care keeps neighbours different: nobody within `NEIGHBOUR` of another at the same time is the same model.
  */
@@ -42,9 +51,12 @@ export const isDowntown = (d: District | undefined): boolean => d !== undefined 
 export const PROP_CLEAR = 0.4;
 export const ROAD_CLEAR = 0.45;
 export const WALL_CLEAR = 0.3;
-/** How far apart two people at the same hour stand, at least; and a pair that talk, who face each other. */
-export const PEOPLE_APART = 0.8;
+/** How far apart two strangers at the same hour stand, at least; and how far a pair that talk (who face each other) from 0.9 to 1.1. */
+export const PEOPLE_APART = 1.6;
 export const PAIR_APART = 0.9;
+export const PAIR_FAR = 1.1;
+/** How far a pair's two turn from facing each other, toward the street (radians: 15 to 30 degrees). */
+export const PAIR_OPEN: readonly [number, number] = [0.26, 0.52];
 /** Within this, two people at the same time are not the same model. */
 export const NEIGHBOUR = 3.5;
 /** A step either side of a door, and how far out from the wall the door's way reaches (metres). */
@@ -57,8 +69,20 @@ export const PASS_FROM = 1.7;
 const BODY = 0.3;
 /** The height of the seat of a bench (its plank's top), which `peopleParts` sets a sitter by. */
 export const BENCH_SEAT = 0.45;
+/** Where the bench's back is drawn: the front face of its back is this far behind the bench's middle (`props/streetGeometry.ts`), and a sitter's hips are `SIT_BEHIND` behind their origin. */
+export const BENCH_BACK = 0.3;
+export const SIT_BEHIND = 0.14;
 /** The open downtown units of the town the table was tuned on ("sorrow"): a quay of a smaller downtown has proportionally fewer people. */
 export const REFERENCE_UNITS = 46;
+/** How far out from the wall's face a leaner's body origin is (metres), which is how far the models' hips and shoulder blades stand from it, and the least width of blank wall a leaner needs. */
+export const LEAN_OUT = 0.345;
+export const LEAN_BLANK = 0.9;
+/** Beyond an opening's, a door's, a unit's edge or a sign's reach, a leaner keeps this far from it along the wall. */
+const LEAN_EDGE = 0.25;
+/** How far ahead of a person is looked at for a wall or a pole (metres): two points, half this and this. */
+export const FACE_REACH = 1;
+/** How far out from a display window's glass a shopper stands is the reason's; this is how far from the glass a wiper stands: an arm's length. */
+const WIPE_OUT: readonly [number, number] = [0.45, 0.6];
 
 /** An edge of a band: a clock hour, or an offset from the unit's opening or closing (a closing after midnight is counted past 24). */
 export type Edge = readonly ["abs", number] | readonly ["open", number] | readonly ["close", number];
@@ -66,14 +90,14 @@ const abs = (h: number): Edge => ["abs", h];
 const open = (h: number): Edge => ["open", h];
 const close = (h: number): Edge => ["close", h];
 
-/** A stretch of the day that a reason holds: `mean` stays are tried for each place (the whole number below it, or the one above by chance), each of `stay` hours. A try that finds no clear spot at its hours, with no one nearer than they should stand, is not there, so the town's room sets how many there are. */
+/** A stretch of the day that a reason holds: `mean` stays are tried for each place (the whole number below it, or the one above by chance), each of `stay` hours. A try that finds no clear spot at its hours, with no one nearer than they should stand, or a place already as full as it may be, is not there, so the town's room sets how many there are. */
 export type Band = { readonly from: Edge; readonly to: Edge; readonly mean: number; readonly stay: readonly [number, number] };
 
 /** Where a person stands against what they are there for. */
 export type Spot =
-  /** Facing the glass about `out` from it, in front of an opening. */
+  /** Facing the glass of a display window about `out` from it, in front of the opening. */
   | { readonly kind: "glass"; readonly out: readonly [number, number] }
-  /** Beside the door, off the door's way: `gap` from the door's edge along the front and `out` from the wall. All of a place's people stand on one side. */
+  /** Beside the door, off the door's way: `gap` from the door's edge along the front and `out` from the wall. All of a place's people stand on one side. A leaner is on blank wall instead. */
   | { readonly kind: "beside"; readonly gap: readonly [number, number]; readonly out: readonly [number, number] }
   /** On a bench. */
   | { readonly kind: "bench" }
@@ -84,17 +108,23 @@ export type Spot =
 
 export type ReasonId =
   | "morning drink" | "lunch" | "errand" | "window shopping" | "shopkeeper" | "break" | "bench" | "corner" | "tavern" | "dinner" | "theater" | "night shop" | "round the clock"
-  | "quay at first light" | "quay by day" | "quay at dusk";
+  | "quay at first light" | "quay by day" | "quay at dusk" | "waiting";
+
+/** What a row's acts may be: a clip, a pair (one talks, one listens, or holds a cup in place of listening), or a pair with a cup each. */
+export type Act = Activity | "pair" | "cups";
 
 export type Reason = {
   readonly id: ReasonId;
   /** Why they are there, in a line. */
   readonly why: string;
   /** What it needs: units of these trades, an always-open unit, a bench, a corner or the quay. */
-  readonly needs: { readonly trades: readonly Trade[] } | { readonly roundTheClock: readonly Trade[] } | { readonly place: "bench" | "corner" | "quay" };
+  readonly needs: { readonly trades: readonly Trade[] } | { readonly roundTheClock: readonly Trade[] } | { readonly place: "bench" | "corner" | "quay" | "any" };
   readonly spot: Spot;
-  /** The clips and how often each: a pair is two people who talk. */
-  readonly acts: readonly (readonly [Activity | "pair", number])[];
+  /** The clips and how often each. */
+  readonly acts: readonly (readonly [Act, number])[];
+  /** The most people this reason puts at one place at once, and how far apart two of them who are not a pair stand there (metres). */
+  readonly cap: number;
+  readonly apart: number;
   readonly bands: readonly Band[];
 };
 
@@ -107,145 +137,178 @@ const OFFICES: readonly Trade[] = [
   "bank", "credit union", "post office", "insurance office", "real estate office", "law office", "tax office", "title company", "medical clinic", "dentist", "newspaper office", "print shop",
   "union hall",
 ];
+/** Where a paper cup of coffee is right outside, at night as by day. */
+const CUP_AT: readonly Trade[] = [...COFFEE, "diner", "convenience store", "gas station"];
+
+/** The most people at one unit at once, over all its reasons: a tavern's door four, a cafe's three, an office's two, and two anywhere else. */
+export function unitCap(trade: Trade): number {
+  if (trade === "tavern" || trade === "movie theater") return 4;
+  if (COFFEE.includes(trade) || trade === "diner") return 3;
+  return 2;
+}
 
 /**
  * The reasons, as the owner reads them. A band's hours are the clock's (a closing after midnight counts past 24); where a band's edge is the unit's
  * opening or closing, the unit's own hours (moved by an hour or none from its trade's) are used; a slot never goes outside the unit's hours.
+ * The clips are the models': `wait` (hands in pockets, looks up and down the street), `arms` (folded), `lean` (against a wall), `call`, `phone`, `cup`
+ * (a coffee, a sip now and then), `look` (a window), `sit_rest` and `sit_phone` (on a bench), `talk` and `listen` (the two of a pair), `idle` rarely.
  */
 export const REASONS: readonly Reason[] = [
   {
-    id: "morning drink", why: "a coffee outside a cafe, a bakery or the espresso stand: one with a drink, one on the phone, a pair talking",
-    needs: { trades: [...COFFEE, "diner"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.3] },
-    acts: [["drink", 4], ["phone", 2], ["pair", 3]],
-    bands: [{ from: open(0), to: abs(10), mean: 15, stay: [0.25, 0.7] }],
+    id: "morning drink", why: "a coffee outside a cafe, a bakery or the espresso stand: one with a cup, one on the phone, a pair talking",
+    needs: { trades: [...COFFEE, "diner"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.3] }, cap: 3, apart: PEOPLE_APART,
+    acts: [["cup", 5], ["phone", 2], ["pair", 3]],
+    bands: [{ from: open(0), to: abs(10.5), mean: 4.5, stay: [0.5, 1.2] }],
   },
   {
     id: "lunch", why: "waiting for a table or a pickup at a diner, a restaurant or a pizza place: one waiting, or a pair",
-    needs: { trades: ["diner", "restaurant", "pizza and burgers", "cafe"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.4] },
-    acts: [["phone", 3], ["idle", 2], ["pair", 3]],
-    bands: [{ from: abs(11.5), to: abs(13.5), mean: 12, stay: [0.2, 0.55] }],
-  },
-  {
-    id: "window shopping", why: "looking in a shop's window, more at lunch and after three",
-    needs: { trades: WINDOWS }, spot: { kind: "glass", out: [0.7, 0.95] },
-    acts: [["browse", 1]],
-    bands: [
-      { from: abs(10.5), to: abs(12), mean: 4.2, stay: [0.15, 0.4] },
-      { from: abs(12), to: abs(14), mean: 6.6, stay: [0.15, 0.4] },
-      { from: abs(14), to: abs(15), mean: 3.6, stay: [0.15, 0.4] },
-      { from: abs(15), to: close(-0.3), mean: 7.8, stay: [0.15, 0.45] },
+    needs: { trades: ["diner", "restaurant", "pizza and burgers", "cafe"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.4] }, cap: 2, apart: PEOPLE_APART,
+    acts: [["wait", 3], ["arms", 2], ["phone", 3], ["call", 1], ["idle", 0.4], ["pair", 3]],
+    bands: [{ from: abs(11), to: abs(14.5), mean: 3.4, stay: [0.5, 1.1] }
     ],
   },
   {
-    id: "shopkeeper", why: "the shopkeeper at their own door just after opening and just before closing",
-    needs: { trades: [...WINDOWS, ...COFFEE, "diner", "barber", "hair salon", "grocery"] }, spot: { kind: "beside", gap: [0.7, 1.1], out: [0.4, 0.6] },
-    acts: [["idle", 2], ["wipe", 1]],
+    id: "window shopping", why: "looking in a display window, more at lunch and after three: one at a window, never a row",
+    needs: { trades: WINDOWS }, spot: { kind: "glass", out: [0.8, 1.1] }, cap: 1, apart: PEOPLE_APART,
+    acts: [["look", 1]],
     bands: [
-      { from: open(0.05), to: open(0.5), mean: 3, stay: [0.15, 0.3] },
-      { from: close(-0.5), to: close(-0.05), mean: 3, stay: [0.1, 0.25] },
+      { from: abs(10.5), to: close(-0.3), mean: 11, stay: [0.5, 1.3] },
     ],
   },
   {
-    id: "errand", why: "a minute outside the grocery, the pharmacy or the hardware store on the way home: on the phone, a drink, waiting for someone",
-    needs: { trades: ["grocery", "pharmacy", "hardware", "convenience store", "liquor store", "bakery"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.5, 1.4] },
-    acts: [["phone", 3], ["idle", 2], ["drink", 1], ["pair", 1]],
+    id: "shopkeeper", why: "the shopkeeper at their own door just after opening and just before closing, or at their own glass with a cloth",
+    needs: { trades: [...WINDOWS, ...COFFEE, "diner", "barber", "hair salon", "grocery"] }, spot: { kind: "beside", gap: [0.7, 1.1], out: [0.4, 0.6] }, cap: 1, apart: PEOPLE_APART,
+    acts: [["arms", 2], ["idle", 2], ["wipe", 1]],
     bands: [
-      { from: abs(9.5), to: abs(12), mean: 3.6, stay: [0.15, 0.4] },
-      { from: abs(15), to: abs(19), mean: 9, stay: [0.15, 0.45] },
+      { from: open(0.05), to: open(1), mean: 1.82, stay: [0.5, 0.8] },
+      { from: close(-1.2), to: close(-0.05), mean: 1.82, stay: [0.5, 0.8] },
     ],
   },
   {
-    id: "break", why: "a break outside an office, a bank or the post office at about ten, noon and three",
-    needs: { trades: OFFICES }, spot: { kind: "beside", gap: [1.1, 4.2], out: [0.4, 0.9] },
-    acts: [["phone", 3], ["idle", 2]],
+    id: "errand", why: "a minute outside the grocery, the pharmacy or the hardware store on the way home: waiting for someone, or on the phone",
+    needs: { trades: ["grocery", "pharmacy", "hardware", "convenience store", "liquor store", "bakery"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.5, 1.4] }, cap: 2, apart: PEOPLE_APART,
+    acts: [["phone", 3], ["wait", 3], ["arms", 1], ["call", 2], ["idle", 0.4], ["pair", 1]],
     bands: [
-      { from: abs(10), to: abs(10.5), mean: 6, stay: [0.15, 0.3] },
-      { from: abs(12), to: abs(13), mean: 8.4, stay: [0.2, 0.5] },
-      { from: abs(15), to: abs(15.5), mean: 5.4, stay: [0.15, 0.3] },
+      { from: abs(9.5), to: abs(12), mean: 1.2, stay: [0.5, 1.1] },
+      { from: abs(12), to: abs(19), mean: 5.5, stay: [0.5, 1.1] },
     ],
   },
   {
-    id: "bench", why: "sitting on a bench: an old man most of the morning, lunch at noon, a rest in the afternoon, never in the dead of night",
-    needs: { place: "bench" }, spot: { kind: "bench" },
-    acts: [["sit_table", 3], ["sit_eat", 0]],
+    id: "break", why: "a break outside an office, a bank or the post office at about ten, noon and three: leaning on the wall, on the phone, with a cup",
+    needs: { trades: OFFICES }, spot: { kind: "beside", gap: [1.1, 4.2], out: [0.4, 0.9] }, cap: 2, apart: 2.5,
+    acts: [["lean", 3], ["phone", 3], ["call", 2], ["cup", 2], ["pair", 1.5]],
     bands: [
-      { from: abs(7), to: abs(11), mean: 7.5, stay: [0.8, 2.2] },
-      { from: abs(11.5), to: abs(13.5), mean: 6, stay: [0.4, 0.8] },
-      { from: abs(14), to: abs(17.5), mean: 7.5, stay: [0.3, 1.2] },
-      { from: abs(17.5), to: abs(20), mean: 4.5, stay: [0.3, 0.9] },
+      { from: abs(9.5), to: abs(16.5), mean: 7, stay: [0.5, 1] },
+      { from: abs(11.5), to: abs(13.5), mean: 2.5, stay: [0.5, 1] },
     ],
   },
   {
-    id: "corner", why: "waiting to cross at a corner of a downtown street",
-    needs: { place: "corner" }, spot: { kind: "corner" },
-    acts: [["idle", 3], ["phone", 1]],
+    id: "bench", why: "sitting on a bench: an old man most of the morning, a rest at noon and in the afternoon, never in the dead of night; one to a bench",
+    needs: { place: "bench" }, spot: { kind: "bench" }, cap: 1, apart: PEOPLE_APART,
+    acts: [["sit_rest", 4], ["sit_phone", 2]],
     bands: [
-      { from: abs(7.5), to: abs(9.5), mean: 4.2, stay: [0.05, 0.15] },
-      { from: abs(11.5), to: abs(13.5), mean: 6.6, stay: [0.05, 0.15] },
-      { from: abs(15.5), to: abs(18), mean: 7.8, stay: [0.05, 0.15] },
-      { from: abs(18), to: abs(20.5), mean: 3.6, stay: [0.05, 0.15] },
+      { from: abs(7), to: abs(12), mean: 3, stay: [1, 3] },
+      { from: abs(12), to: abs(17.5), mean: 3.2, stay: [1, 2.5] },
+      { from: abs(17.5), to: abs(20.5), mean: 1.6, stay: [1, 2] },
     ],
   },
   {
-    id: "tavern", why: "outside a tavern from early evening until it closes: talking in pairs, a drink, a phone; the last leave at closing",
-    needs: { trades: ["tavern"] }, spot: { kind: "beside", gap: [0.8, 4.5], out: [0.8, 2.0] },
-    acts: [["pair", 4], ["drink", 3], ["phone", 2]],
+    id: "corner", why: "waiting to cross at a corner of a downtown street: one at a corner",
+    needs: { place: "corner" }, spot: { kind: "corner" }, cap: 1, apart: PEOPLE_APART,
+    acts: [["wait", 3], ["phone", 2], ["arms", 1], ["call", 1], ["idle", 0.3]],
     bands: [
-      { from: abs(16.5), to: abs(17.5), mean: 3.6, stay: [0.3, 0.8] },
-      { from: abs(17.5), to: abs(20), mean: 14.4, stay: [0.3, 0.9] },
-      { from: abs(20), to: abs(23), mean: 21, stay: [0.3, 1.1] },
-      { from: abs(23), to: close(0), mean: 12, stay: [0.2, 0.7] },
+      { from: abs(7.5), to: abs(20.5), mean: 9, stay: [0.3, 0.5] },
+      { from: abs(11), to: abs(17.5), mean: 4.5, stay: [0.3, 0.5] },
     ],
   },
   {
-    id: "dinner", why: "outside a restaurant between six and nine: a pair",
-    needs: { trades: ["restaurant", "pizza and burgers"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.6, 1.5] },
-    acts: [["pair", 3], ["phone", 1]],
-    bands: [{ from: abs(18), to: abs(21), mean: 12, stay: [0.2, 0.5] }],
+    id: "tavern", why: "outside a tavern from early evening until it closes: talking in pairs, on the phone, leaning on the wall, waiting; the last leave at closing",
+    needs: { trades: ["tavern"] }, spot: { kind: "beside", gap: [0.8, 4.5], out: [0.8, 2.0] }, cap: 4, apart: PEOPLE_APART,
+    acts: [["pair", 4], ["call", 1], ["phone", 2], ["lean", 2], ["wait", 2]],
+    bands: [
+      { from: abs(16.5), to: abs(20), mean: 5.5, stay: [0.6, 1.5] },
+      { from: abs(20), to: abs(23), mean: 6.12, stay: [0.6, 1.8] },
+      { from: abs(23), to: close(0), mean: 3.6, stay: [0.5, 1.2] },
+    ],
+  },
+  {
+    id: "dinner", why: "outside a restaurant between six and nine: a pair, or one waiting",
+    needs: { trades: ["restaurant", "pizza and burgers"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.6, 1.5] }, cap: 2, apart: PEOPLE_APART,
+    acts: [["pair", 3], ["phone", 1], ["wait", 2], ["arms", 1]],
+    bands: [{ from: abs(18), to: abs(21), mean: 4.5, stay: [0.5, 1] }],
   },
   {
     id: "theater", why: "outside the movie theater for the half hour before seven and nine: a small group",
-    needs: { trades: ["movie theater"] }, spot: { kind: "beside", gap: [0.9, 2.6], out: [0.7, 1.6] },
-    acts: [["pair", 3], ["phone", 2], ["idle", 1]],
+    needs: { trades: ["movie theater"] }, spot: { kind: "beside", gap: [0.9, 2.6], out: [0.7, 1.6] }, cap: 4, apart: PEOPLE_APART,
+    acts: [["pair", 3], ["phone", 2], ["wait", 2], ["arms", 1]],
     bands: [
-      { from: abs(18.4), to: abs(18.8), mean: 9, stay: [0.3, 0.55] },
-      { from: abs(20.4), to: abs(20.8), mean: 9, stay: [0.3, 0.55] },
+      { from: abs(18.2), to: abs(19.2), mean: 3.0, stay: [0.5, 0.8] },
+      { from: abs(20.2), to: abs(21.2), mean: 3.0, stay: [0.5, 0.8] },
     ],
   },
   {
-    id: "night shop", why: "outside the convenience store or the laundromat in the evening and at night while it is open: one, on the phone or with a drink",
-    needs: { trades: ["convenience store", "laundromat", "liquor store"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.5, 1.3] },
-    acts: [["phone", 3], ["drink", 2]],
-    bands: [{ from: abs(18.5), to: close(0), mean: 15, stay: [0.15, 0.5] }],
+    id: "night shop", why: "outside the convenience store or the laundromat in the evening and at night while it is open: one, on the phone or leaning, with a cup at the convenience store",
+    needs: { trades: ["convenience store", "laundromat", "liquor store"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.5, 1.3] }, cap: 2, apart: PEOPLE_APART,
+    acts: [["phone", 3], ["call", 2], ["lean", 2], ["cup", 2]],
+    bands: [{ from: abs(18.5), to: close(0), mean: 4.4, stay: [0.5, 1.2] }],
   },
   {
     id: "round the clock", why: "the one person at a business that never shuts, even in the dead of night",
-    needs: { roundTheClock: ["hotel", "motel", "gas station"] }, spot: { kind: "beside", gap: [0.9, 2.4], out: [0.5, 1.2] },
-    acts: [["phone", 3], ["drink", 2]],
+    needs: { roundTheClock: ["hotel", "motel", "gas station"] }, spot: { kind: "beside", gap: [0.9, 2.4], out: [0.5, 1.2] }, cap: 1, apart: PEOPLE_APART,
+    acts: [["phone", 3], ["call", 2], ["lean", 2], ["cup", 2]],
     bands: [
-      { from: abs(0), to: abs(5), mean: 1.8, stay: [0.2, 0.5] },
-      { from: abs(21), to: abs(24), mean: 4.5, stay: [0.2, 0.6] },
+      { from: abs(0), to: abs(5), mean: 1.05, stay: [0.5, 1] },
+      { from: abs(21), to: abs(24), mean: 2.1, stay: [0.5, 1.1] },
     ],
   },
   {
-    id: "quay at first light", why: "the boats' crews by the piers at first light, with a drink or talking",
-    needs: { place: "quay" }, spot: { kind: "apron", off: [1.4, 2.8] },
-    acts: [["drink", 3], ["pair", 3], ["phone", 1]],
-    bands: [{ from: abs(5), to: abs(8), mean: 0.7, stay: [0.4, 1.2] }],
+    id: "quay at first light", why: "the boats' crews by the piers at first light: waiting, arms folded, on a call, or a pair each with a cup",
+    needs: { place: "quay" }, spot: { kind: "apron", off: [1.4, 2.8] }, cap: 3, apart: PEOPLE_APART,
+    acts: [["wait", 3], ["arms", 2], ["call", 1], ["cups", 3]],
+    bands: [{ from: abs(5), to: abs(8), mean: 0.7, stay: [0.6, 1.5] }],
   },
   {
-    id: "quay by day", why: "looking at the water through the day, or on the phone",
-    needs: { place: "quay" }, spot: { kind: "apron", off: [1.6, 3.0] },
-    acts: [["idle", 3], ["phone", 1]],
-    bands: [{ from: abs(8), to: abs(18), mean: 7.2, stay: [0.3, 1.0] }],
+    id: "quay by day", why: "looking at the water through the day: waiting, arms folded, or on a call",
+    needs: { place: "quay" }, spot: { kind: "apron", off: [1.6, 3.0] }, cap: 3, apart: PEOPLE_APART,
+    acts: [["wait", 3], ["arms", 2], ["call", 1]],
+    bands: [{ from: abs(8), to: abs(18), mean: 6, stay: [0.6, 1.5] }],
   },
   {
     id: "quay at dusk", why: "almost nobody after dark: one looking at the lights on the water",
-    needs: { place: "quay" }, spot: { kind: "apron", off: [1.6, 3.0] },
-    acts: [["idle", 2], ["phone", 1]],
-    bands: [{ from: abs(18), to: abs(22), mean: 0.5, stay: [0.2, 0.6] }],
+    needs: { place: "quay" }, spot: { kind: "apron", off: [1.6, 3.0] }, cap: 2, apart: PEOPLE_APART,
+    acts: [["wait", 2], ["arms", 1], ["call", 1]],
+    bands: [{ from: abs(18), to: abs(22), mean: 0.5, stay: [0.5, 1] }],
+  },
+  {
+    id: "waiting", why: "someone waiting outside any open business for a lift, a friend or a call: only where the day would otherwise leave a small town's street empty (`DAY_FLOOR`)",
+    needs: { place: "any" }, spot: { kind: "beside", gap: [0.9, 7], out: [0.5, 2.2] }, cap: 1, apart: PEOPLE_APART,
+    acts: [["wait", 3], ["arms", 2], ["phone", 3], ["call", 1]],
+    bands: [{ from: abs(7.5), to: abs(20), mean: 0, stay: [0.5, 0.9] }],
   },
 ];
+
+/** The fewest people a downtown with a place to stand them has outside, by the hour: about 6 in 10 of the ceiling from half past ten to five, 4 in 10 from half past seven to eight at night, and a person or two for the smallest. */
+export const DAY_FLOOR = (hour: number, units: number): number =>
+  hour >= 10.5 && hour < 17 ? Math.max(2, Math.floor(ceilingAt(hour, units) * 0.6)) : hour >= 7.5 && hour < 20 ? Math.max(hour >= 10 && hour < 17 ? 2 : 1, Math.floor(ceilingAt(hour, units) * 0.4)) : 0;
+
+/**
+ * The most people the downtown may have outside at `hour` (0 up to 24): the late morning's and afternoon's 28, 12 at 08:00 and 20:00, 3 in the small
+ * hours, and the ramps between, scaled by how many open units the town has against `REFERENCE_UNITS` (never fewer than two). The table's means are set to sit under it, and a last pass enforces it.
+ */
+export function ceilingAt(hour: number, units: number): number {
+  const h = wrapHour(hour);
+  const curve: readonly (readonly [number, number])[] = [[0, 4], [1, 3], [5, 3], [8, 12], [10.5, 28], [17, 28], [20, 12], [23, 8], [24, 4]];
+  let v = 3;
+  for (let i = 1; i < curve.length; i++) {
+    const a = curve[i - 1] as readonly [number, number];
+    const b = curve[i] as readonly [number, number];
+    if (h <= b[0]) {
+      v = a[1] + ((b[1] - a[1]) * (h - a[0])) / (b[0] - a[0]);
+      break;
+    }
+  }
+  return Math.max(2, Math.floor((v * units) / REFERENCE_UNITS));
+}
 
 /** A person outside: where and which way, what they are doing, and the hours they are there. */
 export type OutdoorPerson = {
@@ -282,6 +345,8 @@ export type OutdoorPerson = {
   readonly seat: PersonSeat | null;
   /** The other of a pair that talk, or -1. */
   readonly partner: number;
+  /** The place they stand at, which caps how many are there at once: a unit, a bench, a corner or a stretch of quay, by a key. */
+  readonly place: string;
 };
 
 /** The people of a plan's downtown; the world's places are `plan` plus the anchor. */
@@ -484,11 +549,11 @@ export function standable(plan: TownPlan, x: number, z: number, own = -1, onWalk
   return whyNot(plan, x, z, own, onWalk) === "";
 }
 
-/** Why a point is not standable, or "" where it is (for the tests and for looking). */
-export function whyNot(plan: TownPlan, x: number, z: number, own = -1, onWalk = true): string {
+/** Why a point is not standable, or "" where it is (for the tests and for looking). `wallOk`: a building's wall may be near (a leaner's back is on it). */
+export function whyNot(plan: TownPlan, x: number, z: number, own = -1, onWalk = true, wallOk = false): string {
   const g = groundOf(plan);
   if (inRoadway(plan, x, z, ROAD_CLEAR)) return "roadway";
-  for (const b of g.buildings) if (Math.abs(x - b.cx) < b.hu + b.hv + 2 && Math.abs(z - b.cz) < b.hu + b.hv + 2 && rectDist(b, x, z) < WALL_CLEAR) return "building";
+  for (const b of g.buildings) if (Math.abs(x - b.cx) < b.hu + b.hv + 2 && Math.abs(z - b.cz) < b.hu + b.hv + 2 && rectDist(b, x, z) < (wallOk ? 0.05 : WALL_CLEAR)) return "building";
   for (const b of g.boxes) if (Math.abs(x - b.cx) < b.hu + b.hv + 2 && Math.abs(z - b.cz) < b.hu + b.hv + 2 && rectDist(b, x, z) < PROP_CLEAR) return "prop";
   for (const b of g.benches) if (b.id !== own && rectDist(b, x, z) < PROP_CLEAR) return "bench";
   for (const t of g.things) if (Math.hypot(x - t.x, z - t.z) < t.r + PROP_CLEAR) return "thing";
@@ -549,6 +614,12 @@ const turn = (fx: number, fz: number, radians: number): [number, number] => {
 };
 const yawOf = (fx: number, fz: number): number => Math.atan2(fx, fz);
 
+/** The vector (fx, fz) turned by `radians` toward the vector (nx, nz), whichever way round that is. */
+function openedToward(fx: number, fz: number, nx: number, nz: number, radians: number): [number, number] {
+  const cross = fx * nz - fz * nx;
+  return turn(fx, fz, cross < 0 ? -radians : radians);
+}
+
 type Draft = Omit<OutdoorPerson, "id" | "model" | "partner" | "px" | "pz">;
 type Placed = OutdoorPerson;
 
@@ -559,24 +630,72 @@ const cache = new WeakMap<TownPlan, readonly OutdoorPerson[]>();
 /** The district of a unit's lot (the building's), or undefined for a building on piles. */
 const lotDistrict = (plan: TownPlan, b: Building): District | undefined => plan.lots[b.lot]?.district;
 
+/** The open units of a plan's downtown, which the ceiling and the quay's share follow. */
+export function openDowntownUnits(plan: TownPlan): number {
+  return plan.uses.reduce((n, use) => {
+    const b = plan.buildings.find((c) => c.id === use.building);
+    return n + (b !== undefined && isDowntown(lotDistrict(plan, b)) ? use.units.filter((u) => u.state === "open").length : 0);
+  }, 0);
+}
+
+/**
+ * The stretches of a unit's front wall a person may lean on, as [from, to] along the front: the wall between its openings (a bricked-up one is
+ * wall), its door, the stair's door, a sign at a person's height and the unit's own ends, each with `LEAN_EDGE` to spare, kept where at least
+ * `LEAN_BLANK` of it is left. A front that tells no more than that is not leaned on.
+ */
+export function leanStretches(use: BuildingUse, unit: Unit, width: number): readonly (readonly [number, number])[] {
+  const bars: [number, number][] = [];
+  const bar = (a: number, b: number): void => void bars.push([a - LEAN_EDGE, b + LEAN_EDGE]);
+  for (const o of unit.openings) if (o.cover !== "bricked") bar(o.s0, o.s1);
+  bar(unit.door.s - unit.door.width / 2, unit.door.s + unit.door.width / 2);
+  if (use.stair !== null) bar(use.stair.s - use.stair.width / 2, use.stair.s + use.stair.width / 2);
+  for (const sign of [...unit.signs, ...use.signs]) if (sign.place.wall === "front" && sign.place.h < 2.4) bar(sign.place.s - 0.75, sign.place.s + 0.75);
+  bars.sort((p, q) => p[0] - q[0]);
+  const out: [number, number][] = [];
+  let at = Math.max(0, unit.s0) + LEAN_EDGE;
+  const end = Math.min(width, unit.s1) - LEAN_EDGE;
+  for (const [a, b] of bars) {
+    if (a - at >= LEAN_BLANK && Math.min(a, end) - at >= LEAN_BLANK) out.push([at, Math.min(a, end)]);
+    at = Math.max(at, b);
+  }
+  if (end - at >= LEAN_BLANK) out.push([at, end]);
+  return out;
+}
+
 /**
  * Everyone outside in the downtown, in the plan's own frame plus `anchor` (the world's): the same plan gives the same people.
  */
 export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; readonly z: number }): readonly OutdoorPerson[] {
   const known = cache.get(plan);
   if (known !== undefined) return known;
-  const placed: Placed[] = [];
+  let placed: Placed[] = [];
   const byId = new Map<number, Building>();
   for (const b of plan.buildings) byId.set(b.id, b);
+  const units = openDowntownUnits(plan);
 
-  // A place is taken if anyone there at the same time is nearer than they should be, and the model is chosen not to be a neighbour's.
-  const free = (x: number, z: number, start: number, length: number, except: number): boolean => {
+  /**
+   * A place is free if no one at the same time is nearer than they should stand (`apart` for the same place, `PEOPLE_APART` for any other).
+   * The caps hold at every moment: the most at one place at once, counting the two of a pair, stays under the reason's and under the unit's.
+   */
+  const free = (x: number, z: number, start: number, length: number, where: string, apart: number): boolean => {
     for (const q of placed) {
-      if (q.id === except) continue;
-      if (Math.hypot(q.px - x, q.pz - z) < PEOPLE_APART && sameTime(q, { start, length }, 0.05)) return false;
+      if (Math.hypot(q.px - x, q.pz - z) < (q.place === where ? apart : PEOPLE_APART) && sameTime(q, { start, length }, 0.05)) return false;
     }
     return true;
   };
+  const most = (match: (q: Placed) => boolean, start: number, length: number): number => {
+    const mine = { start, length };
+    const near = placed.filter((q) => match(q) && sameTime(q, mine));
+    let best = 0;
+    for (const t of [start, ...near.map((q) => q.start)]) {
+      if (!stayHolds(mine, t)) continue;
+      best = Math.max(best, near.filter((q) => stayHolds(q, t)).length);
+    }
+    return best;
+  };
+  const room = (where: string, reason: ReasonId, caps: readonly [number, number], add: number, start: number, length: number): boolean =>
+    most((q) => q.place === where, start, length) + add <= caps[0] && most((q) => q.place === where && q.reason === reason, start, length) + add <= caps[1];
+
   const modelFor = (x: number, z: number, start: number, length: number, key: number, idx: number): PersonModel => {
     const used = new Set<PersonModel>();
     for (const q of placed) if (Math.hypot(q.px - x, q.pz - z) < NEIGHBOUR && sameTime(q, { start, length }, 0.25)) used.add(q.model);
@@ -598,8 +717,14 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
     (placed[a] as { partner: number }).partner = b;
     (placed[b] as { partner: number }).partner = a;
   };
+  /** The two clips of a pair: one talks, one listens (or, over a morning coffee, sometimes holds a cup instead); or a cup each. Which of the two talks is a hash's. */
+  const pairClips = (act: Act, reason: ReasonId, key: number, idx: number): [Activity, Activity] => {
+    if (act === "cups") return ["cup", "cup"];
+    const second: Activity = reason === "morning drink" && roll(key, idx, 14, 39) < 0.35 ? "cup" : "listen";
+    return roll(key, idx, 15, 39) < 0.5 ? ["talk", second] : [second, "talk"];
+  };
 
-  /** The hours a band gives a person of `key`'s idx-th slot, inside the unit's, or null where none is left. */
+  /** The hours a band gives a person of `key`'s idx-th slot, inside the unit's, or null where none is left (or the stay would be shorter than the band's least). */
   const stay = (band: Band, key: number, idx: number, unit: Hours | null): { start: number; length: number } | null => {
     const u = unit === null ? { lo: -Infinity, hi: Infinity } : span(unit);
     const lo0 = unit === null ? 0 : u.lo;
@@ -608,8 +733,8 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
     const lo = Math.max(edgeAt(band.from, lo0, hi0) + (roll(key, idx, 1, 32) - 0.5) * 0.5, u.lo);
     const hi = Math.min(edgeAt(band.to, lo0, hi0) + (roll(key, idx, 2, 32) - 0.5) * 0.5, u.hi);
     const want = band.stay[0] + roll(key, idx, 3, 32) * (band.stay[1] - band.stay[0]);
+    if (hi - lo < band.stay[0]) return null;
     const length = Math.min(want, hi - lo);
-    if (length < Math.min(0.1, band.stay[0] * 0.6) || hi <= lo) return null;
     const start = lo + roll(key, idx, 4, 32) * (hi - lo - length);
     return { start: wrapHour(start), length };
   };
@@ -621,10 +746,11 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
     rate: 0.85 + roll(key, idx, 0, 35) * 0.25,
   });
 
-  /** How many a band gives a place: the whole number under its mean, and one more by chance. */
+  /** How many stays a band tries at a place: the whole number under its mean, and one more by chance. */
   const count = (band: Band, key: number, b: number): number => Math.floor(band.mean + roll(key, b, 0, 36));
 
   // --- Reasons tied to a unit.
+  const byUnits: { use: BuildingUse; unit: Unit; b: Building; fr: NonNullable<BuildingUse["frame"]>; hours: Hours; trade: Trade; key: number; block: number; district: District }[] = [];
   for (const use of plan.uses) {
     const b = byId.get(use.building);
     const fr = use.frame;
@@ -636,6 +762,7 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
       const trade = unit.tenant.trade;
       const key = b.id * 131 + unit.id;
       const lot = plan.lots[b.lot] as { block: number; district: District };
+      byUnits.push({ use, unit, b, fr, hours, trade, key, block: lot.block, district: lot.district });
       for (const reason of REASONS) {
         const needs = reason.needs;
         if ("trades" in needs) {
@@ -653,35 +780,54 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
             const idx = rIdx * 1000 + bandIx * 100 + k;
             const when = stay(band, key, idx, hours);
             if (when === null) continue;
-            const act = pick(reason.acts, roll(key, idx, 5, 39));
+            let act = pick(reason.acts, roll(key, idx, 5, 39));
+            // A paper cup at night is the convenience store's and the gas station's; anywhere else a phone.
+            if (act === "cup" && (reason.id === "night shop" || reason.id === "round the clock") && !CUP_AT.includes(trade)) act = "phone";
             const base: Draft = {
-              reason: reason.id, x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: act === "pair" ? "talk" : act, hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
-              building: b.id, unit: unit.id, unitHours: hours, block: lot.block, district: lot.district, bench: -1, seat: null,
+              reason: reason.id, x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: act === "pair" || act === "cups" ? "talk" : act, hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
+              building: b.id, unit: unit.id, unitHours: hours, block: lot.block, district: lot.district, bench: -1, seat: null, place: `u${b.id}:${unit.id}`,
             };
-            placeAtUnit(reason, unit, fr, base, key, idx, sideBias, act === "pair");
+            placeAtUnit(reason, unit, use, fr, base, act, trade, key, idx, sideBias);
           }
         }
       }
     }
   }
 
-  /** Places a person (or a pair) in front of a unit by its reason's spot: the first of a few tries that is clear. */
-  function placeAtUnit(reason: Reason, unit: Unit, fr: NonNullable<BuildingUse["frame"]>, base: Draft, key: number, idx: number, sideBias: number, pair: boolean): void {
+  /** Places a person (or a pair) in front of a unit by its reason's spot and its clip: the first of a few tries that is clear, clear of a wall or a pole ahead of them and with room at the place. */
+  function placeAtUnit(reason: Reason, unit: Unit, use: BuildingUse, fr: NonNullable<BuildingUse["frame"]>, base: Draft, act: Act, trade: Trade, key: number, idx: number, sideBias: number): void {
     const spot = reason.spot;
     const P = (s: number, out: number): { x: number; z: number } => ({ x: fr.origin.x + fr.t.x * s + fr.n.x * out, z: fr.origin.z + fr.t.z * s + fr.n.z * out });
-    for (let attempt = 0; attempt < 8; attempt++) {
+    const pair = act === "pair" || act === "cups";
+    const wipe = act === "wipe";
+    const lean = act === "lean";
+    const caps: readonly [number, number] = [unitCap(trade), reason.cap];
+    // One who looks at glass faces a window, not a wall; every other is held clear of a wall or a pole ahead.
+    const glassSpot = spot.kind === "glass" || wipe;
+    const stretches = lean ? leanStretches(use, unit, fr.width) : [];
+    if (lean && stretches.length === 0) return;
+    const [ca, cb] = pairClips(act, reason.id, key, idx);
+    for (let attempt = 0; attempt < (reason.id === "waiting" ? 16 : 8); attempt++) {
       const r = (salt: number): number => roll(key, idx, attempt * 8 + salt, 40);
       let s = 0;
       let out = 0;
       let fx = -fr.n.x;
       let fz = -fr.n.z;
-      if (spot.kind === "glass") {
-        const glass = unit.openings.filter((o) => o.cover !== "bricked" && o.cover !== "boarded" && o.s1 - o.s0 > 0.7);
+      if (spot.kind === "glass" || wipe) {
+        // At a display window (a shopkeeper at any glass, an arm's length from it), facing the glass.
+        const glass = unit.openings.filter((o) => (wipe ? o.cover === "display" || o.cover === "none" : o.cover === "display") && o.s1 - o.s0 > 0.7);
         if (glass.length === 0) return;
         const o = glass[Math.floor(r(0) * glass.length)] as (typeof glass)[number];
         s = o.s0 + 0.35 + r(1) * (o.s1 - o.s0 - 0.7);
-        out = spot.out[0] + r(2) * (spot.out[1] - spot.out[0]);
-        [fx, fz] = turn(-fr.n.x, -fr.n.z, (r(3) - 0.5) * 0.4);
+        const range = wipe ? WIPE_OUT : spot.kind === "glass" ? spot.out : WIPE_OUT;
+        out = range[0] + r(2) * (range[1] - range[0]);
+        [fx, fz] = turn(-fr.n.x, -fr.n.z, (r(3) - 0.5) * (wipe ? 0.2 : 0.4));
+      } else if (lean) {
+        // Blank wall: the back to it, facing straight out, a few degrees off square.
+        const st = stretches[Math.floor(r(0) * stretches.length)] as (typeof stretches)[number];
+        s = st[0] + LEAN_BLANK / 2 + r(1) * (st[1] - st[0] - LEAN_BLANK);
+        out = LEAN_OUT;
+        [fx, fz] = turn(fr.n.x, fr.n.z, (r(3) - 0.5) * 0.14);
       } else if (spot.kind === "beside") {
         // Beside the door, to the side the place keeps (the other side on later tries), out of its way.
         const side = attempt % 2 === 0 ? sideBias : -sideBias;
@@ -689,66 +835,78 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
         s = unit.door.s + side * (unit.door.width / 2 + gap);
         out = spot.out[0] + r(2) * (spot.out[1] - spot.out[0]);
         if (s < unit.s0 + 0.3 || s > unit.s1 - 0.3) continue;
-        // Facing along the front or a little toward the street, never at the wall; a shopkeeper who wipes faces the glass.
-        if (base.activity === "wipe") [fx, fz] = turn(-fr.n.x, -fr.n.z, (r(3) - 0.5) * 0.3);
-        else {
-          const toStreet = (0.25 + r(3) * 0.8) * (r(4) < 0.5 ? -1 : 1);
-          [fx, fz] = turn(fr.n.x, fr.n.z, toStreet);
-        }
+        // Facing: one who waits, the street or along it; one with a phone or a cup anywhere but into the wall.
+        const wide = base.activity === "phone" || base.activity === "call" || base.activity === "cup";
+        const turnBy = (wide ? 0.1 + r(3) * 1.35 : 0.25 + r(3) * 0.85) * (r(4) < 0.5 ? -1 : 1);
+        [fx, fz] = turn(fr.n.x, fr.n.z, turnBy);
       } else continue;
       if (pair) {
-        // Two facing each other along the front, about a metre apart.
-        const a = P(s - PAIR_APART / 2, out);
-        const b = P(s + PAIR_APART / 2, out);
-        if (!standable(plan, a.x, a.z) || !standable(plan, b.x, b.z)) continue;
-        if (!free(a.x, a.z, base.start, base.length, -1) || !free(b.x, b.z, base.start + 0.05, base.length, -1)) continue;
-        const shift = (roll(key, idx, 6, 41) - 0.5) * 0.15;
-        const first = commit(base, { ...a, ...turned(fr.t.x, fr.t.z, (r(5) - 0.5) * 0.3) }, key, idx);
-        const second = commit({ ...base, start: wrapHour(base.start + shift + 0.04), ...rollStyle(reason, key, idx + 500) }, { ...b, ...turned(-fr.t.x, -fr.t.z, (r(6) - 0.5) * 0.3) }, key, idx + 500);
+        // Two a metre apart along the front, turned to each other and each opened a little toward the street.
+        const gap = PAIR_APART + r(5) * (PAIR_FAR - PAIR_APART);
+        if (s - gap / 2 < unit.s0 + 0.3 || s + gap / 2 > unit.s1 - 0.3) continue;
+        const a = P(s - gap / 2, out);
+        const b = P(s + gap / 2, out);
+        const [afx, afz] = openedToward(fr.t.x, fr.t.z, fr.n.x, fr.n.z, PAIR_OPEN[0] + r(6) * (PAIR_OPEN[1] - PAIR_OPEN[0]));
+        const [bfx, bfz] = openedToward(-fr.t.x, -fr.t.z, fr.n.x, fr.n.z, PAIR_OPEN[0] + r(7) * (PAIR_OPEN[1] - PAIR_OPEN[0]));
+        if (!standable(plan, a.x, a.z) || !standable(plan, b.x, b.z) || !facingClear(plan, a.x, a.z, afx, afz) || !facingClear(plan, b.x, b.z, bfx, bfz)) continue;
+        if (!free(a.x, a.z, base.start, base.length, base.place, reason.apart) || !free(b.x, b.z, base.start, base.length, base.place, reason.apart)) continue;
+        if (!room(base.place, reason.id, caps, 2, base.start, base.length)) return;
+        const first = commit({ ...base, activity: ca }, { ...a, fx: afx, fz: afz }, key, idx);
+        const second = commit({ ...base, activity: cb, ...rollStyle(reason, key, idx + 500) }, { ...b, fx: bfx, fz: bfz }, key, idx + 500);
         link(first, second);
         return;
       }
       const p = P(s, out);
-      const why = whyNot(plan, p.x, p.z);
-      if (why !== "" || !free(p.x, p.z, base.start, base.length, -1)) {
-        continue;
-      }
+      if (!standableAt(p.x, p.z, lean) || (!glassSpot && !facingClear(plan, p.x, p.z, fx, fz)) || !free(p.x, p.z, base.start, base.length, base.place, reason.apart)) continue;
+      if (!room(base.place, reason.id, caps, 1, base.start, base.length)) return;
       commit(base, { ...p, fx, fz }, key, idx);
       return;
     }
   }
+  /** Whether a spot is standable: a leaner's is one that is only too near the wall behind them, which they lean on. */
+  function standableAt(x: number, z: number, lean: boolean): boolean {
+    if (!lean) return standable(plan, x, z);
+    return whyNot(plan, x, z, -1, true, true) === "";
+  }
+
+  // The places the floor falls back to when no business has room: a corner's curb ramp, a bench.
+  const cornerSpots: { key: number; where: string; mx: number; mz: number; ix: number; iz: number; il: number; block: Block }[] = [];
+  const benchSpots: { f: (typeof plan.props.furniture)[number]; block: Block }[] = [];
 
   // --- Benches.
   for (const f of plan.props.furniture) {
     if (f.kind !== "bench") continue;
     const near = blockNear(plan, f.x, f.z, 16);
     if (near === null || !isDowntown(near.block.district)) continue;
+    benchSpots.push({ f, block: near.block });
     const reason = REASONS.find((r) => r.id === "bench") as Reason;
     const rIdx = REASONS.indexOf(reason);
+    const where = `f${f.id}`;
     for (const [bandIx, band] of reason.bands.entries()) {
       const n = count(band, f.id * 7 + rIdx, bandIx);
       for (let k = 0; k < n; k++) {
         const idx = rIdx * 1000 + bandIx * 100 + k;
         const when = stay(band, f.id, idx, null);
         if (when === null) continue;
-        if (!free(f.x, f.z, when.start, when.length, -1)) continue;
-        // At noon they eat; otherwise they sit with nothing in hand.
-        const noon = band.from[1] === 11.5;
-        const act: Activity = noon ? "sit_eat" : "sit_table";
-        // The bench looks across its place to the street; the sitter looks where it does.
-        const left = { x: -f.hz, z: f.hx };
-        const lot = plan.lots[f.lot];
-        const side = lot === undefined ? 1 : -f.hz * lot.front.x + f.hx * lot.front.z >= 0 ? 1 : -1;
-        const [fx, fz] = turn(left.x * side, left.z * side, (roll(f.id, idx, 7, 41) - 0.5) * 0.2);
-        // Sat a little forward of the back, and to one end of the bench when it is a short sit.
-        const off = (roll(f.id, idx, 8, 41) - 0.5) * 0.3;
-        const base: Draft = {
-          reason: "bench", x: 0, z: 0, yaw: 0, ...rollStyle(reason, f.id, idx), activity: act, hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
-          building: -1, unit: -1, unitHours: null, block: near.block.id, district: near.block.district, bench: f.id, seat: { furnishing: -1, top: BENCH_SEAT, family: "chair" },
-        };
-        commit(base, { x: f.x + f.hx * off + left.x * side * 0.04, z: f.z + f.hz * off + left.z * side * 0.04, fx, fz }, f.id, idx);
+        if (!free(f.x, f.z, when.start, when.length, where, reason.apart) || !room(where, reason.id, [reason.cap, reason.cap], 1, when.start, when.length)) continue;
+        sitOnBench(f, near.block, reason, idx, when, pick(reason.acts, roll(f.id, idx, 5, 39)) as Activity);
       }
     }
+  }
+
+  /** Sits a person on a bench for `when`: they look across its place to the street, as the bench does. */
+  function sitOnBench(f: (typeof plan.props.furniture)[number], block: Block, reason: Reason, idx: number, when: { start: number; length: number }, act: Activity): void {
+    const left = { x: -f.hz, z: f.hx };
+    const lot = plan.lots[f.lot];
+    const side = lot === undefined ? 1 : -f.hz * lot.front.x + f.hx * lot.front.z >= 0 ? 1 : -1;
+    const [fx, fz] = turn(left.x * side, left.z * side, (roll(f.id, idx, 7, 41) - 0.5) * 0.12);
+    // Sat so the back of the hips is on the bench's back (drawn 0.30 m behind the bench's middle: `BENCH_BACK`), a little off the middle along it.
+    const off = (roll(f.id, idx, 8, 41) - 0.5) * 0.3;
+    const base: Draft = {
+      reason: "bench", x: 0, z: 0, yaw: 0, ...rollStyle(reason, f.id, idx), activity: act, hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
+      building: -1, unit: -1, unitHours: null, block: block.id, district: block.district, bench: f.id, seat: { furnishing: -1, top: BENCH_SEAT, family: "chair" }, place: `f${f.id}`,
+    };
+    commit(base, { x: f.x + f.hx * off - left.x * side * (BENCH_BACK - SIT_BEHIND), z: f.z + f.hz * off - left.z * side * (BENCH_BACK - SIT_BEHIND), fx, fz }, f.id, idx);
   }
 
   // --- Corners.
@@ -765,6 +923,7 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
     for (const [ci, c] of j.corners.entries()) {
       if (!c.walk || !c.curb || c.lot === null || c.v === null) continue;
       const key = j.id * 17 + ci;
+      const where = `c${j.id}:${ci}`;
       // The middle of the curb return (the corner of the two curbs where it is not round), and in from it toward the sidewalk's corner.
       let mx = c.v.x;
       let mz = c.v.z;
@@ -778,38 +937,42 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
       const ix = c.lot.x - mx;
       const iz = c.lot.z - mz;
       const il = Math.hypot(ix, iz) || 1;
+      cornerSpots.push({ key, where, mx, mz, ix, iz, il, block });
       for (const [bandIx, band] of reason.bands.entries()) {
         const n = count(band, key * 7 + rIdx, bandIx);
         for (let k = 0; k < n; k++) {
           const idx = rIdx * 1000 + bandIx * 100 + k;
           const when = stay(band, key, idx, null);
           if (when === null) continue;
-          for (let attempt = 0; attempt < 4; attempt++) {
-            const inward = 0.85 + attempt * 0.35 + roll(key, idx, attempt, 42) * 0.3;
-            const x = mx + (ix / il) * inward;
-            const z = mz + (iz / il) * inward;
-            if (!standable(plan, x, z, -1, false) || !free(x, z, when.start, when.length, -1)) continue;
-            // Across the roadway, along one of the two crossings: out from the sidewalk's corner, turned toward one leg or the other.
-            const [fx, fz] = turn(-ix / il, -iz / il, (roll(key, idx, 9, 42) < 0.5 ? -1 : 1) * (0.5 + roll(key, idx, 10, 42) * 0.5));
-            const act = pick(reason.acts, roll(key, idx, 5, 39)) as Activity;
-            const base: Draft = {
-              reason: "corner", x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: act, hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
-              building: -1, unit: -1, unitHours: null, block: block.id, district: block.district, bench: -1, seat: null,
-            };
-            commit(base, { x, z, fx, fz }, key, idx);
-            break;
-          }
+          standAtCorner(cornerSpots[cornerSpots.length - 1] as (typeof cornerSpots)[number], when, key, idx, null);
         }
       }
     }
   }
 
+  /** Puts a person at a corner's curb ramp for `when`, on the first clear try of four; `act` is the clip, or null for the corner reason's own draw. */
+  function standAtCorner(c: (typeof cornerSpots)[number], when: { start: number; length: number }, key: number, idx: number, act: Activity | null): boolean {
+    const reason = REASONS.find((r) => r.id === "corner") as Reason;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const inward = 0.85 + attempt * 0.35 + roll(key, idx, attempt, 42) * 0.3;
+      const x = c.mx + (c.ix / c.il) * inward;
+      const z = c.mz + (c.iz / c.il) * inward;
+      // Across the roadway, along one of the two crossings: out from the sidewalk's corner, turned toward one leg or the other.
+      const [fx, fz] = turn(-c.ix / c.il, -c.iz / c.il, (roll(key, idx, 9, 42) < 0.5 ? -1 : 1) * (0.5 + roll(key, idx, 10, 42) * 0.5));
+      if (!standable(plan, x, z, -1, false) || !facingClear(plan, x, z, fx, fz) || !free(x, z, when.start, when.length, c.where, reason.apart)) continue;
+      if (!room(c.where, reason.id, [reason.cap, reason.cap], 1, when.start, when.length)) return false;
+      const base: Draft = {
+        reason: "corner", x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: act ?? (pick(reason.acts, roll(key, idx, 5, 39)) as Activity), hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
+        building: -1, unit: -1, unitHours: null, block: c.block.id, district: c.block.district, bench: -1, seat: null, place: c.where,
+      };
+      commit(base, { x, z, fx, fz }, key, idx);
+      return true;
+    }
+    return false;
+  }
+
   // --- The quay. A small downtown has a small quay's worth of people: the means follow the town's open downtown units.
-  const openUnits = plan.uses.reduce((n, use) => {
-    const b = byId.get(use.building);
-    return n + (b !== undefined && isDowntown(lotDistrict(plan, b)) ? use.units.filter((u) => u.state === "open").length : 0);
-  }, 0);
-  const quayShare = Math.min(1, openUnits / REFERENCE_UNITS);
+  const quayShare = Math.min(1, units / REFERENCE_UNITS);
   for (const w of plan.quay.wet) {
     const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
     const tx = (w.b.x - w.a.x) / len;
@@ -823,6 +986,7 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
       for (let q = 0; q < slots; q++) {
         const s0 = p0 + ((p1 - p0) * (q + 0.5)) / slots;
         const key = 900000 + Math.round(s0 * 10);
+        const where = `q${key}`;
         const cx = w.a.x + tx * s0;
         const cz = w.a.z + tz * s0;
         const near = blockNear(plan, cx, cz, 70);
@@ -838,10 +1002,11 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
               const when = stay(band, key, idx, null);
               if (when === null) continue;
               const act = pick(reason.acts, roll(key, idx, 5, 39));
-              const pair = act === "pair";
+              const pair = act === "cups";
+              const [ca, cb] = pairClips(act, reason.id, key, idx);
               const base: Draft = {
-                reason: reason.id, x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: pair ? "talk" : act, hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
-                building: -1, unit: -1, unitHours: null, block: near.block.id, district: near.block.district, bench: -1, seat: null,
+                reason: reason.id, x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: pair ? ca : (act as Activity), hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
+                building: -1, unit: -1, unitHours: null, block: near.block.id, district: near.block.district, bench: -1, seat: null, place: where,
               };
               for (let attempt = 0; attempt < 6; attempt++) {
                 const along = s0 + (roll(key, idx, attempt, 43) - 0.5) * 9;
@@ -852,19 +1017,25 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
                   return pieces.some(([a, b]) => t > a + 0.8 && t < b - 0.8);
                 };
                 if (pair) {
-                  const a = at(along - PAIR_APART / 2);
-                  const b = at(along + PAIR_APART / 2);
+                  const gap = PAIR_APART + roll(key, idx, 16, 43) * (PAIR_FAR - PAIR_APART);
+                  const a = at(along - gap / 2);
+                  const b = at(along + gap / 2);
+                  const [afx, afz] = openedToward(tx, tz, sx, sz, PAIR_OPEN[0] + roll(key, idx, 11, 43) * (PAIR_OPEN[1] - PAIR_OPEN[0]));
+                  const [bfx, bfz] = openedToward(-tx, -tz, sx, sz, PAIR_OPEN[0] + roll(key, idx, 12, 43) * (PAIR_OPEN[1] - PAIR_OPEN[0]));
                   if (!onApron(a) || !onApron(b) || !standable(plan, a.x, a.z, -1, false) || !standable(plan, b.x, b.z, -1, false)) continue;
-                  if (!free(a.x, a.z, base.start, base.length, -1) || !free(b.x, b.z, base.start, base.length, -1)) continue;
-                  const first = commit(base, { ...a, ...turned(tx, tz, (roll(key, idx, 11, 43) - 0.5) * 0.4) }, key, idx);
-                  const second = commit({ ...base, start: wrapHour(base.start + 0.03), ...rollStyle(reason, key, idx + 500) }, { ...b, ...turned(-tx, -tz, (roll(key, idx, 12, 43) - 0.5) * 0.4) }, key, idx + 500);
+                  if (!facingClear(plan, a.x, a.z, afx, afz) || !facingClear(plan, b.x, b.z, bfx, bfz)) continue;
+                  if (!free(a.x, a.z, base.start, base.length, where, reason.apart) || !free(b.x, b.z, base.start, base.length, where, reason.apart)) continue;
+                  if (!room(where, reason.id, [reason.cap, reason.cap], 2, base.start, base.length)) break;
+                  const first = commit(base, { ...a, fx: afx, fz: afz }, key, idx);
+                  const second = commit({ ...base, activity: cb, ...rollStyle(reason, key, idx + 500) }, { ...b, fx: bfx, fz: bfz }, key, idx + 500);
                   link(first, second);
                   break;
                 }
                 const p = at(along);
-                if (!onApron(p) || !standable(plan, p.x, p.z, -1, false) || !free(p.x, p.z, base.start, base.length, -1)) continue;
-                // Looking at the water, or a little along the quay; a drink in hand looks out as well.
+                // Looking at the water, or a little along the quay.
                 const [fx, fz] = turn(sx, sz, (roll(key, idx, 13, 43) - 0.5) * 0.7);
+                if (!onApron(p) || !standable(plan, p.x, p.z, -1, false) || !facingClear(plan, p.x, p.z, fx, fz) || !free(p.x, p.z, base.start, base.length, where, reason.apart)) continue;
+                if (!room(where, reason.id, [reason.cap, reason.cap], 1, base.start, base.length)) break;
                 commit(base, { ...p, fx, fz }, key, idx);
                 break;
               }
@@ -875,15 +1046,98 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
     }
   }
 
+  // --- The floor: a small town's street is not left empty by the day. Walk the day by tenths and, where too few are out, put one more at an open business
+  // (the first of them in a hash's order that has the room), staying from then for half an hour or more.
+  for (let step = 75; step < 200; step++) {
+    const t = step / 10;
+    for (let more = 0; more < 8; more++) {
+      if (placed.filter((p) => stayHolds(p, t)).length >= DAY_FLOOR(t, units)) break;
+      const before = placed.length;
+      const order = [...byUnits].sort((a, b) => roll(a.key, step, more, 60) - roll(b.key, step, more, 60) || a.key - b.key);
+      for (const c of order) {
+        const u = span(c.hours);
+        const start = t - roll(c.key, step, more, 61) * 0.1;
+        const length = Math.min(0.5 + roll(c.key, step, more, 62) * 0.4, u.hi - start - 0.01);
+        if (u.lo > start || length < 0.5) continue;
+        const reason = REASONS.find((r) => r.id === "waiting") as Reason;
+        const idx = 90000 + step * 8 + more;
+        const act = pick(reason.acts, roll(c.key, idx, 5, 39));
+        const base: Draft = {
+          reason: "waiting", x: 0, z: 0, yaw: 0, ...rollStyle(reason, c.key, idx), activity: act as Activity, hours: hoursOfStay(start, length), start: wrapHour(start), length,
+          building: c.b.id, unit: c.unit.id, unitHours: c.hours, block: c.block, district: c.district, bench: -1, seat: null, place: `u${c.b.id}:${c.unit.id}`,
+        };
+        placeAtUnit(reason, c.unit, c.use, c.fr, base, act, c.trade, c.key, idx, roll(c.key, idx, 1, 38) < 0.5 ? -1 : 1);
+        if (placed.length > before) break;
+      }
+      // No business had room: a corner's curb ramp, or a bench.
+      if (placed.length === before) {
+        const when = { start: wrapHour(t), length: 0.3 + roll(step, more, 0, 64) * 0.2 };
+        const corners = [...cornerSpots].sort((a, b) => roll(a.key, step, more, 65) - roll(b.key, step, more, 65) || a.key - b.key);
+        for (const c of corners.slice(0, 6)) if (placed.length === before) standAtCorner(c, when, c.key, 95000 + step * 8 + more, "wait");
+      }
+      if (placed.length === before) {
+        const reason = REASONS.find((r) => r.id === "bench") as Reason;
+        const benches = [...benchSpots].sort((a, b) => roll(a.f.id, step, more, 66) - roll(b.f.id, step, more, 66) || a.f.id - b.f.id);
+        for (const { f, block } of benches.slice(0, 6)) {
+          const length = 1 + roll(f.id, step, more, 67) * 1.5;
+          const where = `f${f.id}`;
+          if (!free(f.x, f.z, t, length, where, reason.apart) || !room(where, reason.id, [reason.cap, reason.cap], 1, t, length)) continue;
+          sitOnBench(f, block, reason, 95000 + step * 8 + more, { start: wrapHour(t), length }, "sit_rest");
+          break;
+        }
+      }
+      if (placed.length === before) break;
+    }
+  }
+
+  placed = thinned(placed, units);
   const out: readonly OutdoorPerson[] = placed;
   cache.set(plan, out);
   return out;
 }
 
-/** The turn of a facing by `radians`, as an object a place takes. */
-function turned(fx: number, fz: number, radians: number): { fx: number; fz: number } {
-  const [x, z] = turn(fx, fz, radians);
-  return { fx: x, fz: z };
+/**
+ * The people left once the downtown is held under `ceilingAt` at every moment (every twentieth of an hour): where there are too many, whoever the hash
+ * puts last goes (the two of a pair together), and the rest are numbered again.
+ */
+function thinned(all: readonly Placed[], units: number): Placed[] {
+  const gone = new Set<number>();
+  const rank = (p: Placed): number => hashN(Math.min(p.id, p.partner < 0 ? p.id : p.partner), 7, 7, 51);
+  for (let step = 0; step < 24 * 20; step++) {
+    const t = step / 20;
+    const cap = ceilingAt(t, units);
+    const here = all.filter((p) => !gone.has(p.id) && stayHolds(p, t));
+    if (here.length <= cap) continue;
+    here.sort((a, b) => rank(b) - rank(a) || b.id - a.id);
+    let n = here.length;
+    for (const p of here) {
+      if (n <= cap) break;
+      gone.add(p.id);
+      n--;
+      if (p.partner >= 0 && !gone.has(p.partner)) {
+        gone.add(p.partner);
+        n--;
+      }
+    }
+  }
+  const keep = all.filter((p) => !gone.has(p.id));
+  const index = new Map<number, number>();
+  for (const [i, p] of keep.entries()) index.set(p.id, i);
+  return keep.map((p, i) => ({ ...p, id: i, partner: p.partner < 0 ? -1 : (index.get(p.partner) ?? -1) }));
+}
+
+/** Whether a person at (x, z) facing (fx, fz) has a metre ahead of them clear of a wall, a prop's box and a pole (looked at half a metre and a metre out). */
+export function facingClear(plan: TownPlan, x: number, z: number, fx: number, fz: number): boolean {
+  const g = groundOf(plan);
+  for (const d of [FACE_REACH / 2, FACE_REACH]) {
+    const px = x + fx * d;
+    const pz = z + fz * d;
+    for (const b of g.buildings) if (Math.abs(px - b.cx) < b.hu + b.hv + 2 && Math.abs(pz - b.cz) < b.hu + b.hv + 2 && rectDist(b, px, pz) < 0.1) return false;
+    for (const b of g.boxes) if (Math.abs(px - b.cx) < b.hu + b.hv + 2 && Math.abs(pz - b.cz) < b.hu + b.hv + 2 && rectDist(b, px, pz) < 0.15) return false;
+    for (const b of g.benches) if (rectDist(b, px, pz) < 0.1) return false;
+    for (const t of g.things) if (Math.hypot(px - t.x, pz - t.z) < t.r + 0.1) return false;
+  }
+  return true;
 }
 
 /** Whether a person is there at `hour`. */

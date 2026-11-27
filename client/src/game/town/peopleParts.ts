@@ -1,23 +1,32 @@
 /**
  * The people who stand in the open shops (`people.ts`), drawn: the renderer's side, made as the vehicles' is (`props/vehicleParts.ts`).
  *
- * - **A body each, a model's bodies one draw.** Each of the five models is the engine's skinned model (`loadSkinnedModel`): its one clip,
- *   `idle`, is baked once into a table, and each person is an instance with a matrix of their own and a place in the clip of their own (a
- *   start offset and a rate), so no two move in step. The clock is the renderer's (`skinClock`): a body that plays on costs nothing a frame.
+ * - **A body each, a model's bodies one draw.** Each of the five models is the engine's skinned model (`loadSkinnedModel`): its clips are
+ *   baked once into a table, and each person is an instance with a matrix of their own and a place in their clip of their own (a start
+ *   offset and a rate), so no two move in step. The clock is the renderer's (`skinClock`): a body that plays on costs nothing a frame.
+ * - **The files hold the clips faster than life.** The table has sixty rows for each second of a file's clip, and a row is every bone's
+ *   matrix. People who stand and sit move slowly, so the files hold each clip two and a half times too fast and a body plays it at
+ *   `CLIP_STORED` of its rate: twenty-four rows to a second of movement, and a table two fifths the size.
  * - **They arrive when their files have.** Nothing holds the first frame: the loads begin once the town's geometry is made (`begin`), and a
  *   model that does not load is left out, said once on the console; the town stands without that person.
  * - **Only the near ones are drawn.** Every quarter second the people within `REACH` of the eye (less on the low tier) are written to their
  *   models' matrices and clip parameters and shown; a quarter second in which the set has not changed writes nothing.
+ * - **A cup or a phone only in the hand that holds one.** Each model has two small primitives skinned to the right hand, with materials named
+ *   `prop.cup` and `prop.phone`. The engine draws every primitive with the same bodies, so as they came everyone would hold both. They are not
+ *   drawn by the engine (`dress` says no); each is given a matrix array of its own here, the same size as the bodies' (a thing's instance k is
+ *   body k, since the clip a body plays is read by the instance's index), holding the body's own matrix for a body that holds that thing
+ *   (`handHeld.ts`) and a matrix that draws nothing for every other.
  * - **They wear the town's air, and are darker than the open sky would make them**, since they stand indoors (`dress`).
  */
-import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
+import { markMaterialUboDirty, setMeshVisible, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
-import { loadSkinnedModel, type SkinClock, type SkinnedModel } from "@csarkosh/engine/game/lite/skinnedModels";
+import { loadSkinnedModel, type SkinClock, type SkinnedModel, type SkinnedPart } from "@csarkosh/engine/game/lite/skinnedModels";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams } from "@csarkosh/engine/game/skinInstances";
 import manifest from "../../../assets/models/people.json" with { type: "json" };
 import { isOpen, type Hours } from "./hours.js";
+import type { Held } from "./handHeld.js";
 import { PERSON_MODELS, type Activity, type PersonModel, type PersonSeat, type PersonWorld } from "./people.js";
 import type { LampList } from "./lampLight.js";
 import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
@@ -33,6 +42,8 @@ export const NO_POP_DISTANCE = 35;
 export const OUT_OF_VIEW = (80 * Math.PI) / 180;
 /** How often the set drawn is worked out again, seconds. */
 export const PEOPLE_STEP = 0.25;
+/** Seconds of a model file's clip to a second of the movement it holds: the files' clips are stored two and a half times too fast. */
+export const CLIP_STORED = 0.4;
 
 /**
  * How much the base colour is darkened: the models' textures were lit for the open sky, and these people stand in a room. Only a little:
@@ -70,7 +81,10 @@ export type Body = {
  * A person with the place they stand at in the world. `hours`: the hours they are shown. A person of a room (`outdoor` false) is shown at the hour
  * as it is (their unit's opening hours; null: always). A person outside (`outdoor`) changes only out of sight (`mayChange`).
  */
-export type PlacedPerson = { readonly person: Body; readonly at: PersonWorld; readonly hours: Hours | null; readonly outdoor: boolean };
+export type PlacedPerson = { readonly person: Body; readonly at: PersonWorld; readonly hours: Hours | null; readonly outdoor: boolean; /** What they hold in the right hand (`heldBy`). */ readonly held: Held };
+
+/** The things the models carry in a hand, by the name of the primitive's material. */
+export const PROP_MATERIALS: ReadonlyMap<string, Exclude<Held, null>> = new Map([["prop.cup", "cup"], ["prop.phone", "phone"]]);
 
 export type PeopleParts = {
   /** Begins loading the models the people use. Once. */
@@ -97,6 +111,8 @@ type Batch = {
   /** For each person, whether they are shown (a person outside keeps what they were until they change out of sight) and whether that has been decided at all. */
   on: Uint8Array;
   decided: Uint8Array;
+  /** The things in the hand: the primitive and the matrices it is drawn with, one for each body of the model (`capacity`). */
+  things: { readonly kind: Exclude<Held, null>; readonly part: SkinnedPart; readonly matrices: Float32Array }[];
 };
 
 /** The file's size in the manifest, counted as uploaded once its model has landed. */
@@ -121,7 +137,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   for (const id of PERSON_MODELS) {
     // A chair is not drawn on the low tier, so nobody sits there.
     const people = placed.filter((p) => p.person.model === id && !(host.low && !p.outdoor && p.person.seat !== null));
-    if (people.length > 0) batches.set(id, { id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length) });
+    if (people.length > 0) batches.set(id, { id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), things: [] });
   }
   const loads = new AbortController();
   const missing = new Set<string>();
@@ -169,7 +185,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           dressed.push(part.material);
           orders.take(part.material);
           part.mesh.renderOrder = orders.of(part.material) ?? DRAW_ORDER.bodies;
-          return true;
+          // A thing in the hand is drawn by this file and not by the engine (see above).
+          return !PROP_MATERIALS.has(part.name);
         },
         uploads: host.uploads,
       }).then(
@@ -185,6 +202,15 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
             return;
           }
           batch.model = model;
+          for (const part of model.parts) {
+            const kind = PROP_MATERIALS.get(part.name);
+            if (kind === undefined) continue;
+            // Its own matrices, of the bodies' count: all of them draw nothing until a body that holds it is shown.
+            const matrices = new Float32Array(model.capacity * 16);
+            setThinInstances(part.mesh, matrices, model.capacity);
+            setThinInstanceCount(part.mesh, 0);
+            batch.things.push({ kind, part, matrices });
+          }
           landed++;
           host.uploads.count("geometry", bytesOf(batch.id), 4);
           since = PEOPLE_STEP;
@@ -257,9 +283,23 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           // body that was already shown goes on from where it was when the set changes, and does not start again.
           model.clipParams[k * 8] = -1;
           const run = host.clock.folds * SKIN_CLOCK_FOLD + host.clock.seconds;
-          writeClipParams(model.clipParams, k, clip, (person.offset + run * person.rate) % clip.seconds, person.rate, host.clock.seconds, true);
+          writeClipParams(model.clipParams, k, clip, ((person.offset + run * person.rate) * CLIP_STORED) % clip.seconds, person.rate * CLIP_STORED, host.clock.seconds, true);
         }
         model.show(next.length, true, true);
+        // The things: the body's own matrix for a body that holds one, and none that draws for the rest.
+        for (const thing of batch.things) {
+          let holders = 0;
+          for (const [k, i] of next.entries()) {
+            const at = k * 16;
+            if ((batch.people[i] as PlacedPerson).held === thing.kind) {
+              thing.matrices.set(model.matrices.subarray(at, at + 16), at);
+              holders++;
+            } else thing.matrices.fill(0, at, at + 16);
+          }
+          setThinInstanceCount(thing.part.mesh, holders > 0 ? next.length : 0);
+          setMeshVisible(thing.part.mesh, holders > 0);
+          if (holders > 0) host.uploads.count("instances", next.length * 64);
+        }
       }
     }
     for (const batch of batches.values()) if (batch.shown.length > 0) any = true;
