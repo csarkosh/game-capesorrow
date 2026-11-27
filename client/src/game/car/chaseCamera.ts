@@ -10,19 +10,40 @@
  * **What it keeps.** A followed point `t` that trails the car at `CHASE_LAG` per second and snaps to it where the car jumps. Two biases that
  * are added to the mouse's yaw and pitch: while the mouse moves they stay, so nothing jumps; once it has been still for `CHASE_IDLE` seconds
  * they ease so the camera comes round behind the car at the height `CHASE_UP`. Nothing is allocated and nothing is thrown, whatever `dt` is.
+ *
+ * **Where "behind" is.** Behind where the car is going, part of the way: in a slide the car's velocity points to one side of its nose, and the
+ * camera comes round toward the velocity by `DRIFT_LOOK` of that angle, so the car is seen turned in the frame and the road it slides along
+ * stays ahead. A car that has backed for `REVERSE_AFTER` seconds is followed from its nose, looking the way it goes, until it stops or goes
+ * forward. While `look.behind` is held the view is turned half a circle at once, and back when it is let go.
+ *
+ * **Speed and hits.** How fast the car goes over the ground, as a share of the fastest it can (`CHASE_FAST`), eased, widens the lens by up to
+ * `CHASE_FOV` and stands the camera up to `CHASE_PULL` further back. A fall in that speed too sudden for the brakes is a hit: it shakes the
+ * view (a roll, and a little pitch and yaw, from a few sines of the camera's own clock) for about half a second.
  */
 import { EYE_SNAP_M } from "@csarkosh/engine/game/eyeBlend";
 import type { CameraPose } from "@csarkosh/engine/game/lite/cameraPose";
-import { CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, LEAVE_TICKS } from "../../sim/car/tuning.js";
-import { ENTERING, FOOT, LEAVING, SEATED } from "../../sim/car/types.js";
+import { CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH, ENTER_TICKS, LEAVE_TICKS, SPEED_CAP, TOP_SPEED } from "../../sim/car/tuning.js";
+import { ENTERING, FOOT, LEAVING, PAVED, SEATED } from "../../sim/car/types.js";
 import type { CarPose } from "./carPose.js";
 
 /** The camera's distance from the aim point and its height over the car at rest (m); the aim point's height over the car's place (m). */
 export const CHASE_BACK = 3.25, CHASE_UP = 1.95, CHASE_AIM = 1.5;
 /** How fast the followed point closes on the car, and the biases on their way, per second; the seconds of a still mouse before they ease. */
 export const CHASE_LAG = 10, CHASE_RETURN = 2.5, CHASE_IDLE = 2;
-/** The nearest the camera is drawn in to by a wall (m), and the widest the lens grows (rad, at 30 m/s). */
-export const CHASE_MIN = 1.5, CHASE_FOV = 0.12;
+/** The nearest the camera is drawn in to by a wall (m); the widest the lens grows (rad) and the furthest back the camera is stood (m), both at `CHASE_FAST`. */
+export const CHASE_MIN = 1.5, CHASE_FOV = 0.15, CHASE_PULL = 0.7;
+/** The speed over the ground (m/s) at which the lens is widest and the camera furthest back: the fastest the car can go, so the top of its range reads as fast whatever that is. */
+export const CHASE_FAST = Math.min(TOP_SPEED[PAVED] as number, SPEED_CAP);
+/** How fast the speed's share is followed, per second: the lens and the distance take about half a second to answer, so a hit does not snap them. */
+const FAST_RATE = 2.2;
+/** The share of the angle between the car's nose and its velocity the camera comes round by, and the forward speed (m/s) above which it does. */
+export const DRIFT_LOOK = 0.55, DRIFT_FROM = 2;
+/** The backward speed (m/s) that counts as backing, the seconds of it before the camera goes to the nose, and the seconds it stays there once the backing stops. */
+export const REVERSE_FROM = 1.2, REVERSE_AFTER = 0.7, REVERSE_KEEP = 0.6;
+/** A hit: the most the brakes and a slide take off the speed (m/s²), the fall beyond it that shakes the view fully (m/s), and how fast the shake dies (per second). */
+export const HIT_BRAKING = 22, HIT_FULL = 7, HIT_FADE = 1.8;
+/** The shake at its fullest, rad: the roll, and the pitch and yaw. */
+export const SHAKE_ROLL = 0.022, SHAKE_TURN = 0.012;
 /** How fast the camera comes back out after a wall or a parked vehicle has drawn it in, m/s: it takes a second to win back three metres, slow enough that a street of parked cars does not make it pump, quick enough to be clear of the thing once the car is past. */
 export const CHASE_RELEASE = 4;
 
@@ -41,14 +62,29 @@ export const GROUND_BLOCK = 0.1;
 export function underGround(groundAt: (x: number, z: number) => number, x: number, y: number, z: number): boolean {
   return y < groundAt(x, z) + GROUND_BLOCK;
 }
-/** The speed (m/s) at which the lens is widest, and the most one step's seconds count for. */
-const WIDE_SPEED = 30, DT_MAX = 1;
+/** The most one step's seconds count for. */
+const DT_MAX = 1;
 const TWO_PI = Math.PI * 2;
 
-export type Chase = { tx: number; ty: number; tz: number; yawBias: number; pitchBias: number; idle: number; lastYaw: number; lastPitch: number; started: boolean; /** How far from the aim point the camera stood this step: `CHASE_BACK` when nothing was in the way. */ back: number };
+export type Chase = {
+  tx: number; ty: number; tz: number; yawBias: number; pitchBias: number; idle: number; lastYaw: number; lastPitch: number; started: boolean;
+  /** How far from the aim point the camera stood this step: `CHASE_BACK` (and up to `CHASE_PULL` more at speed) when nothing was in the way. */
+  back: number;
+  /** The car's speed over the ground as a share of `CHASE_FAST`, eased: 0 to 1. */
+  fast: number;
+  /** The seconds the car has been backing, held to `REVERSE_AFTER + REVERSE_KEEP`. */
+  backing: number;
+  /** The shake left of a hit, 0 to 1; the camera's own clock, seconds; the car's speed over the ground at the last step. */
+  hit: number; clock: number; ground: number;
+};
 
 export function newChase(): Chase {
-  return { tx: 0, ty: 0, tz: 0, yawBias: 0, pitchBias: 0, idle: 0, lastYaw: 0, lastPitch: 0, started: false, back: CHASE_BACK };
+  return { tx: 0, ty: 0, tz: 0, yawBias: 0, pitchBias: 0, idle: 0, lastYaw: 0, lastPitch: 0, started: false, back: CHASE_BACK, fast: 0, backing: 0, hit: 0, clock: 0, ground: 0 };
+}
+
+/** A number, or 0 for what is not one. */
+function sane(value: number): number {
+  return Number.isFinite(value) ? value : 0;
 }
 
 /** An angle brought to [-pi, pi]. */
@@ -62,7 +98,7 @@ function wrap(a: number): number {
  * `seated` is 0 at the walker's eye and 1 fully in the seat: between, the pose is between `eye` and the chase.
  */
 export function stepChase(
-  c: Chase, car: CarPose, look: { yaw: number; pitch: number }, seated: number, dt: number,
+  c: Chase, car: CarPose, look: { yaw: number; pitch: number; behind?: boolean }, seated: number, dt: number,
   blocked: (x: number, y: number, z: number) => boolean, groundAt: (x: number, z: number) => number, eye: CameraPose, out: CameraPose,
 ): number {
   const step = dt > 0 ? (dt < DT_MAX ? dt : DT_MAX) : 0;
@@ -79,6 +115,10 @@ export function stepChase(
     c.idle = 0;
     c.lastYaw = look.yaw;
     c.lastPitch = look.pitch;
+    c.fast = 0;
+    c.backing = 0;
+    c.hit = 0;
+    c.ground = sane(Math.hypot(car.speed, car.slip));
   } else {
     const k = 1 - Math.exp(-CHASE_LAG * step);
     c.tx += (car.x - c.tx) * k;
@@ -93,14 +133,32 @@ export function stepChase(
   } else {
     c.idle += step;
   }
+  // The car's speed over the ground: its share of the fastest it goes, eased, and a fall too sudden for the brakes, which is a hit.
+  const ground = sane(Math.hypot(car.speed, car.slip));
+  const lost = c.ground - ground - HIT_BRAKING * step;
+  if (step > 0 && lost > 0) c.hit = Math.min(1, c.hit + lost / HIT_FULL);
+  else c.hit = Math.max(0, c.hit - HIT_FADE * step);
+  c.ground = ground;
+  c.clock += step;
+  c.fast += (Math.min(1, ground / CHASE_FAST) - c.fast) * (1 - Math.exp(-FAST_RATE * step));
+  // Backing: counted while the car goes backward, forgotten at once when it goes forward, and run down when it stands.
+  const along = sane(car.speed);
+  if (along < -REVERSE_FROM) c.backing = Math.min(c.backing + step, REVERSE_AFTER + REVERSE_KEEP);
+  else if (along > 0.5) c.backing = 0;
+  else c.backing = Math.max(0, c.backing - step);
   const len = Math.hypot(car.hx, car.hz);
   const carYaw = len > 1e-6 ? Math.atan2(car.hx, car.hz) : look.yaw;
+  // Behind where the car is going: toward its velocity in a slide (the right of the heading is a quarter turn on in yaw), and at its nose while it backs.
+  let behindYaw = carYaw;
+  if (len > 1e-6 && along > DRIFT_FROM) behindYaw += DRIFT_LOOK * sane(Math.atan2(car.slip, along));
+  if (len > 1e-6 && c.backing >= REVERSE_AFTER) behindYaw += Math.PI;
   if (c.idle >= CHASE_IDLE) {
     const k = 1 - Math.exp(-CHASE_RETURN * step);
-    c.yawBias += (wrap(carYaw - look.yaw) - c.yawBias) * k;
+    // By the shorter way round from where the bias is, so a car that turns through the opposite of the mouse's yaw is followed on round.
+    c.yawBias += wrap(behindYaw - look.yaw - c.yawBias) * k;
     c.pitchBias += (REST_PITCH - look.pitch - c.pitchBias) * k;
   }
-  const yaw = look.yaw + c.yawBias;
+  const yaw = look.yaw + c.yawBias + (look.behind === true ? Math.PI : 0);
   const pitch = Math.min(PITCH_HIGH, Math.max(PITCH_LOW, look.pitch + c.pitchBias));
   // Behind the aim point along the look: forward is (sin yaw cos pitch, -sin pitch, cos yaw cos pitch).
   const ax = c.tx;
@@ -112,9 +170,11 @@ export function stepChase(
   // The nearest blocked sample along the line, 0.5 m apart and one at its end; the camera stops 0.3 m short of it and never nearer than `CHASE_MIN`.
   // Where the line first meets something is refined by bisection between the blocked sample and the clear one before it, so the distance moves
   // smoothly as the car passes a box and not in steps of the sampling.
-  let swept = CHASE_BACK;
-  for (let from = 0; from < CHASE_BACK; from += STEP) {
-    const d = Math.min(from + STEP, CHASE_BACK);
+  // At speed the camera stands further back.
+  const reach = CHASE_BACK + CHASE_PULL * c.fast;
+  let swept = reach;
+  for (let from = 0; from < reach; from += STEP) {
+    const d = Math.min(from + STEP, reach);
     if (blocked(ax + bx * d, ay + by * d, az + bz * d)) {
       let lo = from;
       let hi = d;
@@ -151,8 +211,15 @@ export function stepChase(
   out.yaw = eye.yaw + wrap(lookYaw - eye.yaw) * s;
   out.pitch = eye.pitch + (lookPitch - eye.pitch) * s;
   out.roll = eye.roll * (1 - s);
-  const speed = Math.abs(car.speed);
-  return CHASE_FOV * Math.min(1, Number.isFinite(speed) ? speed / WIDE_SPEED : 0) * s;
+  // A hit shakes the view: three sums of sines of the camera's clock, each within 1, by the square of what is left of the hit.
+  if (c.hit > 0) {
+    const shake = c.hit * c.hit * s;
+    const t = c.clock;
+    out.roll += SHAKE_ROLL * shake * (Math.sin(t * 47) * 0.6 + Math.sin(t * 71 + 1.3) * 0.4);
+    out.pitch += SHAKE_TURN * shake * (Math.sin(t * 53 + 0.7) * 0.6 + Math.sin(t * 83) * 0.4);
+    out.yaw += SHAKE_TURN * shake * (Math.sin(t * 59 + 2.1) * 0.6 + Math.sin(t * 67 + 0.4) * 0.4);
+  }
+  return CHASE_FOV * c.fast * s;
 }
 
 /** The most the shown seat moves a second: faster than plain getting in (1 per second) and out (1.67), so those are followed exactly, and a refused leave comes back out in a quarter of a second. */

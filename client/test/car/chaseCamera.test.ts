@@ -3,7 +3,7 @@ import { cameraAxes, restAxes, type CameraPose } from "@csarkosh/engine/game/lit
 import { newCarPose, type CarPose } from "../../src/game/car/carPose.js";
 import { ENTER_TICKS, LEAVE_TICKS } from "../../src/sim/car/tuning.js";
 import { ENTERING, FOOT, LEAVING, SEATED } from "../../src/sim/car/types.js";
-import { GROUND_BLOCK, underGround, SEAT_RATE, CHASE_RELEASE, BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, inBox, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FOV, CHASE_MIN, CHASE_UP, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
+import { GROUND_BLOCK, underGround, SEAT_RATE, CHASE_RELEASE, BOX_MARGIN, PROP_THIN_HALF, PROP_TOP, boxBlocks, carBlocks, inBox, seatStep, seatTarget, CHASE_AIM, CHASE_BACK, CHASE_FAST, CHASE_FOV, CHASE_MIN, CHASE_PULL, CHASE_UP, DRIFT_LOOK, REVERSE_AFTER, newChase, stepChase, type Chase } from "../../src/game/car/chaseCamera.js";
 
 const open = (): boolean => false;
 const flat = (): number => 0;
@@ -248,13 +248,113 @@ describe("the chase camera", () => {
     expect(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)).toBeLessThan(0.05);
   });
 
-  it("answers a lens wider by 0.12 rad at 30 m/s and no more", () => {
-    const at = (speed: number): number => settle(newChase(), carAt(0, 0, 0, 1, speed), { yaw: 0, pitch: 0 }, 0.2).fov;
+  it("widens the lens with the speed over the ground, to its widest at the fastest the car goes and no more, and eases to it", () => {
+    const at = (speed: number, slip = 0, seconds = 4): number => settle(newChase(), Object.assign(carAt(0, 0, 0, 1, speed), { slip }), { yaw: 0, pitch: 0 }, seconds).fov;
     expect(at(0)).toBe(0);
-    expect(at(15)).toBeCloseTo(CHASE_FOV / 2, 6);
-    expect(at(30)).toBeCloseTo(CHASE_FOV, 6);
-    expect(at(80)).toBeCloseTo(CHASE_FOV, 6);
-    expect(at(-30)).toBeCloseTo(CHASE_FOV, 6);
+    expect(at(CHASE_FAST / 2)).toBeCloseTo(CHASE_FOV / 2, 3);
+    expect(at(CHASE_FAST)).toBeCloseTo(CHASE_FOV, 3);
+    expect(at(CHASE_FAST * 3)).toBeCloseTo(CHASE_FOV, 3);
+    expect(at(-CHASE_FAST)).toBeCloseTo(CHASE_FOV, 3);
+    // A car going sideways is going as fast.
+    expect(at(0, CHASE_FAST)).toBeCloseTo(CHASE_FOV, 3);
+    // Eased: a tenth of a second in, the lens has not got half way.
+    expect(at(CHASE_FAST, 0, 0.1)).toBeLessThan(CHASE_FOV / 2);
+    expect(at(CHASE_FAST, 0, 0.1)).toBeGreaterThan(0);
+  });
+
+  it("stands further back at speed, by 0.7 m at the fastest the car goes", () => {
+    const c = newChase();
+    const car = carAt(0, 0, 0, 1, CHASE_FAST);
+    const { out } = settle(c, car, { yaw: 0, pitch: 0.14 }, 8);
+    expect(dist(out, 0, CHASE_AIM, 0)).toBeCloseTo(CHASE_BACK + CHASE_PULL, 1);
+    expect(c.back).toBeCloseTo(CHASE_BACK + CHASE_PULL, 2);
+  });
+
+  it("comes round toward where a sliding car is going, by a share of the angle between its nose and its velocity", () => {
+    // Heading +z at 8 m/s and sliding to its left at 8: its velocity is 45 degrees left of its nose, which is a yaw of -pi/4.
+    const car = Object.assign(carAt(0, 0, 0, 1, 8), { slip: -8 });
+    const { out } = settle(newChase(), car, { yaw: 0, pitch: 0.14 }, 8);
+    expect(out.yaw).toBeCloseTo(-DRIFT_LOOK * Math.PI / 4, 2);
+    // So the camera stands to the car's right of straight behind, and the car's left side is turned toward the travel.
+    expect(out.x).toBeGreaterThan(0.5);
+    // A car that grips is followed from straight behind.
+    expect(settle(newChase(), carAt(0, 0, 0, 1, 8), { yaw: 0, pitch: 0.14 }, 8).out.yaw).toBeCloseTo(0, 3);
+  });
+
+  it("goes to the nose of a car that backs for a while, looking the way it goes, and comes back when it goes forward", () => {
+    const c = newChase();
+    const look = { yaw: 0, pitch: 0.14 };
+    // Still behind after 2.5 s at rest (the mouse's 2 s are up), and after a short backing.
+    expect(settle(c, carAt(0, 0, 0, 1, 0), look, 2.5).out.z).toBeLessThan(-2);
+    expect(settle(c, carAt(0, 0, 0, 1, -3), look, REVERSE_AFTER - 0.2).out.z).toBeLessThan(-2);
+    // Backing on: the camera comes round to the car's nose and looks back along it.
+    const turned = settle(c, carAt(0, 0, 0, 1, -3), look, 5).out;
+    expect(turned.z).toBeGreaterThan(2);
+    expect(Math.cos(turned.yaw)).toBeLessThan(-0.95);
+    // Going forward again: behind again.
+    const back = settle(c, carAt(0, 0, 0, 1, 4), look, 5).out;
+    expect(back.z).toBeLessThan(-2);
+    expect(Math.cos(back.yaw)).toBeGreaterThan(0.95);
+  });
+
+  it("stays at the nose for a moment after the backing stops, so a car worked back and forth does not swing the view", () => {
+    const c = newChase();
+    const look = { yaw: 0, pitch: 0.14 };
+    settle(c, carAt(0, 0, 0, 1, -3), look, 6);
+    expect(settle(c, carAt(0, 0, 0, 1, 0), look, 0.4).out.z).toBeGreaterThan(2);
+    expect(settle(c, carAt(0, 0, 0, 1, 0), look, 5).out.z).toBeLessThan(-2);
+  });
+
+  it("looks behind at once while the key is held, and ahead again at once when it is let go", () => {
+    const c = newChase();
+    const car = carAt(0, 0, 0, 1, 6);
+    settle(c, car, { yaw: 0, pitch: 0.14 }, 6);
+    const out = pose();
+    stepChase(c, car, { yaw: 0, pitch: 0.14, behind: true }, 1, 1 / 60, open, flat, pose(), out);
+    expect(out.z).toBeGreaterThan(2);
+    expect(Math.cos(out.yaw)).toBeLessThan(-0.95);
+    stepChase(c, car, { yaw: 0, pitch: 0.14, behind: false }, 1, 1 / 60, open, flat, pose(), out);
+    expect(out.z).toBeLessThan(-2);
+    expect(Math.cos(out.yaw)).toBeGreaterThan(0.95);
+  });
+
+  it("follows a car on round through the opposite of the mouse's yaw, never swinging back the long way", () => {
+    const c = newChase();
+    const out = pose();
+    const look = { yaw: 0, pitch: 0.14 };
+    settle(c, carAt(0, 0, 0, 1, 5), look, 4);
+    // The car turns two full circles at 1 rad/s: the camera's yaw stays within its lag of the car's all the way.
+    for (let i = 0; i < 60 * 4 * Math.PI; i++) {
+      const a = i / 60;
+      stepChase(c, carAt(0, 0, Math.sin(a), Math.cos(a), 5), look, 1, 1 / 60, open, flat, pose(), out);
+      const off = Math.atan2(Math.sin(out.yaw - a), Math.cos(out.yaw - a));
+      expect(Math.abs(off)).toBeLessThan(0.6);
+    }
+  });
+
+  it("shakes the view when the car is stopped short, for about half a second, and not when it brakes", () => {
+    const c = newChase();
+    const out = pose();
+    const look = { yaw: 0, pitch: 0.14 };
+    settle(c, carAt(0, 0, 0, 1, 9), look, 4);
+    // The hardest braking the car has (the brake, the handbrake and a slide together stay under 22 m/s²) shakes nothing.
+    for (let v = 9; v > 3; v -= 20 / 60) {
+      stepChase(c, carAt(0, 0, 0, 1, v), look, 1, 1 / 60, open, flat, pose(), out);
+      expect(out.roll).toBe(0);
+    }
+    // 9 m/s lost in a frame: a wall.
+    settle(c, carAt(0, 0, 0, 1, 9), look, 1);
+    let most = 0;
+    for (let i = 0; i < 20; i++) {
+      stepChase(c, carAt(0, 0, 0, 1, 0), look, 1, 1 / 60, open, flat, pose(), out);
+      most = Math.max(most, Math.abs(out.roll));
+    }
+    expect(most).toBeGreaterThan(0.005);
+    expect(most).toBeLessThanOrEqual(0.022);
+    settle(c, carAt(0, 0, 0, 1, 0), look, 1);
+    stepChase(c, carAt(0, 0, 0, 1, 0), look, 1, 1 / 60, open, flat, pose(), out);
+    expect(out.roll).toBe(0);
+    expect(c.hit).toBe(0);
   });
 
   it("leaves roll 0 and every number finite for a frame time of 0, of 2 s, and of NaN", () => {
@@ -262,7 +362,7 @@ describe("the chase camera", () => {
       const c = newChase();
       const out = pose();
       const fov = stepChase(c, carAt(1, 2, 0.6, 0.8, 12), { yaw: 1, pitch: 0.2 }, 1, dt, open, flat, pose(), out);
-      for (const v of [out.x, out.y, out.z, out.yaw, out.pitch, fov, c.tx, c.yawBias, c.pitchBias, c.idle]) expect(Number.isFinite(v), `dt ${dt}`).toBe(true);
+      for (const v of [out.x, out.y, out.z, out.yaw, out.pitch, fov, c.tx, c.yawBias, c.pitchBias, c.idle, c.fast, c.backing, c.hit, c.clock, c.ground]) expect(Number.isFinite(v), `dt ${dt}`).toBe(true);
       expect(out.roll).toBe(0);
     }
   });
