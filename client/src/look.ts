@@ -86,8 +86,15 @@ const GRADES: readonly LookGrade[] = [
  * Where the line begins and where it is full, as a step in depth over the distance to what is behind it: half the engine's own, so that
  * relief of 5 to 15 cm (a sill, a casing, a pilaster) is drawn from across a street. Paint on a wall lies flush under a depth rank
  * (`game/town/paint.ts`) and draws none, which is what lets these come down.
+ *
+ * Far off the pen lifts. The engine's measure is a step's share of the distance, the same at any distance, so with thresholds this low a
+ * forested hill was a thicket of outlines (one crown before the next is as deep a step, in proportion, as a doorframe) and every fold of
+ * a mountain was drawn at full weight. Within `lineNear` (a street's width) nothing changes; from there to `lineFar`, eased along the
+ * logarithm of the distance, a step must be up to `lineFarBand` times deeper to draw and the line fades to `lineFarWeight` of its
+ * strength. What is left far away is what carries the shape: a ridge against the sky, a headland against the water, one mass of forest
+ * against the valley behind it, each lighter than a line near by.
  */
-const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], lineFrom: 0.005, lineTo: 0.025, bands: 0.25 };
+const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0.16, 0.17, 0.22], lineFrom: 0.005, lineTo: 0.025, lineNear: 40, lineFar: 600, lineFarBand: 20, lineFarWeight: 0.5, bands: 0.25 };
 
 /**
  * The ground under the grass. The line is drawn on every blade's edge, so the grass is darker than the engine's own floor under it, and

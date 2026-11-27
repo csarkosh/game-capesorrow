@@ -3,7 +3,7 @@
  * thing stays bright while the night's grade darkens the frame (`litGainAt`), and how much day there is (`daylightAt`).
  */
 import { describe, expect, it } from "vitest";
-import { daylightAt, litGainAt } from "../src/look.js";
+import { CAPE_LOOK, daylightAt, litGainAt } from "../src/look.js";
 
 describe("the look by the hour", () => {
   it("leaves the glows as drawn by day and lifts them through the night", () => {
@@ -28,5 +28,22 @@ describe("the look by the hour", () => {
       if ((a === 0 || a === 1) && b > 0 && b < 1) turns++;
     }
     expect(turns).toBe(2);
+  });
+});
+
+describe("the look's line far off", () => {
+  it("is as it was within a street's width, and thins out over a long reach beyond it", () => {
+    const finish = CAPE_LOOK.finish;
+    expect(finish).toBeDefined();
+    if (finish === undefined) return;
+    // A shop front across a street (15 to 30 m) and the far end of a block must be drawn in full.
+    expect(finish.lineNear).toBeGreaterThanOrEqual(30);
+    expect(finish.lineNear).toBeLessThanOrEqual(60);
+    // A long ease, so there is no ring where the line changes: the far end is at least eight times the near.
+    expect((finish.lineFar ?? 0) / (finish.lineNear ?? 1)).toBeGreaterThanOrEqual(8);
+    // Far off a step must be deeper to draw (or a forested hill is a thicket of outlines), and what is drawn is lighter, but it is still drawn.
+    expect(finish.lineFarBand).toBeGreaterThanOrEqual(8);
+    expect(finish.lineFarWeight).toBeGreaterThanOrEqual(0.3);
+    expect(finish.lineFarWeight).toBeLessThanOrEqual(0.7);
   });
 });
