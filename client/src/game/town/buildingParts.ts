@@ -253,15 +253,24 @@ function housePart(i: PartsIn, full: boolean): void {
           const e0b = wat(w, at - 0.4, 0, 0.72);
           const e1 = wat(w, at + 0.4, 0, 0.28);
           const e1b = wat(w, at + 0.4, 0, 0.72);
-          return isClear(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y0 + 0.75) && isClear(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y0 + 0.75) && isClear(w.nx, w.nz, e0b[0], e0b[2], e1b[0], e1b[2], y0, y0 + 0.75);
+          // And the fan's grille in front of it, its face and its two ends.
+          const g0 = wat(w, at - 0.3, 0, 0.73);
+          const g0b = wat(w, at - 0.3, 0, 0.77);
+          const g1 = wat(w, at + 0.3, 0, 0.73);
+          const g1b = wat(w, at + 0.3, 0, 0.77);
+          const grille = isClear(-w.tx, -w.tz, g0[0], g0[2], g0b[0], g0b[2], y0 + 0.3, y0 + 0.7) && isClear(w.tx, w.tz, g1[0], g1[2], g1b[0], g1b[2], y0 + 0.3, y0 + 0.7) && isClear(w.nx, w.nz, g0b[0], g0b[2], g1b[0], g1b[2], y0 + 0.3, y0 + 0.7);
+          return grille && isClear(-w.tx, -w.tz, e0[0], e0[2], e0b[0], e0b[2], y0, y0 + 0.75) && isClear(w.tx, w.tz, e1[0], e1[2], e1b[0], e1b[2], y0, y0 + 0.75) && isClear(w.nx, w.nz, e0b[0], e0b[2], e1b[0], e1b[2], y0, y0 + 0.75);
         };
         for (let tries = 0; tries < 12 && !clear(s); tries++) s += 0.1;
-        seam.occupied.push({ k: side, s0: s - 0.7, s1: s + 0.7 });
-        const p = wat(w, s, 0, 0.5);
-        withMat("steel", () => {
-          i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
-          i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
-        });
+        // Where no place along the wall is clear (an addition stands over it), there is no heat pump.
+        if (clear(s)) {
+          seam.occupied.push({ k: side, s0: s - 0.7, s1: s + 0.7 });
+          const p = wat(w, s, 0, 0.5);
+          withMat("steel", () => {
+            i.out.box(p[0], p[2], i.g.heightAt(p[0], p[2]), -w.nz, w.nx, 0.4, 0.22, 0.75, [0.72, 0.72, 0.7], [0.6, 0.6, 0.58]);
+            i.out.box(p[0] + w.nx * 0.25, p[2] + w.nz * 0.25, i.g.heightAt(p[0], p[2]) + 0.3, -w.nz, w.nx, 0.3, 0.02, 0.4, [0.2, 0.2, 0.22], [0.2, 0.2, 0.22]);
+          });
+        }
       } else if (hash01(b.id, 511) < 0.3) {
         const s = w.length * (0.2 + 0.6 * hash01(b.id, 512));
         seam.occupied.push({ k: side, s0: s - 1.2, s1: s + 1.2 });
@@ -346,7 +355,8 @@ function addition(i: PartsIn): void {
   const g = (s: number, off: number): number => i.g.heightAt(w.ax + w.tx * s + w.nx * off, w.az + w.tz * s + w.nz * off) - 0.3;
   if (carport) {
     // Posts and a roof: open on three sides, at the side of the house.
-    for (const [s0p, off0] of [[s0, depth], [s1, depth], [s1, 0]] as const) {
+    // The post by the wall stands with its back 2 cm off the wall's face, never into the wall (where a window's reveal is).
+    for (const [s0p, off0] of [[s0, depth], [s1, depth], [s1, 0.1]] as const) {
       // Moved out from the wall (and along it) until the post's faces are clear of the wall's own and the house's (`faceLedger.ts`).
       let off = off0;
       let s = s0p;
@@ -537,6 +547,16 @@ function fireEscape(i: PartsIn): void {
 }
 
 // ---- By kind
+/**
+ * Where along the front a building's portico stands (stations of the front wall), or null where it has none: a bank, a courthouse, a lodge
+ * hall, a school or a hotel that is not the municipal building has one at the middle of its front. The front's awnings and canopies keep off it.
+ */
+export function porticoAt(b: Building, role: LandmarkRole | null, hasXf: boolean, front: WallRef): readonly [number, number] | null {
+  if (role === "municipal building" || !hasXf) return null;
+  if (b.kind !== "bank" && b.kind !== "courthouse" && b.kind !== "lodge hall" && b.kind !== "school" && b.kind !== "hotel") return null;
+  return [front.length / 2 - 2.0, front.length / 2 + 2.0];
+}
+
 function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
   const { b, out, refs, frontAt } = i;
   const front = refs[frontAt] as WallRef;
@@ -569,7 +589,7 @@ function kindParts(i: PartsIn, full: boolean, role: LandmarkRole | null): void {
     case "lodge hall":
     case "school":
     case "hotel":
-      if (role !== "municipal building" && i.xf !== null) {
+      if (porticoAt(b, role, i.xf !== null, front) !== null) {
         // A portico at the door: a slab on two columns, the way a building that means to be taken seriously does it.
         const w = front;
         const s = w.length / 2;

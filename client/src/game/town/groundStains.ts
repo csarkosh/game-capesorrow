@@ -15,6 +15,7 @@ import type { MeshBuilder, Rgb, Vec3 } from "./meshBuilder.js";
 import { groundFrame, type Surface, type WearKind } from "./townSurface.js";
 import { hash01 } from "./meshBuilder.js";
 import type { TownGround } from "./townTypes.js";
+import { standingVehicles } from "../../sim/town/parked.js";
 import type { Vehicle } from "../../sim/town/types.js";
 
 type Sink = (x: number, z: number) => MeshBuilder;
@@ -31,7 +32,8 @@ export function groundStains(g: TownGround, flat: Sink): void {
   const ax = g.anchor.x;
   const az = g.anchor.z;
   const plan = g.plan;
-  const vehicles = plan.props.vehicles;
+  // Only the vehicles the ground holds (`parked.ts`): no stain marks one that is not there.
+  const vehicles = standingVehicles(g.seed, plan, g.anchor);
   const roll = (a: number, b: number, c = 0): number => hash01(Math.imul(a + 1, 7919) ^ Math.imul(b + 3, 104729), c + 9001);
 
   // Marks of one rank never overlap: a blob that would touch another of its rank (within the two radii, widened) is not laid.

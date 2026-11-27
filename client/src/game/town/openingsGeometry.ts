@@ -36,6 +36,8 @@ export type PlanCtx = {
   readonly walls: readonly WallRef[];
   readonly frontAt: number;
   readonly xf: Xf | null;
+  /** Where along the front a portico stands (`porticoAt`, `buildingParts.ts`), which the front's awnings keep off. */
+  readonly portico?: readonly [number, number] | null;
   readonly floorY: number;
   /** The floor at the front door: lower than `floorY` where the lot slopes up from the street. Set by the builder after the context is made. */
   frontFloorY: number;
@@ -135,7 +137,7 @@ export function planWalls(c: PlanCtx): WallPlan[] {
   const units = use !== undefined && use.units.length > 0 && c.xf !== null;
 
   if (units && use !== undefined && c.xf !== null) {
-    const f = planFront({ ...(c.report === undefined ? {} : { report: c.report }), ...(c.haze === undefined ? {} : { haze: c.haze }), ...(c.through === true ? { through: true } : {}), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s), block: blockOfLot(c.g.plan.lots, b.lot, b.id) });
+    const f = planFront({ ...(c.portico === undefined || c.portico === null ? {} : { portico: c.portico }), ...(c.report === undefined ? {} : { report: c.report }), ...(c.haze === undefined ? {} : { haze: c.haze }), ...(c.through === true ? { through: true } : {}), out, glass, w: front, xf: c.xf, b, use, floorY: c.frontFloorY, wallTop, detail, wall: c.wall, surface: c.surfaceOf, groundAt: (s) => groundAt(front, s), block: blockOfLot(c.g.plan.lots, b.lot, b.id) });
     const p = plans[c.frontAt] as WallPlan;
     p.holes.push(...f.holes);
     p.draws.push(() => f.draw());

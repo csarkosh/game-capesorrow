@@ -120,10 +120,17 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
   };
   // Posts.
   const postC: Rgb = f.kind === "chain" ? GALV : f.kind === "picket" ? mixC(paint, TIMBER, 0.2) : mixC(TIMBER, [0.3, 0.28, 0.25], rnd(f.seed, 1) * 0.6);
+  // How far a board fence's panel k leans out at its top (0 when it stands), as the panels below draw it.
+  const panelLean = (k: number): number => {
+    if (f.kind !== "board" || k < 0 || k >= n) return 0;
+    const missing = rnd(f.seed, 100 + k);
+    return missing < old * 0.2 ? 0.4 + rnd(f.seed, 130 + k) * 0.8 : missing < old * 0.4 ? 0.1 + rnd(f.seed, 131 + k) * 0.2 : 0;
+  };
   for (let k = 0; k <= n; k++) {
     const s = (len * k) / n;
     if (inGate(s)) continue;
-    const leans = rnd(f.seed, 50 + k) < old * 0.3;
+    // A post beside a leaning panel of boards stands: leaning out of the fence's plane with it, its face would lie in the boards' plane.
+    const leans = rnd(f.seed, 50 + k) < old * 0.3 && panelLean(k - 1) === 0 && panelLean(k) === 0;
     postBox(s, H + (f.kind === "picket" ? 0.1 : 0.05), f.kind === "chain" ? 0.04 : f.kind === "board" ? 0.06 : 0.05, postC, leans ? 0.15 + rnd(f.seed, 80 + k) * 0.2 : 0);
   }
   for (let k = 0; k < n; k++) {
@@ -137,7 +144,7 @@ export function fenceGeometry(g: TownGround, sinks: { solid: Sink; glass: Sink }
     const missing = rnd(f.seed, 100 + k);
     if (f.kind === "board") {
       const down = missing < old * 0.2;
-      const lean = down ? 0.4 + rnd(f.seed, 130 + k) * 0.8 : missing < old * 0.4 ? 0.1 + rnd(f.seed, 131 + k) * 0.2 : 0;
+      const lean = panelLean(k);
       const sg = rnd(f.seed, 160 + k) < 0.5 ? 1 : -1;
       const top = (p: { x: number; z: number; y: number }, side: number): Vec3 => [p.x + nx * lean * side * sg * (down ? 1.3 : 1), p.y + H * (down ? 0.55 : 1 - lean * 0.3), p.z + nz * lean * side * sg * (down ? 1.3 : 1)];
       const a2 = a;

@@ -148,6 +148,7 @@ describe("the town's arrays, every batch of three worlds", () => {
   // test's own message when the plan changes on purpose. The highway's paving (`highwayGeometry.ts`) added the strip's tiles and marks and the pieces
   // the bed's tiles cut off the town's surfaces, in the cells that already held the streets: the meshes and the flat ones are as they were. Version 24 (the streets that met the highway at a sharp angle are open) added the pavements of those junctions and the crosswalks laid across the highway.
   // Version 25 (the downtown, built up) moved them: 155 meshes (37 flat), 1,596,633 vertices (the game's memory limit is 1,605,000), 844,132 triangles; they were 165 (40), 1,556,736 and 816,630.
+  // The drawing's fixes after it (no parked vehicle where the ground cannot hold it, no heat pump inside an addition, cut marks joined and fanned without slivers, tarps clear of their bodies) moved them to 1,595,560 and 843,623.
   it("has stable counts for world seed 20261121", () => {
     let vertices = 0;
     let triangles = 0;
@@ -158,7 +159,7 @@ describe("the town's arrays, every batch of three worlds", () => {
       if (b.layer === "flat") flat++;
     }
     console.log(`town ${GAME_SEED}: ${townFor(GAME_SEED).length} meshes (${flat} flat), ${vertices} vertices, ${triangles} triangles`);
-    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 155, flat: 37, vertices: 1596633, triangles: 844132 });
+    expect({ meshes: townFor(GAME_SEED).length, flat, vertices, triangles }).toEqual({ meshes: 155, flat: 37, vertices: 1595560, triangles: 843623 });
   });
 });
 

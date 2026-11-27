@@ -29,7 +29,7 @@ import { FOOT, roofWear, wallWear, type WallWear } from "./buildingWear.js";
 import { blockedWalls, cutWalls, planWalls, type PlanCtx } from "./openingsGeometry.js";
 import { wallTone } from "./wallTone.js";
 import { roofGear, roofSlopeDecals } from "./roofTone.js";
-import { lotDepthOut, partsGeometry, wallMatOf } from "./buildingParts.js";
+import { lotDepthOut, partsGeometry, porticoAt, wallMatOf } from "./buildingParts.js";
 import type { Xf } from "./roomGeometry.js";
 import { signsGeometry } from "./shopSigns.js";
 import {
@@ -345,7 +345,7 @@ export function buildingGeometry(g: TownGround, b: Building, role: LandmarkRole 
   const refs: WallRef[] = walls.map((w) => wallRef(w.ax, w.az, w.bx, w.bz, w.nx, w.nz));
   const use = g.plan.uses[b.id];
   const planCtx: PlanCtx = {
-    g, b, use, walls: refs, frontAt, xf, floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }), ...(haze === undefined ? {} : { haze }), ...(extra?.through === true ? { through: true } : {}),
+    g, b, use, walls: refs, frontAt, xf, portico: porticoAt(b, role, xf !== null, refs[frontAt] as WallRef), floorY, frontFloorY, wallTop, out, glass, detail, wall, vacant, profile: PROFILE[b.kind], ...(extra?.report === undefined ? {} : { report: extra.report }), ...(haze === undefined ? {} : { haze }), ...(extra?.through === true ? { through: true } : {}),
     surfaceOf: (r, band) => wallSurface(refs.indexOf(r), band), bandY: baseY + FOOT,
   };
   let drawSigns = (): void => {};

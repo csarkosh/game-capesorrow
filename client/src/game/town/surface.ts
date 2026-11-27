@@ -52,7 +52,10 @@ function cutBed(g: TownGround, corners: readonly Corner[]): Corner[][] {
     const tile = bedTile(g, i);
     pieces = pieces.flatMap((p) => (shareArea(p, tile, 1e-4) ? subtractConvex(p, tile) : [p]));
   }
-  return pieces.map((p) => (p === poly ? corners.slice() : p.map((q) => cornerAt(corners, q[0], q[1]))));
+  if (pieces.length === 1 && pieces[0] === poly) return [corners.slice()];
+  // Two pieces the bed's tiles split that make one convex piece are one (a tile's nearly straight corner splits a piece along its line for nothing,
+  // leaving a short edge at the far side), and each is fanned from the corner that leaves no sliver (a stop line's sliver reads as a stall's line).
+  return mergedConvex(pieces).map((p) => fannedWell(withoutStraight(p)).map((q) => cornerAt(corners, q[0], q[1])));
 }
 
 /** The corner a convex polygon's own lifts (and heights) give at a point of it: the point's barycentric weights in the fan from its first corner, clamped to the polygon. */
@@ -106,8 +109,12 @@ function convexXZ(piece: readonly Corner[]): boolean {
   return true;
 }
 
-/** The ears of a simple polygon (any winding): triples of indices into `pts`. */
-export function triangulate(pts: readonly P2[]): [number, number, number][] {
+/**
+ * The ears of a simple polygon (any winding): triples of indices into `pts`. With `fat`, each ear clipped is the fattest of those that may be (the
+ * least thin, by its area over its longest edge squared) rather than the first: a filled polygon's ears are split again, and a sliver of an ear
+ * across a step of the ground (a curb's cut under a corner's edge) turns its pieces from the sky.
+ */
+export function triangulate(pts: readonly P2[], fat = false): [number, number, number][] {
   const n = pts.length;
   if (n < 3) return [];
   let area = 0;
@@ -123,6 +130,8 @@ export function triangulate(pts: readonly P2[]): [number, number, number][] {
   let guard = n * n;
   while (idx.length > 3 && guard-- > 0) {
     let clipped = false;
+    let bestK = -1;
+    let bestQ = -Infinity;
     for (let k = 0; k < idx.length; k++) {
       const i0 = idx[(k + idx.length - 1) % idx.length] as number;
       const i1 = idx[k] as number;
@@ -141,10 +150,24 @@ export function triangulate(pts: readonly P2[]): [number, number, number][] {
         }
       }
       if (hit) continue;
+      if (fat) {
+        const e = Math.max((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2, (c[0] - b[0]) ** 2 + (c[1] - b[1]) ** 2, (a[0] - c[0]) ** 2 + (a[1] - c[1]) ** 2);
+        const q = cross(a, b, c) / e;
+        if (q > bestQ) {
+          bestQ = q;
+          bestK = k;
+        }
+        continue;
+      }
       out.push([i0, i1, i2]);
       idx.splice(k, 1);
       clipped = true;
       break;
+    }
+    if (fat && bestK >= 0) {
+      out.push([idx[(bestK + idx.length - 1) % idx.length] as number, idx[bestK] as number, idx[(bestK + 1) % idx.length] as number]);
+      idx.splice(bestK, 1);
+      clipped = true;
     }
     if (!clipped) {
       // A degenerate corner (collinear points) blocks every ear: drop the flattest.
@@ -390,7 +413,7 @@ export class Surface {
    * one polygon, so no two meet with a crack between.
    */
   fill(pts: readonly P2[], lift: number, colour: Rgb, depth: number, over?: Over): void {
-    const tris = triangulate(pts);
+    const tris = triangulate(pts, true);
     const sub = (a: P2, b: P2, c: P2, d: number): void => {
       if (d === 0) {
         this.flat([a, b, c], lift, colour, over);
@@ -531,6 +554,99 @@ function distinct(p: readonly P2[]): P2[] {
   }
   while (out.length > 1 && Math.abs((out[0] as P2)[0] - (out[out.length - 1] as P2)[0]) <= 1e-9 && Math.abs((out[0] as P2)[1] - (out[out.length - 1] as P2)[1]) <= 1e-9) out.pop();
   return out;
+}
+
+/** Whether a polygon turns one way at every corner (or goes straight on, within 3 mm a metre), counter-clockwise or clockwise. */
+function convexEnough(poly: readonly P2[]): boolean {
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[(i + poly.length - 1) % poly.length] as P2;
+    const b = poly[i] as P2;
+    const c = poly[(i + 1) % poly.length] as P2;
+    const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    if (Math.abs(cr) < 3e-3 * Math.hypot(c[0] - a[0], c[1] - a[1])) continue;
+    const s = cr > 0 ? 1 : -1;
+    if (sign !== 0 && s !== sign) return false;
+    sign = s;
+  }
+  return true;
+}
+
+const same = (p: P2, q: P2): boolean => Math.abs(p[0] - q[0]) < 1e-4 && Math.abs(p[1] - q[1]) < 1e-4;
+
+/**
+ * The pieces a cut left, with two that share an edge joined where they make one convex piece: a cut by a polygon with a corner that is nearly
+ * straight splits a piece along that corner's line for nothing, and leaves a sliver's edge at the far side.
+ */
+function mergedConvex(pieces: readonly P2[][]): P2[][] {
+  const out = pieces.map((q) => [...q]);
+  for (let joined = true; joined; ) {
+    joined = false;
+    for (let i = 0; i < out.length && !joined; i++) {
+      for (let j = i + 1; j < out.length && !joined; j++) {
+        const a = out[i] as P2[];
+        const b = out[j] as P2[];
+        // An edge of a (from k to k + 1) that is an edge of b the other way round (from m + 1 to m).
+        for (let k = 0; k < a.length && !joined; k++) {
+          const a0 = a[k] as P2;
+          const a1 = a[(k + 1) % a.length] as P2;
+          const m = b.findIndex((q, mm) => same(q, a1) && same(b[(mm + 1) % b.length] as P2, a0));
+          if (m < 0) continue;
+          // a up to k, then b from m + 2 round to m - 1 (the shared corners once each), then a from k + 1 on.
+          const tail: P2[] = [];
+          for (let t = 2; t < b.length; t++) tail.push(b[(m + t) % b.length] as P2);
+          const merged: P2[] = [...a.slice(0, k + 1), ...tail, ...a.slice(k + 1)];
+          if (!convexEnough(merged)) continue;
+          out[i] = merged;
+          out.splice(j, 1);
+          joined = true;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * A polygon without the corners a cut left on a straight side within a hand's breadth of another corner (on the line between their neighbours, to a
+ * millimetre, with a side under 12 cm): such a corner adds a sliver's edge and nothing of the ground's shape. Every other corner is kept, for the
+ * height it reads.
+ */
+function withoutStraight(poly: readonly P2[]): P2[] {
+  const out = poly.filter((q, i) => {
+    const a = poly[(i + poly.length - 1) % poly.length] as P2;
+    const c = poly[(i + 1) % poly.length] as P2;
+    const short = Math.min(Math.hypot(q[0] - a[0], q[1] - a[1]), Math.hypot(c[0] - q[0], c[1] - q[1])) < 0.12;
+    return !short || Math.abs((q[0] - a[0]) * (c[1] - q[1]) - (q[1] - a[1]) * (c[0] - q[0])) >= 1e-3 * Math.hypot(c[0] - a[0], c[1] - a[1]);
+  });
+  return out.length >= 3 ? out : [...poly];
+}
+
+/**
+ * A convex piece turned to start at the corner its fan is cut from best: the one whose thinnest triangle is the least thin (a fan from the end of a
+ * short edge the cut left makes a sliver: a thin white mark that reads as a stall's line).
+ */
+function fannedWell(piece: P2[]): P2[] {
+  if (piece.length <= 3) return piece;
+  const n = piece.length;
+  let best = 0;
+  let bestScore = -1;
+  for (let o = 0; o < n; o++) {
+    let worst = Infinity;
+    const a = piece[o] as P2;
+    for (let k = 1; k < n - 1; k++) {
+      const b = piece[(o + k) % n] as P2;
+      const c = piece[(o + k + 1) % n] as P2;
+      const area2 = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+      const e = Math.max(Math.hypot(b[0] - a[0], b[1] - a[1]), Math.hypot(c[0] - b[0], c[1] - b[1]), Math.hypot(a[0] - c[0], a[1] - c[1]));
+      worst = Math.min(worst, area2 / (e * e));
+    }
+    if (worst > bestScore) {
+      bestScore = worst;
+      best = o;
+    }
+  }
+  return [...piece.slice(best), ...piece.slice(0, best)];
 }
 
 /** `p` without `q`: convex pieces (none when `q` covers it). Both convex. */

@@ -406,20 +406,36 @@ function loads(m: MeshBuilder, pl: Place, v: Vehicle, sh: Shape, o: Opts): void 
   }
 }
 
+/** How far a tarp hangs past the body's ends, metres: clear of the bumpers and the lamps on them by more than the depth buffer needs. */
+const TARP_PAST = 0.08;
+/** How far a ring of the tarp at the top of a step in the body is drawn toward the step's foot, metres. */
+const TARP_STEP = 0.05;
+
 /** A tarp over a body: its rings pushed out and up from the beltline's axis, drawn smooth, in a plain tarp colour. */
 function tarpOver(m: MeshBuilder, pl: Place, sh: Shape, o: Opts, seed: number): void {
   const sts = sh.stations.map((s): Station => [s[0] * o.sx, s[1] * o.sy, s[2] * o.sy, s[3] * o.sw, s[4] * o.sw]);
   const colour = rnd(seed, 9) < 0.7 ? TARP_BLUE : TARP_SILVER;
   const L = (x: number): number => x + o.xOff - o.len / 2;
   const rows: Vec3[][] = [];
-  const first = sts[1] as Station;
-  const lastS = sts[sts.length - 2] as Station;
+  // Its ends hang TARP_PAST past the body's own ends (with the profile of the ring inside each), so its end faces are never in the body's end planes (a pickup's tailgate).
+  const s1 = sts[1] as Station;
+  const sn = sts[sts.length - 2] as Station;
+  const first: Station = [(sts[0] as Station)[0] - TARP_PAST, s1[1], s1[2], s1[3], s1[4]];
+  const lastS: Station = [(sts[sts.length - 1] as Station)[0] + TARP_PAST, sn[1], sn[2], sn[3], sn[4]];
   const picks = [first, ...sts.slice(2, sts.length - 2), lastS];
   const sag = (i: number): number => 0.03 + 0.04 * Math.sin((i / Math.max(1, picks.length - 1)) * Math.PI * 3);
   picks.forEach((s, i) => {
-    const [x, top, belt, w, wTop] = s;
+    const [x0, top, belt, w, wTop] = s;
+    // A ring at the top of a step in the body (the cab's back over a pickup's bed, the windscreen over the hood) is drawn toward the step's foot,
+    // so the tarp's face over the step stands out from the step's own face rather than in its plane.
+    let x = x0;
+    for (const j of [i - 1, i + 1]) {
+      const n = picks[j];
+      if (n !== undefined && top - n[1] > 0.15) x += Math.min(TARP_STEP, Math.abs(n[0] - x0) / 2) * Math.sign(n[0] - x0);
+    }
     const lo = 0.5;
-    const pts: [number, number][] = [[w * 1.05, lo], [w * 1.07, belt * 0.8], [mix(w, wTop, 0.6) * 1.08, belt + (top - belt) * 0.5 + 0.03], [wTop * 0.7 * 1.08, top + 0.1 + sag(i)], [0, top + 0.12 + sag(i)]];
+    // Its sides hang 3 cm further out than the body's widest, so the body under it is never within the depth buffer's reach of it.
+    const pts: [number, number][] = [[w * 1.05 + 0.03, lo], [w * 1.07 + 0.03, belt * 0.8], [mix(w, wTop, 0.6) * 1.08 + 0.03, belt + (top - belt) * 0.5 + 0.03], [wTop * 0.7 * 1.08, top + 0.1 + sag(i)], [0, top + 0.12 + sag(i)]];
     const row: Vec3[] = [];
     for (const [z, y] of pts) row.push(P(pl, L(x), y, -z));
     for (let k = pts.length - 2; k >= 0; k--) row.push(P(pl, L(x), (pts[k] as [number, number])[1], (pts[k] as [number, number])[0]));
@@ -465,7 +481,9 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
     const hl = v.length / 2 - 0.3;
     const hw = v.width / 2 - 0.22;
     const c: Array<[number, number]> = [[hl, hw * 0.6], [hl * 0.8, hw], [-hl * 0.8, hw], [-hl, hw * 0.6], [-hl, -hw * 0.6], [-hl * 0.8, -hw], [hl * 0.8, -hw], [hl, -hw * 0.6]];
-    const corner = (a: number, b: number): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) + 0.03, pl.oz + pl.fz * a + pl.lz * b];
+    // 3 cm over the ground, as the oil stains are (`groundStains.ts`, `LIFT_MARK`): over the roadway's own lift and the profile's bend under a flat polygon,
+    // and no higher (it was 4.5 cm, the props' own lift on top, which stood it off the drawn street by more than the street's own paint).
+    const corner = (a: number, b: number): Vec3 => [pl.ox + pl.fx * a + pl.lx * b, groundAt(g, pl.ox + pl.fx * a + pl.lx * b, pl.oz + pl.fz * a + pl.lz * b) - 0.015 + 0.03, pl.oz + pl.fz * a + pl.lz * b];
     // The patch is wear over the ground (the mud layer under an oil overlay): full at its middle, none at its rim, cut out by the noise, so its edge is ragged and not eight straight sides.
     const mid = corner(0, 0);
     const wear = (q: Vec3): number => {

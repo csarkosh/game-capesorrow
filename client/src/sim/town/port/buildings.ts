@@ -452,7 +452,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     largestMillLot = best;
   }
 
-  const occupancy = (district: string, kind: string, m: BlockMeta, block: Block): number => {
+  const occupancy = (district: string, kind: string, m: BlockMeta): number => {
     // The public port's terminal is mostly yard: about half its lots are open ground for the cargo (`harbour.ts` fills them).
     if (m.site === "terminal" && district !== "civic") return 0.42;
     switch (district) {
@@ -493,7 +493,7 @@ export function buildPort(input: BuildInput, rng: Rng): { buildings: Building[];
     const district = block.district;
     const kind: BuildingKind = role ? ROLE_KIND[role]! : lot.id === largestMillLot ? "mill shed" : kindFor(district, m, W, besideHighway(lot));
     const forced = role !== null || lot.id === largestMillLot;
-    const occ = occupancy(district, kind, m, block);
+    const occ = occupancy(district, kind, m);
     const u = next(rng);
     const alleyPlat = layout.plats.find((p) => p.id === block.plat)?.alley ?? null;
     const want = wantFor(kind, W, D, alleyPlat !== null);
