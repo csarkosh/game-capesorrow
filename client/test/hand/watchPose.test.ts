@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
 import { FOV, MAX_LAG, NEAREST, handHidden, torchBasis } from "../../src/game/hand/handPose.js";
-import { MeshBuilder } from "../../src/game/town/meshBuilder.js";
-import { watchSolids } from "../../src/game/hand/watchGeometry.js";
-import { watchArrays } from "../../src/game/hand/watchParts.js";
+import { readFileParts } from "./armModels.js";
+import { LEFT } from "../../src/game/hand/handModels.js";
 import {
-  ARM_SCALE, WATCH_LOWER_SECONDS, WATCH_RAISE_SECONDS, newWatchPose, newWatchState, stepWatch, watchHoldFor, watchLoweredFor, type WatchInput,
+  ARM_SCALE, SCREEN_CORNERS, WATCH_LOWER_SECONDS, WATCH_RAISE_SECONDS, newWatchPose, newWatchState, stepWatch, watchHoldFor, watchLoweredFor, watchMeshBasis, type WatchInput,
 } from "../../src/game/hand/watchPose.js";
 
 const input = (over: Partial<WatchInput> = {}): WatchInput => ({ dt: 1 / 60, want: false, hidden: false, speed: 0, sprinting: false, yaw: 0, pitch: 0, clear: 1, aspect: 1.6, ...over });
@@ -85,11 +84,25 @@ describe("the left arm's rise and fall", () => {
 });
 
 /** The arm's triangles' sampled points at a pose, on a view of this aspect: how many are on screen, and the nearest to the eye in front of it. */
+function mergedLeft(): { positions: Float32Array; indices: Uint32Array } {
+  const parts = readFileParts("hand.left");
+  const positions = new Float32Array(parts.reduce((n, p) => n + p.positions.length, 0));
+  const indices: number[] = [];
+  let at = 0;
+  for (const p of parts) {
+    for (const i of p.indices) indices.push(i + at / 3);
+    positions.set(p.positions, at);
+    at += p.positions.length;
+  }
+  return { positions, indices: Uint32Array.from(indices) };
+}
+
 function look(aspect: number, pose: ReturnType<typeof newWatchPose>): { onScreen: number; nearest: number; lowest: number } {
-  const a = watchArrays();
+  const a = mergedLeft();
   const H = 1000, W = H * aspect, f = H / 2 / Math.tan(FOV / 2);
-  const b = new Float64Array(9);
-  torchBasis(restAxes(), pose, b, ARM_SCALE);
+  const b = new Float64Array(9), unit = new Float64Array(9);
+  torchBasis(restAxes(), pose, unit, ARM_SCALE);
+  watchMeshBasis(unit, b);
   const at = (k: number): number[] => {
     const px = a.positions[k * 3] as number, py = a.positions[k * 3 + 1] as number, pz = a.positions[k * 3 + 2] as number;
     return [pose.x + b[0]! * px + b[3]! * py + b[6]! * pz, pose.y + b[1]! * px + b[4]! * py + b[7]! * pz, pose.z + b[2]! * px + b[5]! * py + b[8]! * pz];
@@ -140,52 +153,46 @@ describe("the left arm lowered, and never too near", () => {
   });
 });
 
-describe("the left arm's geometry", () => {
-  const a = watchArrays();
-  it("is under 6,000 vertices and in one draw, with a finite number everywhere and a unit normal", () => {
-    expect(a.positions.length / 3).toBeLessThan(6000);
-    expect(a.positions.length / 3).toBeGreaterThan(1000);
-    for (const v of a.positions) expect(Number.isFinite(v)).toBe(true);
+describe("the left arm's model", () => {
+  it("has the screen's four corners from the manifest, in the mesh's frame as the loader stands it: top left, top right, bottom right, bottom left, face out", () => {
+    expect(SCREEN_CORNERS.length).toBe(4);
+    const r = (LEFT.watch as NonNullable<typeof LEFT.watch>).screen_diameter / 2;
+    const [tl, tr, br, bl] = SCREEN_CORNERS as readonly (readonly number[])[] as [readonly number[], readonly number[], readonly number[], readonly number[]];
+    // The file's x is mirrored: as read, the left of the face is the mesh's +x.
+    expect(tl[0]).toBeCloseTo(r, 4);
+    expect(tl[1]).toBeCloseTo(r, 4);
+    expect(tr[0]).toBeCloseTo(-r, 4);
+    expect(br[1]).toBeCloseTo(-r, 4);
+    expect(bl[0]).toBeCloseTo(r, 4);
+    expect(bl[1]).toBeCloseTo(-r, 4);
   });
 
-  it("is made of closed solids: every solid, laid alone, has every edge met", () => {
-    const key = (p: Float32Array, i: number): string => `${Math.round((p[i * 3] as number) * 1e5)},${Math.round((p[i * 3 + 1] as number) * 1e5)},${Math.round((p[i * 3 + 2] as number) * 1e5)}`;
-    for (const s of watchSolids()) {
-      const b = new MeshBuilder();
-      s.lay(b);
-      const m = b.take();
-      const edges = new Map<string, number>();
-      for (let t = 0; t < m.indices.length; t += 3) {
-        const v = [key(m.positions, m.indices[t] as number), key(m.positions, m.indices[t + 1] as number), key(m.positions, m.indices[t + 2] as number)];
-        for (let k = 0; k < 3; k++) {
-          const e = `${v[k]}>${v[(k + 1) % 3]}`;
-          if (v[k] !== v[(k + 1) % 3]) edges.set(e, (edges.get(e) ?? 0) + 1);
-        }
-      }
-      let open = 0;
-      for (const [e, n] of edges) {
-        const [p, q] = e.split(">") as [string, string];
-        if ((edges.get(`${q}>${p}`) ?? 0) !== n) open++;
-      }
-      expect(m.indices.length, s.name).toBeGreaterThan(0);
-      expect(open, `${s.name} has open edges`).toBe(0);
+  it("is one arm and a watch in a handful of draws, with the watch at its size against the arm", () => {
+    const parts = readFileParts("hand.left");
+    expect(parts.map((p) => p.name)).toEqual(["arm", "watch_case", "watch_back", "watch_glass", "watch_screen", "strap"]);
+    const watch = LEFT.watch as NonNullable<typeof LEFT.watch>;
+    expect(watch.case_diameter).toBeCloseTo(0.045 * watch.watch_big, 4);
+    // The lit circle is inside the rim: 80 percent of the case's diameter.
+    expect(watch.screen_diameter).toBeCloseTo(0.8 * watch.case_diameter, 3);
+    expect(watch.screen_plate_diameter).toBeLessThan(watch.case_diameter);
+    // The strap's width and the case's diameter, as the file's own vertices say.
+    const case_ = parts.find((p) => p.name === "watch_case") as { positions: Float32Array };
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 1; i < case_.positions.length; i += 3) {
+      lo = Math.min(lo, case_.positions[i] as number);
+      hi = Math.max(hi, case_.positions[i] as number);
     }
+    expect(hi - lo).toBeCloseTo(watch.case_diameter, 2);
   });
 
-  it("has the watch of the owner's kind: a round case 45 mm across (before the view-model scale), a lit circle 36 mm, a crown, a strap of brown leather with stitching, a keeper and a tail", () => {
-    const names = watchSolids().map((q) => q.name);
-    for (const n of ["case", "glass", "screen", "crown", "button", "strap", "upper band", "lower band", "upper band stitching a", "lower band stitching b", "keeper", "knit cuff", "back of the hand", "thumb", "cuff", "sleeve"]) expect(names).toContain(n);
-    expect(names.filter((q) => q.startsWith("finger")).length).toBe(4);
-  });
-
-  it("keeps its own frame's quad on the face: the square that bounds the circle, face up, 36 mm times the watch's size across", async () => {
-    const { screenSquare, SCREEN_RADIUS, SCREEN_Y, WATCH_BIG } = await import("../../src/game/hand/watchGeometry.js");
-    const sq = screenSquare();
-    expect(sq.length).toBe(4);
-    for (const p of sq) expect(p[1]).toBeCloseTo(SCREEN_Y, 9);
-    expect(Math.abs((sq[1] as readonly number[])[2]! - (sq[0] as readonly number[])[2]!)).toBeCloseTo(2 * SCREEN_RADIUS * WATCH_BIG, 9);
-    expect(SCREEN_RADIUS * 2).toBeCloseTo(0.036, 6);
-    // The camera is looking at the face from outside: the screen's normal is toward the eye (checked in handScreen.test.ts), and the corner order has a positive area there.
+  it("stands the mesh's axes from the pose's: x back along the forearm, y toward twelve, z out of the face, a proper turn", () => {
+    const b = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    const out = new Float64Array(9);
+    watchMeshBasis(b, out);
+    // right = (1,0,0), up = (0,1,0), forward = (0,0,1): x is -forward, y is -right, z is up.
+    expect(Array.from(out)).toEqual([-0, -0, -1, -1, -0, -0, 0, 1, 0]);
+    const det = out[0]! * (out[4]! * out[8]! - out[5]! * out[7]!) - out[3]! * (out[1]! * out[8]! - out[2]! * out[7]!) + out[6]! * (out[1]! * out[5]! - out[2]! * out[4]!);
+    expect(det).toBeCloseTo(1, 9);
     expect(cameraAxes(0, 0, 0, restAxes()).fz).toBe(1);
   });
 });

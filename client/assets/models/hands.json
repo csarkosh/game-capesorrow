@@ -1,0 +1,308 @@
+{
+  "about": "Written by tools/models/buildHands.py: do not edit. The first person arms: metres, right handed glTF (the game's loader mirrors x on a model's root). Where each work came from is in CREDITS.md, under the ids named here.",
+  "total_bytes": 2430164,
+  "total_gpu_bytes": 4734976,
+  "total_gpu_bytes_shared": 4216147,
+  "files": {
+    "hand.right.glb": {
+      "id": "hand.right",
+      "file": "hand.right.glb",
+      "credits": [
+        "hand.arms",
+        "hand.torch"
+      ],
+      "frame": "origin at the middle of the torch's lens; +z the way the torch points (its tail is at -z); +y up as held (the roll the game's hold, handPose.ts, is worked out for); +x completes the right handed frame",
+      "bytes": 1576432,
+      "sha256": "c07dae5e8021d62aba351223eb7b1ef7c5f302992c439ac0e36749b66a9d985b",
+      "triangles": 15262,
+      "vertices": 14519,
+      "parts": {
+        "arm": {
+          "triangles": 3746,
+          "vertices": 2190
+        },
+        "torch": {
+          "triangles": 11296,
+          "vertices": 12168
+        },
+        "torch_glass": {
+          "triangles": 220,
+          "vertices": 161
+        }
+      },
+      "textures": [
+        {
+          "name": "hand.arms.colour",
+          "map": "colour",
+          "size": [
+            1024,
+            1024
+          ],
+          "bytes": 132174,
+          "sha256": "d69710dfd5bf7f75",
+          "gpu_bytes": 1048576,
+          "gpu_bytes_with_mips": 1398101
+        },
+        {
+          "name": "hand.arms.orm",
+          "map": "orm",
+          "size": [
+            512,
+            512
+          ],
+          "bytes": 54530,
+          "sha256": "33a107cdac105f72",
+          "gpu_bytes": 262144,
+          "gpu_bytes_with_mips": 349525
+        },
+        {
+          "name": "hand.arms.normal",
+          "map": "normal",
+          "size": [
+            512,
+            512
+          ],
+          "bytes": 308596,
+          "sha256": "6f8956a9e64b3d50",
+          "gpu_bytes": 262144,
+          "gpu_bytes_with_mips": 349525
+        },
+        {
+          "name": "hand.torch.colour",
+          "map": "colour",
+          "size": [
+            1024,
+            1024
+          ],
+          "bytes": 89836,
+          "sha256": "191fe12dd98bb9aa",
+          "gpu_bytes": 1048576,
+          "gpu_bytes_with_mips": 1398101
+        },
+        {
+          "name": "hand.torch.orm",
+          "map": "orm",
+          "size": [
+            512,
+            512
+          ],
+          "bytes": 65335,
+          "sha256": "7cdf7a20705a04ef",
+          "gpu_bytes": 262144,
+          "gpu_bytes_with_mips": 349525
+        },
+        {
+          "name": "hand.torch.normal",
+          "map": "normal",
+          "size": [
+            512,
+            512
+          ],
+          "bytes": 136395,
+          "sha256": "d3754de82375ae4a",
+          "gpu_bytes": 262144,
+          "gpu_bytes_with_mips": 349525
+        }
+      ],
+      "gpu_bytes": 3145728,
+      "gpu_bytes_with_mips": 4194302,
+      "lens": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "torch_length": 0.24,
+      "torch_radius": 0.02,
+      "forearm_cut": {
+        "centre": [
+          0.2613,
+          0.0463,
+          -0.3685
+        ],
+        "direction": [
+          0.6359,
+          -0.0095,
+          -0.7717
+        ],
+        "runs_on": 0.45
+      },
+      "preview": {
+        "palm": {
+          "eye": [
+            0.0,
+            -0.5,
+            -0.1459
+          ],
+          "target": [
+            0.0,
+            -0.0,
+            -0.1459
+          ],
+          "up": [
+            -1.0,
+            -0.0,
+            -0.0
+          ]
+        }
+      }
+    },
+    "hand.left.glb": {
+      "id": "hand.left",
+      "file": "hand.left.glb",
+      "credits": [
+        "hand.arms",
+        "hand.watch"
+      ],
+      "frame": "origin at the middle of the watch's screen; +z out of the screen toward the reader; +y toward twelve o'clock; +x completes the right handed frame",
+      "bytes": 853732,
+      "sha256": "57b8a25cfdfed5e71506706892cd2d946539d44cb926cb7bc18df8eef4bd576e",
+      "triangles": 11224,
+      "vertices": 8050,
+      "parts": {
+        "arm": {
+          "triangles": 3423,
+          "vertices": 2022
+        },
+        "watch_case": {
+          "triangles": 5878,
+          "vertices": 3781
+        },
+        "watch_back": {
+          "triangles": 672,
+          "vertices": 928
+        },
+        "watch_glass": {
+          "triangles": 240,
+          "vertices": 279
+        },
+        "watch_screen": {
+          "triangles": 23,
+          "vertices": 24
+        },
+        "strap": {
+          "triangles": 988,
+          "vertices": 1016
+        }
+      },
+      "textures": [
+        {
+          "name": "hand.arms.colour",
+          "map": "colour",
+          "size": [
+            1024,
+            1024
+          ],
+          "bytes": 132174,
+          "sha256": "d69710dfd5bf7f75",
+          "gpu_bytes": 1048576,
+          "gpu_bytes_with_mips": 1398101
+        },
+        {
+          "name": "hand.arms.orm",
+          "map": "orm",
+          "size": [
+            512,
+            512
+          ],
+          "bytes": 54530,
+          "sha256": "33a107cdac105f72",
+          "gpu_bytes": 262144,
+          "gpu_bytes_with_mips": 349525
+        },
+        {
+          "name": "hand.arms.normal",
+          "map": "normal",
+          "size": [
+            512,
+            512
+          ],
+          "bytes": 308596,
+          "sha256": "6f8956a9e64b3d50",
+          "gpu_bytes": 262144,
+          "gpu_bytes_with_mips": 349525
+        },
+        {
+          "name": "hand.arms.leather.normal",
+          "map": "normal",
+          "size": [
+            128,
+            128
+          ],
+          "bytes": 17986,
+          "sha256": "06ec4ac63c509db1",
+          "gpu_bytes": 16384,
+          "gpu_bytes_with_mips": 21845
+        }
+      ],
+      "gpu_bytes": 1589248,
+      "gpu_bytes_with_mips": 2118996,
+      "watch": {
+        "screen_diameter": 0.072,
+        "screen_plate_diameter": 0.08439,
+        "screen_corners": [
+          [
+            -0.036,
+            0.036,
+            0.0
+          ],
+          [
+            0.036,
+            0.036,
+            0.0
+          ],
+          [
+            0.036,
+            -0.036,
+            0.0
+          ],
+          [
+            -0.036,
+            -0.036,
+            0.0
+          ]
+        ],
+        "screen_corner_order": "top left, top right, bottom right, bottom left, as the wearer reads the face",
+        "case_diameter": 0.09,
+        "case_diameter_life": 0.045,
+        "watch_big": 2.0
+      },
+      "forearm_cut": {
+        "centre": [
+          -0.17,
+          -0.0037,
+          -0.0509
+        ],
+        "direction": [
+          -1.0,
+          0.0,
+          -0.0
+        ],
+        "runs_on": 0.03
+      },
+      "preview": {
+        "palm": {
+          "eye": [
+            0.11,
+            0.0,
+            -0.45
+          ],
+          "target": [
+            0.11,
+            0.0,
+            -0.04
+          ],
+          "up": [
+            0.0,
+            1.0,
+            0.0
+          ]
+        }
+      }
+    }
+  }
+}

@@ -394,7 +394,7 @@ export const ROOM_NIGHT_CODE = [
 ].join("");
 
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
-export function townSurfaceCode(low: boolean, sign = false, ranked = false, set: LayerSet = TOWN_SET, night = set !== TOWN_SET, arm = false): string {
+export function townSurfaceCode(low: boolean, sign = false, ranked = false, set: LayerSet = TOWN_SET, night = set !== TOWN_SET): string {
   return [
     `let tsSurf=input.${TOWN_VARYING};`,
     `let tsWearV=input.${TOWN_WEAR_VARYING};`,
@@ -425,8 +425,6 @@ export function townSurfaceCode(low: boolean, sign = false, ranked = false, set:
     // A designed room's colour at night rides with its colour by day (`NIGHT_RATIOS`): the room is mixed from the one to the other by how bright it is outside.
     ...(night ? [ROOM_NIGHT_CODE] : []),
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
-    // The player's arms (`arm`): the albedo is scaled by the light of where the player stands (`material.armLevel`.x, written each frame), so an arm is dark when the night is.
-    ...(arm ? ["let tsRaw=baseColor;baseColor=baseColor*material.armLevel.x;"] : []),
     "let tsBase0=baseColor;",
     `if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));${sign ? hoursCodeFor(true) : HOURS_CODE}}`,
     DAY_GLOW_CODE,
@@ -434,8 +432,6 @@ export function townSurfaceCode(low: boolean, sign = false, ranked = false, set:
     WIRE_CODE,
     LAMP_CODE,
     ...(night ? [FLASH_CODE] : []),
-    // The faint warm lift a lit torch gives the hand that holds it, over the arm's own albedo (`material.armLevel`.y).
-    ...(arm ? ["townGlowC=townGlowC+tsRaw*material.armLevel.y;"] : []),
   ].join("");
 }
 
@@ -558,8 +554,6 @@ export function emptyTownReady(): TownReady {
   r.flashP = [0, 0, 0, 0];
   r.flashD = [0, 0, 1, 1];
   r.flashC = [0, 0, 0, 0];
-  // The arms' light (`ARM_CODE`): the share of an arm's albedo the scene's light falls on, and the lift of its own over that (both 0 to 1).
-  r.armLevel = [1, 0, 0, 0];
   return r;
 }
 
@@ -732,14 +726,14 @@ export const DOOR_UNPAINT = `if(color.a<0.04){out.clipPos.z-=${PAINT_K.toExponen
 export const KNOCK_UNPAINT = `if(color.a>${KNOCK_OVER}&&color.a<${KNOCK_UNDER}){out.clipPos.z-=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;}`;
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
-export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false, set: LayerSet = TOWN_SET, night = set !== TOWN_SET, arm = false): MaterialPlugin {
+export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false, set: LayerSet = TOWN_SET, night = set !== TOWN_SET): MaterialPlugin {
   const definitions = townDefinitions(low, set);
-  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked, set, night, arm);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked, set, night);
   const rooms = set !== TOWN_SET;
   return {
-    name: rooms ? "InteriorSurface" : arm ? "ArmSurface" : "TownSurface",
+    name: rooms ? "InteriorSurface" : "TownSurface",
     priority: 200,
-    defines: rooms ? { low, ranked, rooms, night } : arm ? { low, ranked, night, arm } : night ? { low, ranked, night } : { low, ranked },
+    defines: rooms ? { low, ranked, rooms, night } : night ? { low, ranked, night } : { low, ranked },
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"

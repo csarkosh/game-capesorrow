@@ -1,61 +1,43 @@
 /**
- * The player's hand and torch, drawn and lit (`handPose.ts` says where they are; `handGeometry.ts` and `flashlightGeometry.ts` are what they are made of).
+ * The player's hand and torch, drawn and lit (`handPose.ts` says where they are; `handModels.ts` loads what they are made of: `hand.right.glb`, the real forearm and hand with the
+ * torch in its grip).
  *
- * - **Two meshes, made once**, in the town's own packed form (`createPackedMesh`): the hand with the torch (one draw), and the torch's lit lens (a disc, drawn
- *   only while the lamp is on). Both are placed alike. Both are drawn with the town's indoor material (the one the walk-in
- *   rooms use: the town's layers, the air and the night's own lamps), so that the hand is lit by the day outside and is dark at night but for its own lamp's spill,
- *   and takes the torch's spill (`FLASH_CODE`) and the street lamps near it.
- * - **Placed each frame** from the camera's pose and the pose of the hand: the mesh's position and rotation are set (a plain mesh, moved by its own matrix, as the
- *   renderer moves any). The meshes are drawn where the scene's other opaque draws are, with the depth buffer: a wall that is closer than the hand hides it, and
- *   `clear` (a probe ahead of the eye, `blocked`) pulls the torch in before it comes to a wall.
+ * - **Loaded when first wanted** (`loadHandParts`, on the first F): the file is fetched and its parts made into meshes (the arm, the torch, and the torch's glass, which is drawn
+ *   only while the lamp is on and glows with it). The arm is raised when the parts are ready; until then nothing is drawn.
+ * - **Placed each frame** from the camera's pose and the pose of the hand: the meshes' position and rotation are set (plain meshes, moved by their own matrix, as the
+ *   renderer moves any), `handScaleFor` times life size about the lens, which is the file's origin. They are drawn among the scene's other opaque draws, with the depth buffer
+ *   and a depth shift toward the eye (`HAND_AHEAD_UNITS`); `clear` (a probe ahead of the eye, `blocked`) pulls the torch in before it comes to a wall.
  * - **The light.** The engine has one lamp. While the player is on foot with the torch on, it is moved to the lens, along the torch's axis, as `headlights.ts`
  *   moves it to the car's nose; its cone is tighter than the car's and its light a warm white. The beam is still the engine's one lamp, so it costs what the
  *   walker's lamp always cost: nothing more. What the lamp cannot light (the rooms' own-lit surfaces) takes the beam from `FLASH_CODE`, from the uniforms this writes.
- * - Never hidden by the interface: the interface is the page's, above the canvas. Not in the ink line's mask and not in the rain's cover: it is made after them.
+ * - Never hidden by the interface: the interface is the page's, above the canvas.
  */
-import { addToScene, disposeMeshGpu, removeFromScene, setMeshVisible, type EngineContext, type Mesh, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
+import { setMeshVisible, type Mesh } from "@babylonjs/lite";
 import type { RenderLamp } from "@csarkosh/engine/game/lite/renderGame";
 import type { CameraAxes } from "@csarkosh/engine/game/lite/cameraPose";
-import { MeshBuilder, type MeshArrays } from "../town/meshBuilder.js";
-import { packSurface } from "../town/surfacePack.js";
-import { createPackedMesh, packedBytes } from "../town/vertexPack.js";
 import type { TownReady } from "../town/townMaterial.js";
 import { TORCH_COLOUR } from "./handLight.js";
 import { lightTorch, newTorchState } from "./handLight.js";
-import { flashlightGeometry, lensGlowGeometry } from "./flashlightGeometry.js";
-import { handGeometry } from "./handGeometry.js";
-import { HAND_SCALE, handScaleFor, basisQuaternion, clearAhead, handHidden, lensWorld, newHandPose, newHandState, stepHand, torchBasis, type HandPose } from "./handPose.js";
+import { RIGHT_FILE, disposeArm, loadArm, type ArmHost, type ArmPart } from "./handModels.js";
+import { handScaleFor, basisQuaternion, clearAhead, handHidden, lensWorld, newHandPose, newHandState, stepHand, torchBasis, type HandPose } from "./handPose.js";
 import { HAND_SWITCH, handWanted, torchLit } from "./handSwitch.js";
 
 export { TORCH_ANGLE, TORCH_COLOUR, TORCH_GAIN, TORCH_RANGE } from "./handLight.js";
-/**
- * How far toward the eye, in steps of the 24-bit depth buffer (the engine's `ahead`: depth runs from 1 at the near plane to 0 far away, so a shift of `n / 2^24` is `n` steps up),
- * both arms are drawn: 0.4 of the buffer's range. A first person arm held out 0.3 to 0.5 m is a depth of 0.1 to 0.2 (the near plane's 0.05 over its distance); shifted by 0.4 it
- * is 0.5 to 0.6, which no wall seen from a body's length off reaches (a wall at 0.1 m is 0.5), so the arms are never sunk into a wall that the player stands against. Their own
- * order is kept (the shift is the same for every point). It is a vertex-stage shift of the town's `ahead` plugin, written at the material (`townParts.ts`). Set it to 0 to take it off.
- */
-export const HAND_AHEAD_UNITS = Math.round(0.4 * 2 ** 24);
+export { HAND_AHEAD_UNITS } from "./handModels.js";
 
 /** The beam as the rooms' own-lit surfaces take it (`FLASH_CODE`): the cone's half angle (radians) and its range (metres), and the strength it is added with. */
 export const FLASH_HALF_ANGLE = 0.45;
 export const FLASH_RANGE = 14;
 export const FLASH_STRENGTH = 1;
 
-export type HandHost = {
-  readonly engine: EngineContext;
-  readonly scene: SceneContext;
-  /** The town's indoor material (`townParts.ts`): the layers, the air and the night's lamps. */
-  readonly material: PbrMaterialProps;
-  /** Where the material stands among the opaque draws. */
-  readonly order: number;
-  /** Whether the town's textures are in use (a mesh then carries the surface records). */
-  readonly textured: boolean;
-  readonly uploads: { count(kind: string, bytes: number, ...rest: number[]): void; made(): void; dropped(): void };
+export type HandHost = ArmHost & {
   /** The town's uniforms: the hand writes the flashlight's into them, and `dirty` tells every material that reads them. */
   readonly ready: () => TownReady | null;
   readonly dirty: () => void;
   /** Whether a point of the world is inside a wall or a thing that stands. */
   readonly blocked: (x: number, y: number, z: number) => boolean;
+  /** Aborts the loads of the arms' files (the renderer's disposal). */
+  readonly signal: AbortSignal;
 };
 
 /** What a frame says of the player. */
@@ -92,51 +74,19 @@ export type HandParts = {
   dispose(): void;
 };
 
-/** The hand with the torch, and the torch's lit lens, as plain arrays: what `createHandParts` lays on the GPU, for the tests and the count. */
-export function handArrays(seed = 1): { body: MeshArrays; lens: MeshArrays } {
-  const body = new MeshBuilder();
-  flashlightGeometry(body, seed);
-  handGeometry(body, seed);
-  const lens = new MeshBuilder();
-  lensGlowGeometry(lens);
-  return { body: body.take(), lens: lens.take() };
+/** Loads the right arm's file and makes the hand's parts. Rejects where the file does not load. */
+export async function loadHandParts(host: HandHost): Promise<HandParts> {
+  return createHandParts(host, await loadArm(host, RIGHT_FILE, host.signal));
 }
 
-/**
- * Makes one of the hand's meshes: packed as the town's are, drawn with the host's material among the opaque draws, in the scene and hidden until a frame shows it, `scale`
- * times life size about its origin (larger than life on purpose: see `HAND_SCALE`). Its bounds are the arrays' own.
- */
-export function makeHandMesh(host: HandHost, name: string, a: MeshArrays, scale: number): Mesh {
-  const mesh = createPackedMesh(host.engine, name, a);
-  if (host.textured) mesh.pluginVertexData = packSurface(a.surface);
-  mesh.material = host.material;
-  mesh.renderOrder = host.order;
-  mesh.scaling.set(scale, scale, scale);
-  const lo = [Infinity, Infinity, Infinity];
-  const hi = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < a.positions.length; i += 3) {
-    for (let k = 0; k < 3; k++) {
-      lo[k] = Math.min(lo[k] as number, a.positions[i + k] as number);
-      hi[k] = Math.max(hi[k] as number, a.positions[i + k] as number);
-    }
-  }
-  mesh.boundMin = lo as [number, number, number];
-  mesh.boundMax = hi as [number, number, number];
-  addToScene(host.scene, mesh);
-  setMeshVisible(mesh, false);
-  host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
-  host.uploads.made();
-  return mesh;
-}
-
-export function createHandParts(host: HandHost): HandParts {
-  const arrays = handArrays();
-  const body = makeHandMesh(host, "hand_torch", arrays.body, HAND_SCALE);
-  const lens = makeHandMesh(host, "hand_lens", arrays.lens, HAND_SCALE);
+/** The hand's parts made (`loadArm`), as the hand that is stepped, placed and lit each frame. */
+export function createHandParts(host: HandHost, made: readonly ArmPart[]): HandParts {
+  const body: Mesh[] = made.filter((p) => p.name !== "torch_glass").map((p) => p.mesh);
+  const lens: Mesh[] = made.filter((p) => p.name === "torch_glass").map((p) => p.mesh);
   const cost = {
-    vertices: arrays.body.positions.length / 3 + arrays.lens.positions.length / 3,
-    bytes: packedBytes(arrays.body.positions.length / 3, arrays.body.indices.length, arrays.body.surface.byteLength) + packedBytes(arrays.lens.positions.length / 3, arrays.lens.indices.length, arrays.lens.surface.byteLength),
-    draws: 2,
+    vertices: made.reduce((n, p) => n + p.vertices, 0),
+    bytes: made.reduce((n, p) => n + p.bytes, 0),
+    draws: made.length,
   };
   const state = newHandState();
   const pose = newHandPose();
@@ -150,8 +100,8 @@ export function createHandParts(host: HandHost): HandParts {
   let flashOn = false;
   const cosHalf = Math.cos(FLASH_HALF_ANGLE);
 
-  const show = (mesh: Mesh, want: boolean, was: boolean): boolean => {
-    if (want !== was) setMeshVisible(mesh, want);
+  const show = (meshes: readonly Mesh[], want: boolean, was: boolean): boolean => {
+    if (want !== was) for (const mesh of meshes) setMeshVisible(mesh, want);
     return want;
   };
 
@@ -182,7 +132,7 @@ export function createHandParts(host: HandHost): HandParts {
     torch,
     pose,
     cost,
-    drawn: () => (bodyShown ? 1 : 0) + (lensShown ? 1 : 0),
+    drawn: () => (bodyShown ? body.length : 0) + (lensShown ? lens.length : 0),
     frame(f, lamp) {
       const lit = torchLit(f.ridePhase === 0) && lamp.lit.on;
       const hidden = handHidden(f.ridePhase, f.insidePhase, f.roomUndrawn);
@@ -199,7 +149,7 @@ export function createHandParts(host: HandHost): HandParts {
       torchBasis(f.axes, pose, basis);
       basisQuaternion(basis, quat);
       const size = handScaleFor(f.aspect);
-      for (const mesh of [body, lens]) {
+      for (const mesh of [...body, ...lens]) {
         mesh.position.set(place.x, place.y, place.z);
         if (mesh.scaling.x !== size) mesh.scaling.set(size, size, size);
         mesh.rotationQuaternion.x = quat[0] as number;
@@ -222,11 +172,7 @@ export function createHandParts(host: HandHost): HandParts {
       writeFlash(torch.lit, FLASH_STRENGTH * arrive);
     },
     dispose() {
-      for (const mesh of [lens, body]) {
-        removeFromScene(host.scene, mesh);
-        disposeMeshGpu(mesh);
-        host.uploads.dropped();
-      }
+      disposeArm(host, made);
     },
   };
 }

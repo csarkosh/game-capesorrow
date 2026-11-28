@@ -26,8 +26,8 @@ describe("the game's own CREDITS.md", () => {
     expect(OWN_FILE.startsWith("# Credits\n")).toBe(true);
     expect(OWN_FILE).toMatch(/engine/);
     expect(OWN_FILE).toMatch(/Credits screen/);
-    // 48 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 7 only the rooms use, the 12 vehicle models, the 5 people and the 3 photo textures the cup and the phone in their hands are cut from.
-    expect(own.length).toBe(48);
+    // 48 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 7 only the rooms use, the 12 vehicle models, the 5 people, the 3 photo textures the cup and the phone in their hands are cut from, and the 3 models of the player's arms, torch and watch.
+    expect(own.length).toBe(51);
     const textures = own.filter((e) => e.id.startsWith("town."));
     expect(textures.length).toBe(21);
     for (const e of textures) {
@@ -62,13 +62,21 @@ describe("the game's own CREDITS.md", () => {
       expect(e.modified, e.id).toBe(true);
     }
     // The cup's and the phone's picture: three CC0 photo textures.
-    const hands = own.filter((e) => e.id.startsWith("hand."));
+    const hands = own.filter((e) => e.id.startsWith("hand.") && /^hand\.[A-Z]/.test(e.id));
     expect(hands.map((e) => e.id)).toEqual(["hand.Paper002", "hand.NamaqualandCliff01", "hand.NamaqualandCliff02"]);
     for (const e of hands) {
       expect(e.license, e.id).toBe("CC0-1.0");
       expect(e.url, e.id).toMatch(/^https:\/\//);
     }
-    expect(own.length).toBe(textures.length + interiors.length + models.length + people.length + hands.length);
+    // The player's arms, torch and watch: three CC-BY models, credited to their authors.
+    const arms = own.filter((e) => ["hand.arms", "hand.torch", "hand.watch"].includes(e.id));
+    expect(arms.map((e) => e.id)).toEqual(["hand.arms", "hand.torch", "hand.watch"]);
+    for (const e of arms) {
+      expect(e.license, e.id).toBe("CC-BY-4.0");
+      expect(e.author.length, e.id).toBeGreaterThan(0);
+      expect(e.url, e.id).toMatch(/^https:\/\//);
+    }
+    expect(own.length).toBe(textures.length + interiors.length + models.length + people.length + hands.length + arms.length);
     expect(new Set(own.map((e) => e.id)).size).toBe(own.length);
   });
 

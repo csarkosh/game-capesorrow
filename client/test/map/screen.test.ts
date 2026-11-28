@@ -649,3 +649,47 @@ describe("the watch's screen on foot, and the unit in a car", () => {
     expect(p.root().style.transform).toMatch(/^matrix3d\(/);
   });
 });
+
+describe("the watch's drawing always fits its canvas", () => {
+  const apply = (m: number[], x: number, y: number): { x: number; y: number } => ({ x: (m[0] as number) * x + (m[2] as number) * y + (m[4] as number), y: (m[1] as number) * x + (m[3] as number) * y + (m[5] as number) });
+
+  it("has the rim's centre and radius at the canvas's middle and half its width, and the player's mark where the view puts it, at every size of the face, growing and shrinking, in and out of the hysteresis band", () => {
+    const p = page(1440, 900, 2);
+    // Start in a car's corner tile, whose canvas is 440 wide, so that a face within 10 percent of it keeps that backing.
+    p.map.frame(p.frame({ driving: true }));
+    expect(p.map.info().canvas.width).toBe(440);
+    const faces = [215, 200, 190, 230, 120, 100, 135, 260, 150, 400, 215, 90];
+    let step = 0;
+    for (const face of faces) {
+      WATCH_SEEN.on = false;
+      WATCH_SEEN.shown = true;
+      WATCH_SEEN.raised = 1;
+      const x0 = 0.3, y0 = 0.5, w = face / 1440, h = face / 900;
+      WATCH_SEEN.quad.set([x0, y0, x0 + w, y0, x0 + w, y0 + h, x0, y0 + h]);
+      p.ctx.reset();
+      p.tick(1);
+      p.map.frame(p.frame({ driving: false }));
+      // Another frame, so that a resize that asks for a redraw has been drawn.
+      p.tick(1);
+      p.map.frame(p.frame({ driving: false, x: -254.7 + (step++ % 2) * 40 }));
+      const c = p.map.info().canvas;
+      expect(p.map.info().mode, `face ${face}`).toBe("watch");
+      expect(c.height, `face ${face}`).toBe(c.width);
+      const rim = p.ctx.rec.drawn.filter((d) => d.kind === "stroke" && d.colour === "#000000" && d.arcs.length > 0 && d.width === 6);
+      expect(rim.length, `face ${face}`).toBeGreaterThan(0);
+      const r = rim[rim.length - 1]!;
+      const centre = apply(r.matrix, r.arcs[0]!.x, r.arcs[0]!.y);
+      const radius = r.arcs[0]!.r * Math.abs(r.matrix[0] as number);
+      expect(Math.abs(centre.x - c.width / 2), `face ${face} rim x`).toBeLessThanOrEqual(1);
+      expect(Math.abs(centre.y - c.height / 2), `face ${face} rim y`).toBeLessThanOrEqual(1);
+      expect(Math.abs(radius - c.width / 2), `face ${face} rim radius`).toBeLessThanOrEqual(1);
+      // The player's mark (the dot of 6.4 px) is where `watchView` puts it, scaled to the backing.
+      const dots = p.ctx.rec.drawn.filter((d) => d.kind === "fill" && d.arcs.length === 1 && d.arcs[0]!.r === 6.4);
+      expect(dots.length, `face ${face}`).toBeGreaterThan(0);
+      const dot = dots[dots.length - 1]!;
+      const at = apply(dot.matrix, dot.arcs[0]!.x, dot.arcs[0]!.y);
+      expect(Math.abs(at.x - c.width / 2), `face ${face} mark x`).toBeLessThanOrEqual(1);
+      expect(Math.abs(at.y - c.width * 0.55), `face ${face} mark y`).toBeLessThanOrEqual(1);
+    }
+  });
+});

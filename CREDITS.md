@@ -357,3 +357,27 @@ The works of others that Cape Sorrow itself carries: the town's texture sets (`t
 - **Licence:** CC0-1.0
 - **URL:** https://polyhaven.com/a/namaqualand_cliff_02
 - **Modified:** the phone's glass, darkened and cut into the shared picture
+
+## hand.arms
+
+- **Source:** Sketchfab: First Person arms
+- **Author:** DJMaesen
+- **Licence:** CC-BY-4.0
+- **URL:** https://sketchfab.com/3d-models/first-person-arms-e3c42c05b22944e5839deb8e003f0987
+- **Modified:** the right arm posed gripping a torch and the left relaxed, each with its skin baked into a static mesh (the fingers and the wrist turned), cut at the elbow, the texture maps reduced to 1024 px and re-encoded as WebP, the second texture coordinates dropped; a small tile of the jacket's normal map reused for the grain of the watch strap
+
+## hand.torch
+
+- **Source:** Sketchfab: Tactical Flashlight
+- **Author:** Blender3D
+- **Licence:** CC-BY-4.0
+- **URL:** https://sketchfab.com/3d-models/tactical-flashlight-dfb9ec2ec4f846438eab24f32ec8c656
+- **Modified:** scaled to 21 cm, laid in the right hand's grip, the lens glass joined into one part, the glow map dropped, the texture maps reduced to 1024 px and re-encoded as WebP
+
+## hand.watch
+
+- **Source:** Sketchfab: Wrist watch (smartWatch)
+- **Author:** Mohit Batta
+- **Licence:** CC-BY-4.0
+- **URL:** https://sketchfab.com/3d-models/wrist-watch-smartwatch-c896964ab7274bff810ac5ae9165cf8c
+- **Modified:** the analogue hands, the hour markers and the metal bracelet removed, the face made a plain black screen for the game to draw on, the case enlarged against the arm, the textures dropped for plain materials, and a brown leather strap of our own put on in place of the bracelet

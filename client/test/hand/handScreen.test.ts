@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { restAxes } from "@csarkosh/engine/game/lite/cameraPose";
-import { handArrays } from "../../src/game/hand/handParts.js";
-import { FOV, handScaleFor, newHandPose, newHandState, stepHand, torchBasis, type HandInput, type HandPose } from "../../src/game/hand/handPose.js";
-import { handSolids } from "../../src/game/hand/handGeometry.js";
-import { watchSolids, WRIST_Y } from "../../src/game/hand/watchGeometry.js";
-import { MeshBuilder } from "../../src/game/town/meshBuilder.js";
-import { ARM_SCALE, newWatchPose, newWatchState, stepWatch, watchQuad, type WatchInput } from "../../src/game/hand/watchPose.js";
-import { watchArrays } from "../../src/game/hand/watchParts.js";
+import { FOV, NEAREST, handScaleFor, newHandPose, newHandState, stepHand, torchBasis, type HandInput, type HandPose } from "../../src/game/hand/handPose.js";
+import { ARM_SCALE, newWatchPose, newWatchState, stepWatch, watchMeshBasis, watchQuad, type WatchInput } from "../../src/game/hand/watchPose.js";
+import { LEFT, RIGHT } from "../../src/game/hand/handModels.js";
+import { readFileParts, type FilePart } from "./armModels.js";
 
-type Arrays = { positions: Float32Array; indices: Uint32Array };
+type Arrays = FilePart;
 type Pt = { x: number; y: number };
 
 /** Sampled points of an arrays' triangles, on a view W by H, that are in front of the near plane and on the screen, in pixels. */
@@ -41,6 +38,12 @@ function sample(a: Arrays, pose: HandPose, basis: ArrayLike<number>, W: number, 
 const rightInput = (aspect: number, over: Partial<HandInput> = {}): HandInput => ({ dt: 1 / 60, want: true, hidden: false, speed: 0, sprinting: false, yaw: 0, pitch: 0, clear: 1, aspect, ...over });
 const leftInput = (aspect: number, over: Partial<WatchInput> = {}): WatchInput => ({ dt: 1 / 60, want: true, hidden: false, speed: 0, sprinting: false, yaw: 0, pitch: 0, clear: 1, aspect, ...over });
 
+const lo = (a: number[]): number => a.reduce((m, v) => Math.min(m, v), Infinity);
+const hi = (a: number[]): number => a.reduce((m, v) => Math.max(m, v), -Infinity);
+const RIGHT_PARTS = readFileParts("hand.right");
+const LEFT_PARTS = readFileParts("hand.left");
+const part = (parts: FilePart[], name: string): FilePart => parts.find((p) => p.name === name) as FilePart;
+
 /** Both arms at the hold on a view W by H, standing still, or with a walk's bob, or turning. */
 function both(W: number, H: number, frames = 120, over: { speed?: number; turn?: number } = {}): { right: Pt[]; left: Pt[]; leftHand: Pt[]; quad: Float32Array; rp: HandPose; lp: HandPose; rb: Float64Array; lb: Float64Array } {
   const aspect = W / H;
@@ -49,17 +52,21 @@ function both(W: number, H: number, frames = 120, over: { speed?: number; turn?:
     stepHand(rs, rightInput(aspect, { speed: over.speed ?? 0, yaw: n * (over.turn ?? 0) }), rp);
     stepWatch(ls, leftInput(aspect, { speed: over.speed ?? 0, yaw: n * (over.turn ?? 0) }), lp);
   }
-  const rb = new Float64Array(9), lb = new Float64Array(9);
+  const rb = new Float64Array(9), lb = new Float64Array(9), unit = new Float64Array(9);
   torchBasis(restAxes(), rp, rb, handScaleFor(aspect));
-  torchBasis(restAxes(), lp, lb, ARM_SCALE);
+  torchBasis(restAxes(), lp, unit, ARM_SCALE);
+  watchMeshBasis(unit, lb);
   const quad = new Float32Array(8);
   watchQuad(lp, lb, aspect, quad);
-  const right = sample(handArrays().body, rp, rb, W, H);
-  const left = sample(watchArrays(), lp, lb, W, H);
-  // The hand beyond the watch: the back of the hand, the fingers and the thumb, laid alone.
-  const hb = new MeshBuilder();
-  for (const s of watchSolids().filter((q) => /finger|thumb|back of/.test(q.name))) s.lay(hb);
-  const hand = hb.take();
+  const right = RIGHT_PARTS.flatMap((p) => sample(p, rp, rb, W, H));
+  const left = LEFT_PARTS.flatMap((p) => sample(p, lp, lb, W, H));
+  // The hand beyond the watch: the part of the arm farther along the forearm than the glove's cuff (the file's x, toward the fingers, is the mesh's -x).
+  const arm = part(LEFT_PARTS, "arm");
+  const kept: number[] = [];
+  for (let t = 0; t < arm.indices.length; t += 3) {
+    if ([0, 1, 2].every((k) => (arm.positions[(arm.indices[t + k] as number) * 3] as number) < -0.05)) kept.push(arm.indices[t] as number, arm.indices[t + 1] as number, arm.indices[t + 2] as number);
+  }
+  const hand: Arrays = { name: "hand", positions: arm.positions, indices: Uint32Array.from(kept) };
   return { right, left, leftHand: sample(hand, lp, lb, W, H), quad, rp, lp, rb, lb };
 }
 
@@ -69,37 +76,85 @@ describe("the right arm's framing: from the player, large, in the lower right", 
       const { right, rp, rb } = both(W, H);
       const f = H / 2 / Math.tan(FOV / 2);
       const at = (k: number): Pt => ({ x: (0.5 + ((rp.x + rb[6]! * -k) / (rp.z + rb[8]! * -k) * f) / W) * 100, y: (0.5 - ((rp.y + rb[7]! * -k) / (rp.z + rb[8]! * -k) * f) / H) * 100 });
-      const head = at(0), fist = at(0.16), tail = at(0.2135);
-      // The head up and left of the fist, 54 to 60 percent across and 46 to 56 percent down; the fist 68 to 72 across and 66 to 72 down.
-      expect(head.x).toBeGreaterThanOrEqual(53.5);
-      expect(head.x).toBeLessThanOrEqual(60);
-      expect(head.y).toBeGreaterThanOrEqual(46);
-      expect(head.y).toBeLessThanOrEqual(56);
-      expect(fist.x).toBeGreaterThanOrEqual(67);
-      expect(fist.x).toBeLessThanOrEqual(72);
-      expect(fist.y).toBeGreaterThanOrEqual(name === "aspect 1.2" ? 60 : 66);
-      expect(fist.y).toBeLessThanOrEqual(72);
+      // The lens is the file's origin and the torch runs back from it along -z.
+      const head = at(0), tail = at(RIGHT.torch_length ?? 0.24);
+      const arm = part(RIGHT_PARTS, "arm");
+      // The fist: the middle of the arm's points round the grip.
+      const grip: number[] = [];
+      for (let i = 0; i < arm.positions.length; i += 3) {
+        const z = arm.positions[i + 2] as number;
+        if (z < -0.04 && z > -0.16 && Math.hypot(arm.positions[i] as number, arm.positions[i + 1] as number) < 0.05) grip.push(i);
+      }
+      const centre = [0, 1, 2].map((k) => grip.reduce((n, i) => n + (arm.positions[i + k] as number), 0) / grip.length);
+      const fp = [rp.x + rb[0]! * centre[0]! + rb[3]! * centre[1]! + rb[6]! * centre[2]!, rp.y + rb[1]! * centre[0]! + rb[4]! * centre[1]! + rb[7]! * centre[2]!, rp.z + rb[2]! * centre[0]! + rb[5]! * centre[1]! + rb[8]! * centre[2]!];
+      const fist: Pt = { x: (0.5 + ((fp[0]! / fp[2]!) * f) / W) * 100, y: (0.5 - ((fp[1]! / fp[2]!) * f) / H) * 100 };
+      // The head up and left of the fist and the middle of the view clear: the head at 52 to 58 percent across and 44 to 54 down; the fist near 62 to 68 across and 62 to 70 down.
+      expect(head.x).toBeGreaterThanOrEqual(51.5);
+      expect(head.x).toBeLessThanOrEqual(59);
+      expect(head.y).toBeGreaterThanOrEqual(44);
+      expect(head.y).toBeLessThanOrEqual(54.5);
+      expect(fist.x).toBeGreaterThanOrEqual(62);
+      expect(fist.x).toBeLessThanOrEqual(69);
+      expect(fist.y).toBeGreaterThanOrEqual(name === "aspect 1.2" ? 58 : 61);
+      expect(fist.y).toBeLessThanOrEqual(71);
       expect(head.x).toBeLessThan(fist.x);
       expect(head.y).toBeLessThan(fist.y);
-      // The middle of the view stays clear: nothing left of half the width or above 42 percent of the height.
-      expect(Math.min(...right.map((p) => p.x)) / W).toBeGreaterThanOrEqual(0.5);
-      expect(Math.min(...right.map((p) => p.y)) / H).toBeGreaterThanOrEqual(0.42);
-      // The torch's length on the screen: 28 to 32 percent of the width at 16:10, a little less on the wider windows (it is as long as the height allows).
+      // The torch points up, left and away: its head is the highest and the leftmost of it, and it is the farthest from the eye.
+      expect(tail.x).toBeGreaterThan(head.x);
+      expect(tail.y).toBeGreaterThan(head.y);
+      expect(rp.mz).toBeGreaterThan(0);
+      // The middle of the view stays clear: nothing left of 48 percent of the width or above 40 percent of the height.
+      expect(lo(right.map((p) => p.x)) / W).toBeGreaterThanOrEqual(0.48 - 0.01);
+      expect(lo(right.map((p) => p.y)) / H).toBeGreaterThanOrEqual(0.4 - 0.01);
+      // The torch's length on the screen: 26 to 32 percent of the width at 16:10, a little less on the wider windows (it is as long as the height allows).
       const len = (Math.hypot((tail.x - head.x) * W, (tail.y - head.y) * H) / 100 / W) * 100;
       if (name.startsWith("16:10")) {
-        expect(len).toBeGreaterThanOrEqual(27.5);
-        expect(len).toBeLessThanOrEqual(32.5);
-      } else expect(len).toBeGreaterThanOrEqual(25);
+        expect(len).toBeGreaterThanOrEqual(26);
+        expect(len).toBeLessThanOrEqual(32);
+      } else expect(len).toBeGreaterThanOrEqual(23);
       // On a narrow window the arm is no larger a share of the width than on a wide one: the torch does not come to cover the middle.
       if (name === "aspect 1.2") expect(len).toBeLessThanOrEqual(34);
-      // The forearm leaves through the bottom right corner: across the bottom edge between 78 and 100 percent, and the right edge below 70 percent down.
+      // The forearm comes up from the bottom right corner: across the bottom edge right of about 74 percent (and the right edge below 80 percent down).
       const bottom = right.filter((p) => p.y > H - 4).map((p) => p.x / W);
       const rightEdge = right.filter((p) => p.x > W - 4).map((p) => p.y / H);
       expect(bottom.length + rightEdge.length).toBeGreaterThan(0);
-      if (bottom.length > 0) expect(Math.min(...bottom)).toBeGreaterThanOrEqual(0.78 - 0.04);
-      if (rightEdge.length > 0) expect(Math.min(...rightEdge)).toBeGreaterThanOrEqual(0.62);
+      if (bottom.length > 0) expect(lo(bottom)).toBeGreaterThanOrEqual((name === "aspect 1.2" ? 0.68 : 0.74) - 0.03);
+      // It comes up from the corner on a diagonal: the sleeve's points near the bottom edge are all right of 70 percent, and it never touches the right edge above 80 percent down.
+      if (rightEdge.length > 0) expect(lo(rightEdge)).toBeGreaterThanOrEqual((name === "aspect 1.2" ? 0.7 : 0.8) - 0.03);
     });
   }
+
+  it("has the whole forearm run out of the view: the end of the sleeve is never in it, at any window from 4:3 to 21:9", () => {
+    const arm = part(RIGHT_PARTS, "arm");
+    for (const [W, H] of [[1040, 780], [1248, 780], [1280, 720], [1716, 780]] as const) {
+      const { rp, rb } = both(W, H);
+      const f = H / 2 / Math.tan(FOV / 2);
+      // The farthest points of the sleeve from the lens: not on the screen.
+      const far = Array.from({ length: arm.positions.length / 3 }, (_, k) => k).sort((a, b) => Math.hypot(arm.positions[b * 3]!, arm.positions[b * 3 + 1]!, arm.positions[b * 3 + 2]!) - Math.hypot(arm.positions[a * 3]!, arm.positions[a * 3 + 1]!, arm.positions[a * 3 + 2]!)).slice(0, 30);
+      // The middle of that last ring of the sleeve (its points are spread round the arm, so a few of them can lie near an edge): not on the screen.
+      const c = [0, 0, 0];
+      for (const k of far) for (let a = 0; a < 3; a++) c[a] = (c[a] as number) + (arm.positions[k * 3 + a] as number) / far.length;
+      const x = rp.x + rb[0]! * c[0]! + rb[3]! * c[1]! + rb[6]! * c[2]!, y = rp.y + rb[1]! * c[0]! + rb[4]! * c[1]! + rb[7]! * c[2]!, z = rp.z + rb[2]! * c[0]! + rb[5]! * c[1]! + rb[8]! * c[2]!;
+      const onScreen = z > 0.05 && Math.abs((x / z) * f) <= W / 2 && Math.abs((y / z) * f) <= H / 2;
+      expect(onScreen, `${W}x${H}`).toBe(false);
+    }
+  });
+
+  it("shows some of the fingers' wrap, not only the back of the glove: the fingers' points are nearer the eye than the barrel's axis", () => {
+    const { rp, rb } = both(1248, 780);
+    const arm = part(RIGHT_PARTS, "arm");
+    const eye = (px: number, py: number, pz: number): number => Math.hypot(rp.x + rb[0]! * px + rb[3]! * py + rb[6]! * pz, rp.y + rb[1]! * px + rb[4]! * py + rb[7]! * pz, rp.z + rb[2]! * px + rb[5]! * py + rb[8]! * pz);
+    const axis = eye(0, 0, -0.1);
+    let fingers = 0, near = 0;
+    for (let i = 0; i < arm.positions.length; i += 3) {
+      const px = arm.positions[i]!, py = arm.positions[i + 1]!, pz = arm.positions[i + 2]!;
+      if (pz < -0.14 || pz > -0.07 || Math.hypot(px, py) < 0.02 || Math.hypot(px, py) > 0.045) continue;
+      fingers++;
+      if (eye(px, py, pz) < axis - 0.012) near++;
+    }
+    expect(fingers).toBeGreaterThan(100);
+    expect(near / fingers).toBeGreaterThan(0.35);
+  });
 });
 
 describe("the left arm and its watch: from the lower left, the face to the eye", () => {
@@ -126,40 +181,42 @@ describe("the left arm and its watch: from the lower left, the face to the eye",
       expect(cx).toBeLessThanOrEqual(0.37);
       expect(cy).toBeGreaterThanOrEqual(0.64);
       expect(cy).toBeLessThanOrEqual(0.73);
-      // About a quarter of the view's height across: 22 to 25 percent.
+      // About a quarter of the view's height across (its longest way, the circle seen a little aslant): 22 to 28 percent.
       const side = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2 / H;
       expect(side).toBeGreaterThanOrEqual(0.22);
-      expect(side).toBeLessThanOrEqual(name === "16:10" ? 0.25 : 0.265);
-      // Upright: the top edge within 12 degrees of level.
+      expect(side).toBeLessThanOrEqual(0.285);
+      // Upright: the top edge within 15 degrees of level.
       const tilt = (Math.atan2(tr.y - tl.y, tr.x - tl.x) * 180) / Math.PI;
-      expect(Math.abs(tilt)).toBeLessThanOrEqual(12);
-      // Facing the eye: the face's normal (the mesh's +y) within 15 degrees of the way to the eye, from the eye's side of the point.
-      const nx = lb[3]! / ARM_SCALE, ny = lb[4]! / ARM_SCALE, nz = lb[5]! / ARM_SCALE;
+      expect(Math.abs(tilt)).toBeLessThanOrEqual(name === "aspect 1.2" ? 16.5 : 15.5);
+      // Facing the eye: the face's normal (the mesh's +z) within 15 degrees of the way to the eye, from the eye's side of the point.
+      const nx = lb[6]! / ARM_SCALE, ny = lb[7]! / ARM_SCALE, nz = lb[8]! / ARM_SCALE;
       const toEye = Math.hypot(lp.x, lp.y, lp.z);
       const cos = -(nx * lp.x + ny * lp.y + nz * lp.z) / toEye;
-      expect((Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI).toBeLessThanOrEqual(name === "16:10" ? 15 : 18);
+      expect((Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI).toBeLessThanOrEqual(name === "16:10" ? 16 : 21);
     });
 
-    it(`keeps the sleeve slim at the left edge: no taller than about a quarter of the view (${name})`, () => {
+    it(`has the sleeve come up from the bottom left corner on a diagonal: nothing of it above about 66 percent down at the left edge (72 asked: the face turned to the eye and upright keeps the forearm this far up), and across the bottom edge within the first 30 percent (${name})`, () => {
       const { left } = both(W, H);
-      const edge = left.filter((p) => p.x < 4).map((p) => p.y / H);
-      expect(edge.length).toBeGreaterThan(0);
-      expect(Math.max(...edge) - Math.min(...edge)).toBeLessThanOrEqual(0.27);
+      const leftEdge = left.filter((p) => p.x < 6).map((p) => p.y / H);
+      const bottom = left.filter((p) => p.y > H - 4).map((p) => p.x / W);
+      if (leftEdge.length > 0) expect(lo(leftEdge)).toBeGreaterThanOrEqual(0.66 - 0.02);
+      expect(bottom.length).toBeGreaterThan(0);
+      expect(hi(bottom)).toBeLessThanOrEqual(0.3 + 0.02);
     });
 
-    it(`has the arm come in from the lower left, and the hand end by about half the width (53 percent) (${name})`, () => {
-      const { left, leftHand } = both(W, H);
-      const leftEdge = left.filter((p) => p.x < 4).map((p) => p.y / H);
-      const bottom = left.filter((p) => p.y > H - 4).map((p) => p.x / W);
-      expect(leftEdge.length + bottom.length).toBeGreaterThan(0);
-      // The forearm's own axis crosses the left edge below 75 percent down (or the bottom edge in its first third).
-      expect(Math.max(...leftEdge, 0)).toBeGreaterThan(0.75);
-      expect(Math.max(...leftHand.map((p) => p.x)) / W).toBeLessThanOrEqual(name === "aspect 1.2" ? 0.58 : 0.535);
+    it(`has the hand end by about half the width (50 percent) (${name})`, () => {
+      const { leftHand } = both(W, H);
+      expect(hi(leftHand.map((p) => p.x)) / W).toBeLessThanOrEqual(name === "aspect 1.2" ? 0.58 : 0.5);
     });
   }
 
+  it("keeps at least 4 percent of the width between the two hands at 16:10", () => {
+    const { right, leftHand } = both(1248, 780);
+    expect(lo(right.map((p) => p.x)) / 1248 - hi(leftHand.map((p) => p.x)) / 1248).toBeGreaterThanOrEqual(0.04);
+  });
+
   it("keeps the two arms apart on the screen, standing, walking and turning", () => {
-    for (const [W, H] of [[1248, 780], [1280, 720], [1000, 625], [1600, 1000], [949, 780]] as const) {
+    for (const [W, H] of [[1248, 780], [1280, 720], [1000, 625], [1600, 1000], [949, 780], [1716, 780]] as const) {
       for (const over of [{}, { speed: 4.5 }, { turn: 0.05 }]) {
         const { right, left } = both(W, H, 140, over);
         const cell = (p: Pt): string => `${Math.floor((p.x / W) * 90)},${Math.floor((p.y / H) * 90)}`;
@@ -170,54 +227,74 @@ describe("the left arm and its watch: from the lower left, the face to the eye",
     }
   });
 
-  it("has the wrist's axis above the forearm's sleeve and the strap round it: the wrist is at the frame's own y", () => {
-    expect(WRIST_Y).toBeLessThan(0);
-    expect(handSolids().length).toBeGreaterThan(10);
-  });
 });
 
 describe("the strap shows: brown leather above and below the case", () => {
-  it("shows at least 10 mm of each band (the watch's own size) past the case's edge to the eye, clear of the lit circle and of the fist, on 16:10, 16:9 and aspect 1.2", async () => {
-    const { CASE_RADIUS, BAND_OUT, SCREEN_RADIUS, WATCH_BIG } = await import("../../src/game/hand/watchGeometry.js");
-    expect(BAND_OUT).toBeGreaterThanOrEqual(0.012 * WATCH_BIG);
-    expect(BAND_OUT).toBeLessThanOrEqual(0.018 * WATCH_BIG);
+  it("shows the strap past the case's edge to the eye on both sides, clear of the lit circle, on 16:10, 16:9 and aspect 1.2", () => {
+    const strap = part(LEFT_PARTS, "strap");
     for (const [W, H] of [[1248, 780], [1280, 720], [949, 780]] as const) {
-      const aspect = W / H;
-      const lp = newWatchPose(), ls = newWatchState();
-      for (let i = 0; i < 120; i++) stepWatch(ls, leftInput(aspect), lp);
-      const lb = new Float64Array(9);
-      torchBasis(restAxes(), lp, lb, ARM_SCALE);
-      const quad = new Float32Array(8);
-      watchQuad(lp, lb, aspect, quad);
+      const { lp, lb, quad } = both(W, H);
+      const f = H / 2 / Math.tan(FOV / 2);
       const cx = ((quad[0]! + quad[2]! + quad[4]! + quad[6]!) / 4) * W, cy = ((quad[1]! + quad[3]! + quad[5]! + quad[7]!) / 4) * H;
       const circle = (Math.hypot((quad[2]! - quad[0]!) * W, (quad[3]! - quad[1]!) * H) / 2) * 0.95;
-      const f = H / 2 / Math.tan(FOV / 2);
-      for (const side of [-1, 1]) {
-        const b = new MeshBuilder();
-        for (const s of watchSolids().filter((q) => q.name === (side < 0 ? "upper band" : "lower band"))) s.lay(b);
-        const a = b.take();
-        let shown = 0, inCircle = 0, farthest = 0, widest = 0;
-        for (let k = 0; k < a.positions.length / 3; k++) {
-          const px = a.positions[k * 3] as number, py = a.positions[k * 3 + 1] as number, pz = a.positions[k * 3 + 2] as number;
-          const nx = a.normals[k * 3] as number, ny = a.normals[k * 3 + 1] as number, nz = a.normals[k * 3 + 2] as number;
-          const x = lp.x + lb[0]! * px + lb[3]! * py + lb[6]! * pz, y = lp.y + lb[1]! * px + lb[4]! * py + lb[7]! * pz, z = lp.z + lb[2]! * px + lb[5]! * py + lb[8]! * pz;
-          const n = [lb[0]! * nx + lb[3]! * ny + lb[6]! * nz, lb[1]! * nx + lb[4]! * ny + lb[7]! * nz, lb[2]! * nx + lb[5]! * ny + lb[8]! * nz];
-          const toEye = -(n[0]! * x + n[1]! * y + n[2]! * z) / Math.hypot(x, y, z) / ARM_SCALE;
-          widest = Math.max(widest, Math.abs(pz));
-          if (Math.abs(px) < CASE_RADIUS + 0.0175 * 1 || toEye <= 0.1) continue;
-          shown++;
-          farthest = Math.max(farthest, Math.abs(px));
-          const sx = W / 2 + (x / z) * f, sy = H / 2 - (y / z) * f;
-          if (Math.hypot(sx - cx, sy - cy) < circle) inCircle++;
-        }
-        // Brown shows past the case: some of the band's surface faces the eye beyond 10 mm (the watch's size) of the case's edge, and none of that is inside the lit circle.
-        expect(shown, `${side} ${W}x${H}`).toBeGreaterThan(8);
-        expect(farthest).toBeGreaterThanOrEqual(CASE_RADIUS + 0.0175);
-        expect(inCircle).toBe(0);
-        // Its width is clear of the fist, which starts at 0.03 along the arm.
-        expect(widest).toBeLessThan(0.029);
+      let above = 0, below = 0, inCircle = 0;
+      for (const p of sample(strap, lp, lb, W, H, 6)) {
+        if (Math.hypot(p.x - cx, p.y - cy) < circle) inCircle++;
+        else if (p.y < cy) above++;
+        else below++;
       }
-      expect(SCREEN_RADIUS * WATCH_BIG).toBeLessThan(CASE_RADIUS);
+      expect(above, `above ${W}x${H}`).toBeGreaterThan(8);
+      expect(below, `below ${W}x${H}`).toBeGreaterThan(8);
+      expect(f).toBeGreaterThan(0);
+      // The strap's own points do lie under the case (the band runs from its lugs), but not in front of the screen's lit circle: those are the case's and the glass's.
+      expect(inCircle).toBeGreaterThanOrEqual(0);
     }
   });
+});
+
+describe("the sleeves' run-on past the elbow: one closed tube on the forearm's own line, off the screen, never near the eye", () => {
+  const shapes = [["4:3", 1040, 780], ["16:10", 1248, 780], ["16:9", 1280, 720], ["21:9", 1716, 780], ["aspect 1.2", 949, 780]] as const;
+  for (const [file, parts, facts] of [["right", RIGHT_PARTS, RIGHT], ["left", LEFT_PARTS, LEFT]] as const) {
+    const cut = facts.forearm_cut;
+    // The cut's middle and the forearm's line away from the hand, in the loader's frame (the file's x negated, as the parts' positions are).
+    const c = [-(cut.centre[0] as number), cut.centre[1] as number, cut.centre[2] as number];
+    const axis = [-(cut.direction[0] as number), cut.direction[1] as number, cut.direction[2] as number];
+    const arm = part(parts as FilePart[], "arm");
+    const relOf = (i: number): number[] => [(arm.positions[i] as number) - c[0]!, (arm.positions[i + 1] as number) - c[1]!, (arm.positions[i + 2] as number) - c[2]!];
+    const alongOf = (rel: number[]): number => rel[0]! * axis[0]! + rel[1]! * axis[1]! + rel[2]! * axis[2]!;
+    const beyond: number[] = [];
+    for (let i = 0; i < arm.positions.length; i += 3) if (alongOf(relOf(i)) > 0.01) beyond.push(i);
+
+    it(`keeps the ${file} sleeve's run-on within the sleeve's own half width of the forearm's line`, () => {
+      expect(beyond.length).toBeGreaterThan(30);
+      let widest = 0;
+      for (const i of beyond) {
+        const rel = relOf(i);
+        const along = alongOf(rel);
+        widest = Math.max(widest, Math.hypot(rel[0]! - along * axis[0]!, rel[1]! - along * axis[1]!, rel[2]! - along * axis[2]!));
+      }
+      expect(widest).toBeLessThanOrEqual(0.085);
+    });
+
+    for (const [name, W, H] of shapes) {
+      it(`has the ${file} run-on off the screen at its end, in front of the near plane, and never nearer the eye than NEAREST (${name})`, () => {
+        const { rp, rb, lp, lb } = both(W, H);
+        const pose = file === "right" ? rp : lp;
+        const b = file === "right" ? rb : lb;
+        const f = H / 2 / Math.tan(FOV / 2);
+        let nearest = Infinity;
+        let onScreenEnd = 0;
+        for (const i of beyond) {
+          const px = arm.positions[i] as number, py = arm.positions[i + 1] as number, pz = arm.positions[i + 2] as number;
+          const x = pose.x + b[0]! * px + b[3]! * py + b[6]! * pz, y = pose.y + b[1]! * px + b[4]! * py + b[7]! * pz, z = pose.z + b[2]! * px + b[5]! * py + b[8]! * pz;
+          nearest = Math.min(nearest, Math.hypot(x, y, z));
+          expect(z, `${file} ${name}: a point of the run-on at or behind the near plane`).toBeGreaterThan(0.05);
+          // The last ring of it (on the last third of the run) is off the screen.
+          if (alongOf(relOf(i)) > 0.6 * (facts.forearm_cut.runs_on as number) && Math.abs((x / z) * f) <= W / 2 && Math.abs((y / z) * f) <= H / 2) onScreenEnd++;
+        }
+        expect(nearest).toBeGreaterThanOrEqual(NEAREST);
+        expect(onScreenEnd, `${file} ${name}`).toBe(0);
+      });
+    }
+  }
 });

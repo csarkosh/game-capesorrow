@@ -49,7 +49,9 @@ describe("the cafe's counter, for looking at a face in the torch", () => {
     const fx = room.tx * staff.face.s - room.nx * staff.face.d;
     const fz = room.tz * staff.face.s - room.nz * staff.face.d;
     const person = { key: 1, x: head.x, y: floor, z: head.z, yaw: Math.atan2(fx, fz), scale: 1, walking: false, seated: false, sheltered: true, partner: -1, venue: "cafe" as const };
-    process.stdout.write(`the cafe's counter (seed ${SEED}): look ${face}; the barista is ${dist.toFixed(2)} m from the lens, ${((angle * 180) / Math.PI).toFixed(1)} degrees off the torch's axis (the cone's half angle is ${(((TORCH_ANGLE / 2) * 180) / Math.PI).toFixed(1)}), eye height ${(eyeY - floor).toFixed(2)} m over the floor\n`);
+    const toHead = [v[0]! / dist, v[1]! / dist, v[2]! / dist];
+    const offView = Math.acos(toHead[0]! * axes.fx + toHead[1]! * axes.fy + toHead[2]! * axes.fz);
+    process.stdout.write(`the cafe's counter (seed ${SEED}): look ${face}; the barista is ${dist.toFixed(2)} m from the lens, ${((angle * 180) / Math.PI).toFixed(1)} degrees off the torch's axis and ${((offView * 180) / Math.PI).toFixed(1)} off the view's middle (the cone's half angle is ${((TORCH_ANGLE / 2 * 180) / Math.PI).toFixed(1)})\n`);
     expect(dist).toBeLessThan(DAZZLE_REACH);
     expect(angle).toBeLessThan(TORCH_ANGLE / 2);
     const torch = { lit: true, x: lens.x, y: lens.y, z: lens.z, dx: lens.dx, dy: lens.dy, dz: lens.dz };

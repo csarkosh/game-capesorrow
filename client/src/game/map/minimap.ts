@@ -593,7 +593,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
       const q = seen.quad;
       const across = Math.hypot(((q[2] as number) - (q[0] as number)) * vw, ((q[3] as number) - (q[1] as number)) * vh);
       const backing = watchBacking(across, win.devicePixelRatio || 1, canvas.width);
-      if (backing !== canvas.width) {
+      if (backing !== canvas.width || canvas.height !== canvas.width) {
         setBitmap(WATCH_W, WATCH_H, backing / WATCH_W);
         dirty = true;
       }
@@ -674,6 +674,11 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     const t0 = env.clock();
     const watch = mode === "watch";
     const w = paused ? bigW : smallSize;
+    // The drawing's scale is always the canvas's own width over the layout's, read here at every draw and never kept across a resize (a backing that was kept by the watch's hysteresis, or left by another mode, is then still drawn to fit): the canvas is made to the layout's shape if it is not.
+    const lw = paused ? bigW : watch ? WATCH_W : smallSize;
+    const lh = paused ? bigH : watch ? WATCH_H : smallSize;
+    scale = canvas.width / lw;
+    if (Math.abs(canvas.height - lh * scale) > 1) setBitmap(lw, lh, scale);
     const v = paused ? view() : watch ? watchView(WATCH_W, WATCH_H, f.x, f.z, f.heading) : minimapView(vs, w, w, f.x, f.z, f.heading);
     const scene: Scene = {
       data, view: v, e: watch ? 0 : eased(vs.look), night: eased(vs.night), dpr: scale, large: paused, soft: !paused && !watch, watch,

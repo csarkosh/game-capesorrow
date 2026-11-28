@@ -697,75 +697,64 @@ lamp bit is a level the sampler raises for anything that asks and is the car's s
 still arrives as the bit, which `side.command` reads for a touch screen only. Nothing else flips it. In a car F is the
 car's, as it was, and the torch is left as it was.
 
-- **The shapes** (`game/hand/`): `flashlightGeometry.ts` is a chunky machined-steel tactical torch of real size (21 cm, a
-  5.5 cm head under a 6 cm knurled bezel ring, a stepped shoulder, a 4 cm grip of two knurled bands with a raised eight-sided
-  anti-roll ring between them, a wide tail with six guard posts round a recessed button, a lens that is dark glass, and a
-  separate lit disc laid in front of it that is drawn only while the lamp is on and lights itself at every hour).
-  `handGeometry.ts` is the right hand gripping the second band in a smooth dark leather glove: each finger one lofted tube
-  from a soft knuckle to a rounded tip wrapping the barrel, a thumb along it toward the head, a full rounded back of the
-  hand with a seam, a thick wrist with a cuff strap and buckle, and a dark waxed coat's cuff (with a piped edge), sleeve,
-  seam and horn button; the head stands 7 cm clear of the fist. Both are built with the town's `MeshBuilder` from
-  `handShapes.ts` (`loft`, smooth bodies through ellipse sections; `knurl`, a ring that alternates between two radii; frustums
-  and boxes with their edges cut away), every one a closed solid. 3,318 vertices and 3,310 triangles for the hand and the
-  torch, 80 vertices for the lens: 3,398 in all, about 0.19 MB on the GPU, two draws (three with the left arm). Textures are the town's own layers: the
-  glove is `rubber` (the dark asphalt's fine grain, one even near-black brown, no wear), the coat `cloth` (the sidewalk
-  concrete's even grain laid fine and tinted olive), the torch's steel `sheet` (the aged corrugated metal, laid fine so its
-  ribs and grime read as the machining and the wear) and its ring, posts and buckle `steel`; the rooms' own layers are not
-  loaded in the street and are not used. `client/tools/handPreview.ts` (`npx tsx tools/handPreview.ts`, run from `client/`)
-  draws the hand the way the game places it, in software, to PNGs on the external disk, for judging the form and the place
-  without a browser.
+- **The models** (`game/hand/handModels.ts`; `tools/models/buildHands.py` writes them, `previewHands.py` draws them): the arms are real models, `client/assets/models/hand.right.glb`
+  (the right forearm and hand in a black leather sleeve and fingerless glove, gripping a 24 cm tactical torch, four fingers wrapped round the knurled grip and the thumb along it toward the
+  head, which stands clear of the fist) and `hand.left.glb` (the left forearm and hand in the same sleeve and glove, a loose half fist, with a watch on the wrist: a black case, a glass over a
+  plain black screen, and a brown leather strap of our own, two bands round the sleeve that meet underneath under a keeper), with `hands.json`, their manifest. Each is a static mesh: the
+  source's skin is baked in the build (the fingers and the wrist posed, by linear blend skinning), and a file is a few parts, a part a material, told apart by its name (`arm`, `torch`,
+  `torch_glass`; `arm`, `watch_case`, `watch_back`, `watch_glass`, `watch_screen`, `strap`). The right file's frame is the torch's (origin at the middle of the lens, +z the way it points, +y up as
+  held); the left's has its origin at the screen's middle, +z out of the screen, +y toward twelve and the fingers toward +x (`RIGHT_FRAME`, `LEFT_FRAME`); both are right handed, and the loader
+  mirrors x. The sleeve is cut at its natural end and carried on as one closed tube on the forearm's own line (`forearm_cut`: where, which way, how far), because the model's arms are short and ended in view on a narrow window: the right run-on is 45 cm; the left sleeve comes toward the eye and is cut 4 cm from its elbow and capped at once, so that none of it reaches the near plane. The watch is
+  drawn `WATCH_BIG` (1.75) times larger than life against its arm, baked into the file. `hands.json` gives the numbers the game places things by: the lens, the axis and the torch's length, the
+  screen's four corners and diameter, and the sleeves' cut ends. Textures are KTX2 (`KHR_texture_basisu`, as the vehicles': a byte a texel on the GPU): a 1024 colour map and 512 normal and
+  occlusion-roughness-metal maps for the arms and for the torch, and a 128 normal tile of the arms' own for the strap's grain. The arms' three maps are the same bytes in both files, so with
+  `shareTextures` (`modelTextureOptions`) they are one GPU texture each between them. Fetched on the first F (1.57 MB) and the first G (0.86 MB, of which the arms' maps, 0.50 MB, are fetched
+  again and not held twice); 4.2 MB of GPU texture with every mip level for both arms and the torch, and about 1.5 MB of geometry (22,500 vertices, 26,500 triangles in all); three draws for the hand and torch
+  (the glass is drawn only while the lamp is on) and six for the left arm. `client/test/hand/armModels.ts` reads the files for the tests.
 - **The pose** (`handPose.ts`, pure): the hand is down, out of the view, with the lamp off; it rises over 0.25 s to the
   hold and lowers over 0.2 s, straight up from and down to 0.55 m below it (the same depth and place across the screen,
   so it drops out of the bottom of the view and is under it on any window from 4:3 to 21:9, and is not drawn at all
-  then). The hold is worked out from the window's aspect: the lens (the head's front) 0.55 m ahead of the eye, at 54 percent
-  across and 50 percent down the screen. The arm is drawn `handScaleFor(aspect)` times life size about the lens (`HAND_SCALE` 1.65 at 16:10 and wider, in proportion to the width below it, so that on a narrow window the torch is the same share of the width and does not cover the middle), larger than life
-  on purpose as a first person view model is, so that the torch is 30 percent of the width long on a 16:10 window, the fist at
-  71 percent across and 69 percent down, the head up and to its left, the middle of the view clear (nothing left of half the
-  width or above 42 percent of the height), and the forearm, thick and growing toward the corner, leaves through the bottom
-  right (`client/test/hand/handScreen.test.ts`). The torch is turned 0.7 rad about its own axis, which shows the back of the
-  hand and the knuckles, and it has two axes: the beam's (`TILT_YAW`, `TILT_PITCH`: ahead, 2 degrees left and 11 degrees down,
-  so the beam's middle meets the ground about 7 m ahead) and the one it is drawn along (`DRAWN_YAW` -1.1, `DRAWN_PITCH` -0.58:
+  then). The hold is worked out from the window's aspect: the lens (the head's front) 0.55 m ahead of the eye, at 58 percent
+  across and 48 percent down the screen. The arm is drawn `handScaleFor(aspect)` times life size about the lens (`HAND_SCALE` 1.48 at 16:10 and wider, in proportion to the width below it, so that on a narrow window the torch is the same share of the width and does not cover the middle), larger than life
+  on purpose as a first person view model is, so that the torch is 26 to 32 percent of the width long on a 16:10 window, the fist at
+  about 66 percent across and 68 percent down, the head up and to its left, the middle of the view clear (nothing left of 48 percent of the
+  width or above 40 percent of the height), and the forearm leaves through the right edge, the fingers' wrap in view
+  (`client/test/hand/handScreen.test.ts`). The torch is turned 3.46 rad about its own axis, which shows the fingers round the grip, and it has two axes: the beam's (`aimAngles`: from the lens, below and right of the eye, through the middle of the view `AIM_DISTANCE` (8 m) ahead, so the light goes where the player looks) and the one it is drawn along (`DRAWN_YAW` -0.87, `DRAWN_PITCH` -1.07:
   across the view toward the upper left, the head up and far, the tail low and near, seen from behind and above). The beam
-  leaves the lens's place along the first, and is not scaled; the lit lens disc is part of the torch's mesh and faces along the
-  second. A walking bob follows the ground speed, a slow breath sways it when still, it lags a quick turn on a spring by 4
+  leaves the lens's place along the first, and is not scaled; the torch's glass is part of its file and faces along the
+  second, and glows (its plugin adds a warm white and makes it opaque) while the lamp is on. A walking bob follows the ground speed, a slow breath sways it when still, it lags a quick turn on a spring by 4
   degrees at most, sits lower and steadier when sprinting, rises a little when the view looks steeply down, is drawn in toward
   the eye by a wall ahead (a probe along the view with the town's own test of a place; none in a room), and is never nearer the
-  eye than 14 cm. It is hidden while seated, getting in or out and under the dark screen at a door. Both arms are drawn with the
-  town's indoor material shifted toward the eye in the depth buffer (`HAND_AHEAD_UNITS`, the engine's `ahead` plugin: 0.4 of the
+  eye than 14 cm. It is hidden while seated, getting in or out and under the dark screen at a door. Both arms are drawn with a
+  shift toward the eye in the depth buffer (`HAND_AHEAD_UNITS`, the engine's `ahead` plugin: 0.4 of the
   buffer's range, so no arm is sunk into a wall that the player stands against); the retract above stays as well, and setting
   the units to 0 takes the shift off.
-- **The left arm and the watch** (`watchGeometry.ts`, `watchPose.ts`, `watchParts.ts`, `watchSeen.ts`): G raises the map on the
-  player's left wrist, as the torch rises on F. The arm is in a dark glove with a dark knit cuff, the coat's sleeve with its cuff
-  pushed back and no wider than a coat's cuff over a slim wrist (27 mm), and a round smart watch of our own: a 45 mm pebble of a case with a slim polished rim, a black glass that
-  domes down to it, a crown at three o'clock and a small button, a brown leather strap: two bands 22 mm wide (the watch's own size) leave the case at twelve and six o'clock, run out 15 mm past its edge and curve down round the wrist, each with a line of pale stitching along its edges, and a keeper on the lower one (the leather is the `rubber` layer's fine grain tinted brown; no other layer of the town reads as
-  leather), 2,285 vertices in one draw. The lit screen is a circle 36 mm across inset in the glass: dark in the mesh, and the page draws the map
-  onto it, by `WATCH_SEEN.quad`, which each frame holds the four corners of the square that bounds the circle, in the view (x across
-  0 to 1, y down 0 to 1; top left, top right, bottom right, bottom left as the wearer reads it). The watch is drawn `WATCH_BIG` (1.75)
-  times larger than a real one on an arm `ARM_SCALE` (1.6) times life size, so that the circle is 22 to 25 percent of the view's
-  height across while the sleeve at the left edge is a quarter of it; the screen is at 33 percent across and 70 percent down, the face within 15 degrees
-  of facing the eye and the top edge within 12 degrees of level, the forearm coming in from the lower left and the hand continuing in line with it, a loose fist with
-  the back of the hand to the eye, ending at about 53 percent across (58 on a window of aspect 1.2);
-  width; it rises from below in 0.3 s and drops in 0.25 s, bobs and lags as the right arm does, and is not drawn in a car. G flips it (`watchKey.ts`: a key-down that is not a repeat, the pointer locked, not aimed at a field, on foot and in a car); M stays the engine's mute.
+- **The left arm and the watch** (`hand.left.glb`, `watchPose.ts`, `watchParts.ts`, `watchSeen.ts`): G raises the map on the
+  player's left wrist, as the torch rises on F. The lit screen is a circle 74 mm across (a 45 mm watch drawn `WATCH_BIG` times larger) in the glass: black in the mesh, and the page draws the map
+  onto it, by `WATCH_SEEN.quad`, which each frame holds the four corners of the square that bounds the circle (`hands.json`'s `screen_corners`, projected by `watchQuad`), in the view (x across
+  0 to 1, y down 0 to 1; top left, top right, bottom right, bottom left as the wearer reads it). The arm is drawn `ARM_SCALE` (1.6) times life size, so that the circle is 22 to 28 percent of the view's
+  height across its longest way; the screen is at about 30 percent across and 70 percent down, the face within 15 degrees of facing the eye and the top edge within 12 degrees of level, the forearm
+  coming in from the lower left and the hand continuing in line with it, a loose half fist with the back of the hand to the eye, ending at about 52 percent across (58 on a window of aspect 1.2). The
+  pose's forearm axis and roll are stood on the mesh's axes by `watchMeshBasis` (the file's x runs to the fingers, which the mirror makes the mesh's -x). It rises from below in 0.3 s and drops in
+  0.25 s, bobs and lags as the right arm does, and is not drawn in a car. G flips it (`watchKey.ts`: a key-down that is not a repeat, the pointer locked, not aimed at a field, on foot and in a car); M stays the mute.
   The console's `watch on|off` raises and lowers it.
-- **How lit the arms are** (`armLevel.ts`, `ARM_CODE` in `townMaterial.ts`). Both arms are drawn with a copy of the town's indoor material whose vertices carry no baked light, so
-  that they were as bright as noon at any hour. The copy (`arm` in the surface plugin, one more define) scales the arm's albedo by `material.armLevel`.x before the scene's light
-  falls on it, written each frame from where the player stands: outdoors the night's floor (0.1) up to 1 by how much day there is (`daylightAt`), in a lit room 0.55, in a shut
-  one 0.14 and a share of the day. `armLevel`.y is the faint warm lift of a lit torch on the hand that holds it, at most 0.15 of the albedo, written over the hour's lit gain because
-  the material multiplies glows by it. The torch's own spill (`FLASH_CODE`) on a surface is 0.08 and no longer 0.3.
-- **The meshes** (`handParts.ts`) are made once, when the torch is first switched on, and placed each frame from the
-  camera's pose and the hand's by the meshes' own position and rotation. They are drawn with the town's indoor material
-  (the layers, the air, the night's lamps), so the hand is lit by the day and dark at night but for its own light and the
-  street's lamps, in the opaque draws with the depth buffer, never in the ink line's mask or the rain's cover. Two draws.
+- **How the arms are lit.** The engine's own lighting does it, as it does the people's and the vehicles': each part keeps the loader's PBR material (the file's maps) with the town's air, the
+  street lamps near the player (`peopleLampPlugin`, whose uniforms `townParts.ts` writes with the lamps the town's surfaces take) and the depth shift, so an arm is lit by the day, dark at night, and
+  takes the street's lamps. The torch's lamp is behind the lens's plane for the hand that holds it, outside its cone, so it does not light its holder; the rooms' own-lit surfaces take the beam from `FLASH_CODE`. In a
+  room the engine's light is the outdoor day's, not the room's: nothing darkens the arms there (the old arm-level scaling went with the code-built arms).
+- **The meshes** (`handParts.ts`, `handModels.ts`) are loaded and made once, when the torch is first switched on (the first F, or `hand on`; the left arm on the first G): the file is fetched, and the arm
+  is raised when its parts are ready (a file that does not load is said so once on the console and its arm is not drawn). They are placed each frame from the
+  camera's pose and the hand's by the meshes' own position and rotation, in the opaque draws with the depth buffer, never in the ink line's mask or the rain's cover.
 - **The light.** The engine's one lamp, while the player is on foot with the torch on, is moved to the lens and along the
   torch's axis, as the car's headlights move it to the car's nose; it is a spot light (a cone, not a point) whose full
   angle is 1.0 rad (the car's is the engine's 1.5), reaching 22 m, 6 times the walker lamp's brightness at night and about 2 times by day (the headlights'
   gain at night: the night's grade, exposure 0.28, darkens what the scene's lights light and the engine's lamp is tuned for
   its own exposure; the gain falls with the hour's lit gain, `torchGainFor`, never over 6), in a warm white, and coming on as the hand arrives. Moving with the hand, it moves with the bob and the lag. A second real light
   is not possible in this renderer without every lit material paying for it (the scene's lights are in each material's
-  shader loop); the glove and sleeve take a short spill from the torch instead (below), and the lit lens disc is a glow.
+  shader loop); and the glove and sleeve are behind the lens, outside its cone.
 - **Rooms.** The engine's lamp lights only what the scene lights, and a room's surfaces are lit by themselves (a glow
   of 1: the scene's light is taken off them), so in a dark shut cafe it lit almost nothing. The indoor materials (the
-  rooms', the designed rooms' and the hand's: those the plugin builds with `night`) add the torch to the glow from the
+  rooms' and the designed rooms': those the plugin builds with `night`) add the torch to the glow from the
   surface's own colour (`FLASH_CODE` in `townMaterial.ts`): inside the beam's cone, to a range, with a falloff and a soft
   wrap, and a short point spill (0.9 m) round the lens; three `vec4` uniforms (`flashP`, `flashD`, `flashC`) written while
   the torch is on, read only when `flashC.w` is above zero. The street's materials do not compile it in.

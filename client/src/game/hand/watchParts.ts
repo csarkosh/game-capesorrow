@@ -1,18 +1,17 @@
 /**
- * The player's left arm with its watch, drawn (`watchPose.ts` says where it is; `watchGeometry.ts` is what it is made of). One mesh, made once (the first time the watch is
- * wanted), in the town's packed form, drawn with the same material as the right arm (the town's indoor material with a depth shift: see `townParts.ts`), placed each frame from
- * the camera's pose and the arm's, `ARM_SCALE` times life size. One draw while it is up; none at all while it is down.
+ * The player's left arm with its watch, drawn (`watchPose.ts` says where it is; `hand.left.glb` is what it is: the forearm and hand relaxed, the watch on the wrist with its brown leather
+ * strap, and the face a plain black screen). Loaded the first time the watch is wanted (`loadWatchParts`, on the first G), its parts made into meshes (the arm, the watch's case, back,
+ * glass and screen, and the strap), drawn as the right arm is (`handModels.ts`), placed each frame from the camera's pose and the arm's, `ARM_SCALE` times life size, up to the
+ * watch's own `WATCH_BIG` (baked into the file). A few draws while it is up; none at all while it is down.
  *
  * It writes `WATCH_SEEN` (`watchSeen.ts`) each frame: whether it is shown, how far up, and where the lit screen's bounding square is in the view, for the page to draw the map on.
  * The arm is on foot's alone: in a car (`ridePhase` not 0) it is not drawn, and a door's dark screen hides it, as it hides the right arm.
  */
-import { disposeMeshGpu, removeFromScene, setMeshVisible, type Mesh } from "@babylonjs/lite";
-import { MeshBuilder } from "../town/meshBuilder.js";
-import { packedBytes } from "../town/vertexPack.js";
-import { makeHandMesh, type HandFrame, type HandHost } from "./handParts.js";
+import { setMeshVisible, type Mesh } from "@babylonjs/lite";
+import type { HandFrame, HandHost } from "./handParts.js";
+import { LEFT_FILE, disposeArm, loadArm, type ArmPart } from "./handModels.js";
 import { basisQuaternion, clearAhead, handHidden, torchBasis, type HandPose } from "./handPose.js";
-import { watchGeometry } from "./watchGeometry.js";
-import { ARM_SCALE, newWatchPose, newWatchState, stepWatch, watchQuad } from "./watchPose.js";
+import { ARM_SCALE, newWatchPose, newWatchState, stepWatch, watchMeshBasis, watchQuad } from "./watchPose.js";
 import { WATCH_SEEN } from "./watchSeen.js";
 
 export type WatchParts = {
@@ -26,26 +25,26 @@ export type WatchParts = {
   dispose(): void;
 };
 
-/** The left arm and the watch as plain arrays: what `createWatchParts` lays on the GPU, for the tests and the count. */
-export function watchArrays(seed = 1): ReturnType<MeshBuilder["take"]> {
-  const b = new MeshBuilder();
-  watchGeometry(b, seed);
-  return b.take();
+/** Loads the left arm's file and makes its parts. Rejects where the file does not load. */
+export async function loadWatchParts(host: HandHost): Promise<WatchParts> {
+  return createWatchParts(host, await loadArm(host, LEFT_FILE, host.signal));
 }
 
-export function createWatchParts(host: HandHost): WatchParts {
-  const arrays = watchArrays();
-  const mesh = makeHandMesh(host, "watch_arm", arrays, ARM_SCALE);
+/** The left arm's parts made (`loadArm`), as the arm that is stepped, placed and shown each frame. */
+export function createWatchParts(host: HandHost, made: readonly ArmPart[]): WatchParts {
+  const meshes: Mesh[] = made.map((p) => p.mesh);
+  const cost = { vertices: made.reduce((n, p) => n + p.vertices, 0), bytes: made.reduce((n, p) => n + p.bytes, 0) };
   const state = newWatchState();
   const pose = newWatchPose();
   const basis = new Float64Array(9);
   const unit = new Float64Array(9);
+  const mesh9 = new Float64Array(9);
   const quat = [0, 0, 0, 1];
   let shown = false;
   return {
     pose,
-    cost: { vertices: arrays.positions.length / 3, bytes: packedBytes(arrays.positions.length / 3, arrays.indices.length, arrays.surface.byteLength) },
-    drawn: () => (shown ? 1 : 0),
+    cost,
+    drawn: () => (shown ? meshes.length : 0),
     frame(f) {
       const hidden = handHidden(f.ridePhase, f.insidePhase, f.roomUndrawn);
       const want = !hidden && WATCH_SEEN.on;
@@ -53,27 +52,30 @@ export function createWatchParts(host: HandHost): WatchParts {
       WATCH_SEEN.shown = pose.shown;
       WATCH_SEEN.raised = pose.raised;
       if (!pose.shown) {
-        if (shown) setMeshVisible(mesh, false);
+        if (shown) for (const m of meshes) setMeshVisible(m, false);
         shown = false;
         return;
       }
       torchBasis(f.axes, pose, unit);
-      basisQuaternion(unit, quat);
-      mesh.position.set(f.eye.x + f.axes.rx * pose.x + f.axes.ux * pose.y + f.axes.fx * pose.z, f.eye.y + f.axes.ry * pose.x + f.axes.uy * pose.y + f.axes.fy * pose.z, f.eye.z + f.axes.rz * pose.x + f.axes.uz * pose.y + f.axes.fz * pose.z);
-      mesh.rotationQuaternion.x = quat[0] as number;
-      mesh.rotationQuaternion.y = quat[1] as number;
-      mesh.rotationQuaternion.z = quat[2] as number;
-      mesh.rotationQuaternion.w = quat[3] as number;
-      if (!shown) setMeshVisible(mesh, true);
+      watchMeshBasis(unit, mesh9);
+      basisQuaternion(mesh9, quat);
+      for (const mesh of meshes) {
+        if (mesh.scaling.x !== ARM_SCALE) mesh.scaling.set(ARM_SCALE, ARM_SCALE, ARM_SCALE);
+        mesh.position.set(f.eye.x + f.axes.rx * pose.x + f.axes.ux * pose.y + f.axes.fx * pose.z, f.eye.y + f.axes.ry * pose.x + f.axes.uy * pose.y + f.axes.fy * pose.z, f.eye.z + f.axes.rz * pose.x + f.axes.uz * pose.y + f.axes.fz * pose.z);
+        mesh.rotationQuaternion.x = quat[0] as number;
+        mesh.rotationQuaternion.y = quat[1] as number;
+        mesh.rotationQuaternion.z = quat[2] as number;
+        mesh.rotationQuaternion.w = quat[3] as number;
+      }
+      if (!shown) for (const m of meshes) setMeshVisible(m, true);
       shown = true;
       // The lit screen's square in the view, from the camera-frame basis scaled as the mesh is.
       torchBasis(restFrame, pose, basis, ARM_SCALE);
-      watchQuad(pose, basis, f.aspect, WATCH_SEEN.quad);
+      watchMeshBasis(basis, mesh9);
+      watchQuad(pose, mesh9, f.aspect, WATCH_SEEN.quad);
     },
     dispose() {
-      removeFromScene(host.scene, mesh as Mesh);
-      disposeMeshGpu(mesh as Mesh);
-      host.uploads.dropped();
+      disposeArm(host, made);
       WATCH_SEEN.shown = false;
       WATCH_SEEN.raised = 0;
     },

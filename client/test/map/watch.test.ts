@@ -126,8 +126,8 @@ describe("the round screen's layout", () => {
     expect(ctx.rec.texts).toContain("13:30");
     const slim = ctx.rec.texts.find((t) => t.endsWith("…"))!;
     expect(slim).toBeDefined();
-    // Inside the circle with a margin: no wider than 120 px less the line's padding at 10.5 px type.
-    expect(ctx.measure(slim, 10.5)).toBeLessThanOrEqual(120 - 22 + 1);
+    // Inside the circle: no wider than the chord of 124 px less the line's padding at 10.5 px type.
+    expect(ctx.measure(slim, 10.5)).toBeLessThanOrEqual(124 - 14 + 1);
     // The rim: two rings at the end.
     const before = ctx.ops;
     drawWatchRim(ctx, WATCH_W, WATCH_H);
@@ -156,8 +156,8 @@ describe("what the watch's line and clock keep", () => {
           const ctx = slimOn(`${place.name} \u00b7 ${dist}`);
           const line = ctx.rec.texts.find((t) => t.endsWith(` \u00b7 ${dist}`));
           expect(line, `${place.name} ${dist}`).toBeDefined();
-          // Inside the circle with a margin: the line, with its padding, is no more than 120 px.
-          expect(ctx.measure(line as string, 10.5, true) + 22, `${place.name} ${dist}`).toBeLessThanOrEqual(120);
+          // Inside the circle: the line, with its padding, is no more than the chord, 124 px.
+          expect(ctx.measure(line as string, 10.5, true) + 14, `${place.name} ${dist}`).toBeLessThanOrEqual(124);
           // A name that did not fit ends in an ellipsis; one that did is whole.
           const name = (line as string).slice(0, (line as string).length - ` \u00b7 ${dist}`.length);
           expect(name === place.name || (name.endsWith("\u2026") && place.name.startsWith(name.slice(0, -1)))).toBe(true);

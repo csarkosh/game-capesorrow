@@ -453,14 +453,15 @@ export class MapDrawer {
     const watch = s.watch === true;
     const size = watch ? 10.5 : 11.5;
     // On the round screen the line is short, inside the circle with a margin. What gives way is the name: the distance after it ("· 210 m") is kept whole, and a name too long for the room ends in an ellipsis.
-    const room = watch ? 120 : s.view.w - 16;
+    const room = watch ? 124 : s.view.w - 16;
+    const pad = watch ? 14 : 22;
     const cut = text0.lastIndexOf(" \u00b7 ");
     const tail = cut > 0 ? text0.slice(cut) : "";
     let name = cut > 0 ? text0.slice(0, cut) : text0;
-    while (name.length > 1 && ctx.measure(name + tail, size, true) + 22 > room) name = `${name.slice(0, -2).trimEnd()}\u2026`;
+    while (name.length > 1 && ctx.measure(name + tail, size, true) + pad > room) name = `${name.slice(0, -2).trimEnd()}\u2026`;
     const words = name + tail;
     const tw = ctx.measure(words, size, true);
-    const w = Math.min(room, tw + 22);
+    const w = Math.min(room, tw + pad);
     const h = 21;
     const x = (s.view.w - w) / 2;
     const y = watch ? 25 : 7;

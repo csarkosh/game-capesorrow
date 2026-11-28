@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
 import {
-  DRAWN_PITCH, DRAWN_YAW, FOV, HOLD, HOLD_DEPTH, HOLD_SCREEN, TILT_YAW, LOWER_SECONDS, TILT_PITCH, clearAhead, holdFor, loweredFor, MAX_LAG, NEAREST, RAISE_SECONDS, basisQuaternion, handHidden, holdAxis, lensWorld, newHandPose, newHandState, stepHand, torchBasis,
+  DRAWN_PITCH, DRAWN_YAW, FOV, HOLD, HOLD_DEPTH, HOLD_SCREEN, AIM_DISTANCE, LOWER_SECONDS, aimAngles, clearAhead, holdFor, loweredFor, MAX_LAG, NEAREST, RAISE_SECONDS, basisQuaternion, handHidden, holdAxis, lensWorld, newHandPose, newHandState, stepHand, torchBasis,
   type HandInput,
 } from "../../src/game/hand/handPose.js";
 
@@ -73,13 +73,18 @@ describe("the hold", () => {
     expect(HOLD_DEPTH).toBeCloseTo(0.55, 6);
   });
 
-  it("tilts the torch down so that the middle of its beam lands on the ground a few metres ahead of a hand 1.5 m up", () => {
-    const [, ay, az] = holdAxis();
-    expect(ay).toBeLessThan(0);
-    expect(Math.asin(-ay)).toBeCloseTo(TILT_PITCH, 6);
-    const ground = (1.5 / -ay) * az;
-    expect(ground).toBeGreaterThan(5);
-    expect(ground).toBeLessThan(10);
+  it("aims the beam through the middle of the view AIM_DISTANCE ahead: from the lens, below and to the right of the eye, a little up and to the left", () => {
+    for (const aspect of [1.2, 1.6, 2.2]) {
+      const [ax, ay, az] = holdAxis(aspect);
+      const h = holdFor(aspect);
+      // The lens stands right of the eye, so the beam leans left; it is a little below the view's middle or above it, by the hold.
+      expect(ax).toBeLessThan(0);
+      expect(Math.sign(ay)).toBe(Math.sign(-h.y) || 1);
+      // Followed to the plane AIM_DISTANCE ahead of the eye, it is at the view's middle.
+      const t = (AIM_DISTANCE - h.z) / az;
+      expect(h.x + ax * t).toBeCloseTo(0, 6);
+      expect(h.y + ay * t).toBeCloseTo(0, 6);
+    }
   });
 
   it("is where the lamp stands: the lens, along the torch's axis, carried to the world", () => {
@@ -105,10 +110,11 @@ describe("the hold", () => {
   it("keeps two axes apart: the beam's (the tilt that was set, unchanged) and the one the torch is drawn along (turned in toward the middle and a little up)", () => {
     const pose = newHandPose();
     run(0.6, { want: true }, newHandState(), pose);
-    // The beam's axis is the tilt of `TILT_YAW` and `TILT_PITCH`.
-    expect(pose.ax).toBeCloseTo(Math.sin(TILT_YAW) * Math.cos(TILT_PITCH), 6);
-    expect(pose.ay).toBeCloseTo(-Math.sin(TILT_PITCH), 6);
-    expect(pose.az).toBeCloseTo(Math.cos(TILT_YAW) * Math.cos(TILT_PITCH), 6);
+    // The beam's axis is the aim through the middle of the view.
+    const aim = aimAngles(1.6);
+    expect(pose.ax).toBeCloseTo(Math.sin(aim.yaw) * Math.cos(aim.pitch), 6);
+    expect(pose.ay).toBeCloseTo(-Math.sin(aim.pitch), 6);
+    expect(pose.az).toBeCloseTo(Math.cos(aim.yaw) * Math.cos(aim.pitch), 6);
     // The drawn axis is `DRAWN_YAW` and `DRAWN_PITCH`: turned left of the beam's and up where the beam goes down.
     expect(pose.mx).toBeCloseTo(Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH), 2);
     expect(pose.my).toBeCloseTo(-Math.sin(DRAWN_PITCH), 2);

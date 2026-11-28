@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
+import { readFileParts, stubParts } from "./armModels.js";
 import { FOV, HAND_SCALE, holdFor, newHandPose, newHandState, stepHand, torchBasis, type HandInput } from "../../src/game/hand/handPose.js";
 
 type Mesh = { name: string; position: { set(x: number, y: number, z: number): void }; scaling: { set(x: number, y: number, z: number): void }; rotationQuaternion: { x: number; y: number; z: number; w: number }; visible: boolean };
@@ -10,14 +11,10 @@ vi.mock("@babylonjs/lite", () => ({
   addToScene: () => undefined,
   removeFromScene: () => undefined,
   disposeMeshGpu: () => undefined,
+  createMeshFromData: () => undefined,
   setMeshVisible: (m: Mesh, v: boolean) => {
     m.visible = v;
     visibleLog.push(v);
-  },
-  createMeshFromData: (_e: unknown, name: string) => {
-    const m: Mesh = { name, position: { set: () => undefined }, scaling: { set: () => undefined }, rotationQuaternion: { x: 0, y: 0, z: 0, w: 1 }, visible: true };
-    meshes.push(m);
-    return m;
   },
 }));
 
@@ -53,8 +50,7 @@ function onScreen(aspect: number, pose: ReturnType<typeof newHandPose>, position
 
 describe("the hand lowered", () => {
   it("is nowhere in view once the lowering is over, at any pitch of the camera, on any window from 4:3 to 21:9, standing, walking or sprinting", async () => {
-    const { handArrays } = await import("../../src/game/hand/handParts.js");
-    const { body, lens } = handArrays();
+    const parts = readFileParts("hand.right");
     for (const [name, aspect] of ASPECTS) {
       for (const motion of [{ speed: 0, sprinting: false }, { speed: 4.5, sprinting: false }, { speed: 7, sprinting: true }]) {
         for (const pitch of [-1.4, -0.7, 0, 0.7, 1.4]) {
@@ -65,8 +61,7 @@ describe("the hand lowered", () => {
           for (let i = 0; i < 40; i++) stepHand(state, input({ want: false, aspect, pitch, ...motion }), pose);
           expect(pose.shown, `${name} ${JSON.stringify(motion)} pitch ${pitch}`).toBe(false);
           expect(pose.raised).toBe(0);
-          expect(onScreen(aspect, pose, body.positions, body.indices), `${name} ${JSON.stringify(motion)} pitch ${pitch}: body`).toBe(0);
-          expect(onScreen(aspect, pose, lens.positions, lens.indices), `${name}: lens`).toBe(0);
+          for (const part of parts) expect(onScreen(aspect, pose, part.positions, part.indices), `${name} ${JSON.stringify(motion)} pitch ${pitch}: ${part.name}`).toBe(0);
         }
       }
     }
@@ -106,14 +101,16 @@ describe("the part draws nothing while the lamp is off and the hand is down", ()
     const { HAND_SWITCH, resetHand } = await import("../../src/game/hand/handSwitch.js");
     resetHand();
     const noop = (): void => undefined;
+    const made = stubParts("hand.right");
+    for (const p of made) meshes.push(p.mesh as never);
     const part = createHandParts({
-      engine: {} as never, scene: {} as never, material: {} as never, order: 1, textured: false, uploads: { count: noop, made: noop, dropped: noop },
+      engine: {} as never, scene: {} as never, tier: "medium", air: noop as never, ahead: noop as never, lamps: {} as never, signal: new AbortController().signal, uploads: { count: noop, made: noop, dropped: noop },
       ready: () => null, dirty: noop, blocked: () => false,
-    });
+    }, made);
     const lamp = { at: { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, angle: 1.5, range: 25 }, lit: { on: false, state: { intensity: 400, colour: { r: 1, g: 0.92, b: 0.78 } } } };
     const axes = cameraAxes(0, 0, 0, restAxes());
     const frame = { dt: 1 / 60, eye: { x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, roll: 0 }, axes, ridePhase: 0, insidePhase: 0, roomUndrawn: false, speed: 0, sprinting: false, aspect: 1.6, litGain: 3 };
-    expect(meshes.length).toBe(2);
+    expect(meshes.map((m) => m.name)).toEqual(["arm", "torch", "torch_glass"]);
     for (let i = 0; i < 120; i++) part.frame(frame, lamp);
     expect(part.drawn()).toBe(0);
     expect(meshes.every((m) => !m.visible)).toBe(true);
@@ -124,10 +121,11 @@ describe("the part draws nothing while the lamp is off and the hand is down", ()
     for (let i = 0; i < 3; i++) part.frame(frame, lamp);
     expect(part.drawn()).toBeGreaterThanOrEqual(1);
     for (let i = 0; i < 40; i++) part.frame(frame, lamp);
-    expect(part.drawn()).toBe(2);
+    expect(part.drawn()).toBe(3);
     expect(part.torch.lit).toBe(true);
     // The lit disc is placed as the hand is, so it faces along the DRAWN axis (turned in toward the middle), and the beam leaves the lens's place along the beam's own axis.
-    const [bodyMesh, lensMesh] = meshes as [Mesh, Mesh];
+    const bodyMesh = meshes.find((m) => m.name === "torch") as Mesh;
+    const lensMesh = meshes.find((m) => m.name === "torch_glass") as Mesh;
     expect(lensMesh.rotationQuaternion).toEqual(bodyMesh.rotationQuaternion);
     const q = bodyMesh.rotationQuaternion;
     const turned = (vx: number, vy: number, vz: number): number[] => {
@@ -155,7 +153,7 @@ describe("the part draws nothing while the lamp is off and the hand is down", ()
     // `hand up` shows it with the lamp off, as the only way to.
     HAND_SWITCH.forced = true;
     for (let i = 0; i < 40; i++) part.frame(frame, lamp);
-    expect(part.drawn()).toBe(1);
+    expect(part.drawn()).toBe(2);
     resetHand();
   });
 });
