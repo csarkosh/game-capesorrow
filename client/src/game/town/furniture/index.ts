@@ -6,6 +6,7 @@ import type { Decor, Item } from "../../../sim/inside/design.js";
 import { archway, backBar, barCounter, column } from "./bar.js";
 import { acUnit, bistroStool, booth, brassRack, cafeBack, cafeCounter, espresso, floorJoints, flushLight, panel, picture, roundChair, tileWall, wallLamp } from "./cafe.js";
 import { art } from "./art.js";
+import { aFrame, boardsStack, bucket, cone, extensionLead, floorSheet, glassScreen, hoarding, polythene, ropePosts, rubbleSacks, toolChest, workLight } from "./closure.js";
 import { certificate, coastMap, coatStand, concreteJoints, deskSet, filingCabinet, pinBoard, glassBall, glazing, lampGrid, mural } from "./hall.js";
 import { brochureRack, coffeeStation, downlight, floorLamp, longTable, luggageCart, planter, sideTable, slatScreen, sprinkler, vent } from "./lobby.js";
 import { cornice, curtainPair, firePlan, kettleTray, lightSwitch, luggageRack, smokeDetector, wasteBin, armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
@@ -76,6 +77,19 @@ export const ITEMS: Readonly<Record<string, (g: Geo, it: Item) => void>> = {
   planter,
   floor_lamp: floorLamp,
   luggage_rack: luggageRack,
+  hoarding,
+  floor_sheet: floorSheet,
+  a_frame: aFrame,
+  cone,
+  work_light: workLight,
+  boards_stack: boardsStack,
+  bucket,
+  tool_chest: toolChest,
+  rubble_sacks: rubbleSacks,
+  extension_lead: extensionLead,
+  polythene,
+  glass_screen: glassScreen,
+  rope_posts: ropePosts,
   pool_table: poolTable,
   waste_bin: wasteBin,
   kettle_tray: kettleTray,

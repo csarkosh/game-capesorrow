@@ -104,6 +104,7 @@ export function createInsideParts(host: InsideHost): InsideParts {
   let room = 0;
   let mesh: Mesh | null = null;
   let glass: Mesh | null = null;
+  let outsideMesh: Mesh | null = null;
   let textures: Textures = "idle";
   let rooms: { readonly material: PbrMaterialProps; landed(filled: boolean): void } | null = null;
   setRoomDrawn(false);
@@ -131,6 +132,12 @@ export function createInsideParts(host: InsideHost): InsideParts {
   };
 
   const drop = (): void => {
+    if (outsideMesh !== null) {
+      removeFromScene(host.scene, outsideMesh);
+      disposeMeshGpu(outsideMesh);
+      host.uploads.dropped();
+      outsideMesh = null;
+    }
     if (glass !== null) {
       removeFromScene(host.scene, glass);
       disposeMeshGpu(glass);
@@ -158,6 +165,19 @@ export function createInsideParts(host: InsideHost): InsideParts {
     host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
     host.uploads.made();
     mesh = made;
+    // The street and the yard outside its windows: a mesh of its own on the same material, lit by the scene (`roomOutside.ts`).
+    const o = a.outside;
+    if (o !== undefined && o !== null) {
+      if (host.textured && !r.design.legacy) retargetLayers(o, own ? "interior" : "town");
+      const scenery = createMeshFromData(host.engine, `inside_${r.id}_outside`, o.positions, o.normals, o.indices, o.uvs, undefined, undefined, o.colors);
+      if (host.textured) scenery.pluginVertexData = packSurface(o.surface);
+      scenery.material = own && rooms !== null ? rooms.material : host.material;
+      scenery.renderOrder = host.order;
+      addToScene(host.scene, scenery);
+      host.uploads.count("geometry", o.positions.byteLength + o.normals.byteLength + o.colors.byteLength + o.uvs.byteLength + o.surface.byteLength + o.indices.byteLength, 4);
+      host.uploads.made();
+      outsideMesh = scenery;
+    }
     // The panes: their own mesh, an opaque draw after the break that reads the sky and the far land out of focus (`roomGlass.ts`).
     const g = a.through;
     if (g !== undefined && g !== null && host.through !== null) {

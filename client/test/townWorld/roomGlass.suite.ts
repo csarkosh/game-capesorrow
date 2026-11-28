@@ -103,4 +103,34 @@ describe("the panes of the rooms, seen from inside", () => {
     expect(ROOM_DAY_FROM).toBeLessThanOrEqual(0.56);
     expect(ROOM_DAY_FROM).toBeGreaterThan(0.4);
   });
+
+  it("have a street outside their windows: ground that meets the wall, in a mesh of its own under 1,500 vertices a side, lit by the scene (no glow, none of the room's night colour), outside the room's box", () => {
+    for (const [index, room] of insideRooms(SEED).entries()) {
+      const a = meshOf(SEED, index, true);
+      const o = a.outside;
+      expect(o, `${room.name}: its outside`).not.toBeNull();
+      const out = o as NonNullable<typeof o>;
+      const n = out.positions.length / 3;
+      const backs = (room.design.windows ?? []).some((w) => w.wall === "back") ? 2 : 1;
+      expect(n, `${room.name}: vertices outside`).toBeLessThan(1500 * backs);
+      let meets = false;
+      let ground = Infinity;
+      let beyond = 0;
+      for (let i = 0; i < n; i++) {
+        // No glow, and no night ratios (the room's two bakes are for the room).
+        expect(out.surface[i * 12 + 3], `${room.name}: a vertex of the outside glows`).toBe(0);
+        expect(out.surface[i * 12 + 11] as number, `${room.name}: the outside carries a night colour`).toBeLessThan(1.99);
+        const dx = (out.positions[i * 3] as number) - room.ox;
+        const dz = (out.positions[i * 3 + 2] as number) - room.oz;
+        const d = -(dx * room.nx + dz * room.nz);
+        const y = (out.positions[i * 3 + 1] as number) - room.floorY;
+        if (Math.abs(d) < 0.01 && Math.abs(y + 0.15) < 0.01) meets = true;
+        ground = Math.min(ground, y);
+        if (d < -60) beyond++;
+      }
+      expect(meets, `${room.name}: the ground meets the front wall`).toBe(true);
+      expect(ground, `${room.name}: nothing outside is lower than the roadway`).toBeGreaterThanOrEqual(-0.31);
+      expect(beyond, `${room.name}: ground out beyond 60 m`).toBeGreaterThan(0);
+    }
+  });
 });

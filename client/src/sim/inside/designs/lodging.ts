@@ -21,6 +21,12 @@ import { footOf } from "../kinds.js";
 
 const { ceil, floor, max, min, round } = Math;
 
+/** The closed flight above the corridor: its steps and their tread, and how far its shaft goes up over the corridor's ceiling. */
+const CLOSED_STEPS = 19;
+const CLOSED_TREAD = 0.25;
+const CLOSED_LANDING = 1.1;
+const SHAFT = 3.0;
+
 export type LodgingSite = {
   readonly id: number;
   readonly width: number;
@@ -80,7 +86,6 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   const F = cm(H + 0.3);
   const top = multi ? cm(F + min(H, UPPER)) : H;
   const yc = multi ? F : 0;
-  const b = new DesignBuilder(W, D, top, id, footOf);
   const small = W < 12 || !multi;
 
   // ---- the corridor's place: `Dc` is its near edge, where a row of the walking grid runs down its middle.
@@ -109,6 +114,9 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   }
   const Cs0 = 0.15;
   const Cs1 = multi ? Ss : cm(Wm - 0.15);
+  // A building of three storeys or more has a flight at the corridor's far end that goes on up, shut for maintenance: `CLOSED_STEPS` steps of `CLOSED_TREAD` to the level above, through a slot in the ceiling, into a shaft `SHAFT` metres over it with a lit landing.
+  const closed = multi && site.storeys >= 3 && Ss >= 7.45;
+  const b = new DesignBuilder(W, D, closed ? cm(top + SHAFT) : top, id, footOf);
 
   // ---- the room: its left wall's place, so that its door's middle is on a cell of the walking grid.
   const Rs0 = multi ? Ss - 0.15 - (ROOM_W + WALL) : Wm - 0.35 - (ROOM_W + WALL);
@@ -138,7 +146,17 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     piece(hole.s1, Wm, FRONT_WALL, D);
     piece(hole.s0, hole.s1, FRONT_WALL, hole.d0);
     piece(hole.s0, hole.s1, hole.d1, D);
-    b.slab({ kind: "ceiling", s0: 0, s1: Wm, d0: FRONT_WALL, d1: D, y: top, thick: 0, mat: "painted", tint: [1.15, 1.1, 1.0] });
+    const ceil1 = (s0: number, s1: number, d0: number, d1: number): void => {
+      if (s1 - s0 > 0.01 && d1 - d0 > 0.01) b.slab({ kind: "ceiling", s0, s1, d0, d1, y: top, thick: 0, mat: "painted", tint: [1.15, 1.1, 1.0] });
+    };
+    if (closed) {
+      // The slot over the closed flight: the ceiling is open there, up to the shaft's own.
+      const sTop = cm(Cs0 + CLOSED_LANDING + CLOSED_STEPS * CLOSED_TREAD);
+      ceil1(0, Cs0, FRONT_WALL, D);
+      ceil1(sTop, Wm, FRONT_WALL, D);
+      ceil1(Cs0, sTop, FRONT_WALL, Dc);
+      ceil1(Cs0, sTop, cm(Dc + CORRIDOR), D);
+    } else ceil1(0, Wm, FRONT_WALL, D);
   } else {
     b.slab({ kind: "ceiling", s0: 0, s1: Wm, d0: FRONT_WALL, d1: D, y: H, thick: 0, mat: "painted", tint: [1.15, 1.1, 1.0] });
   }
@@ -204,27 +222,53 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   }
 
   // The corridor's surface, from its far end to where the stair's top meets it; and the flight above floor 2.
-  const closed = multi && site.storeys >= 3 && Ss >= 7.45;
   let flightMark: { name: string; s: number; d: number; y: number } | null = null;
-  const corrFrom = closed ? 2.39 : 0;
+  const corrFrom = closed ? cm(Cs0 + CLOSED_LANDING + CLOSED_STEPS * CLOSED_TREAD) : 0;
   if (multi) surf(corrFrom, Ss, cm(Dc - 0.05), cm(Dc + CORRIDOR + 0.05), F);
   else surf(0, Wm, cm(Fw - 0.1), cm(Bw + 0.1), 0);
   if (closed) {
-    // Eight steps rising toward the corridor's end, a barrier across it at the third, and the dark behind.
-    const s0 = Cs0;
-    const s1 = cm(Cs0 + 8 * 0.28);
-    const rise = 8 * RISER;
-    b.display({ s0, s1, d0: Dc, d1: cm(Dc + CORRIDOR), along: "s", y0: cm(F + rise), y1: F, base: F, mat: "oak", rails: [] });
-    const sBar = cm(s1 - 3 * 0.28);
-    flightMark = { name: "flight", s: cm(sBar + 0.95), d: cm(Dc + CORRIDOR / 2), y: cm(F + (rise * (s1 - (sBar + 0.95))) / (s1 - s0)) };
-    b.surface({ kind: "ramp", s0: sBar, s1, d0: Dc, d1: cm(Dc + CORRIDOR), along: "s", y0: cm(F + (rise * (s1 - sBar)) / (s1 - s0)), y1: F });
-    b.block({ s: sBar, d: cm(Dc + CORRIDOR / 2), ax: 1, ad: 0, ha: 0.05, hb: CORRIDOR / 2, y0: F, y1: F + 3 });
-    b.wall({ s0, d0: Dc, s1: s0, d1: Bw, thick: 0.1, y0: F, y1: wallTop, mat: "painted", tint: [0.1, 0.1, 0.1], tintBack: [0.06, 0.06, 0.06], matBack: "painted", openings: [] });
-    b.item("barrier", sBar, cm(Dc + CORRIDOR / 2), TOWARD_RIGHT, [F + 0.53], { anywhere: true, y: F });
-    b.item("step_ladder", cm(sBar - 0.5), cm(Dc + 1.4), TOWARD_RIGHT, [F + 0.9], { anywhere: true, y: F });
-    b.item("paint_cans", cm(s1 - 0.3), cm(Dc + 0.4), TOWARD_RIGHT, [F], { anywhere: true, y: F });
-    b.item("dust_sheet", cm(s1 - 0.7), cm(Dc + CORRIDOR / 2), TOWARD_RIGHT, [F, rise / 8], { anywhere: true, y: F });
-    b.decorate({ kind: "sign", s: sBar + 0.06, d: cm(Dc + CORRIDOR / 2), y: F + 1.25, face: TOWARD_RIGHT, w: 0.8, h: 0.4, text: "CLOSED FOR|MAINTENANCE" });
+    // The flight goes on up to the level above (it is shut, and never walked): steps to a lit landing in a shaft over the corridor, a barrier across it near its foot, and what a maintenance crew leaves.
+    const s0 = cm(Cs0 + CLOSED_LANDING);
+    const s1 = cm(Cs0 + CLOSED_LANDING + CLOSED_STEPS * CLOSED_TREAD);
+    const rise = CLOSED_STEPS * RISER;
+    const mid = cm(Dc + CORRIDOR / 2);
+    b.display({ s0, s1, d0: Dc, d1: cm(Dc + CORRIDOR), along: "s", y0: cm(F + rise), y1: F, base: F, mat: "oak", rails: ["lo", "hi"], glass: false });
+    // The closure (`furniture/closure.ts`): the way games shut a way, with real mass in layers. Before the flight, on the corridor floor, a floor-protection sheet, a yellow A-frame sign and two cones; across the flight's foot a hoarding
+    // of plywood sheets 2 m high with a shut door, a hasp, tape and its signs, solid the corridor's whole width; and beyond it, over the steps, what a crew leaves under a work light.
+    const stepAt = (s: number): number => cm(F + (rise * (s1 - s)) / (s1 - s0));
+    const sH = cm(s1 - 0.2);
+    b.block({ s: sH, d: mid, ax: 1, ad: 0, ha: 0.12, hb: CORRIDOR / 2, y0: F, y1: F + 2.2 });
+    b.item("hoarding", sH, mid, TOWARD_RIGHT, [cm(CORRIDOR - 0.04)], { anywhere: true, y: F });
+    const hp = cm(CORRIDOR / 2 - 0.425);
+    b.decorate({ kind: "sign", s: cm(sH + 0.12), d: cm(mid + hp), y: cm(F + 1.62), face: TOWARD_RIGHT, w: 0.45, h: 0.34, text: "DANGER|NO ENTRY" });
+    b.decorate({ kind: "sign", s: cm(sH + 0.12), d: cm(mid + hp), y: cm(F + 1.3), face: TOWARD_RIGHT, w: 0.45, h: 0.2, text: "CAUTION|WORK AREA" });
+    b.item("floor_sheet", cm(s1 + 2.2), mid, TOWARD_LEFT, [2.0], { anywhere: true, y: F });
+    b.item("a_frame", cm(s1 + 1.6), cm(mid - 0.35), TOWARD_RIGHT, [], { anywhere: true, y: F });
+    b.decorate({ kind: "sign", s: cm(s1 + 1.6 + 0.14), d: cm(mid - 0.35), y: cm(F + 0.6), face: TOWARD_RIGHT, w: 0.46, h: 0.3, text: "STAIR CLOSED|MAINTENANCE" });
+    for (const dd of [-0.6, 0.6]) b.item("cone", cm(s1 + 1.3), cm(mid + dd), TOWARD_RIGHT, [], { anywhere: true, y: F });
+    b.item("work_light", cm(s1 - 1.4), cm(mid + 0.3), TOWARD_RIGHT, [], { anywhere: true, y: stepAt(s1 - 1.4) });
+    b.light({ s: cm(s1 - 1.0), d: cm(mid + 0.1), y: cm(stepAt(s1 - 1.0) + 2.9), kind: "tube", power: 0.4, reach: 3.4, tone: [0.82, 0.93, 1.1] });
+    b.item("boards_stack", cm(s1 - 2.6), cm(Dc + 0.22), TOWARD_RIGHT, [], { anywhere: true, y: stepAt(s1 - 2.6) });
+    b.item("bucket", cm(s1 - 1.0), cm(mid - 0.45), TOWARD_RIGHT, [], { anywhere: true, y: stepAt(s1 - 1.0) });
+    b.item("tool_chest", cm(s1 - 2.0), cm(mid - 0.4), TOWARD_RIGHT, [], { anywhere: true, y: stepAt(s1 - 2.0) });
+    b.item("rubble_sacks", cm(s1 - 3.2), cm(mid + 0.4), TOWARD_RIGHT, [], { anywhere: true, y: stepAt(s1 - 3.2) });
+    b.item("extension_lead", cm(s1 - 0.5), cm(mid - 0.1), TOWARD_LEFT, [1.4], { anywhere: true, y: stepAt(s1 - 0.5) });
+    b.item("polythene", cm(s1 - 3.6), mid, TOWARD_RIGHT, [cm(CORRIDOR - 0.2), 2.0], { anywhere: true, y: cm(stepAt(s1 - 3.6) + 0.8) });
+    b.item("step_ladder", cm(s1 - 1.8), cm(Dc + 0.5), TOWARD_RIGHT, [stepAt(s1 - 1.8) + 0.9], { anywhere: true, y: stepAt(s1 - 1.8) });
+    b.item("paint_cans", cm(s1 - 0.8), cm(Dc + 0.4), TOWARD_RIGHT, [stepAt(s1 - 0.8)], { anywhere: true, y: stepAt(s1 - 0.8) });
+    b.item("dust_sheet", cm(s1 - 3.9), mid, TOWARD_RIGHT, [stepAt(s1 - 3.9), rise / CLOSED_STEPS], { anywhere: true, y: stepAt(s1 - 3.9) });
+    // `goin lodging flight left`: the corridor a few metres from the closure, looking at it.
+    flightMark = { name: "flight", s: cm(min(Ss - 1.2, s1 + 3.6)), d: mid, y: F };
+    // The shaft: its two sides and its ceiling over the slot, the landing at the flight's head, the end wall in a pale paint with a door and a lit sign, and a lamp that lights the well.
+    const topY = cm(F + rise);
+    const shaftTop = cm(top + SHAFT);
+    for (const dd of [Fw, Bw]) b.wall({ s0: Cs0, d0: dd, s1, d1: dd, thick: WALL, y0: top, y1: shaftTop, mat: "painted", tint: cream, matBack: "painted", tintBack: cream, openings: [] });
+    b.wall({ s0: Cs0, d0: Dc, s1: Cs0, d1: Bw, thick: 0.1, y0: F, y1: shaftTop, mat: "painted", tint: [1.1, 1.05, 0.95], matBack: "painted", tintBack: [1.1, 1.05, 0.95], openings: [] });
+    b.slab({ kind: "ceiling", s0: Cs0, s1, d0: Dc, d1: cm(Dc + CORRIDOR), y: shaftTop, thick: 0, mat: "painted", tint: [1.15, 1.1, 1.0] });
+    b.slab({ kind: "floor", s0: Cs0, s1: s0, d0: Dc, d1: cm(Dc + CORRIDOR), y: topY, thick: 0.2, mat: "oak", edge: "dark_wood" });
+    b.decorate({ kind: "door_leaf", s: cm(Cs0 + 0.12), d: mid, y: cm(topY + 1.0), face: TOWARD_RIGHT, w: 1.0, h: 2.0 });
+    b.decorate({ kind: "sign", s: cm(Cs0 + 0.1), d: mid, y: cm(topY + 2.0), face: TOWARD_RIGHT, w: 0.9, h: 0.22, text: "ROOF ACCESS" });
+    b.light({ s: cm(Cs0 + 1.5), d: mid, y: cm(topY + 1.9), kind: "tube", power: 0.9, reach: 3.6, tone: [1, 0.96, 0.88] });
   }
 
   // The stair itself: flight A up from the lobby, the landing, flight B back to the corridor's floor.
@@ -316,7 +360,10 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
 
   // ---- the corridor's fittings: wall lamps every 4 m, an exit sign toward the stair.
   const lampY = level + 1.9;
+  // No wall lamp over the closed flight: it is lit by the work light and the shaft's own (a lamp beside a leaning board lights it to white).
+  const lampFrom = closed ? cm(Cs0 + CLOSED_LANDING + CLOSED_STEPS * CLOSED_TREAD + 0.6) : 0;
   for (let s = Cs0 + 2; s < Cs1 - 1; s += 4) {
+    if (s < lampFrom) continue;
     b.decorate({ kind: "wall_lamp", s: cm(s), d: Dc, y: lampY, face: TOWARD_BACK, w: 0.12, h: 0.2 });
     b.light({ s: cm(s), d: cm(Dc + 0.3), y: lampY, kind: "lamp", power: 0.3, reach: 2.2, tone: [1, 0.82, 0.55] });
   }
@@ -457,9 +504,9 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     }
     if (roomy) b.item("planter", cm(Ss * 0.2), 0.55, TOWARD_RIGHT, [2.0], { gap: 0.2 });
     // ---- the ceiling: downlights in rows elsewhere, vents and sprinkler heads.
-    downlights(2.4, Ss - 1.2, 2.0, D - 1.0, 2.4);
-    for (let k = 0; k < 5; k++) b.item("vent", cm(3 + k * (Ss - 5) / 4), cm(k % 2 === 0 ? D * 0.35 : D * 0.7), TOWARD_RIGHT, [], { anywhere: true });
-    for (let s = 3.5; s < Ss - 1; s += 4.5) for (const dd of [cm(D * 0.3), cm(D * 0.72)]) b.item("sprinkler", cm(s), cm(dd), TOWARD_RIGHT, [], { anywhere: true });
+    downlights(2.4, Ss - 1.2, 2.0, D - 1.0, 3.0);
+    for (let k = 0; k < 3; k++) b.item("vent", cm(3 + k * (Ss - 5) / 2), cm(k % 2 === 0 ? D * 0.35 : D * 0.7), TOWARD_RIGHT, [], { anywhere: true });
+    for (let s = 3.5; s < Ss - 1; s += 9) for (const dd of [cm(D * 0.3), cm(D * 0.72)]) b.item("sprinkler", cm(s), cm(dd), TOWARD_RIGHT, [], { anywhere: true });
   } else {
     // A small lodging: two armchairs and a low table at the right of the desk, a plant.
     const sx = cm(min(Ss - 3.0, max(4.5, Wm * 0.45)));

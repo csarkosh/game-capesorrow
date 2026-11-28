@@ -35,7 +35,7 @@ export function doorHeadOf(era: number, fascia: number): number {
  * The hidden room as arrays: one set for the solid layer (a whole room has no haze, and its panes are sheets in it). A room whose design is not the converter's is drawn from its
  * design (`designGeometry.ts`); the rest by the street's room builder, as they always were.
  */
-export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): MeshArrays & { readonly through?: MeshArrays | null } {
+export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): MeshArrays & { readonly through?: MeshArrays | null; readonly outside?: MeshArrays | null } {
   if (!room.design.legacy) return designedGeometry(g, room, detail, report, glass);
   const b = g.plan.buildings[room.building];
   const use = g.plan.uses[room.building];

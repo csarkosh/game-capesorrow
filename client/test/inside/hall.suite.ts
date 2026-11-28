@@ -24,7 +24,7 @@ describe("the municipal hall as a design", () => {
       expect(room.doorS).toBe(m.doorS);
       expect(room.doorWidth).toBe(2.3);
       expect(d.depth).toBeLessThanOrEqual(14);
-      expect(d.height, `seed ${seed}`).toBeGreaterThanOrEqual(7.2);
+      expect(d.height, `seed ${seed}`).toBeGreaterThanOrEqual(6);
     }
     for (const file of ["src/sim/inside/designs/municipal.ts", "src/sim/inside/designs/hall.ts"]) expect(readFileSync(new URL(`../../${file}`, import.meta.url), "utf8"), file).not.toMatch(/\b(fbi|agent|bureau|federal)\b/i);
   }, timeLimit(300_000));

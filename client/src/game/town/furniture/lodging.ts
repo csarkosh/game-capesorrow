@@ -399,8 +399,16 @@ export function closetFront(g: Geo, dc: Decor): void {
 /** The room's door, open against the wall inside: a timber leaf 4 cm thick, 1.0 m wide and 2.0 m high, standing across the item's forward, with its handle. */
 export function doorLeaf(g: Geo, dc: Decor): void {
   const L = g.at(dc.s, dc.d, dc.face);
-  L.box(-0.02, 0.02, -dc.w / 2, dc.w / 2, dc.y - dc.h / 2, dc.y + dc.h / 2, "oak", { tint: [0.9, 0.7, 0.55] }, true, false);
-  L.box(-0.05, 0.05, dc.w / 2 - 0.12, dc.w / 2 - 0.08, dc.y - 0.1, dc.y + 0.02, "brass", undefined, true, false);
+  const w = dc.w / 2;
+  const y0 = dc.y - dc.h / 2;
+  const y1 = dc.y + dc.h / 2;
+  // A plain panelled door: the leaf in timber, a stile and rail round it, a tall panel above and a smaller one below, each a little proud. No bar, no lock edge drawn on its face.
+  L.box(-0.02, 0.02, -w, w, y0, y1, "oak", { tint: [0.9, 0.7, 0.55] }, true, false);
+  const tone = { tint: [0.78, 0.6, 0.46] as Rgb };
+  const stile = 0.11;
+  for (const [a0, a1, b0, b1] of [[y0 + 0.45, y0 + 0.95, -w + stile, w - stile], [y0 + 1.1, y1 - 0.1, -w + stile, w - stile]] as const) L.box(0.02, 0.032, b0, b1, a0, a1, "oak", tone, false, true);
+  // A small lever of dark timber on the latch side.
+  L.box(0.02, 0.07, w - 0.12, w - 0.04, dc.y - 0.07, dc.y - 0.05, "dark_wood", { tint: [0.6, 0.5, 0.45] }, false, true);
 }
 
 /** A potted plant: a pot of 8 sides and a fan of nine leaves, each a long narrow triangle leaning out, in greens that differ by a hash. */

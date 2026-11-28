@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { SEAT_BEHIND, SEAT_FRONT, blocksOverlap, type Block, type Item } from "../../src/sim/inside/design.js";
+import { underside } from "../../src/game/town/designGeometry.js";
+import { ITEM_FOOT } from "../../src/sim/inside/kinds.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 import { standsAt } from "./designHelpers.js";
 import { HEAVY_SEEDS } from "./seeds.js";
@@ -65,5 +67,71 @@ describe("the people of the rooms sit and stand where they can", () => {
         }
       }
     }
+  }, timeLimit(300_000));
+
+  it("face their table: for every sitter with a table within 0.9 m, the way they face points within 60 degrees of the nearest of it, and no seat's back is to its table", () => {
+    const TABLES = ["high_table", "low_table", "square_table", "oval_table", "long_table", "desk", "bar_counter", "cafe_counter", "pastry_case", "sideboard"];
+    let checked = 0;
+    for (const seed of HEAVY_SEEDS) {
+      for (const room of insideRooms(seed)) {
+        const d = room.design;
+        for (const p of d.people) {
+          if (p.sits === null) continue;
+          // The nearest point of each table's footprint (an oriented rectangle) to the person.
+          let best: { q: [number, number]; dist: number; kind: string } | null = null;
+          for (const it of d.items) {
+            if (!TABLES.includes(it.kind) || (it.y ?? 0) !== (p.y ?? 0)) continue;
+            const foot = ITEM_FOOT[it.kind]?.(it.p);
+            if (foot === null || foot === undefined) continue;
+            const dx = p.s - it.s;
+            const dd = p.d - it.d;
+            const f = dx * it.face.s + dd * it.face.d;
+            const r = -dx * it.face.d + dd * it.face.s;
+            const cf = Math.max(-foot.ha, Math.min(foot.ha, f));
+            const cr = Math.max(-foot.hb, Math.min(foot.hb, r));
+            const dist = Math.hypot(f - cf, r - cr);
+            if (dist > 0.9 || (best !== null && dist >= best.dist)) continue;
+            best = { q: [it.s + it.face.s * cf - it.face.d * cr, it.d + it.face.d * cf + it.face.s * cr], dist, kind: it.kind };
+          }
+          if (best === null || best.dist < 0.02) continue;
+          const vs = best.q[0] - p.s;
+          const vd = best.q[1] - p.d;
+          const len = Math.hypot(vs, vd);
+          if (len < 0.05) continue;
+          const cos = (vs * p.face.s + vd * p.face.d) / (len * Math.hypot(p.face.s, p.face.d));
+          expect(cos, `seed ${seed} ${room.name}: a sitter at ${p.s}, ${p.d} facing ${p.face.s}, ${p.face.d} has a ${best.kind} at ${best.q[0].toFixed(2)}, ${best.q[1].toFixed(2)} (${best.dist.toFixed(2)} m)`).toBeGreaterThanOrEqual(0.5);
+          checked++;
+        }
+      }
+    }
+    console.log(`[seats] ${checked} sitters with a table, each facing it`);
+    expect(checked).toBeGreaterThan(20);
+  }, timeLimit(300_000));
+
+  it("have a stair that goes on up: along every flight, walked or shut, there is 1.6 m of headroom (a hull is 1.7 m and steps up its flight) under whatever is over it, so no flight ends against a lid", () => {
+    let flights = 0;
+    for (const seed of HEAVY_SEEDS) {
+      for (const room of insideRooms(seed)) {
+        const d = room.design;
+        for (const st of d.stairs) {
+          const along = st.along === "s";
+          const run = along ? st.s1 - st.s0 : st.d1 - st.d0;
+          // Heights over the floor of the flight's low end, to where it meets a floor at its head.
+          for (let k = 0; k <= 20; k++) {
+            const u = k / 20;
+            const y = st.y0 + (st.y1 - st.y0) * u;
+            const s = along ? st.s0 + run * u : (st.s0 + st.s1) / 2;
+            const dd = along ? (st.d0 + st.d1) / 2 : st.d0 + run * u;
+            const over = underside(d, s, dd, y) - y;
+            // The very head, within a tread of the level it arrives at, may meet that level's own ceiling; before it there is headroom.
+            if (u > 0.93) continue;
+            expect(over, `seed ${seed} ${room.name}: a flight from ${st.y0} to ${st.y1} at ${(u * 100).toFixed(0)} percent has ${over.toFixed(2)} m over it`).toBeGreaterThanOrEqual(1.6);
+          }
+          flights++;
+        }
+      }
+    }
+    console.log(`[stairs] ${flights} flights with headroom`);
+    expect(flights).toBeGreaterThan(8);
   }, timeLimit(300_000));
 });

@@ -19,6 +19,7 @@ import { DECOR, ITEMS } from "./furniture/index.js";
 import { Geo, tintOf, type P3 } from "./furniture/kit.js";
 import { glassPanel } from "./furniture/glass.js";
 import { PANE_SETBACK } from "./roomGlass.js";
+import { roomOutside } from "./roomOutside.js";
 import { styleOf } from "./roomFill.js";
 import type { Xf, Ctx } from "./roomKit.js";
 import { frontWall, type Band, type Layered } from "./roomShell.js";
@@ -51,7 +52,7 @@ const CELL = 0.75;
 const SLAB_CELL = 0.5;
 /** Within this of a narrow pool's centre the lines of a floor or a ceiling are this close (metres). */
 const POOL_REACH = 0.85;
-const POOL_STEP = 1 / 3;
+const POOL_STEP = 0.4;
 
 const ONE: Rgb = [1, 1, 1];
 /**
@@ -77,7 +78,7 @@ function lines(span: number, step: number): number[] {
 }
 
 /** The design as the arrays of one mesh in the town's solid material. */
-export type RoomArrays = MeshArrays & { readonly through: MeshArrays | null };
+export type RoomArrays = MeshArrays & { readonly through: MeshArrays | null; /** The street (and the yard behind) seen out of the windows: a mesh of its own, lit by the scene (`roomOutside.ts`). */ readonly outside: MeshArrays | null };
 
 export function designMesh(r: DrawIn): RoomArrays {
   const out = new MeshBuilder(true);
@@ -85,7 +86,15 @@ export function designMesh(r: DrawIn): RoomArrays {
   out.marked = marked;
   designGeometry(out, r);
   const arrays = out.take();
-  return Object.assign(arrays, { through: marked !== null && marked.vertices > 0 ? marked.take() : null });
+  // The ground outside the walls that have a pane: the street in front, a yard behind where the design has a window in its back wall.
+  let outside: MeshArrays | null = null;
+  if (marked !== null && marked.vertices > 0) {
+    const scenery = new MeshBuilder();
+    roomOutside(scenery, r.xf, r.floorY, r.design.width, r.design.depth, "front", r.seed);
+    if ((r.design.windows ?? []).some((w) => w.wall === "back")) roomOutside(scenery, r.xf, r.floorY, r.design.width, r.design.depth, "back", r.seed + 1);
+    outside = scenery.take();
+  }
+  return Object.assign(arrays, { through: marked !== null && marked.vertices > 0 ? marked.take() : null, outside });
 }
 
 export function designGeometry(out: MeshBuilder, r: DrawIn): void {
@@ -109,12 +118,12 @@ export function designGeometry(out: MeshBuilder, r: DrawIn): void {
       for (const it of d.items) {
         const build = ITEMS[it.kind];
         if (build === undefined) throw new Error(`no builder for the item kind ${it.kind}`);
-        part(it.kind, () => build(g.lift(it.y ?? 0), it));
+        part(it.kind, () => build(g.under(underside(d, it.s, it.d, it.y ?? 0)).lift(it.y ?? 0), it));
       }
       for (const dc of d.decor) {
         const build = DECOR[dc.kind];
         if (build === undefined) throw new Error(`no builder for the decor kind ${dc.kind}`);
-        part(dc.kind, () => build(g, dc));
+        part(dc.kind, () => build(g.under(underside(d, dc.s, dc.d, dc.y)), dc));
       }
     });
   });
@@ -518,4 +527,17 @@ function windows(g: Geo, d: Design): void {
     g.poly([P(w.a0, w.y1, 0), P(w.a1, w.y1, 0), P(w.a1, w.y1, o), P(w.a0, w.y1, o)], [0, 0, -1], "painted", paint);
     g.glassSheet([P(w.a0, w.y0, o), P(w.a1, w.y0, o), P(w.a1, w.y1, o), P(w.a0, w.y1, o)], [into[0], into[1], 0], 700 + n * 13 + Math.round(w.a0 * 10), [w.y1 - w.y0, w.a1 - w.a0]);
   }
+}
+
+/**
+ * The underside of what is above a place of the room at the height `y`: the lowest ceiling or floor slab with thickness that covers it and is over `y` by more than 0.3 m, or the room's own height. What hangs from "the ceiling"
+ * (a lamp's wire, a bulb string's rods, a batten ceiling's hangers, a vent, a sprinkler) hangs from this, never through a slab to the room's overall height (the hotel's lobby lamps' wires once stood in the corridor above).
+ */
+export function underside(d: Design, s: number, dd: number, y: number): number {
+  let best = d.height;
+  for (const sl of d.slabs) {
+    const under = sl.kind === "ceiling" ? sl.y : sl.thick > 0 ? sl.y - sl.thick : Infinity;
+    if (under > y + 0.3 && under < best && s >= sl.s0 && s <= sl.s1 && dd >= sl.d0 && dd <= sl.d1) best = under;
+  }
+  return best;
 }

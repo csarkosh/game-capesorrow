@@ -141,17 +141,18 @@ export function barDesign(site: BarSite): Design {
   if (highTops) {
     // A row along the brick wall the whole length, a table every 1.6 m.
     for (let k = 0, dh = 2.4; dh <= D - 1.9; k++, dh += 1.6) {
-      if (!b.item("high_table", cm(W - 0.62), cm(dh), TOWARD_LEFT, [0.36], { gap: 0.05 })) continue;
+      // From the wall outward: the wall, the stools with their backs to it (0.38 m from it to their middles) side by side along it, the table in front of them, then the aisle. A sitter faces the table and across the room to the bar.
+      if (!b.item("high_table", cm(W - 1.0), cm(dh), TOWARD_LEFT, [0.36], { gap: 0.05 })) continue;
       highTables.push(cm(dh));
       for (const dd of [-0.34, 0.34]) {
-        const s = cm(W - 1.25);
+        const s = cm(W - 0.38);
         const d = cm(dh + dd);
-        if (b.item("stool", s, d, turn(TOWARD_RIGHT, k + (dd > 0 ? 1 : 0)), [], { gap: 0.02 })) stoolsHigh.push({ s, d });
+        if (b.item("stool", s, d, turn(TOWARD_LEFT, k + (dd > 0 ? 1 : 0)), [], { gap: 0.02 })) stoolsHigh.push({ s, d });
       }
     }
   }
   const sL = LANE_FROM + 0.1;
-  const sR = highTops ? W - 1.6 : W - 0.5;
+  const sR = highTops ? W - 1.9 : W - 0.5;
   const lane = sR - sL;
 
   // ---- a pool table in the back third where the room is 9 m wide or more, with a way round it.
@@ -251,7 +252,7 @@ export function barDesign(site: BarSite): Design {
   }
 
   // ---- what stands on the tables and the bar.
-  for (let i = 0; i < highTables.length; i++) b.item("tabletop", cm(W - 0.62), highTables[i] as number, TOWARD_LEFT, [i % 3], { anywhere: true, y: 1.05 });
+  for (let i = 0; i < highTables.length; i++) b.item("tabletop", cm(W - 1.0), highTables[i] as number, TOWARD_LEFT, [i % 3], { anywhere: true, y: 1.05 });
   for (let i = 0; i < tables.length; i++) b.item("tabletop", (tables[i] as Spot).s, (tables[i] as Spot).d, TOWARD_BACK, [(i + 1) % 4], { anywhere: true, y: 0.74 });
   if (hasBar) for (let k = 0; k * 1.3 + 0.5 < L; k++) b.item("tabletop", COUNTER_S + 0.05, cm(d0 + 0.5 + k * 1.3), TOWARD_RIGHT, [k % 5 === 2 ? 2 : k % 2 === 0 ? 1 : 3], { anywhere: true, y: 1.07 });
 
@@ -324,7 +325,7 @@ export function barDesign(site: BarSite): Design {
   for (let i = 0; i < stoolsHigh.length && atHigh < 3; i++) {
     if (roll(120 + i) >= 0.4) continue;
     const st = stoolsHigh[i] as Spot;
-    b.person({ s: st.s, d: st.d, face: TOWARD_RIGHT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
+    b.person({ s: st.s, d: st.d, face: TOWARD_LEFT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
     atHigh++;
   }
 

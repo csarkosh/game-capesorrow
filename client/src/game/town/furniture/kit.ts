@@ -22,6 +22,11 @@ const ONE: Rgb = [1, 1, 1];
 export class Geo {
   constructor(readonly out: MeshBuilder, readonly xf: Xf, readonly floorY: number, readonly light: BakedLight, readonly seed: number, readonly ceiling: number, readonly yOff = 0) {}
 
+  /** The same room's context with the ceiling at `c` over the floor: what is hung from the ceiling at some place hangs from the underside of what is actually above it there (`designGeometry.ts`), not from the room's overall height. */
+  under(c: number): Geo {
+    return new Geo(this.out, this.xf, this.floorY, this.light, this.seed, c, this.yOff);
+  }
+
   /** The same room's context for things that stand on a floor `y` metres up (an upper floor's): their heights are measured from it, and lit as the height it is. */
   lift(y: number): Geo {
     return y === 0 ? this : new Geo(this.out, this.xf, this.floorY, this.light, this.seed, this.ceiling - y, this.yOff + y);

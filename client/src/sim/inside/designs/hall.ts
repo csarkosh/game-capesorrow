@@ -43,7 +43,8 @@ export function hallDesign(site: HallSite): Design {
   const C = site.doorS;
   // A shallow hall has its storeys a little lower, so that the stair's run, which has to start a step in from the front wall, is no steeper than a hull climbs.
   const F = D >= 12 ? HALL_STOREY : 3.0;
-  const n = site.storeys >= 3 ? 3 : 2;
+  // A shallow hall (under 12 m deep) has two storeys: there is no depth for a third floor's flight to climb in.
+  const n = site.storeys >= 3 && D >= 12 ? 3 : 2;
   const H = cm(F * n);
   const b = new DesignBuilder(W, D, H, site.id, footOf);
   const roll = (salt: number): number => b.roll(salt);
@@ -69,7 +70,19 @@ export function hallDesign(site: HallSite): Design {
   b.slab({ kind: "floor", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: 0, thick: 0, mat: "concrete", tint: [1.35, 1.35, 1.3] });
   b.slab({ kind: "floor", s0: 0, s1: W, d0: Bd, d1: D, y: Y2, thick: 0.3, mat: "oak", edge: "painted", tint: [0.95, 0.9, 0.85] });
   b.slab({ kind: "floor", s0: sR, s1: W, d0: dR, d1: Bd, y: Y2, thick: 0.3, mat: "oak", edge: "painted", tint: [0.95, 0.9, 0.85] });
-  if (n === 3) b.slab({ kind: "floor", s0: 0, s1: W, d0: Bd, d1: D, y: Y3, thick: 0.3, mat: "oak", edge: "painted", tint: [0.95, 0.9, 0.85] });
+  // Floor 3's slab has a stairwell over the staff flight (it goes on up to floor 3's landing): the slab is cut away from where the flight's head reaches the slab's underside (2.0 m of headroom) to the landing's front.
+  const rEnd = n === 3 ? cm(half(W - 3.2)) : cm(W - 0.15);
+  const flight = { s0: cm(rEnd + 0.2), s1: cm(W - 0.35), d0: cm(Dg + 0.3), d1: cm(D - 1.0) };
+  const well = { s0: cm(flight.s0 - 0.1), s1: cm(flight.s1 + 0.1), d0: cm(flight.d0 + ((flight.d1 - flight.d0) * (F - 2.3)) / F), d1: flight.d1 };
+  if (n === 3) {
+    const piece3 = (s0: number, s1: number, d0: number, d1: number): void => {
+      if (s1 - s0 > 0.01 && d1 - d0 > 0.01) b.slab({ kind: "floor", s0, s1, d0, d1, y: Y3, thick: 0.3, mat: "oak", edge: "painted", tint: [0.95, 0.9, 0.85] });
+    };
+    piece3(0, well.s0, Bd, D);
+    piece3(well.s1, W, Bd, D);
+    piece3(well.s0, well.s1, Bd, well.d0);
+    piece3(well.s0, well.s1, well.d1, D);
+  }
   b.slab({ kind: "ceiling", s0: 0, s1: W, d0: FRONT_WALL, d1: D, y: H, thick: 0, mat: "painted", tint: white });
   b.surface({ kind: "floor", s0: 0, s1: W, d0: 0, d1: D, y: 0 });
   b.surface({ kind: "floor", s0: 0, s1: W, d0: Bd, d1: D, y: Y2 });
@@ -160,7 +173,6 @@ export function hallDesign(site: HallSite): Design {
   }
 
   // ---- floor 2: the gallery's rail, and five rooms off it. The staff stair's slot is at the right end where there is a third floor.
-  const rEnd = n === 3 ? cm(half(W - 3.2)) : sEnd;
   const nRooms = 5;
   const wr = (rEnd - 0.15) / nRooms;
   const cuts: number[] = [0.15];
@@ -175,6 +187,7 @@ export function hallDesign(site: HallSite): Design {
   for (let k = 1; k < nRooms; k++) partition(cuts[k] as number, Dg, D, Y2);
   partition(rEnd, Dg, D, Y2);
   let player = { s: 0, d: 0 };
+  let stair3: { name: string; s: number; d: number; y: number } | null = null;
   for (let k = 0; k < nRooms; k++) {
     const a = cuts[k] as number;
     const c = cuts[k + 1] as number;
@@ -238,16 +251,34 @@ export function hallDesign(site: HallSite): Design {
   }
   // The staff stair: a narrow flight to floor 3 behind a barrier with a plate; drawn, never walked.
   if (n === 3) {
-    const s0 = cm(rEnd + 0.2);
-    const s1 = cm(W - 0.35);
-    b.display({ s0, s1, d0: Dg + 0.3, d1: D - 0.05, along: "d", y0: Y2, y1: Y3, base: Y2, mat: "oak", rails: ["lo", "hi"] });
+    // The flight goes on up through the well in floor 3's slab to a landing at floor 3's level (`flight`, `well`); a rail runs round the well on floor 3, and floor 3 is seen up it: the landing, a lit sign on its back wall.
+    b.display({ s0: flight.s0, s1: flight.s1, d0: flight.d0, d1: flight.d1, along: "d", y0: Y2, y1: Y3, base: Y2, mat: "oak", rails: ["lo", "hi"] });
+    b.rail({ s0: well.s0, d0: well.d0, s1: well.s1, d1: well.d0, y: Y3, h: 1.0, kind: "glass", mat: "oak" });
+    b.rail({ s0: well.s0, d0: well.d0, s1: well.s0, d1: well.d1, y: Y3, h: 1.0, kind: "glass", mat: "oak" });
+    b.rail({ s0: well.s1, d0: well.d0, s1: well.s1, d1: well.d1, y: Y3, h: 1.0, kind: "glass", mat: "oak" });
+    b.decorate({ kind: "sign", s: cm((flight.s0 + flight.s1) / 2), d: cm(D - 0.04), y: cm(Y3 + 2.1), face: TOWARD_FRONT, w: 1.2, h: 0.26, text: "THIRD FLOOR" });
+    b.light({ s: cm((flight.s0 + flight.s1) / 2), d: cm(D - 0.6), y: cm(Y3 + 2.6), kind: "tube", beam: 6, power: 1.6, reach: 3.6, tone: [1, 0.96, 0.88] });
+    b.item("downlight", cm((flight.s0 + flight.s1) / 2), cm(D - 0.6), TOWARD_RIGHT, [], { anywhere: true });
     b.block({ s: (rEnd + W) / 2, d: (Dg + D) / 2, ax: 1, ad: 0, ha: (W - rEnd) / 2, hb: (D - Dg) / 2, y0: Y2, y1: Y3 });
-    b.item("barrier", cm((rEnd + W - 0.15) / 2), cm(Dg + 0.35), TOWARD_FRONT, [Y2 + 0.53], { anywhere: true, y: Y2 });
+    // The closure: a glazed screen in dark frames across the flight's foot with a glazed door and a card reader (solid, the whole width of the stair, 2.2 m high), brass posts with a dark red rope before it, plates on it, a directory
+    // on the wall beside it and a downlight over it. The flight is seen through it rising to the lit landing.
+    const cs = cm((flight.s0 + flight.s1) / 2);
+    const sw = cm(flight.s1 - flight.s0 + 0.2);
+    b.block({ s: cs, d: cm(Dg + 0.18), ax: 1, ad: 0, ha: sw / 2 + 0.05, hb: 0.12, y0: Y2, y1: Y2 + 2.3 });
+    b.item("glass_screen", cs, cm(Dg + 0.18), TOWARD_FRONT, [sw], { anywhere: true, y: Y2 });
+    b.item("rope_posts", cs, cm(Dg - 0.55), TOWARD_FRONT, [cm(sw - 0.4)], { anywhere: true, y: Y2 });
+    b.decorate({ kind: "sign", s: cm(cs + 0.35), d: cm(Dg + 0.08), y: cm(Y2 + 1.55), face: TOWARD_FRONT, w: 0.46, h: 0.34, text: "THIRD FLOOR|BY APPOINTMENT" });
+    b.decorate({ kind: "sign", s: cm(cs + 0.35), d: cm(Dg + 0.08), y: cm(Y2 + 1.12), face: TOWARD_FRONT, w: 0.34, h: 0.18, text: "STAFF ONLY" });
+    b.decorate({ kind: "board", s: cm(W - 0.02), d: cm(Dg - 0.3), y: cm(Y2 + 1.5), face: TOWARD_LEFT, w: 0.6, h: 0.9, text: "1 CITY CLERK|2 SHERIFF|3 MAYOR" });
+    b.item("downlight", cs, cm(Dg - 0.3), TOWARD_RIGHT, [cm(Y3 - eps)], { anywhere: true });
+    b.light({ s: cs, d: cm(Dg - 0.3), y: cm(Y3 - eps - 0.05), kind: "tube", beam: 20, power: 1.4, reach: 2.6, tone: [1, 0.95, 0.85] });
+    // `goin office stair3 right`: the gallery a few metres from the closure, looking at it.
+    stair3 = { name: "stair3", s: cm(max(2.0, cs - 3.0)), d: cm(Bd + 0.7), y: Y2 };
     b.decorate({ kind: "sign", s: rEnd + 0.06, d: cm(Dg + 0.9), y: Y2 + 1.3, face: TOWARD_RIGHT, w: 0.9, h: 0.4, text: "STAFF ONLY" });
     // Floor 3: the mayor and the council behind glass, seen across the hall.
     const mid3 = cm(half(W / 2));
     front({ s0: 0.15, s1: mid3, d: Dg, y: Y3, doors: [{ c: halfUp(1.6) }] });
-    front({ s0: mid3, s1: sEnd, d: Dg, y: Y3, doors: [{ c: halfUp(mid3 + 1.6) }] });
+    front({ s0: mid3, s1: rEnd, d: Dg, y: Y3, doors: [{ c: halfUp(mid3 + 1.6) }] });
     partition(mid3, Dg, D, Y3);
     plate(halfUp(1.6) + 1.9, Dg - 0.06, Y3 + 2.35, TOWARD_FRONT, "MAYOR", 1.2);
     plate(halfUp(mid3 + 1.6) + 1.9, Dg - 0.06, Y3 + 2.35, TOWARD_FRONT, "COUNCIL", 1.4);
@@ -285,11 +316,11 @@ export function hallDesign(site: HallSite): Design {
   if (LL1 - LL0 > 2.0) {
     const cx = cm((LL0 + LL1) / 2);
     b.item("window_bench", cx, 0.55, TOWARD_BACK, [min(2.2, LL1 - LL0 - 0.3)], { gap: 0.05 });
-    b.item("armchair", cm(cx - 0.9), cm(Bd - 3.3), TOWARD_BACK, [], { gap: 0.05, mat: "orange" });
-    b.item("armchair", cm(cx + 0.9), cm(Bd - 3.3), TOWARD_BACK, [], { gap: 0.05, mat: "orange" });
-    b.item("low_table", cx, cm(Bd - 4.1), TOWARD_BACK, [0.4], { gap: 0.05 });
-    b.person({ s: cm(cx - 0.9), d: cm(Bd - 3.3), face: TOWARD_BACK, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
-    b.person({ s: cm(C - 2.4), d: cm(Bd - 2.4), face: TOWARD_BACK, activity: "wait", role: "customer", sits: null, family: "chair" });
+    b.item("armchair", cm(cx - 0.9), cm(Bd - 3.0), TOWARD_FRONT, [], { gap: 0.05, mat: "orange" });
+    b.item("armchair", cm(cx + 0.9), cm(Bd - 3.0), TOWARD_FRONT, [], { gap: 0.05, mat: "orange" });
+    b.item("low_table", cx, cm(Bd - 4.6), TOWARD_BACK, [0.4], { gap: 0.05 });
+    b.person({ s: cm(cx - 0.9), d: cm(Bd - 3.0), face: TOWARD_FRONT, activity: "sit_rest", role: "customer", sits: 0.45, family: "chair" });
+    b.person({ s: cm(C - 2.4), d: cm(Bd - 1.0), face: TOWARD_BACK, activity: "wait", role: "customer", sits: null, family: "chair" });
   }
   for (const [s, d] of [[0.5, 0.6], [W - 0.5, 0.6], [sStair1 + 0.4, 0.6], [C - 2.0, 0.6], [C + 2.0, 0.6], [0.5, Bd - 0.5], [W - 0.5, dR - 0.6], [sR - 0.4, Bd - 0.6]] as const) b.item("plant", cm(s), cm(d), TOWARD_BACK, [], { gap: 0.1 });
   for (const s of [3.4, C + 3.8]) b.item("planter", cm(s), 0.55, TOWARD_RIGHT, [1.8], { gap: 0.1 });
@@ -338,6 +369,7 @@ export function hallDesign(site: HallSite): Design {
     { name: "gallery", s: cm(half(W * 0.55) + 0.25), d: cm(Bd + 0.8), y: Y2 },
     { name: "room", s: cm(player.s), d: cm(Dg + 1.2), y: Y2 },
     { name: "counter", s: cm(c0 - 2.2), d: cm(Bd - 0.8), y: 0 },
+    ...(stair3 === null ? [] : [stair3]),
   ];
   const wallBrick = { mat: "brick", tint: [1.0, 0.95, 0.9] as [number, number, number], wainscot: { h: F, mat: "oak", tint: [0.85, 0.7, 0.55] as [number, number, number] } };
   return b.build({
