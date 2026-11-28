@@ -5,10 +5,10 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { STEP_UP } from "../../src/sim/inside/design.js";
 import { municipalFrame } from "../../src/sim/inside/designs/municipal.js";
 import { roomOf, type InsideRoom } from "../../src/sim/inside/rooms.js";
-import { CELL, R, centre, flood, standsAt, stepTo, walkable } from "./designHelpers.js";
+import { CELL, R, centre, floodOf, standsAt, stepTo, walkableOf } from "./designHelpers.js";
+import { HEAVY_SEEDS } from "./seeds.js";
 
-const GAME_SEEDS: readonly number[] = [20261121, 1, 6, 1175766972];
-const SEEDS = [...GAME_SEEDS, ...Array.from({ length: 24 }, (_, i) => i + 1).filter((s) => !GAME_SEEDS.includes(s))];
+const SEEDS = HEAVY_SEEDS;
 const office = (seed: number): InsideRoom => roomOf(seed, 4) as InsideRoom;
 
 describe("the municipal hall as a design", () => {
@@ -33,7 +33,7 @@ describe("the municipal hall as a design", () => {
     const lines: string[] = [];
     for (const seed of SEEDS) {
       const d = office(seed).design;
-      const reach = flood(d, d.arrive);
+      const reach = floodOf(d);
       const label = `seed ${seed}`;
       const mark = (name: string) => (d.marks ?? []).find((m) => m.name === name) as { s: number; d: number; y: number };
       const room = mark("room");
@@ -67,7 +67,7 @@ describe("the municipal hall as a design", () => {
       expect(city.s, `${label}: the city's side`).toBeLessThan(room.s + d.width);
       expect(city.s).toBeLessThan(office(seed).doorS);
       expect(sheriff.s).toBeGreaterThan(office(seed).doorS);
-      const share = reach.states.length / walkable(d);
+      const share = reach.states.length / walkableOf(d);
       expect(share, `${label}: share of the floor reached`).toBeGreaterThan(0.9);
       lines.push(`${seed}: ${d.width.toFixed(1)} x ${d.depth.toFixed(1)} x ${d.height.toFixed(1)}, ${d.items.length} items, ${d.decor.length} hangings, ${d.lights.length} lights, ${(share * 100).toFixed(0)} percent reached`);
     }

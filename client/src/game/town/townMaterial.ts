@@ -76,6 +76,7 @@ import { KNOCK_OVER, KNOCK_UNDER, PAINT_RANKS } from "./paint.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
 import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
+import { NIGHT_BIAS } from "./meshBuilder.js";
 import { INTERIOR_LAYERS } from "./interiorLayers.js";
 import { PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY, layerIndex } from "./townLayers.js";
 import { EAVE_CODE, EAVE_REACH, EAVE_SHADE, FOOT_CODE, FOOT_REACH, FOOT_SHADE, FOOT_UNIT } from "./skyShade.js";
@@ -333,8 +334,25 @@ export const TOWN_LIGHT_CODE =
 export const DAY_GLOW_CODE =
   "if(tsSurf.w>0.001&&tsLayer>=0&&tsWearV.z<=0.5){baseColor=baseColor+tsBase0*clamp(tsSurf.w,0.0,1.0)*(1.0-material.townDay);townGlowC=townGlowC*material.townDay;}";
 
+/**
+ * How bright it is outside, 0 to 1, from what the air already knows: the mean of the air's far colour (`atmFarColour`: the dome's horizon, which follows the hour and the weather and is what a pane's
+ * reflection reads too, `townAlphaCode`). Measured under the engine's sky: 0.03 at night (clear or not), 0.56 at clear noon, 0.40 under the game's own overcast, 0.28 in heavy rain, 0.43 at clear dusk and
+ * 0.23 at its overcast dusk. 0 up to `ROOM_NIGHT_BELOW` and 1 from `ROOM_DAY_FROM`, smooth between; no clock of its own.
+ */
+export const ROOM_NIGHT_BELOW = 0.045;
+export const ROOM_DAY_FROM = 0.55;
+/** The WGSL that mixes a room's night colour with its day colour by that: the ratios are the two floats a textured corner of a room leaves unused (red in the second wear's kind, blue in the rank), as 2 + the ratio; green is read between them. */
+export const ROOM_NIGHT_CODE = [
+  `if(tsWearV.w>${(NIGHT_BIAS - 0.01).toFixed(2)}){`,
+  `var tsOut=clamp((dot(${FRAME_BLOCK}.atmFarColour,vec3<f32>(0.3333))-${ROOM_NIGHT_BELOW.toFixed(3)})/${(ROOM_DAY_FROM - ROOM_NIGHT_BELOW).toFixed(3)},0.0,1.0);`,
+  "tsOut=tsOut*tsOut*(3.0-2.0*tsOut);",
+  `let tsRr=tsWearV.y-${NIGHT_BIAS.toFixed(1)};let tsRb=tsWearV.w-${NIGHT_BIAS.toFixed(1)};`,
+  "baseColor=baseColor*mix(vec3<f32>(tsRr,sqrt(max(tsRr*tsRb,0.0)),tsRb),vec3<f32>(1.0,1.0,1.0),tsOut);",
+  "}",
+].join("");
+
 /** The WGSL at `CUSTOM_FRAGMENT_UPDATE_DIFFUSE`: the surface, as the header says. */
-export function townSurfaceCode(low: boolean, sign = false, ranked = false, set: LayerSet = TOWN_SET): string {
+export function townSurfaceCode(low: boolean, sign = false, ranked = false, set: LayerSet = TOWN_SET, night = set !== TOWN_SET): string {
   return [
     `let tsSurf=input.${TOWN_VARYING};`,
     `let tsWearV=input.${TOWN_WEAR_VARYING};`,
@@ -362,6 +380,8 @@ export function townSurfaceCode(low: boolean, sign = false, ranked = false, set:
     // Bare metal is metal: sheet that is not rusted or painted over shines as the conductor it is, and the wear takes it away.
     ...(set.metal.length === 0 ? [] : [`if(${set.metal.map((i) => `tsLayer==${i}`).join("||")}){metallic=${f(METAL_AMOUNT)}*(1.0-clamp(tsWm*1.6,0.0,1.0));}`]),
     "}",
+    // A designed room's colour at night rides with its colour by day (`NIGHT_RATIOS`): the room is mixed from the one to the other by how bright it is outside.
+    ...(night ? [ROOM_NIGHT_CODE] : []),
     // The glow: the colour as it stands (flat or textured) lights itself by `tsSurf.w`, and the scene lights what is left.
     "let tsBase0=baseColor;",
     `if(tsSurf.w>0.001){townGlowC=baseColor*tsSurf.w;baseColor=baseColor*(1.0-clamp(tsSurf.w,0.0,1.0));${sign ? hoursCodeFor(true) : HOURS_CODE}}`,
@@ -659,14 +679,14 @@ export const DOOR_UNPAINT = `if(color.a<0.04){out.clipPos.z-=${PAINT_K.toExponen
 export const KNOCK_UNPAINT = `if(color.a>${KNOCK_OVER}&&color.a<${KNOCK_UNDER}){out.clipPos.z-=${PAINT_K.toExponential(6)}*(1.0-color.a)*out.clipPos.w;}`;
 
 /** The plugin: see the header. `low`: the low tier's cheaper wear and overlay. `ranked`: the material is the flat ground's, whose vertices carry a depth rank. */
-export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false, set: LayerSet = TOWN_SET): MaterialPlugin {
+export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, low: boolean, signAtlas?: Texture2DArray, ranked = false, set: LayerSet = TOWN_SET, night = set !== TOWN_SET): MaterialPlugin {
   const definitions = townDefinitions(low, set);
-  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked, set);
+  const surface = (signAtlas === undefined ? "" : SIGN_CODE) + townSurfaceCode(low, signAtlas !== undefined, ranked, set, night);
   const rooms = set !== TOWN_SET;
   return {
     name: rooms ? "InteriorSurface" : "TownSurface",
     priority: 200,
-    defines: rooms ? { low, ranked, rooms } : { low, ranked },
+    defines: rooms ? { low, ranked, rooms, night } : night ? { low, ranked, night } : { low, ranked },
     getFragmentDirectives: () => "diagnostic(off,derivative_uniformity);",
     getCustomCode: (stage) =>
       stage === "fragment"

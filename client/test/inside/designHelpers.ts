@@ -140,6 +140,28 @@ export function stepTo(design: Design, from: { s: number; d: number; h: number }
   return mid === null ? null : g;
 }
 
+/** The flood from a design's own arrival, once for each design in a file (the flood is the most a test spends on a room; the tests of a file that ask for it share it). */
+const FLOODS = new WeakMap<Design, Flood>();
+export function floodOf(design: Design): Flood {
+  let made = FLOODS.get(design);
+  if (made === undefined) {
+    made = flood(design, design.arrive);
+    FLOODS.set(design, made);
+  }
+  return made;
+}
+
+/** The walkable count of a design, once for each (`walkable` visits every cell of the grid at every surface). */
+const WALKABLES = new WeakMap<Design, number>();
+export function walkableOf(design: Design): number {
+  let made = WALKABLES.get(design);
+  if (made === undefined) {
+    made = walkable(design);
+    WALKABLES.set(design, made);
+  }
+  return made;
+}
+
 /** A 0.5 m grid flood-filled from a place with the walking's own rules: a step to a neighbour (eight ways) is taken where a hull of radius `r` stands there and at the step's middle, on the highest ground within a step up, falling to what is below. */
 export function flood(design: Design, from: Spot, r: number = R): Flood {
   const seen = new Map<string, number>();

@@ -18,6 +18,7 @@ import { bakeLight, type DayPane } from "./designLight.js";
 import { DECOR, ITEMS } from "./furniture/index.js";
 import { Geo, tintOf, type P3 } from "./furniture/kit.js";
 import { glassPanel } from "./furniture/glass.js";
+import { PANE_SETBACK } from "./roomGlass.js";
 import { styleOf } from "./roomFill.js";
 import type { Xf, Ctx } from "./roomKit.js";
 import { frontWall, type Band, type Layered } from "./roomShell.js";
@@ -34,6 +35,8 @@ export type DrawIn = {
   readonly detail: Detail;
   /** The front wall's windows, from the plan, in the design's own `s`; and the building's era, for their frames. None for a design drawn with no front (a test's). */
   readonly front: { readonly openings: readonly Opening[]; readonly era: number; /** The head of the street door over the floor as the street side draws it, which the door inside is cut to. */ readonly doorHead: number } | null;
+  /** Lay the room's windows' glass in a layer of its own (`RoomArrays.through`) for the through material to draw; false, the windows are opaque sheets in the room's own mesh. */
+  readonly glass?: boolean;
   /** Told how many vertices each part of the room took, by name (for a report of what a room costs). */
   readonly report?: (part: string, vertices: number) => void;
 };
@@ -74,10 +77,15 @@ function lines(span: number, step: number): number[] {
 }
 
 /** The design as the arrays of one mesh in the town's solid material. */
-export function designMesh(r: DrawIn): MeshArrays {
+export type RoomArrays = MeshArrays & { readonly through: MeshArrays | null };
+
+export function designMesh(r: DrawIn): RoomArrays {
   const out = new MeshBuilder(true);
+  const marked = r.glass === true ? new MeshBuilder() : null;
+  out.marked = marked;
   designGeometry(out, r);
-  return out.take();
+  const arrays = out.take();
+  return Object.assign(arrays, { through: marked !== null && marked.vertices > 0 ? marked.take() : null });
 }
 
 export function designGeometry(out: MeshBuilder, r: DrawIn): void {
@@ -94,6 +102,7 @@ export function designGeometry(out: MeshBuilder, r: DrawIn): void {
     out.withGlow(1, () => {
       part("floors and ceiling", () => slabs(g, d));
       part("outer walls", () => shell(g, r, d));
+      part("windows", () => windows(g, d));
       for (const w of d.walls) part("walls", () => wall(g, w, d.height));
       for (const st of d.stairs) part("stairs", () => stair(g, st));
       for (const rl of d.rails) part("rails", () => rail(g, rl));
@@ -190,7 +199,34 @@ function outerWall(g: Geo, d: Design, face: Face): void {
       }
       continue;
     }
-    g.grid(run.o, [run.u[0] * run.len, run.u[1] * run.len, 0], [0, 0, h], lines(run.len, CELL), vs, run.hint, b.mat, tint);
+    // The wall is cut away where a window is (`Design.windows`), when the room has a layer for the glass that is set in it.
+    const aStart = face === "back" ? 0 : FRONT_WALL;
+    const cuts = (g.out.marked === null ? [] : d.windows ?? []).filter((w) => w.wall === face && w.y0 < b.y1 && w.y1 > b.y0);
+    if (cuts.length === 0) {
+      g.grid(run.o, [run.u[0] * run.len, run.u[1] * run.len, 0], [0, 0, h], lines(run.len, CELL), vs, run.hint, b.mat, tint);
+      continue;
+    }
+    const ys = [b.y0, b.y1];
+    for (const w of cuts) for (const y of [w.y0, w.y1]) if (y > b.y0 + 1e-3 && y < b.y1 - 1e-3) ys.push(y);
+    ys.sort((p, q) => p - q);
+    for (let k = 0; k + 1 < ys.length; k++) {
+      const ya = ys[k] as number;
+      const yb = ys[k + 1] as number;
+      if (yb - ya < 1e-3) continue;
+      const mid = (ya + yb) / 2;
+      const blocked = cuts.filter((w) => w.y0 <= mid && mid <= w.y1).sort((p, q) => p.a0 - q.a0);
+      let at = aStart;
+      const piece = (a0: number, a1: number): void => {
+        if (a1 - a0 < 0.02) return;
+        const rel = a0 - aStart;
+        g.grid([run.o[0] + run.u[0] * rel, run.o[1] + run.u[1] * rel, ya], [run.u[0] * (a1 - a0), run.u[1] * (a1 - a0), 0], [0, 0, yb - ya], lines(a1 - a0, CELL), lines(yb - ya, h > 1 ? 0.9 : 1), run.hint, b.mat, tint);
+      };
+      for (const w of blocked) {
+        piece(at, Math.min(w.a0, aStart + run.len));
+        at = Math.max(at, w.a1);
+      }
+      piece(at, aStart + run.len);
+    }
   }
 }
 
@@ -226,7 +262,7 @@ function shell(g: Geo, r: DrawIn, d: Design): void {
   }
   const c: Ctx = {
     out: g.out, xf: g.xf, floorY: g.floorY, seed: r.seed, lit: true, vacant: false, detail: r.detail, trade: null, field: g.light, ceiling: d.height, s0: 0, s1: d.width, d1: d.depth,
-    era: front.era, glassIn: 0, n: 0, chairs: [], type: "bar", paint: materialOf(d.shell.front.mat).albedo, base: materialOf(d.shell.front.skirt ?? d.shell.front.mat).albedo,
+    era: front.era, glassIn: 0, glass: g.out.marked, n: 0, chairs: [], type: "bar", paint: materialOf(d.shell.front.mat).albedo, base: materialOf(d.shell.front.skirt ?? d.shell.front.mat).albedo,
     door: { s: d.doorS, w: d.doorWidth }, feet: [], style: styleOf(r.seed, null, front.era, 1960, 0), whole: true,
   };
   frontWall(c, { door: { s: d.doorS, width: d.doorWidth, head: front.doorHead }, openings: front.openings }, frontBands(d.shell.front, d.height));
@@ -459,3 +495,27 @@ function rail(g: Geo, r: Rail): void {
   }
 }
 
+
+// ---- windows in the back and side walls
+
+/**
+ * The glass of each window of `Design.windows`, where the room has a layer for it (`out.marked`): a pane of through glass (`roomGlass.ts`) set `PANE_SETBACK` back into the wall's thickness, and the reveal, the
+ * four faces of the wall's thickness round it, in the wall's own paint. The wall is cut away there (`outerWall`), so what is read behind the pane is the sky and the far land.
+ */
+function windows(g: Geo, d: Design): void {
+  if (g.out.marked === null) return;
+  const paint = { tint: [1.2, 1.18, 1.1] as Rgb };
+  for (const [n, w] of (d.windows ?? []).entries()) {
+    const back = w.wall === "back";
+    // A point of the wall's plane (`off` out of the room, into its thickness): along it `a`, at height `y`.
+    const P = (a: number, y: number, off: number): P3 => (back ? [a, d.depth + off, y] : w.wall === "left" ? [-off, a, y] : [d.width + off, a, y]);
+    const into: P3 = back ? [0, -1, 0] : w.wall === "left" ? [1, 0, 0] : [-1, 0, 0];
+    const along: P3 = back ? [1, 0, 0] : [0, 1, 0];
+    const o = PANE_SETBACK;
+    g.poly([P(w.a0, w.y0, 0), P(w.a0, w.y0, o), P(w.a0, w.y1, o), P(w.a0, w.y1, 0)], along, "painted", paint);
+    g.poly([P(w.a1, w.y0, 0), P(w.a1, w.y0, o), P(w.a1, w.y1, o), P(w.a1, w.y1, 0)], [-along[0], -along[1], 0], "painted", paint);
+    g.poly([P(w.a0, w.y0, 0), P(w.a1, w.y0, 0), P(w.a1, w.y0, o), P(w.a0, w.y0, o)], [0, 0, 1], "painted", paint);
+    g.poly([P(w.a0, w.y1, 0), P(w.a1, w.y1, 0), P(w.a1, w.y1, o), P(w.a0, w.y1, o)], [0, 0, -1], "painted", paint);
+    g.glassSheet([P(w.a0, w.y0, o), P(w.a1, w.y0, o), P(w.a1, w.y1, o), P(w.a0, w.y1, o)], [into[0], into[1], 0], 700 + n * 13 + Math.round(w.a0 * 10), [w.y1 - w.y0, w.a1 - w.a0]);
+  }
+}

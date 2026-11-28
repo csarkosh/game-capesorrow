@@ -65,6 +65,15 @@ export type MeshArrays = { positions: Float32Array; normals: Float32Array; color
 /** Floats a vertex's `surface` holds. */
 export const SURFACE_FLOATS = 12;
 
+/**
+ * A room's colour at night, carried with its colour by day (`designLight.ts`: two bakes of one design, `townMaterial.ts`: the indoor material mixes them by how bright it is outside). The colour a corner is
+ * given (the array itself, by identity) may be tied to the ratio of its night colour to its day colour in red and in blue (the green is read between them): the builder lays those in the two floats of a textured
+ * corner a room does not use (the second wear's kind and the flat ground's rank), each as 2 + the ratio, so that a corner with none is told from one that has. Costs no byte a vertex.
+ */
+export const NIGHT_RATIOS = new WeakMap<object, readonly [number, number]>();
+/** Where the ratios stand in the surface floats, and what they are added to. */
+export const NIGHT_BIAS = 2;
+
 const ONE: Rgb = [1, 1, 1];
 
 /** A corner nearer a cut than this, metres, is on it. */
@@ -419,7 +428,8 @@ export class MeshBuilder {
         // room's hours where the corner is a room's (`withHours`): a foot's code is under a half and an hours' is 1 or more, so the material tells
         // them apart. The second is the flat ground's depth rank where it has one (`Fx.rank`), and the ground's material does not read it as a code.
         const sky = surface.shade?.at(p);
-        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, this.hoursCode > 0 ? this.hoursCode : (sky?.[0] ?? 0), fx?.rank ?? sky?.[1] ?? 0);
+        const night = NIGHT_RATIOS.get(colourHere);
+        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), night === undefined ? kind2 : NIGHT_BIAS + night[0], this.hoursCode > 0 ? this.hoursCode : (sky?.[0] ?? 0), night === undefined ? fx?.rank ?? sky?.[1] ?? 0 : NIGHT_BIAS + night[1]);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
@@ -571,7 +581,8 @@ export class MeshBuilder {
           const [u, v] = uvAt(basis, p);
           this.uv.push2(u, v);
           const g = surface?.tint ?? ONE;
-          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, this.hoursCode, 0);
+          const night = NIGHT_RATIOS.get(c);
+          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, night === undefined ? 0 : NIGHT_BIAS + night[0], this.hoursCode, night === undefined ? 0 : NIGHT_BIAS + night[1]);
         }
       }
     }

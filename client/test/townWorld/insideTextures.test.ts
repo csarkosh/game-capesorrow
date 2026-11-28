@@ -71,6 +71,7 @@ function parts(interior: InsideHost["interior"] | "default" = "default") {
     material: townMaterial as never,
     order: 1,
     textured: true,
+    through: null,
     ground: { seed: SEED } as never,
     detail: "full",
     uploads: { count: vi.fn(), made: vi.fn(), dropped: vi.fn() } as never,

@@ -371,7 +371,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       // The material of the room a player walks into: the town's solid one with no wet look (a floor indoors is not wet with the rain; the split of the colour that the wet look ends with is kept). It keeps the air, which also carries the display curve and the grade of the tiers with no post chain.
       const indoor = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
-      indoor.plugins = [baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, false)] : []), surfaceSplitPlugin(), air()];
+      indoor.plugins = [baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, false, undefined, true)] : []), surfaceSplitPlugin(), air()];
       orders.take(indoor);
       if (wearsTextures) textured.push(indoor);
       // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
@@ -454,7 +454,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             },
           }
         : null;
-      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads, interior });
+      const roomsThrough = seeThrough?.through ?? null;
+      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads, through: roomsThrough === null ? null : { material: roomsThrough, order: orders.of(roomsThrough) ?? DRAW_ORDER.scenery }, interior });
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       const placed = [

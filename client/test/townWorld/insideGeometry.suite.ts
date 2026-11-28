@@ -1,9 +1,9 @@
 import "../../src/terrain.js";
 import { describe, expect, it } from "vitest";
 import { buildingLevels } from "../../src/game/town/buildingGeometry.js";
-import { FLOOR_LIFT, insideGeometry } from "../../src/game/town/insideGeometry.js";
+import { FLOOR_LIFT } from "../../src/game/town/insideGeometry.js";
 import { MeshBuilder, type MeshArrays } from "../../src/game/town/meshBuilder.js";
-import { townGround } from "../../src/game/town/townGeometry.js";
+import { groundOf, meshOf } from "./roomMeshes.js";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, OUTSIDE, insideRooms } from "../../src/sim/inside/rooms.js";
 import { hidesTown, insidePeople, wantedOf, whereOf } from "../../src/game/town/insideParts.js";
 
@@ -17,15 +17,15 @@ const pos = (a: MeshArrays, i: number): [number, number, number] => [a.positions
 
 describe("the hidden rooms", () => {
   for (const seed of SEEDS) {
-    const g = townGround(seed);
+    const g = groundOf(seed);
     const rooms = insideRooms(seed);
     it(`seed ${seed} has rooms`, () => {
       expect(rooms.length).toBeGreaterThan(0);
     });
-    for (const room of rooms) {
+    for (const [index, room] of rooms.entries()) {
       describe(`seed ${seed} ${room.name}`, () => {
         const t0 = performance.now();
-        const a = insideGeometry(g, room, "full");
+        const a = meshOf(seed, index);
         const ms = performance.now() - t0;
         const verts = a.positions.length / 3;
         it("is built and reports its size", () => {
@@ -109,7 +109,7 @@ describe("where the local player is by the rooms", () => {
   });
   it("stands people in the rooms over the whole room, on the floor", () => {
     for (const seed of SEEDS) {
-      const people = insidePeople(townGround(seed));
+      const people = insidePeople(groundOf(seed));
       console.log(`[inside] seed ${seed}: ${people.length} people in the hidden rooms`);
       for (const p of people) {
         const room = insideRooms(seed).find((r) => r.id === p.room)!;

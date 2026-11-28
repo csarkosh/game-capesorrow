@@ -371,7 +371,8 @@ export function litPane(g: Geo, dc: Decor): void {
   const h = dc.h / 2;
   const y0 = dc.y - h;
   const y1 = dc.y + h;
-  L.poly([[0.01, -w, y0], [0.01, w, y0], [0.01, w, y1], [0.01, -w, y1]], [1, 0, 0], "painted", { glow: 1.3, tint: [0.8, 0.88, 1] });
+  // Where the room has a layer for through glass the window is a cut in the wall with glass set in it (`Design.windows`, `designGeometry.ts`); where it has none it is this bright sheet.
+  if (g.out.marked === null) L.poly([[0.01, -w, y0], [0.01, w, y0], [0.01, w, y1], [0.01, -w, y1]], [1, 0, 0], "painted", { glow: 1.3, tint: [0.8, 0.88, 1] });
   // The blind, rolled half down: a pale sheet from the top and its roller.
   const drop = y1 - dc.h * 0.55;
   L.poly([[0.03, -w, drop], [0.03, w, drop], [0.03, w, y1], [0.03, -w, y1]], [1, 0, 0], "paper", { tint: [1.15, 1.15, 1.12], k: 1.1 });

@@ -16,7 +16,7 @@ import { municipalFrame } from "../../sim/inside/designs/municipal.js";
 import type { Opening } from "../../sim/town/types.js";
 import { buildingLevels } from "./buildingGeometry.js";
 import { pickOf } from "./buildingKit.js";
-import { designMesh } from "./designGeometry.js";
+import { designMesh, type RoomArrays } from "./designGeometry.js";
 import { unitHours } from "./hours.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
 import { roomGeometry } from "./roomGeometry.js";
@@ -35,8 +35,8 @@ export function doorHeadOf(era: number, fascia: number): number {
  * The hidden room as arrays: one set for the solid layer (a whole room has no haze, and its panes are sheets in it). A room whose design is not the converter's is drawn from its
  * design (`designGeometry.ts`); the rest by the street's room builder, as they always were.
  */
-export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void): MeshArrays {
-  if (!room.design.legacy) return designedGeometry(g, room, detail, report);
+export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): MeshArrays & { readonly through?: MeshArrays | null } {
+  if (!room.design.legacy) return designedGeometry(g, room, detail, report, glass);
   const b = g.plan.buildings[room.building];
   const use = g.plan.uses[room.building];
   const u = use?.units.find((x) => x.id === room.unit);
@@ -73,8 +73,8 @@ export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, 
 }
 
 /** A room drawn from its design: the unit's own front (its windows, its hours) with the design's walls, floors and furniture behind it, in the design's own frame (`s` from the unit's left end). */
-function designedGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void): MeshArrays {
-  if (room.unit === -1) return municipalDesigned(g, room, detail, report);
+function designedGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): RoomArrays {
+  if (room.unit === -1) return municipalDesigned(g, room, detail, report, glass);
   const b = g.plan.buildings[room.building];
   const use = g.plan.uses[room.building];
   const u = use?.units.find((x) => x.id === room.unit);
@@ -90,6 +90,7 @@ function designedGeometry(g: TownGround, room: InsideRoom, detail: Detail, repor
     seed: b.id * 31 + u.id,
     hours: unitHours(b, u),
     detail,
+    glass,
     front: { openings: u.openings.map((o) => ({ ...o, s0: o.s0 - u.s0, s1: o.s1 - u.s0 })), era: b.era, doorHead: doorHeadOf(b.era, u.fascia) },
     ...(report === undefined ? {} : { report }),
   });
@@ -100,7 +101,7 @@ function designedGeometry(g: TownGround, room: InsideRoom, detail: Detail, repor
  * The municipal building's hall, drawn from its design (`sim/inside/designs/hall.ts`) behind the building's own front frame (the plan holds no unit for it). Its front windows are at the stations
  * the street side lays out (`plainFront`, `openingsGeometry.ts`), but tall, a row to each storey, in the look the street side rolls for each (blinds, or a bright pane).
  */
-function municipalDesigned(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void): MeshArrays {
+function municipalDesigned(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): RoomArrays {
   const b = g.plan.buildings[room.building];
   if (b === undefined || b.id !== room.building) throw new Error(`the town has no building ${room.building} for the room ${room.id}`);
   const levels = buildingLevels(g, b);
@@ -131,6 +132,7 @@ function municipalDesigned(g: TownGround, room: InsideRoom, detail: Detail, repo
     seed: b.id * 31 + 7,
     hours: null,
     detail,
+    glass,
     front: { openings, era: b.era, doorHead: 2.9 },
     ...(report === undefined ? {} : { report }),
   });

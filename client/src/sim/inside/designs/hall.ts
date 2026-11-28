@@ -203,6 +203,7 @@ export function hallDesign(site: HallSite): Design {
       // The back wall: a coat stand with a coat and hat, the window between, two filing cabinets (one with a box on it).
       b.item("coat_stand", cm(a + 0.4), cm(D - 0.35), TOWARD_FRONT, [], { gap: 0.02, y: Y2 });
       b.decorate({ kind: "lit_pane", s: cm(a + 1.55), d: D, y: Y2 + 1.55, face: TOWARD_FRONT, w: 1.1, h: 1.2 });
+      b.windows.push({ wall: "back", a0: cm(a + 1.0), a1: cm(a + 2.1), y0: cm(Y2 + 0.95), y1: cm(Y2 + 2.15) });
       b.decorate({ kind: "clock", s: cm(a + 1.55), d: D, y: Y2 + 2.65, face: TOWARD_FRONT, w: 0.32, h: 0.32 });
       b.item("filing_cabinet", cm(c - 0.62), cm(D - 0.3), TOWARD_FRONT, [], { gap: 0.02, y: Y2 });
       b.item("filing_cabinet", cm(c - 1.15), cm(D - 0.3), TOWARD_FRONT, [], { gap: 0.02, y: Y2 });

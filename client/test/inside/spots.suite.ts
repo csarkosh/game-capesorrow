@@ -11,10 +11,10 @@ import { newCar } from "../../src/sim/car/start.js";
 import { HULL_RADIUS } from "../../src/sim/town/hull.js";
 import { townStart } from "../../src/sim/town/start.js";
 import { worldFor } from "../townWorld/world.js";
-import { CELL, centre, flood } from "./designHelpers.js";
+import { CELL, centre, floodOf } from "./designHelpers.js";
+import { HEAVY_SEEDS } from "./seeds.js";
 
-const GAME_SEEDS: readonly number[] = [20261121, 1, 6, 1175766972];
-const SEEDS = [...GAME_SEEDS, ...Array.from({ length: 24 }, (_, i) => i + 1).filter((s) => !GAME_SEEDS.includes(s))];
+const SEEDS = HEAVY_SEEDS;
 
 describe("the named places of the rooms", () => {
   it("are places a hull stands free in, and are reached from the arrival, on every seed", () => {
@@ -22,7 +22,7 @@ describe("the named places of the rooms", () => {
       for (const room of insideRooms(seed)) {
         const d = room.design;
         const names = ["door", "back", ...(d.marks ?? []).map((m) => m.name).filter((n) => n !== "beyond")];
-        const reach = flood(d, d.arrive);
+        const reach = floodOf(d);
         for (const name of names) {
           const at = spotOf(room, name);
           const label = `seed ${seed} ${room.name} ${name}`;

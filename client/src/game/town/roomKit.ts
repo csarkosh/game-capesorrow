@@ -4,7 +4,7 @@
  * into the building from its face), the context of one room, a box in the frame and a quad on a wall, both lit from the room's baked
  * light (`roomLight.ts`) at each corner, so that a surface is brighter where the room is.
  */
-import { scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
+import { NIGHT_RATIOS, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { veil, type RoomField } from "./roomLight.js";
 import type { Fx } from "./townSurface.js";
 import type { InteriorType, Trade } from "../../sim/town/types.js";
@@ -36,6 +36,8 @@ export type Ctx = {
   readonly trade: Trade | null;
   readonly field: RoomField;
   readonly ceiling: number;
+  /** Where the panes of this room's glass are laid (`roomGlass.ts`: the marked panes' own layer, read through out of focus), or none where the room has no layer for them and its panes are the opaque sheets of old. */
+  readonly glass?: MeshBuilder | null;
   readonly s0: number;
   readonly s1: number;
   /** The back wall's `d`. */
@@ -77,7 +79,19 @@ export function shade(c: Ctx, albedo: Rgb, s: number, d: number, yl: number, up:
   const r = albedo[0] * e[0] * k;
   const g = albedo[1] * e[1] * k;
   const b = albedo[2] * e[2] * k;
-  return [r + (v[0] - r) * h, g + (v[1] - g) * h, b + (v[2] - b) * h];
+  const out: Rgb = [r + (v[0] - r) * h, g + (v[1] - g) * h, b + (v[2] - b) * h];
+  // A designed room's field also has the room at night: the ratio of the two goes with the colour (`NIGHT_RATIOS`).
+  const field = c.field as { night?: () => Rgb };
+  if (field.night !== undefined && h === 0) {
+    const n = field.night();
+    NIGHT_RATIOS.set(out, [nightRatio(n[0], e[0]), nightRatio(n[2], e[2])]);
+  }
+  return out;
+}
+
+/** The share of a day colour a night colour is, 0.002 to 1: nothing where the day has nothing. */
+export function nightRatio(night: number, day: number): number {
+  return day < 1e-4 ? 1 : Math.min(1, Math.max(0.002, night / day));
 }
 
 /** How much of a glowing thing's own colour (a tube, a neon, a lit sign) the veil takes: less than of a lit surface's, since a lamp shows through haze. */

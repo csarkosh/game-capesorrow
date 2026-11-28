@@ -101,6 +101,9 @@ export type Mood = {
   readonly bounce?: number;
 };
 
+/** A window in the back or a side wall: `a0` to `a1` along the wall (`s` for the back, `d` for a side), `y0` to `y1` over the floor. */
+export type DesignWindow = { readonly wall: "back" | "left" | "right"; readonly a0: number; readonly a1: number; readonly y0: number; readonly y1: number };
+
 export type Design = {
   readonly name: string;
   /** True for a design the converter made from the plan's one-floor record: the old whole-room path draws it. */
@@ -124,6 +127,8 @@ export type Design = {
   readonly decor: readonly Decor[];
   readonly lights: readonly DesignLight[];
   readonly people: readonly DesignPerson[];
+  /** Openings in the back and side walls that a pane of glass is set in (the street's windows are the front wall's own, from the plan): the wall is cut away there when the room is drawn with glass, and a window's frame, blind and curtains hang over it. */
+  readonly windows?: readonly DesignWindow[];
   /** The outer walls' finishes, and the ceiling's and the floor's materials. */
   readonly shell: { readonly front: Finish; readonly left: Finish; readonly right: Finish; readonly back: Finish; readonly floor: string; readonly ceiling: string };
   readonly mood: Mood;
@@ -278,6 +283,7 @@ export class DesignBuilder {
   readonly decor: Decor[] = [];
   readonly lights: DesignLight[] = [];
   readonly people: DesignPerson[] = [];
+  readonly windows: DesignWindow[] = [];
   private readonly zones: Zone[] = [];
   /** The blocks of the items put down, for the test of the next. */
   private readonly feet: Block[] = [];
@@ -406,10 +412,10 @@ export class DesignBuilder {
     return true;
   }
 
-  build(o: Omit<Design, "surfaces" | "blocks" | "walls" | "slabs" | "stairs" | "rails" | "items" | "decor" | "lights" | "people" | "width" | "depth" | "height">): Design {
+  build(o: Omit<Design, "surfaces" | "blocks" | "walls" | "slabs" | "stairs" | "rails" | "items" | "decor" | "lights" | "people" | "windows" | "width" | "depth" | "height">): Design {
     return {
       ...o, width: this.width, depth: this.depth, height: this.height,
-      surfaces: this.surfaces, blocks: this.blocks, walls: this.walls, slabs: this.slabs, stairs: this.stairs, rails: this.rails, items: this.items, decor: this.decor, lights: this.lights, people: this.people,
+      surfaces: this.surfaces, blocks: this.blocks, walls: this.walls, slabs: this.slabs, stairs: this.stairs, rails: this.rails, items: this.items, decor: this.decor, lights: this.lights, people: this.people, windows: this.windows,
     };
   }
 }
@@ -455,6 +461,7 @@ export function mirrorDesign(d: Design, about: number = d.width): Design {
     decor: d.decor.map((i): Decor => ({ ...i, s: m(i.s), face: flip(i.face) })),
     lights: d.lights.map((l): DesignLight => ({ ...l, s: m(l.s) })),
     people: d.people.map((p): DesignPerson => ({ ...p, s: m(p.s), face: flip(p.face) })),
+    ...(d.windows === undefined ? {} : { windows: d.windows.map((w): DesignWindow => (w.wall === "back" ? { ...w, a0: m(w.a1), a1: m(w.a0) } : { ...w, wall: w.wall === "left" ? "right" : "left" })) }),
     ...(d.marks === undefined ? {} : { marks: d.marks.map((k) => ({ ...k, s: m(k.s) })) }),
   };
 }

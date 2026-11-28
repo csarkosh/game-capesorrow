@@ -12,12 +12,11 @@ vi.mock("@csarkosh/engine/game/groundLayers", () => ({ decodeGroundLayer: lite.d
 vi.mock("@csarkosh/engine/game/assetUrls", () => ({ textureUrl: (name: string) => `/${name}` }));
 
 import { retargetLayers } from "../../src/game/town/insideLayers.js";
-import { insideGeometry } from "../../src/game/town/insideGeometry.js";
+import { meshOf } from "./roomMeshes.js";
 import { INTERIOR_LAYERS } from "../../src/game/town/interiorLayers.js";
 import { createInteriorTextures } from "../../src/game/town/interiorTextures.js";
 import { SURFACE_FLOATS, type MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { INTERIOR_BASE, INTERIOR_ONLY_NAMES, TOWN_LAYERS } from "../../src/game/town/townLayers.js";
-import { townGround } from "../../src/game/town/townGeometry.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 
 const SEEDS = [20261121, 1175766972];
@@ -31,9 +30,9 @@ const layers = (a: MeshArrays): Set<number> => {
 
 describe("a designed room's layers", () => {
   for (const seed of SEEDS) {
-    const g = townGround(seed);
-    for (const room of insideRooms(seed).filter((r) => !r.design.legacy)) {
-      const built = insideGeometry(g, room, "full");
+    for (const [index, room] of insideRooms(seed).entries()) {
+      if (room.design.legacy) continue;
+      const built = meshOf(seed, index);
       it(`seed ${seed} ${room.name}: names the rooms' own layers while it is built, and every layer is on the arrays it is laid on`, () => {
         const own = [...layers(built)].filter((l) => l >= INTERIOR_BASE);
         expect(own.length).toBeGreaterThan(1);
@@ -45,32 +44,36 @@ describe("a designed room's layers", () => {
         retargetLayers(inTown, "town");
         for (const l of layers(inTown)) expect(l === -1 || (l >= 0 && l < TOWN_LAYERS.length), `town's layer ${l}`).toBe(true);
         // The same vertices keep a layer or none: nothing is lost or made flat by the move (a builder's mistake would show as a new -1).
+        let lost = 0;
         for (let i = 0; i < built.surface.length; i += SURFACE_FLOATS) {
-          expect((inRooms.surface[i] as number) === -1, `vertex ${i / SURFACE_FLOATS}`).toBe((built.surface[i] as number) === -1);
-          expect((inTown.surface[i] as number) === -1).toBe((built.surface[i] as number) === -1);
+          const flat = (built.surface[i] as number) === -1;
+          if (((inRooms.surface[i] as number) === -1) !== flat || ((inTown.surface[i] as number) === -1) !== flat) lost++;
         }
+        expect(lost, "vertices that gained or lost a layer by the move").toBe(0);
       });
 
       it(`seed ${seed} ${room.name}: is not worn on the rooms' arrays and keeps its pictures at true scale and its colours`, () => {
         const a = copy(built);
         retargetLayers(a, "interior");
         let worn = 0;
+        let badTint = 0;
         for (let i = 0; i < a.surface.length; i += SURFACE_FLOATS) {
           if ((a.surface[i] as number) < 0) continue;
           worn += (a.surface[i + 1] as number) + (a.surface[i + 8] as number);
           for (let k = 4; k < 7; k++) {
             const t = a.surface[i + k] as number;
-            expect(Number.isFinite(t) && t > 0 && t <= 10).toBe(true);
+            if (!(Number.isFinite(t) && t > 0 && t <= 10)) badTint++;
           }
         }
+        expect(badTint, "tints outside (0, 10]").toBe(0);
         expect(worn).toBe(0);
         // A layer both sets hold keeps its UV exactly.
+        let moved = 0;
         for (let v = 0; v < built.surface.length / SURFACE_FLOATS; v++) {
           const was = built.surface[v * SURFACE_FLOATS] as number;
-          if (was >= 0 && was < INTERIOR_BASE && TOWN_LAYERS[was] !== undefined && INTERIOR_LAYERS.some((l) => l.name === TOWN_LAYERS[was]?.name)) {
-            expect(a.uvs[v * 2]).toBe(built.uvs[v * 2]);
-          }
+          if (was >= 0 && was < INTERIOR_BASE && TOWN_LAYERS[was] !== undefined && INTERIOR_LAYERS.some((l) => l.name === TOWN_LAYERS[was]?.name) && a.uvs[v * 2] !== built.uvs[v * 2]) moved++;
         }
+        expect(moved, "uvs of a layer both sets hold that moved").toBe(0);
       });
 
       it(`seed ${seed} ${room.name}: lays each of its own pictures out in metres, not one texel`, () => {

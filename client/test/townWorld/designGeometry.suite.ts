@@ -4,16 +4,15 @@ import { describe, expect, it } from "vitest";
 import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { unnamed } from "../../src/game/town/materials.js";
 import { designMesh, RISER } from "../../src/game/town/designGeometry.js";
-import { insideGeometry } from "../../src/game/town/insideGeometry.js";
 import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
-import { townGround } from "../../src/game/town/townGeometry.js";
 import { bakeLight } from "../../src/game/town/designLight.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 import { GALLERY, STAIR_FROM, STAIR_TO, testDesign } from "../inside/designHelpers.js";
+import { HEAVY_SEEDS } from "../inside/seeds.js";
+import { meshOf } from "./roomMeshes.js";
 
 /** The game's seeds, and seeds 1 to 24. */
-const GAME_SEEDS: readonly number[] = [20261121, 1, 6, 1175766972];
-const SEEDS = [...GAME_SEEDS, ...Array.from({ length: 24 }, (_, i) => i + 1).filter((s) => !GAME_SEEDS.includes(s))];
+const SEEDS = HEAVY_SEEDS;
 /** A vertex of a designed room lies this far outside its box at most: a casing, a frame's bar or a thing's own thickness proud of a wall. */
 const MARGIN = 0.1;
 
@@ -37,12 +36,11 @@ describe.each([["bar", 0, 40000], ["cafe", 1, 40000], ["lodging", 2, 70000]] as 
   const lines: string[] = [];
   it("builds on every seed inside its box, with its backs, under the budget, naming every material", () => {
     for (const seed of SEEDS) {
-      const g = townGround(seed);
       const room = insideRooms(seed)[index]!;
       expect(room.design.legacy).toBe(false);
       const before = unnamed.polygons;
       const t0 = performance.now();
-      const a = insideGeometry(g, room, "full");
+      const a = meshOf(seed, index);
       const ms = performance.now() - t0;
       const verts = a.positions.length / 3;
       const label = `seed ${seed}`;
@@ -124,6 +122,14 @@ describe("a design with a stair and a gallery drawn", () => {
 
 /** The vertex colour's luminance at `i`. */
 const lum = (a: MeshArrays, i: number): number => 0.2126 * (a.colors[i * 4] as number) + 0.7152 * (a.colors[i * 4 + 1] as number) + 0.0722 * (a.colors[i * 4 + 2] as number);
+/** The vertex's colour at night: its colour by day times the ratios the room carries with it (`NIGHT_RATIOS`, red in float 9 and blue in float 11 as 2 + the ratio, green read between), as the indoor material at midnight draws it; the day's where it has none. */
+const lumNight = (a: MeshArrays, i: number): number => {
+  const rr = (a.surface[i * 12 + 9] as number) - 2;
+  const rb = (a.surface[i * 12 + 11] as number) - 2;
+  if ((a.surface[i * 12 + 11] as number) < 1.99) return lum(a, i);
+  const rg = Math.sqrt(Math.max(0, rr * rb));
+  return 0.2126 * (a.colors[i * 4] as number) * rr + 0.7152 * (a.colors[i * 4 + 1] as number) * rg + 0.0722 * (a.colors[i * 4 + 2] as number) * rb;
+};
 const percentile = (xs: number[], p: number): number => {
   const sorted = [...xs].sort((u, v) => u - v);
   return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] as number;
@@ -132,7 +138,7 @@ const percentile = (xs: number[], p: number): number => {
 describe.each([["bar", 0], ["cafe", 1]] as const)("the light of the %s on the world the game opens on is uneven", (name, index) => {
   const seed = 1175766972;
   const room = insideRooms(seed)[index]!;
-  const a = insideGeometry(townGround(seed), room, "full");
+  const a = meshOf(seed, index);
   const n = a.positions.length / 3;
   const W = room.design.width;
   /** Luminance of the surfaces lit by the room's light (not a glowing thing's own), by where they are: the floor, and each of the three walls. */
@@ -167,10 +173,10 @@ describe.each([["cafe", 1], ["lodging", 2]] as const)("the light of the %s is po
   const seed = 1175766972;
   const room = insideRooms(seed)[index]!;
   const d = room.design;
-  const a = insideGeometry(townGround(seed), room, "full");
+  const a = meshOf(seed, index);
   const n = a.positions.length / 3;
   /** Floor vertices (ground floor, facing up, lit by the room's light) with the place and luminance, on OPEN floor: a hull of 0.6 m stands there clear of any block or wall. */
-  const floor: { s: number; d: number; v: number }[] = [];
+  const floor: { s: number; d: number; v: number; n: number }[] = [];
   for (let i = 0; i < n; i++) {
     if ((a.surface[i * 12 + 3] as number) > 1.01 || (a.normals[i * 3 + 1] as number) < 0.95) continue;
     if (Math.abs((a.positions[i * 3 + 1] as number) - room.floorY) > 0.02) continue;
@@ -179,34 +185,51 @@ describe.each([["cafe", 1], ["lodging", 2]] as const)("the light of the %s is po
     const s = dx * room.tx + dz * room.tz - room.s0;
     const dd = -(dx * room.nx + dz * room.nz);
     if (!fitsDesign(d, s, dd, 0, 0.6, 0.001)) continue;
-    floor.push({ s, d: dd, v: lum(a, i) });
+    floor.push({ s, d: dd, v: lum(a, i), n: lumNight(a, i) });
   }
-  const near = (s: number, dd: number, r: number): number[] => floor.filter((f) => Math.hypot(f.s - s, f.d - dd) < r).map((f) => f.v);
+  const near = (s: number, dd: number, r: number, night = false): number[] => floor.filter((f) => Math.hypot(f.s - s, f.d - dd) < r).map((f) => (night ? f.n : f.v));
   const fixtures = d.lights.filter((l) => l.beam !== undefined && l.y < (d.cuts?.[0] ?? d.height));
-  it("has the floor under a ceiling fixture at least twice as bright as midway between two", () => {
-    const ratios: number[] = [];
-    for (let i = 0; i < fixtures.length; i++) for (let j = i + 1; j < fixtures.length; j++) {
-      const p = fixtures[i]!;
-      const q = fixtures[j]!;
-      const gap = Math.hypot(p.s - q.s, p.d - q.d);
-      if (gap < 1.8 || gap > 6) continue;
-      // Between two with no third nearer to the middle than either.
-      const ms = (p.s + q.s) / 2;
-      const md = (p.d + q.d) / 2;
-      if (fixtures.some((r, k) => k !== i && k !== j && Math.hypot(r.s - ms, r.d - md) < gap / 2 - 0.2)) continue;
-      const under = Math.max(mean(near(p.s, p.d, 0.5)), mean(near(q.s, q.d, 0.5)));
-      const mid = near(ms, md, 0.5);
-      const under0 = near(p.s, p.d, 0.5);
-      if (under0.length < 2 || mid.length < 2) continue;
-      console.log(`[pair ${name}] (${p.s.toFixed(1)},${p.d.toFixed(1)},y${p.y}) kind ${p.kind} (${q.s.toFixed(1)},${q.d.toFixed(1)}) under ${under.toFixed(3)} mid ${mean(mid).toFixed(3)} n ${mid.length}`);
-      ratios.push(under / Math.max(1e-6, mean(mid)));
+  for (const night of [false, true]) {
+    it(`has the floor under a ceiling fixture at least twice as bright as midway between two, ${night ? "at night (the lamps alone)" : "by day"}`, () => {
+      const ratios: number[] = [];
+      for (let i = 0; i < fixtures.length; i++) for (let j = i + 1; j < fixtures.length; j++) {
+        const p = fixtures[i]!;
+        const q = fixtures[j]!;
+        const gap = Math.hypot(p.s - q.s, p.d - q.d);
+        if (gap < 1.8 || gap > 6) continue;
+        // Between two with no third nearer to the middle than either.
+        const ms = (p.s + q.s) / 2;
+        const md = (p.d + q.d) / 2;
+        if (fixtures.some((r, k) => k !== i && k !== j && Math.hypot(r.s - ms, r.d - md) < gap / 2 - 0.2)) continue;
+        const under = Math.max(mean(near(p.s, p.d, 0.5, night)), mean(near(q.s, q.d, 0.5, night)));
+        const mid = near(ms, md, 0.5, night);
+        const under0 = near(p.s, p.d, 0.5, night);
+        if (under0.length < 2 || mid.length < 2) continue;
+        ratios.push(under / Math.max(1e-6, mean(mid)));
+      }
+      ratios.sort((u, v) => u - v);
+      const med = ratios[Math.floor(ratios.length / 2)] ?? 0;
+      console.log(`[pools ${name} ${night ? "night" : "day"}] ${floor.length} open vertices, ${fixtures.length} fixtures, ${ratios.length} pairs, median under/between ${med.toFixed(2)}`);
+      expect(ratios.length, `${name}: pairs measured`).toBeGreaterThanOrEqual(3);
+      // The cafe is the bright room of the four: its pools are gentle, 1.4 times the floor between them by day, where the lobby's are twice; at night the lamps alone make them, and sharper.
+      expect(med, `${name}: under a fixture over midway`).toBeGreaterThanOrEqual(name === "cafe" ? 1.4 : 2);
+    });
+  }
+  it("is dark but not void at night, and carries its night colour on nearly every surface", () => {
+    const day = mean(floor.map((f) => f.v));
+    const night = mean(floor.map((f) => f.n));
+    // Textured vertices (a layer of the room's own) with no night ratios would stay as bright as by day at midnight.
+    let textured = 0;
+    let without = 0;
+    for (let i = 0; i < n; i++) {
+      if ((a.surface[i * 12] as number) < 0 || (a.surface[i * 12 + 3] as number) > 1.01) continue;
+      textured++;
+      if ((a.surface[i * 12 + 11] as number) < 1.99) without++;
     }
-    ratios.sort((u, v) => u - v);
-    const med = ratios[Math.floor(ratios.length / 2)] ?? 0;
-    console.log(`[pools ${name}] ${floor.length} open vertices, ${fixtures.length} fixtures, ${ratios.length} pairs, median under/between ${med.toFixed(2)}`);
-    expect(ratios.length, `${name}: pairs measured`).toBeGreaterThanOrEqual(3);
-    // The cafe is the bright room of the four: its pools are gentle, 1.4 times the floor between them, where the lobby's are twice.
-    expect(med, `${name}: under a fixture over midway`).toBeGreaterThanOrEqual(name === "cafe" ? 1.4 : 2);
+    console.log(`[night ${name}] open floor mean ${day.toFixed(3)} by day, ${night.toFixed(3)} at night (${((night / day) * 100).toFixed(0)} percent); ${without} of ${textured} textured vertices carry no night colour`);
+    expect(night, `${name}: faint ambient and the lamps`).toBeGreaterThan(0.012);
+    expect(night, `${name}: darker than by day`).toBeLessThan(day * 0.95);
+    expect(without / Math.max(1, textured), `${name}: surfaces with no night colour`).toBeLessThan(0.03);
   });
   it("has the front third of the day-lit room at least 1.6 times the back third", () => {
     const front = mean(floor.filter((f) => f.d < d.depth / 3).map((f) => f.v));

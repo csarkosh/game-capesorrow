@@ -4,10 +4,10 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { STEP_UP } from "../../src/sim/inside/design.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 import { planFor } from "../../src/sim/town/planFor.js";
-import { CELL, R, centre, flood, stepTo, standsAt } from "./designHelpers.js";
+import { CELL, R, centre, floodOf, stepTo, standsAt } from "./designHelpers.js";
+import { HEAVY_SEEDS } from "./seeds.js";
 
-const GAME_SEEDS: readonly number[] = [20261121, 1, 6, 1175766972];
-const SEEDS = [...GAME_SEEDS, ...Array.from({ length: 24 }, (_, i) => i + 1).filter((s) => !GAME_SEEDS.includes(s))];
+const SEEDS = HEAVY_SEEDS;
 /** Words that would name a real brand, or the player's employer. */
 const BANNED = /\b(hilton|marriott|hyatt|holiday|sheraton|ritz|westin|motel 6|super 8|best western|fbi|agent|bureau|federal)\b/i;
 
@@ -21,7 +21,7 @@ describe("the lodging, on every test seed", () => {
       const b = plan.buildings[room.building]!;
       const unit = plan.uses[room.building]!.units.find((u) => u.id === room.unit)!;
       const label = `seed ${seed}`;
-      const reach = flood(d, d.arrive);
+      const reach = floodOf(d);
       const multi = b.storeys >= 2;
       const mark = (name: string) => d.marks?.find((m) => m.name === name);
       const roomMark = mark("room")!;

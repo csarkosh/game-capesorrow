@@ -74,6 +74,11 @@ export type InsideHost = {
   readonly detail: Detail;
   readonly uploads: FrameUploads;
   /**
+   * The material of a pane seen through out of focus (`townParts.ts`: the town's `through` material, which reads the frame the opaque draws left and is drawn first after the break) and where it draws; null where the
+   * renderer keeps no frame behind its glass, and the room's windows are the opaque sheets they were. The room's panes are a mesh of their own (`insideGeometry`'s `through`), drawn with it.
+   */
+  readonly through: { readonly material: PbrMaterialProps; readonly order: number } | null;
+  /**
    * What the rooms' own textures need of the renderer (`townParts.ts`): null where the town has no textures at all. `make` is given the arrays when they have been
    * made and returns the material that reads them (the town's indoor material, on the rooms' layers) and what to tell it when they have landed.
    */
@@ -98,6 +103,7 @@ type Textures = "idle" | "loading" | "ready" | "failed";
 export function createInsideParts(host: InsideHost): InsideParts {
   let room = 0;
   let mesh: Mesh | null = null;
+  let glass: Mesh | null = null;
   let textures: Textures = "idle";
   let rooms: { readonly material: PbrMaterialProps; landed(filled: boolean): void } | null = null;
   setRoomDrawn(false);
@@ -125,6 +131,12 @@ export function createInsideParts(host: InsideHost): InsideParts {
   };
 
   const drop = (): void => {
+    if (glass !== null) {
+      removeFromScene(host.scene, glass);
+      disposeMeshGpu(glass);
+      host.uploads.dropped();
+      glass = null;
+    }
     if (mesh === null) return;
     removeFromScene(host.scene, mesh);
     disposeMeshGpu(mesh);
@@ -134,7 +146,7 @@ export function createInsideParts(host: InsideHost): InsideParts {
   };
 
   const build = (r: InsideRoom): void => {
-    const a = insideGeometry(host.ground, r, host.detail);
+    const a = insideGeometry(host.ground, r, host.detail, undefined, host.through !== null && host.textured);
     // A designed room is drawn on the rooms' own arrays if they landed, else on the town's (`insideLayers.ts`).
     const own = !r.design.legacy && textures === "ready" && rooms !== null;
     if (host.textured && !r.design.legacy) retargetLayers(a, own ? "interior" : "town");
@@ -146,6 +158,19 @@ export function createInsideParts(host: InsideHost): InsideParts {
     host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
     host.uploads.made();
     mesh = made;
+    // The panes: their own mesh, an opaque draw after the break that reads the sky and the far land out of focus (`roomGlass.ts`).
+    const g = a.through;
+    if (g !== undefined && g !== null && host.through !== null) {
+      const sheet = createMeshFromData(host.engine, `inside_${r.id}_glass`, g.positions, g.normals, g.indices, g.uvs, undefined, undefined, g.colors);
+      sheet.pluginVertexData = packSurface(g.surface);
+      sheet.material = host.through.material;
+      sheet.renderOrder = host.through.order;
+      sheet.afterBreak = true;
+      addToScene(host.scene, sheet);
+      host.uploads.count("geometry", g.positions.byteLength + g.normals.byteLength + g.colors.byteLength + g.uvs.byteLength + g.surface.byteLength + g.indices.byteLength, 4);
+      host.uploads.made();
+      glass = sheet;
+    }
     room = r.id;
   };
 

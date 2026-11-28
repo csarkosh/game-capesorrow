@@ -6,9 +6,10 @@
  * Every face is laid once; the builder (`MeshBuilder(true)`) lays its back. A thing that should look lit by itself (a bulb, a picture on a screen) takes its own `glow`.
  */
 import { materialOf, varied } from "../interiorMaterials.js";
-import type { MeshBuilder, Rgb, Vec3 } from "../meshBuilder.js";
-import { xd, xp, type Xf } from "../roomKit.js";
+import { NIGHT_RATIOS, type MeshBuilder, type Rgb, type Vec3 } from "../meshBuilder.js";
+import { nightRatio, xd, xp, type Xf } from "../roomKit.js";
 import type { BakedLight } from "../designLight.js";
+import { glassSheet } from "../roomGlass.js";
 
 /** A point of the room's frame: `s`, `d`, `y`. */
 export type P3 = readonly [number, number, number];
@@ -24,6 +25,18 @@ export class Geo {
   /** The same room's context for things that stand on a floor `y` metres up (an upper floor's): their heights are measured from it, and lit as the height it is. */
   lift(y: number): Geo {
     return y === 0 ? this : new Geo(this.out, this.xf, this.floorY, this.light, this.seed, this.ceiling - y, this.yOff + y);
+  }
+
+  /**
+   * A pane of through glass (`roomGlass.ts`) on the room's frame: four points (`s`, `d`, height), the way it faces as a hint (`s`, `d`, up) and its size. False, and nothing laid, where this room has
+   * no layer for such panes (a tier with no kept frame): the caller lays the opaque sheet it laid before.
+   */
+  glassSheet(pts: readonly [P3, P3, P3, P3], hint: P3, key: number, size: readonly [number, number]): boolean {
+    const m = this.out.marked;
+    if (m === null) return false;
+    const h = xd(this.xf, hint[0], hint[1]);
+    glassSheet(m, [this.world(pts[0]), this.world(pts[1]), this.world(pts[2]), this.world(pts[3])], [h[0], hint[2], h[2]], key, size);
+    return true;
   }
 
   /** A point of the room's frame in the world. */
@@ -62,7 +75,10 @@ export class Geo {
     const cols: Rgb[] = pts.map((p) => {
       if (!lit) return base;
       const c = this.light.lit(p[0], p[1], p[2] + this.yOff, nx, ny, nz);
-      return [base[0] * c[0] * k, base[1] * c[1] * k, base[2] * c[2] * k];
+      const col: Rgb = [base[0] * c[0] * k, base[1] * c[1] * k, base[2] * c[2] * k];
+      const cn = this.light.night();
+      NIGHT_RATIOS.set(col, [nightRatio(cn[0], c[0]), nightRatio(cn[2], c[2])]);
+      return col;
     });
     const h = xd(this.xf, hint[0], hint[1]);
     this.out.poly(pts.map((p) => this.world(p)), [h[0], hint[2], h[2]], cols, m.mat, { glow });
@@ -92,7 +108,10 @@ export class Geo {
       // A few percent off from cell to cell, so a floor is not one flat colour; the caller's own tint on top.
       const v = varied(m.albedo, i * 131 + j * 7 + this.seed, 5, 0.06);
       const k = tintAt === undefined ? ONE : tintAt(i, j);
-      return [v[0] * k[0] * c[0], v[1] * k[1] * c[1], v[2] * k[2] * c[2]];
+      const col: Rgb = [v[0] * k[0] * c[0], v[1] * k[1] * c[1], v[2] * k[2] * c[2]];
+      const cn = this.light.night();
+      NIGHT_RATIOS.set(col, [nightRatio(cn[0], c[0]), nightRatio(cn[2], c[2])]);
+      return col;
     }, m.mat, { glow: 1 });
   }
 

@@ -304,6 +304,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
   // The window in the back wall (a bright pane behind a half-drawn blind) with its heater under it, and what lights the room from it.
   const winX = ROOM_W / 2 + 0.2;
   b.decorate({ kind: "lit_pane", s: X(winX), d: D, y: roomY + 1.5, face: TOWARD_FRONT, w: 1.3, h: 1.25 });
+  b.windows.push({ wall: "back", a0: cm(X(winX) - 0.65), a1: cm(X(winX) + 0.65), y0: cm(roomY + 1.5 - 0.625), y1: cm(roomY + 1.5 + 0.625) });
   b.item("heater", X(winX), cm(D - 0.12), TOWARD_FRONT, [], { gap: 0, y: roomY });
   b.decorate({ kind: "curtain_pair", s: X(winX), d: D, y: cm(roomY + (UPPER - 0.2) / 2 + 0.05), face: TOWARD_FRONT, w: 1.3, h: cm(UPPER - 0.2) });
   b.item("smoke_detector", X(ROOM_W / 2), Y(Ly * 0.5), TOWARD_RIGHT, [], { anywhere: true, y: roomY });
