@@ -186,6 +186,13 @@ export class Local {
 
   /** A box between `f0` and `f1` forward, `r0` and `r1` to the right and `y0` and `y1` up: its four sides and its top, and its underside when it is held off the floor. */
   box(f0: number, f1: number, r0: number, r1: number, y0: number, y1: number, mat: string, look?: Look, sides = true, top = true): void {
+    // A box is a solid (a leg, a plate, a cabinet): its inside is not seen, and its faces' backs would lie in the planes of what it stands on or against.
+    this.g.out.solid(() => this.boxFaces(f0, f1, r0, r1, y0, y1, mat, look, sides, top));
+  }
+
+  private boxFaces(f0: number, f1: number, r0: number, r1: number, y0: number, y1: number, mat: string, look: Look | undefined, sides: boolean, topIn: boolean): void {
+    // A top at the ceiling is over the slab's face: not drawn (it would be stood off the ceiling's own back).
+    const top = topIn && y1 < this.g.ceiling - 0.002;
     if (sides) {
       this.poly([[f1, r0, y0], [f1, r1, y0], [f1, r1, y1], [f1, r0, y1]], [1, 0, 0], mat, look);
       this.poly([[f0, r0, y0], [f0, r1, y0], [f0, r1, y1], [f0, r0, y1]], [-1, 0, 0], mat, look);
@@ -225,6 +232,15 @@ export class Local {
 
   /** An upright frustum of `sides` sides about (`f`, `r`) from `y0` to `y1`, radius `rad0` at its foot and `rad1` at its top, with its top, and its underside when it is held off the floor. */
   frustum(f: number, r: number, y0: number, y1: number, rad0: number, rad1: number, sides: number, mat: string, look?: Look, bottom = y0 > 0.03, top = true): void {
+    // Closed at both ends it is a solid, with no backs (open, a shade, its inside is seen).
+    if (bottom && top) {
+      this.g.out.solid(() => this.frustumFaces(f, r, y0, y1, rad0, rad1, sides, mat, look, bottom, top));
+      return;
+    }
+    this.frustumFaces(f, r, y0, y1, rad0, rad1, sides, mat, look, bottom, top);
+  }
+
+  private frustumFaces(f: number, r: number, y0: number, y1: number, rad0: number, rad1: number, sides: number, mat: string, look: Look | undefined, bottom: boolean, top: boolean): void {
     const ring = (rad: number, y: number, i: number): [number, number, number] => {
       const a = (i / sides) * Math.PI * 2;
       return [f + Math.cos(a) * rad, r + Math.sin(a) * rad, y];

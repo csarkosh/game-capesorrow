@@ -100,6 +100,9 @@ export function hallDesign(site: HallSite): Design {
 
   // ---- a glazed front: dark low wall to `low`, clear glass over it to 2.5 above the floor (or open, over a counter), a header over each doorway.
   type Front = { s0: number; s1: number; d: number; y: number; doors: readonly { c: number; shut?: boolean }[]; open?: readonly [number, number] };
+  // The glass stops where a plate can hang over it: under 2.5 m in a tall storey, 2.05 m in a low one (a plate, a hand's breadth clear of the glass and of the ceiling).
+  const glassTop = F >= 3.5 ? 2.5 : 2.05;
+  const plateY = F >= 3.5 ? 2.8 : 2.32;
   const front = (f: Front): void => {
     const top = f.y + F - eps;
     let at = f.s0;
@@ -109,12 +112,12 @@ export function hallDesign(site: HallSite): Design {
       const lowTop = inOpen ? f.y + 1.05 : f.y + 1.0;
       b.wall({ s0, d0: f.d, s1, d1: f.d, thick: 0.1, y0: f.y, y1: lowTop, mat: "painted", tint: inOpen ? [0.55, 0.45, 0.35] : dark, matBack: "painted", tintBack: inOpen ? [0.55, 0.45, 0.35] : dark, openings: [] });
       if (!inOpen) {
-        b.block({ s: (s0 + s1) / 2, d: f.d, ax: 1, ad: 0, ha: (s1 - s0) / 2, hb: 0.06, y0: f.y + 1.0, y1: f.y + 2.5 });
-        b.decorate({ kind: "glazing", s: (s0 + s1) / 2, d: f.d, y: f.y + 1.75, face: TOWARD_FRONT, w: cm(s1 - s0), h: 1.5 });
+        b.block({ s: (s0 + s1) / 2, d: f.d, ax: 1, ad: 0, ha: (s1 - s0) / 2, hb: 0.06, y0: f.y + 1.0, y1: f.y + glassTop });
+        b.decorate({ kind: "glazing", s: (s0 + s1) / 2, d: f.d, y: f.y + (1.0 + glassTop) / 2, face: TOWARD_FRONT, w: cm(s1 - s0), h: glassTop - 1.0 });
       } else {
-        b.block({ s: (s0 + s1) / 2, d: f.d, ax: 1, ad: 0, ha: (s1 - s0) / 2, hb: 0.06, y0: f.y + 2.5, y1: top });
+        b.block({ s: (s0 + s1) / 2, d: f.d, ax: 1, ad: 0, ha: (s1 - s0) / 2, hb: 0.06, y0: f.y + glassTop, y1: top });
       }
-      b.wall({ s0, d0: f.d, s1, d1: f.d, thick: 0.1, y0: f.y + 2.5, y1: top, mat: "painted", tint: white, matBack: "painted", tintBack: white, openings: [] });
+      b.wall({ s0, d0: f.d, s1, d1: f.d, thick: 0.1, y0: f.y + glassTop, y1: top, mat: "painted", tint: white, matBack: "painted", tintBack: white, openings: [] });
     };
     for (const door of f.doors) {
       stretch(at, door.c - DOOR / 2);
@@ -149,7 +152,7 @@ export function hallDesign(site: HallSite): Design {
     const door = k === 0 ? doorAt(a + 0.2) : doorAt(a + 1.0);
     doors1.push(door);
     front({ s0: a, s1: c, d: Bd, y: 0, doors: [{ c: door }], ...(k === 0 ? { open: [door + DOOR / 2, c] as const } : {}) });
-    plate((a + c) / 2 + (k === 0 ? -0.5 : 0), Bd - 0.06, 2.35, TOWARD_FRONT, names1[k] as string, 1.5);
+    plate((a + c) / 2 + (k === 0 ? -0.5 : 0), Bd - 0.06, plateY, TOWARD_FRONT, names1[k] as string, 1.5);
   }
   // The city clerk: the counter's staff side with a desk, shelves, a clerk. Permits: two desks and a cabinet. Records: rows of shelving.
   const [a0, c0] = offs[0] as readonly [number, number];
@@ -199,7 +202,7 @@ export function hallDesign(site: HallSite): Design {
       // The player's room: an open doorway and a plate that gives only its number.
       b.decorate({ kind: "sign", s: cm(door + DOOR / 2 + 0.25), d: Dg - 0.06, y: Y2 + 1.55, face: TOWARD_FRONT, w: 0.16, h: 0.07, text: String(200 + 2 * floor(roll(1) * 14) + 1) });
       player = { s: door, d: Dg };
-    } else plate((a + c) / 2, Dg - 0.06, Y2 + 2.35, TOWARD_FRONT, names2[k] as string, 1.4);
+    } else plate((a + c) / 2, Dg - 0.06, Y2 + plateY, TOWARD_FRONT, names2[k] as string, 1.4);
     // What stands in each room.
     const mid = (a + c) / 2;
     if (k === 0) {
@@ -280,8 +283,8 @@ export function hallDesign(site: HallSite): Design {
     front({ s0: 0.15, s1: mid3, d: Dg, y: Y3, doors: [{ c: halfUp(1.6) }] });
     front({ s0: mid3, s1: rEnd, d: Dg, y: Y3, doors: [{ c: halfUp(mid3 + 1.6) }] });
     partition(mid3, Dg, D, Y3);
-    plate(halfUp(1.6) + 1.9, Dg - 0.06, Y3 + 2.35, TOWARD_FRONT, "MAYOR", 1.2);
-    plate(halfUp(mid3 + 1.6) + 1.9, Dg - 0.06, Y3 + 2.35, TOWARD_FRONT, "COUNCIL", 1.4);
+    plate(halfUp(1.6) + 1.9, Dg - 0.06, Y3 + plateY, TOWARD_FRONT, "MAYOR", 1.2);
+    plate(halfUp(mid3 + 1.6) + 1.9, Dg - 0.06, Y3 + plateY, TOWARD_FRONT, "COUNCIL", 1.4);
     b.item("desk", cm(halfUp(1.6) + 2.2), cm(Dg + 2.0), TOWARD_FRONT, [], { anywhere: true, y: Y3 });
     b.item("long_table", cm((mid3 + sEnd) / 2), cm(Dg + 2.0), TOWARD_FRONT, [min(4.0, sEnd - mid3 - 1.4)], { anywhere: true, y: Y3 });
     b.light({ s: cm(W * 0.25), d: cm(Dg + 1.5), y: Y3 + F - 0.5, kind: "tube", beam: 40, power: 1.2, reach: 2.4, tone: [1, 0.96, 0.88] });

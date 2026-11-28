@@ -8,3 +8,4 @@ import "./lodging.suite.js";
 import "./spots.suite.js";
 import "./seats.suite.js";
 import "./closure.suite.js";
+import "./wallSpace.suite.js";

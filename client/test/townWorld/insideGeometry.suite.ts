@@ -2,7 +2,7 @@ import "../../src/terrain.js";
 import { describe, expect, it } from "vitest";
 import { buildingLevels } from "../../src/game/town/buildingGeometry.js";
 import { FLOOR_LIFT } from "../../src/game/town/insideGeometry.js";
-import { MeshBuilder, type MeshArrays } from "../../src/game/town/meshBuilder.js";
+import { MeshBuilder, isUnbacked, type MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { groundOf, meshOf } from "./roomMeshes.js";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, OUTSIDE, insideRooms } from "../../src/sim/inside/rooms.js";
 import { hidesTown, insidePeople, wantedOf, whereOf } from "../../src/game/town/insideParts.js";
@@ -68,13 +68,14 @@ describe("the hidden rooms", () => {
           }
           let unpaired = 0;
           for (let t = 0; t < a.indices.length; t += 3) {
+            // A face of a solid (a box, a slab, a flight) has no back: its inside is never seen.
+            if (isUnbacked(a.indices, t / 3)) continue;
             const ks = [0, 1, 2].map((k) => key(pos(a, a.indices[t + k] as number)));
             const rev = [ks[2], ks[1], ks[0]];
             const canon = [rev.join("|"), [rev[1], rev[2], rev[0]].join("|"), [rev[2], rev[0], rev[1]].join("|")].sort()[0] as string;
             if (!tris.has(canon)) unpaired++;
           }
           expect(unpaired).toBe(0);
-          expect((a.indices.length / 3) % 2).toBe(0);
         });
       });
     }

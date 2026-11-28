@@ -34,7 +34,7 @@ export function hoarding(g: Geo, it: Item): void {
   L.box(0.13, 0.15, dr + 0.78, dr + 0.9, 1.0, 1.06, "steel", { tint: [0.5, 0.5, 0.52] });
   L.box(0.13, 0.17, dr + 0.84, dr + 0.9, 0.9, 0.98, "brass", undefined);
   // The tape: black and yellow across the face at 1.0 m.
-  for (let k = 0; k < Math.floor(w / 0.12); k++) L.poly([[0.101, -h + k * 0.12, 1.0], [0.101, -h + k * 0.12 + 0.06, 1.0], [0.101, -h + k * 0.12 + 0.06, 1.08], [0.101, -h + k * 0.12, 1.08]], [1, 0, 0], "painted", { tint: k % 2 === 0 ? [1.5, 1.2, 0.05] : BLACK });
+  for (let k = 0; k < Math.floor(w / 0.12); k++) if (-h + k * 0.12 + 0.06 <= dr || -h + k * 0.12 >= dr + 0.9) L.poly([[0.101, -h + k * 0.12, 1.0], [0.101, -h + k * 0.12 + 0.06, 1.0], [0.101, -h + k * 0.12 + 0.06, 1.08], [0.101, -h + k * 0.12, 1.08]], [1, 0, 0], "painted", { tint: k % 2 === 0 ? [1.5, 1.2, 0.05] : BLACK });
   // The plates: the danger plate (red, white, black), the caution plate (yellow), a printed notice (white), as flat boards; their words are `sign` hangings in the design.
   L.box(0.1, 0.12, h - 0.65, h - 0.2, 1.45, 1.8, "painted", { tint: [1.3, 0.1, 0.08] }, false);
   L.box(0.1, 0.12, h - 0.65, h - 0.2, 1.2, 1.4, "painted", { tint: [1.5, 1.25, 0.05] }, false);

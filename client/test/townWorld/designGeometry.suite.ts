@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { unnamed } from "../../src/game/town/materials.js";
 import { designMesh, RISER } from "../../src/game/town/designGeometry.js";
-import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
+import { isUnbacked, type MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { bakeLight } from "../../src/game/town/designLight.js";
 import { insideRooms } from "../../src/sim/inside/rooms.js";
 import { GALLERY, STAIR_FROM, STAIR_TO, testDesign } from "../inside/designHelpers.js";
@@ -18,7 +18,7 @@ const MARGIN = 0.1;
 
 const pos = (a: MeshArrays, i: number): [number, number, number] => [a.positions[i * 3] as number, a.positions[i * 3 + 1] as number, a.positions[i * 3 + 2] as number];
 
-/** The number of triangles that have no partner: the same corners wound the other way. */
+/** The number of triangles that have no partner: the same corners wound the other way (a face of a solid, a box or a slab or a flight, has none by design: `MeshBuilder.solid`). */
 function unpaired(a: MeshArrays): number {
   const key = (p: [number, number, number]): string => p.map((v) => Math.round(v * 1000)).join(",");
   const canon = (ks: string[]): string => [ks.join("|"), [ks[1], ks[2], ks[0]].join("|"), [ks[2], ks[0], ks[1]].join("|")].sort()[0] as string;
@@ -26,6 +26,7 @@ function unpaired(a: MeshArrays): number {
   for (let t = 0; t < a.indices.length; t += 3) tris.add(canon([0, 1, 2].map((k) => key(pos(a, a.indices[t + k] as number)))));
   let bad = 0;
   for (let t = 0; t < a.indices.length; t += 3) {
+    if (isUnbacked(a.indices, t / 3)) continue;
     const ks = [0, 1, 2].map((k) => key(pos(a, a.indices[t + k] as number)));
     if (!tris.has(canon([ks[2] as string, ks[1] as string, ks[0] as string]))) bad++;
   }

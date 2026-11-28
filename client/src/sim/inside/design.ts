@@ -14,6 +14,8 @@
  * Simulation code: the arithmetic of AGENTS.md ("The simulation's rules") applies, and no collection is walked for its order.
  */
 
+import { settleHangings } from "./wallSpace.js";
+
 const { abs, floor, max, min, round, sqrt } = Math;
 
 /** The front wall's thickness: a room's depth is measured from the front wall's outer face, and the room's shell starts this far in. */
@@ -280,6 +282,8 @@ function zoneBlock(z: Zone): Block {
  * against any width and depth drops what does not fit and keeps the rest.
  */
 export class DesignBuilder {
+  /** Whether `build` settles the hangings (`wallSpace.ts`): off only for a test that counts what the designs' own placing leaves cut or overlapping. */
+  static settling = true;
   readonly surfaces: Surface[] = [];
   readonly blocks: Block[] = [];
   readonly walls: Wall[] = [];
@@ -451,6 +455,11 @@ export class DesignBuilder {
 
   build(o: Omit<Design, "surfaces" | "blocks" | "walls" | "slabs" | "stairs" | "rails" | "items" | "decor" | "lights" | "people" | "windows" | "width" | "depth" | "height">): Design {
     this.seatPeople();
+    if (DesignBuilder.settling) {
+      // Every hanging where nothing meets it and no other hangs (`wallSpace.ts`).
+      const r = settleHangings({ width: this.width, depth: this.depth, height: this.height, doorS: o.doorS, doorWidth: o.doorWidth, doorHead: o.doorHead, surfaces: this.surfaces, blocks: this.blocks, walls: this.walls, slabs: this.slabs, stairs: this.stairs, windows: this.windows, decor: this.decor });
+      this.decor.splice(0, this.decor.length, ...r.decor);
+    }
     return {
       ...o, width: this.width, depth: this.depth, height: this.height,
       surfaces: this.surfaces, blocks: this.blocks, walls: this.walls, slabs: this.slabs, stairs: this.stairs, rails: this.rails, items: this.items, decor: this.decor, lights: this.lights, people: this.people, windows: this.windows,

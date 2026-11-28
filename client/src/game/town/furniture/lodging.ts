@@ -476,8 +476,8 @@ export function kettleTray(g: Geo, it: Item): void {
 export function smokeDetector(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   const y = g.ceiling;
-  L.frustum(0, 0, y - 0.035, y, 0.07, 0.07, 8, "painted", { tint: [1.5, 1.5, 1.45] }, false, true);
-  L.frustum(0.03, 0, y - 0.04, y - 0.035, 0.008, 0.008, 4, "paper", { glow: 3, tint: [1, 0.1, 0.05] }, false, true);
+  L.frustum(0, 0, y - 0.035, y, 0.07, 0.07, 8, "painted", { tint: [1.5, 1.5, 1.45] }, true, false);
+  L.frustum(0.03, 0, y - 0.04, y - 0.035, 0.008, 0.008, 4, "paper", { glow: 3, tint: [1, 0.1, 0.05] }, true, false);
 }
 
 /** A cornice: a pale moulding 8 cm deep and 6 cm high where the walls meet the ceiling, round the box `p0..p3` (s0, s1, d0, d1) under the ceiling at `y`. */

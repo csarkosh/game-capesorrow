@@ -79,7 +79,8 @@ export function roomOutside(out: MeshBuilder, xf: Xf, floorY: number, width: num
       box(p - 0.1, p + 0.1, WALK + ROAD + 1, WALK + ROAD + 1.2, ground, ground + 8, [0.3, 0.26, 0.22], "painted");
       box(p - 1.1, p + 1.1, WALK + ROAD + 1.0, WALK + ROAD + 1.25, ground + 7.4, ground + 7.6, [0.3, 0.26, 0.22], "painted");
     }
-    for (const [k, p] of [width * 0.35, width * 0.85].entries()) {
+    // Two cars a car's length and more apart (in a narrow room's street they would stand through each other).
+    for (const [k, p] of [width * 0.35, Math.max(width * 0.85, width * 0.35 + 5)].entries()) {
       const c: Rgb = k === 0 ? [0.5, 0.15, 0.12] : [0.2, 0.28, 0.4];
       box(p - 2.1, p + 2.1, WALK + ROAD - 2.2, WALK + ROAD - 0.4, road, road + 0.85, c, "painted");
       box(p - 1.1, p + 1.1, WALK + ROAD - 2.1, WALK + ROAD - 0.5, road + 0.85, road + 1.35, [c[0] * 0.8, c[1] * 0.8, c[2] * 0.8], "painted");
