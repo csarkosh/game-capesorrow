@@ -43,7 +43,8 @@ describe("the empty game as the page that runs a session is handed it", () => {
 
   it("is drawn with the engine's own and the town's parts, and heard with the car's voice on the bus", () => {
     const game = code("game.ts");
-    expect(game).toContain("renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),");
+    expect(game).toContain("return (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, town);");
+    expect(game).toContain("renderer: walkRenderer(townParts),");
     expect(game).toContain("audio: () => createAmbientAudio(carSound),");
     expect(typeof carSound).toBe("function");
   });
@@ -97,7 +98,7 @@ describe("the empty game as the page's shell is handed it", () => {
 
   it("plays nothing before a session and carries nothing into it", () => {
     const page = code("page.ts");
-    for (const line of ["played: () => undefined,", "carriesToGame: () => false,", "keepOpening: () => undefined,", "openingFor: () => null,", "muteChanged: () => undefined,"]) {
+    for (const line of ["played: () => titleLoop?.stop(),", "carriesToGame: () => false,", "keepOpening: () => undefined,", "openingFor: () => null,", "muteChanged: () => undefined,"]) {
       expect(page, line).toContain(line);
     }
   });
@@ -107,7 +108,7 @@ describe("the empty game as the page's shell is handed it", () => {
     expect(PORTASHTON_PAGE.away.still()).toBeNull();
     expect(PORTASHTON_PAGE.away.credits()).toEqual(creditsEntries());
     const page = code("page.ts");
-    expect(page).toContain("    turnedAway() {\n      landing = null;\n    },");
+    expect(page).toContain("    turnedAway() {\n      landing = null;\n      titleLoop?.stop();\n    },");
     expect(page).not.toMatch(/\bh\.(renderToken|running|game|paused|roster|shownPage|mute|veil|signals)\b/);
     expect(page).not.toContain("replaceChildren");
     expect(page).not.toMatch(/empty-away|cannot draw the world/);
