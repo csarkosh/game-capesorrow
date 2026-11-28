@@ -25,7 +25,7 @@
  *
  * The cliff bands are still kept off the old rectangle (the engine hands `cliffKeepD` no seed, so no plan): see `townKeepD`.
  */
-import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { COVE_Z } from "@csarkosh/engine/sim/olympic";
 import { UNIT_KEEP } from "@csarkosh/engine/sim/cliffs";
 import { CLUTTER_BUSH, CLUTTER_FERN, CLUTTER_FLOWER, CLUTTER_FUNGUS, CLUTTER_GRASS, CLUTTER_LITTER, CLUTTER_MEADOW, CLUTTER_SHRUB } from "@csarkosh/engine/sim/clutter";
 import { NO_FEATURE_MASK, type FeatureMask } from "@csarkosh/engine/sim/features";
@@ -39,6 +39,7 @@ import { walkAt } from "./port/edges.js";
 import { inYardRect, yardShape, type YardRect } from "./yardShapes.js";
 import { planFor } from "./planFor.js";
 import { readingSite } from "./reading.js";
+import { roadCentreX } from "./roadCentre.js";
 import { siteFor } from "./siteFor.js";
 import { streetFieldExtentOf } from "./streetField.js";
 import type { TownPlan, YardKind } from "./types.js";
@@ -198,7 +199,7 @@ export function townKeepD(u: number, uDz: number, z: number, seed: number): { v:
   // Outside the town's reach the bands are all kept: the along-shore coordinate first, which needs no second coast frame.
   const zr = z - COVE_Z;
   if (zr < box.z0 || zr > box.z1) return UNIT_KEEP;
-  const xf = roadCenterX(seed, z) + u - reachAx;
+  const xf = roadCentreX(seed, z) + u - reachAx;
   if (xf < box.x0 || xf > box.x1) return UNIT_KEEP;
   return townKeepDFull(u, uDz, z, seed);
 }
@@ -222,7 +223,7 @@ export function townKeepDFull(u: number, uDz: number, z: number, seed: number): 
   }
   const plan = planFor(seed);
   const site = siteFor(seed);
-  const xf = roadCenterX(seed, z) + u - site.anchor.x;
+  const xf = roadCentreX(seed, z) + u - site.anchor.x;
   const zr = z - COVE_Z;
   coverInto(plan, xf, zr);
   const covV = COVER.v;
