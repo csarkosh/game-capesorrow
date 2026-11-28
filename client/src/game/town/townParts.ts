@@ -482,10 +482,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       drawnGround = (x, z) => groundAt(ground, x, z);
       const fleet = low ? [] : fleetOf(ground, "full");
       if (!low) {
-        vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
+        vehicles = createVehicleParts({ engine, scene, tier: host.tier, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
       }
 
-      car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
+      car = createCarParts({ engine, scene, tier: host.tier, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       damage = createDamageParts({ engine, scene, air, ahead });
       (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
       // What a measuring tool may read of the people: who is drawn (where their schedule has them), what is being said, and how far a person is moved off their schedule. Copies.

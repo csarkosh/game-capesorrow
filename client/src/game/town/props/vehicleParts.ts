@@ -19,6 +19,8 @@ import {
 import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { loadModel, type ModelPart } from "@csarkosh/engine/game/lite/forestModels";
+import { modelTextureOptions } from "@csarkosh/engine/game/lite/modelLoadOptions";
+import type { QualityTier } from "@csarkosh/engine/game/quality";
 import { baseColourPlugin, surfaceWetPlugin } from "@csarkosh/engine/game/lite/forestPlugins";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import type { WetUniforms } from "@csarkosh/engine/game/wetSurface";
@@ -35,6 +37,8 @@ export const REACH = 160;
 /** What the parts are made with: the renderer's own. */
 export type VehiclePartsHost = {
   readonly engine: EngineContext;
+  /** The quality tier: the size the models' textures are held at (`modelTextureOptions`). */
+  readonly tier: QualityTier;
   readonly scene: SceneContext;
   readonly shared: PluginUniformBlock;
   readonly air: () => MaterialPlugin;
@@ -239,7 +243,7 @@ export function createVehicleParts(host: VehiclePartsHost, instances: readonly F
       const batch = batches.get(id) as Batch;
       const owner = {};
       owners.set(id, owner);
-      loadModel(host.engine, modelUrl(`models/${id}.glb`), ["LOD0"], loads.signal).then(
+      loadModel(host.engine, modelUrl(`models/${id}.glb`), ["LOD0"], loads.signal, modelTextureOptions(host.tier)).then(
         (model) => {
           if (disposed) return;
           const parts = model.get("LOD0") ?? [];
