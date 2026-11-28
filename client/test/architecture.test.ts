@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * Cape Sorrow's own rules of layout, for what it simulates. Everything under `client/src/sim/` is what
+ * Port Ashton's own rules of layout, for what it simulates. Everything under `client/src/sim/` is what
  * every machine computes to build the same world, so it uses only arithmetic that gives the same bits on
  * every machine, and reaches only the engine's simulation and itself. The engine's and Day Hike's
  * `test/architecture.test.ts` hold the same rules for their own folders. The folder is read as it is

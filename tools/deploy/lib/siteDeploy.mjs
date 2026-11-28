@@ -40,7 +40,7 @@ export function siteDeployArgs({ project, site, path, tag, channel, dryRun }) {
   const args = ['--project', project, '--site', site, '--path', path, '--dir', CLIENT_DIST, '--rules', SITE_RULES];
   if (channel !== null) args.push('--channel', channel);
   if (dryRun) args.push('--dry-run');
-  args.push('--message', `capesorrow ${tag}`);
+  args.push('--message', `portashton ${tag}`);
   return args;
 }
 
@@ -63,7 +63,7 @@ export function checkProduction(value) {
     return { ok: false, error: '`site_url` is not an address' };
   }
   if (url.protocol !== 'https:' || url.pathname.replace(/\/+$/, '') === '') {
-    return { ok: false, error: '`site_url` must be an https address with the game\'s path (https://games.csarko.sh/capesorrow)' };
+    return { ok: false, error: '`site_url` must be an https address with the game\'s path (https://games.csarko.sh/portashton)' };
   }
   if (p.signaling_url !== undefined && (typeof p.signaling_url !== 'string' || !/^https:\/\//.test(p.signaling_url))) {
     return { ok: false, error: '`signaling_url` must be an https address' };

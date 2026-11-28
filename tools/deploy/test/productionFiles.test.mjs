@@ -14,7 +14,7 @@ describe('tools/deploy/production.json', () => {
       '//': expect.stringContaining('Every value is public'),
       gcp_project_id: 'fps-csarko',
       hosting_site_id: 'fps-csarko',
-      site_url: 'https://games.csarko.sh/capesorrow',
+      site_url: 'https://games.csarko.sh/portashton',
     });
     // No signaling address until the game has a server: the build cannot play and says so.
     expect('signaling_url' in file).toBe(false);
@@ -35,16 +35,16 @@ describe('tools/deploy/site.rules.json', () => {
 
   it("rewrites this game's path to its page, and caches what is under assets/ for good, and says nothing of any other path", () => {
     expect(rules).toEqual({
-      rewrites: [{ source: '/capesorrow/**', destination: '/capesorrow/index.html' }],
-      headers: [{ source: '/capesorrow/assets/**', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] }],
+      rewrites: [{ source: '/portashton/**', destination: '/portashton/index.html' }],
+      headers: [{ source: '/portashton/assets/**', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] }],
     });
     const sources = [...rules.rewrites, ...rules.headers].map((r) => r.source);
-    for (const source of sources) expect(source.startsWith('/capesorrow/'), source).toBe(true);
+    for (const source of sources) expect(source.startsWith('/portashton/'), source).toBe(true);
   });
 
   it("matches where the client's build puts its hashed files: assets/ under the base (the hashed file names are Vite's default)", () => {
     const config = read('client/vite.config.ts');
-    expect(config).toContain('process.env.CAPESORROW_BASE ?? "/"');
+    expect(config).toContain('process.env.PORTASHTON_BASE ?? "/"');
     expect(config).not.toMatch(/assetsDir|entryFileNames|chunkFileNames|assetFileNames/);
   });
 });

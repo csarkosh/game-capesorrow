@@ -4,20 +4,20 @@ import {
   parseVerifyArgs, referencedUrls,
 } from '../lib/verifyChecks.mjs';
 
-const PAGE = 'https://games.csarko.sh/capesorrow/';
-const BASE = '/capesorrow/';
+const PAGE = 'https://games.csarko.sh/portashton/';
+const BASE = '/portashton/';
 // The shape Vite writes for this game's page under its base.
 const HTML = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Cape Sorrow</title>
+    <title>Something Haunts Port Ashton</title>
     <meta name="description" content="A detective, a stretch of the Washington coast, and reports nobody believed." />
-    <link rel="icon" href="/capesorrow/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/portashton/favicon.svg" type="image/svg+xml" />
     <script>(function () { var s = 'src="/not/a/tag.js"'; })();</script>
-    <script type="module" crossorigin src="/capesorrow/assets/index-DYFmS29j.js"></script>
-    <link rel="modulepreload" crossorigin href="/capesorrow/assets/engine-CikSKhBB.js">
-    <link rel="modulepreload" crossorigin href="/capesorrow/assets/scene-D4epPTlq.js">
+    <script type="module" crossorigin src="/portashton/assets/index-DYFmS29j.js"></script>
+    <link rel="modulepreload" crossorigin href="/portashton/assets/engine-CikSKhBB.js">
+    <link rel="modulepreload" crossorigin href="/portashton/assets/scene-D4epPTlq.js">
     <link rel="stylesheet" href="https://fonts.example.invalid/x.css">
     <link rel="preload" href="/dayhike/assets/other.js">
   </head>
@@ -27,8 +27,8 @@ const HTML = `<!doctype html>
 describe('parseVerifyArgs', () => {
   it('takes no arguments, a base and a sha', () => {
     expect(parseVerifyArgs([])).toEqual({ base: null, sha: null });
-    expect(parseVerifyArgs(['--base', 'https://chan.example.invalid/capesorrow'])).toEqual({ base: 'https://chan.example.invalid/capesorrow', sha: null });
-    expect(parseVerifyArgs(['--sha', 'abc1234', '--base', 'http://localhost:4173/capesorrow/'])).toEqual({ base: 'http://localhost:4173/capesorrow/', sha: 'abc1234' });
+    expect(parseVerifyArgs(['--base', 'https://chan.example.invalid/portashton'])).toEqual({ base: 'https://chan.example.invalid/portashton', sha: null });
+    expect(parseVerifyArgs(['--sha', 'abc1234', '--base', 'http://localhost:4173/portashton/'])).toEqual({ base: 'http://localhost:4173/portashton/', sha: 'abc1234' });
   });
   it('refuses an unknown option, a missing value and a base that is not an address', () => {
     expect(parseVerifyArgs(['--url', 'x'])).toEqual({ error: 'unknown argument "--url"' });
@@ -38,39 +38,39 @@ describe('parseVerifyArgs', () => {
     expect(parseVerifyArgs(['--base', 'ftp://x/y'])).toEqual({ error: '--base must be an http(s) address' });
   });
   it('checks the site URL, or the base without its trailing slash', () => {
-    expect(checkedBase('https://games.csarko.sh/capesorrow', null)).toBe('https://games.csarko.sh/capesorrow');
-    expect(checkedBase('https://games.csarko.sh/capesorrow', 'https://c.example.invalid/capesorrow/')).toBe('https://c.example.invalid/capesorrow');
+    expect(checkedBase('https://games.csarko.sh/portashton', null)).toBe('https://games.csarko.sh/portashton');
+    expect(checkedBase('https://games.csarko.sh/portashton', 'https://c.example.invalid/portashton/')).toBe('https://c.example.invalid/portashton');
   });
 });
 
 describe('reading the page', () => {
   it('finds the title', () => {
-    expect(pageTitle(HTML)).toBe('Cape Sorrow');
+    expect(pageTitle(HTML)).toBe('Something Haunts Port Ashton');
     expect(pageTitle('<html></html>')).toBe(null);
   });
 
   it("lists what the page names under its base, once each, in order, and no script's text, other origin or other game's path", () => {
     expect(referencedUrls(HTML, PAGE, BASE)).toEqual([
-      'https://games.csarko.sh/capesorrow/assets/index-DYFmS29j.js',
-      'https://games.csarko.sh/capesorrow/favicon.svg',
-      'https://games.csarko.sh/capesorrow/assets/engine-CikSKhBB.js',
-      'https://games.csarko.sh/capesorrow/assets/scene-D4epPTlq.js',
+      'https://games.csarko.sh/portashton/assets/index-DYFmS29j.js',
+      'https://games.csarko.sh/portashton/favicon.svg',
+      'https://games.csarko.sh/portashton/assets/engine-CikSKhBB.js',
+      'https://games.csarko.sh/portashton/assets/scene-D4epPTlq.js',
     ]);
-    expect(referencedUrls('<link rel="icon" href="favicon.svg"><link rel="icon" href="favicon.svg">', PAGE, BASE)).toEqual(['https://games.csarko.sh/capesorrow/favicon.svg']);
+    expect(referencedUrls('<link rel="icon" href="favicon.svg"><link rel="icon" href="favicon.svg">', PAGE, BASE)).toEqual(['https://games.csarko.sh/portashton/favicon.svg']);
   });
 
   it('finds the entry script and the modules preloaded', () => {
-    expect(entryScript(HTML, PAGE)).toBe('https://games.csarko.sh/capesorrow/assets/index-DYFmS29j.js');
+    expect(entryScript(HTML, PAGE)).toBe('https://games.csarko.sh/portashton/assets/index-DYFmS29j.js');
     expect(entryScript('<script>1</script>', PAGE)).toBe(null);
     expect(modulePreloads(HTML, PAGE)).toEqual([
-      'https://games.csarko.sh/capesorrow/assets/engine-CikSKhBB.js',
-      'https://games.csarko.sh/capesorrow/assets/scene-D4epPTlq.js',
+      'https://games.csarko.sh/portashton/assets/engine-CikSKhBB.js',
+      'https://games.csarko.sh/portashton/assets/scene-D4epPTlq.js',
     ]);
   });
 });
 
 describe('contentTypeFits', () => {
-  const at = (path) => `https://games.csarko.sh/capesorrow/${path}`;
+  const at = (path) => `https://games.csarko.sh/portashton/${path}`;
   it('wants JavaScript for a script, and not the page again', () => {
     expect(contentTypeFits(at('assets/index-a.js'), 'text/javascript; charset=utf-8')).toBe(true);
     expect(contentTypeFits(at('assets/index-a.js'), 'application/javascript')).toBe(true);
@@ -117,7 +117,7 @@ describe('the headers', () => {
 
 describe('the build tag', () => {
   // Vite writes `import.meta.env` into a chunk as an object, with the variables the build was given.
-  const CHUNK = 'function a(){return f({BASE_URL:`/capesorrow/`,DEV:!1,MODE:`production`,PROD:!0,SSR:!1,VITE_BUILD_SHA:`abc1234`},location)}';
+  const CHUNK = 'function a(){return f({BASE_URL:`/portashton/`,DEV:!1,MODE:`production`,PROD:!0,SSR:!1,VITE_BUILD_SHA:`abc1234`},location)}';
   it('is found where the chunk carries it, and not where it does not', () => {
     expect(findBuildTags(CHUNK)).toEqual(['abc1234']);
     expect(findBuildTags(CHUNK.replace('VITE_BUILD_SHA', 'VITE_OTHER'))).toEqual([]);

@@ -48,7 +48,7 @@ from PIL import Image, ImageFilter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-DEFAULT_SOURCES = "/Volumes/CyrusExtSSD/dayhike-lab/capesorrow-models"
+DEFAULT_SOURCES = "/Volumes/CyrusExtSSD/dayhike-lab/capesorrow-models"  # keeps the game's former name on purpose: the sources are stored in a folder of that name
 DEFAULT_OUT = os.path.join(ROOT, "client", "assets", "models")
 MANIFEST = "vehicles.json"
 
@@ -544,7 +544,7 @@ def build_glb(spec, prims, g, wheels):
     root = len(nodes)
     nodes.append(dict(name="LOD0", children=list(range(root))))
     doc = {
-        "asset": dict(version="2.0", generator="game-capesorrow tools/models/build.py"),
+        "asset": dict(version="2.0", generator="game-portashton tools/models/build.py"),
         "scene": 0,
         "scenes": [dict(nodes=[root])],
         "nodes": nodes,

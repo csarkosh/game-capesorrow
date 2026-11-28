@@ -1,6 +1,6 @@
 /**
  * Importing this file registers the world the game is played on: the
- * engine's coast with Cape Sorrow's place laid over it (`coast.ts`: the
+ * engine's coast with Port Ashton's place laid over it (`coast.ts`: the
  * town's made ground at the cove, `sim/town/place.ts`), and the engine's own
  * passes (elevation 1, trees 6, clutter 7, cliffs 10). A page and a worker each
  * import it before the world is read or prepared. A game that lays a place

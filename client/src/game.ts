@@ -25,7 +25,7 @@ import { startClock, stepClock } from "./game/dayClock.js";
 import { createIndoorWeather } from "./game/insideWeather.js";
 import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
-import { CAPE_LOOK } from "./look.js";
+import { PORTASHTON_LOOK } from "./look.js";
 import { WALK, type WalkSnapshot } from "./net.js";
 import { INTERACT_BIT, LAMP_BIT } from "./sim/car/tuning.js";
 import { townStart } from "./sim/town/start.js";
@@ -42,7 +42,7 @@ export type WalkClient = ClientSession<WalkWorld, Walker, WalkState, never>;
 export const WALK_MODES: ModeList = {
   modes: [{ id: "walk", label: "Walk", line: "The world, and whoever is in it with you." }],
   initial: "walk",
-  key: "capesorrow.mode",
+  key: "capesorrow.mode", // keeps the game's former name on purpose: the saved mode is stored in the browser under it
   restarts: "Picking another mode starts the world again.",
 };
 
@@ -112,7 +112,7 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   startOf: townStart,
   weatherIsOwn: () => false,
   /** The game's look in the place of the engine's: no strokes, its own palette, weather and exposure (`look.ts`). */
-  look: CAPE_LOOK,
+  look: PORTASHTON_LOOK,
   renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),
   audio: () => createAmbientAudio(carSound),
   hud: createWalkHud,

@@ -223,6 +223,6 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
     },
   };
   // What stands of the line, for the page's console and a look at the counts in development.
-  (globalThis as { __capeRail?: RailStream }).__capeRail = api;
+  (globalThis as { __portAshtonRail?: RailStream }).__portAshtonRail = api;
   return api;
 }

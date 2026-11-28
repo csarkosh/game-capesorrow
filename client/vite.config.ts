@@ -6,11 +6,11 @@ import { timeLimit } from "@csarkosh/engine/vite/timeLimit";
 export default mergeConfig(
   enginePreset(),
   defineConfig({
-    // The web build lives under games.csarko.sh/capesorrow. The deploy script sets CAPESORROW_BASE
+    // The web build lives under games.csarko.sh/portashton. The deploy script sets PORTASHTON_BASE
     // (`tools/deploy/lib/buildClient.mjs`) and the engine's router reads the result back from
     // import.meta.env.BASE_URL, so no route code spells the prefix. Development serves at the root,
     // so the dev URL is http://localhost:5174/.
-    base: process.env.CAPESORROW_BASE ?? "/",
+    base: process.env.PORTASHTON_BASE ?? "/",
     server: {
       port: 5174,
       proxy: {

@@ -2,5 +2,5 @@
   "//": "Where production is, for the deploy scripts (tools/deploy/lib/preconditions.mjs reads it; there is no Terraform in this repository). Every value is public: they appear in the deployed bundle, in DNS, or in a URL a player visits. Nothing secret belongs here. A `signaling_url` (https, the Cloud Run service's address) is added when the game has a server deployed; until then the client is built without one, and the page says it is in development.",
   "gcp_project_id": "fps-csarko",
   "hosting_site_id": "fps-csarko",
-  "site_url": "https://games.csarko.sh/capesorrow"
+  "site_url": "https://games.csarko.sh/portashton"
 }

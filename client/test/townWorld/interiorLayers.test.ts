@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { creditsModel } from "@csarkosh/engine/game/credits";
-import { CAPE_ASSETS } from "../../src/assets.js";
+import { PORTASHTON_ASSETS } from "../../src/assets.js";
 import { INTERIOR_COLOR_SIZE, INTERIOR_DATA_SIZE, INTERIOR_LAYERS } from "../../src/game/town/interiorLayers.js";
 import { INTERIOR_MATERIALS, MATERIAL_NAMES } from "../../src/game/town/interiorMaterials.js";
 import { INTERIOR_ONLY_NAMES, TOWN_LAYERS } from "../../src/game/town/townLayers.js";
@@ -77,8 +77,8 @@ describe("the rooms' texture set (interior.layers.json)", () => {
 
   it("is registered with the engine by the names its files give", () => {
     for (const l of INTERIOR_LAYERS) {
-      expect(Object.hasOwn(CAPE_ASSETS.textures, `textures/${l.color}`), l.color).toBe(true);
-      expect(Object.hasOwn(CAPE_ASSETS.textures, `textures/${l.data}`), l.data).toBe(true);
+      expect(Object.hasOwn(PORTASHTON_ASSETS.textures, `textures/${l.color}`), l.color).toBe(true);
+      expect(Object.hasOwn(PORTASHTON_ASSETS.textures, `textures/${l.data}`), l.data).toBe(true);
     }
   });
 

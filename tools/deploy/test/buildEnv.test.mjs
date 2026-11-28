@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { baseOf, buildTagOf, productionEnv, signalingWsUrl, sitePathOf } from '../lib/buildEnv.mjs';
 
-const SITE = 'https://games.csarko.sh/capesorrow';
+const SITE = 'https://games.csarko.sh/portashton';
 
 describe('the base and the path', () => {
   it("are the site URL's path, with and without the trailing slash", () => {
-    expect(baseOf(SITE)).toBe('/capesorrow/');
-    expect(baseOf(`${SITE}/`)).toBe('/capesorrow/');
-    expect(sitePathOf(SITE)).toBe('/capesorrow');
-    expect(sitePathOf(`${SITE}/`)).toBe('/capesorrow');
+    expect(baseOf(SITE)).toBe('/portashton/');
+    expect(baseOf(`${SITE}/`)).toBe('/portashton/');
+    expect(sitePathOf(SITE)).toBe('/portashton');
+    expect(sitePathOf(`${SITE}/`)).toBe('/portashton');
   });
 });
 
@@ -29,7 +29,7 @@ describe('signalingWsUrl', () => {
 describe('productionEnv', () => {
   it('builds under the game\'s path, names the site and the commit, and passes NO signaling address while there is none', () => {
     const env = productionEnv({ site_url: SITE }, 'abc1234');
-    expect(env).toEqual({ CAPESORROW_BASE: '/capesorrow/', VITE_WEB_BASE: SITE, VITE_BUILD_SHA: 'abc1234' });
+    expect(env).toEqual({ PORTASHTON_BASE: '/portashton/', VITE_WEB_BASE: SITE, VITE_BUILD_SHA: 'abc1234' });
     expect('VITE_SIGNALING_URL' in env).toBe(false);
     expect(productionEnv({ site_url: SITE, signaling_url: '' }, 'abc1234').VITE_SIGNALING_URL).toBeUndefined();
   });
@@ -37,7 +37,7 @@ describe('productionEnv', () => {
   it('passes the signaling address as a WebSocket address once production.json has one', () => {
     const env = productionEnv({ site_url: SITE, signaling_url: 'https://signal.example.invalid' }, 'abc1234-dirty');
     expect(env).toEqual({
-      CAPESORROW_BASE: '/capesorrow/',
+      PORTASHTON_BASE: '/portashton/',
       VITE_WEB_BASE: SITE,
       VITE_BUILD_SHA: 'abc1234-dirty',
       VITE_SIGNALING_URL: 'wss://signal.example.invalid/ws',

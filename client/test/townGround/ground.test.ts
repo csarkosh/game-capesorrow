@@ -361,7 +361,7 @@ describe("the town's made ground", () => {
         const own = coastGround(seed, x, z);
         const got = elevationSampleAt(seed, x, z);
         const plain = roadCorridorOverD(seed, z, own.u, own.uDz, own.ground);
-        // The place asks the engine for the beach's own shape (`CAPE_PLACE.beach`: a storm ridge, cusps, bars, hummocks), which `coastGround`
+        // The place asks the engine for the beach's own shape (`PORTASHTON_PLACE.beach`: a storm ridge, cusps, bars, hummocks), which `coastGround`
         // does not carry: where the coast's plain ground is in the beach's band (0.8 m under the still sea to the sand's top at 4 m) the
         // ground is the plain one within the shape's reach (its relief is 35 cm at the most, its added slope under 0.35), and outside the
         // band it is the plain one exactly, as it was everywhere before the shape.

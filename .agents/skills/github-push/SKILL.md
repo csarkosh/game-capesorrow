@@ -1,11 +1,11 @@
 ---
 name: github-push
-description: Use when pushing work to the game-capesorrow GitHub repository — "push this", "push it up", "commit and push", "ship it", or any push to origin. Also use before writing a commit message for work that is going to be pushed.
+description: Use when pushing work to the game-portashton GitHub repository — "push this", "push it up", "commit and push", "ship it", or any push to origin. Also use before writing a commit message for work that is going to be pushed.
 ---
 
 # Pushing to GitHub
 
-`game-capesorrow` is a public, open-source repository with no reviewers. Nothing runs on a push or a pull request: the
+`game-portashton` is a public, open-source repository with no reviewers. Nothing runs on a push or a pull request: the
 `test` workflow is started by hand, and only when the section below says so (runner minutes cost time and money). A test
 run says whether a change works but never why it was made, so the commit message is the only record of why a change
 exists. It is written for the person reading `git log` months later with no memory of this session — usually the author —

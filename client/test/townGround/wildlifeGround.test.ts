@@ -4,7 +4,7 @@ import { SPECIES_DEER, SPECIES_ELK, SPECIES_RABBIT, SPECIES_SQUIRREL, SPECIES_BU
 import { bearingU, bearingV } from "../../src/sim/town/bearings.js";
 import { contains, orient, segDist, type Vec } from "../../src/sim/town/geom.js";
 import { planFor } from "../../src/sim/town/planFor.js";
-import { CAPE_PLACE } from "../../src/sim/town/place.js";
+import { PORTASHTON_PLACE } from "../../src/sim/town/place.js";
 import { siteFor } from "../../src/sim/town/siteFor.js";
 import { TOWN_GEN } from "../../src/sim/town/version.js";
 import type { Building, BuildingKind, TownPlan } from "../../src/sim/town/types.js";
@@ -39,9 +39,9 @@ describe("the town's wildlife ground", () => {
   });
 
   it("is no part of the place's tunables or the generator's version", () => {
-    expect(CAPE_PLACE.wildlifeGround).toBe(townWildlifeGround);
-    expect(Object.keys(CAPE_PLACE.tunables).filter((k) => /wildlife|animal|rabbit|deer|elk/i.test(k))).toEqual([]);
-    expect(Object.keys(CAPE_PLACE.tunables).length).toBeGreaterThan(0);
+    expect(PORTASHTON_PLACE.wildlifeGround).toBe(townWildlifeGround);
+    expect(Object.keys(PORTASHTON_PLACE.tunables).filter((k) => /wildlife|animal|rabbit|deer|elk/i.test(k))).toEqual([]);
+    expect(Object.keys(PORTASHTON_PLACE.tunables).length).toBeGreaterThan(0);
     // The generator's version as `test/town/determinism.test.ts` pins it: the wildlife ground raised it by nothing, and this follows that pin
     // when the plan itself changes (22: the street lights; 24: no street is shut at the highway).
     expect(TOWN_GEN).toBe(25);

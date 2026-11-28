@@ -3,7 +3,7 @@
  * thing stays bright while the night's grade darkens the frame (`litGainAt`), and how much day there is (`daylightAt`).
  */
 import { describe, expect, it } from "vitest";
-import { CAPE_LOOK, daylightAt, litGainAt } from "../src/look.js";
+import { PORTASHTON_LOOK, daylightAt, litGainAt } from "../src/look.js";
 
 describe("the look by the hour", () => {
   it("leaves the glows as drawn by day and lifts them through the night", () => {
@@ -33,7 +33,7 @@ describe("the look by the hour", () => {
 
 describe("the look's line far off", () => {
   it("is as it was within a street's width, and thins out over a long reach beyond it", () => {
-    const finish = CAPE_LOOK.finish;
+    const finish = PORTASHTON_LOOK.finish;
     expect(finish).toBeDefined();
     if (finish === undefined) return;
     // A shop front across a street (15 to 30 m) and the far end of a block must be drawn in full.
@@ -50,8 +50,8 @@ describe("the look's line far off", () => {
 
 describe("the look's line behind a shop's glass", () => {
   it("is drawn on what shows through the glass, by how much of it the pane hides (the engine's `lineThrough`)", () => {
-    expect(CAPE_LOOK.finish?.lineThrough).toBe(true);
+    expect(PORTASHTON_LOOK.finish?.lineThrough).toBe(true);
     // The line itself is still drawn, or there is nothing to draw through.
-    expect(CAPE_LOOK.finish?.line).toBeGreaterThan(0);
+    expect(PORTASHTON_LOOK.finish?.line).toBeGreaterThan(0);
   });
 });
