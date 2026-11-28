@@ -17,7 +17,7 @@
  *   (`Detail`); the geometry is otherwise the same on all three.
  */
 import {
-  addToScene, createMeshFromData, createPbrMaterial, createTexture2DArray, disposeMeshGpu, updateTexture2DArrayFromPixels, markMaterialUboDirty, removeFromScene, setMeshVisible,
+  addToScene, createPbrMaterial, createTexture2DArray, disposeMeshGpu, updateTexture2DArrayFromPixels, markMaterialUboDirty, removeFromScene, setMeshVisible,
   type Mesh, type PbrMaterialProps, type SceneContext,
 } from "@babylonjs/lite";
 import { DRAW_ORDER, SEE_THROUGH_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
@@ -75,6 +75,7 @@ import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
 import { daylightAt, litGainAt } from "../../look.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
+import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
 /** A cell's mesh with what the view's test needs of it. */
 type Made = { mesh: Mesh; layer: TownBatch["layer"]; x: number; y: number; z: number; radius: number; shown: boolean; /** The model this car stands in for, until the model's meshes are made. */ model?: string };
@@ -380,10 +381,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       // Lite builds the PBR pipelines of a scene's meshes by the build made when the scene is registered, and that build knows
       // vertex colours only if a mesh of the scene had them then (the engine's lake panorama does the same): so one mesh that
       // is never shown stands in the scene from the start with a colour a vertex, a triangle of no size.
-      seed = createMeshFromData(
-        engine, "town_colour_seed", new Float32Array(9), new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), new Uint32Array([0, 1, 2]), undefined, undefined, undefined,
-        new Float32Array(12).fill(1),
-      );
+      seed = createPackedMesh(engine, "town_colour_seed", {
+        positions: new Float32Array(9), normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]), uvs: undefined, colors: new Float32Array(12).fill(1),
+      });
       seed.material = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS });
       setMeshVisible(seed, false);
       addToScene(scene, seed);
@@ -601,7 +601,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             left--;
             continue;
           }
-          const mesh = createMeshFromData(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
+          const mesh = createPackedMesh(engine, `town_${batch.layer}_${batch.cx}_${batch.cz}`, a);
           if (wearsTextures) mesh.pluginVertexData = packSurface(a.surface);
           if (batch.layer === "shade") {
             mesh.material = (seeThrough as NonNullable<typeof seeThrough>).shade as PbrMaterialProps;
@@ -625,7 +625,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
             mesh.renderOrder = orders.of(town[batch.layer]) ?? DRAW_ORDER.scenery;
           }
           addToScene(scene, mesh);
-          host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
+          host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
           host.uploads.made();
           if (batch.layer === "solid") hardCover?.add(mesh);
           made.push({ mesh, layer: batch.layer, ...boundsOf(a.positions), shown: true, ...(batch.model === undefined ? {} : { model: batch.model }) });
