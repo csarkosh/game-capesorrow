@@ -24,7 +24,8 @@
     "deploy:client": "node tools/deploy/client.mjs",
     "deploy:verify": "node tools/deploy/verify.mjs",
     "recording:build": "PORTASHTON_BASE=/portashton/ npm run build -w client -- --mode film",
-    "recording:channel": "node tools/deploy/client.mjs --channel film --mode film"
+    "recording:channel": "node tools/deploy/client.mjs --channel film --mode film",
+    "recording:take": "node tools/recording/take.mjs"
   },
   "devDependencies": {
     "concurrently": "10.0.4",
