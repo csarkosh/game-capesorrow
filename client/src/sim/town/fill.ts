@@ -98,8 +98,33 @@ function areaWindowInto(area: FillArea, x: number, z: number): void {
 /** Where `fillWindowInto` leaves its answer: the weight and its gradient. Read at once, before any other call. */
 export const FILL = { v: 0, dx: 0, dz: 0 };
 
-/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. Leaves its answer in `FILL`. */
+/** The last answer: the areas, the point and the three numbers `FILL` was left with. */
+let keptAreas: readonly FillArea[] | null = null;
+let keptX = NaN;
+let keptZ = NaN;
+let keptV = 0;
+let keptDx = 0;
+let keptDz = 0;
+
+/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. Leaves its answer in `FILL`. One terrain evaluation asks the same point more than once, so the last answer is kept, and `FILL` is left as `fillWindowIntoFull` leaves it. */
 export function fillWindowInto(areas: readonly FillArea[], x: number, z: number): void {
+  if (keptAreas === areas && keptX === x && keptZ === z) {
+    FILL.v = keptV;
+    FILL.dx = keptDx;
+    FILL.dz = keptDz;
+    return;
+  }
+  fillWindowIntoFull(areas, x, z);
+  keptAreas = areas;
+  keptX = x;
+  keptZ = z;
+  keptV = FILL.v;
+  keptDx = FILL.dx;
+  keptDz = FILL.dz;
+}
+
+/** `fillWindowInto` with nothing kept: the areas asked at every call. */
+export function fillWindowIntoFull(areas: readonly FillArea[], x: number, z: number): void {
   // The union's complement is the product of the areas' complements: 1 - w = Π (1 - w_i).
   let rest = 1;
   let restDx = 0;

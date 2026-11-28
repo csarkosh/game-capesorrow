@@ -249,8 +249,31 @@ function quayWindowInto(plan: TownPlan, xf: number, zr: number): void {
 /** Where `coverInto` leaves its answer: the cover and its gradient. Read at once, before any other call. */
 export const COVER = { v: 0, dx: 0, dz: 0 };
 
-/** The town's cover at a point of the plan's frame, with its gradient, left in `COVER`: the smooth union of the block windows near it, and the quay's. `withLots` false leaves out the outlying lots' windows: the ground they stand on is the land's own, and only the forest and the cliff bands keep off them. */
+/** The last answer for each `withLots`: the plan, the point and the three numbers `COVER` was left with. */
+type CoverKept = { plan: TownPlan | null; xf: number; zr: number; v: number; dx: number; dz: number };
+const KEPT_WITH: CoverKept = { plan: null, xf: NaN, zr: NaN, v: 0, dx: 0, dz: 0 };
+const KEPT_WITHOUT: CoverKept = { plan: null, xf: NaN, zr: NaN, v: 0, dx: 0, dz: 0 };
+
+/** The town's cover at a point of the plan's frame, with its gradient, left in `COVER`: the smooth union of the block windows near it, and the quay's. `withLots` false leaves out the outlying lots' windows: the ground they stand on is the land's own, and only the forest and the cliff bands keep off them. One terrain evaluation asks the same point up to three times, so the last answer of each `withLots` is kept, and `COVER` is left as `coverIntoFull` leaves it. */
 export function coverInto(plan: TownPlan, xf: number, zr: number, withLots = true): void {
+  const kept = withLots ? KEPT_WITH : KEPT_WITHOUT;
+  if (kept.plan === plan && kept.xf === xf && kept.zr === zr) {
+    COVER.v = kept.v;
+    COVER.dx = kept.dx;
+    COVER.dz = kept.dz;
+    return;
+  }
+  coverIntoFull(plan, xf, zr, withLots);
+  kept.plan = plan;
+  kept.xf = xf;
+  kept.zr = zr;
+  kept.v = COVER.v;
+  kept.dx = COVER.dx;
+  kept.dz = COVER.dz;
+}
+
+/** `coverInto` with nothing kept: the windows asked at every call. */
+export function coverIntoFull(plan: TownPlan, xf: number, zr: number, withLots = true): void {
   quayWindowInto(plan, xf, zr);
   const qv = QUAY.v;
   const qdx = QUAY.dx;

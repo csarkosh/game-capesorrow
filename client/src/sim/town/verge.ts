@@ -26,15 +26,17 @@
  *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only.
  */
-import { COVE_Z, roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { COVE_Z } from "@csarkosh/engine/sim/olympic";
 import { valueNoise2 } from "@csarkosh/engine/sim/field";
 import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { elevationAt } from "@csarkosh/engine/sim/terrain";
 import type { FeatureMask } from "@csarkosh/engine/sim/features";
+import { beyondTown } from "./clearing.js";
 import { COVER, coverInto } from "./cover.js";
 import { FILL, fillWindowInto, smootherstepInto, STEP } from "./fill.js";
 import { planFor } from "./planFor.js";
 import { RAIL_BED_HALF, RAIL_OFFSET } from "./rail.js";
+import { roadCentreX } from "./roadCentre.js";
 import { siteFor } from "./siteFor.js";
 
 /** Version of this stage's arithmetic: raised whenever the weights or the mask here change (it is part of the level id). */
@@ -107,7 +109,7 @@ function smooth(lo: number, hi: number, x: number): number {
 
 /** The weight of the transport corridor at a point, from its offset from the highway's centre alone: 0 to 1, with no regard for the ground's height. */
 export function corridorWeight(seed: number, x: number, z: number): number {
-  const u = x - roadCenterX(seed, z);
+  const u = x - roadCentreX(seed, z);
   if (u >= ROAD_BED_HALF + VERGE_INLAND_RAMP || u <= SEA_EDGE - VERGE_SEA_RAMP) return 0;
   let w = 1;
   if (u > ROAD_BED_HALF) {
@@ -120,8 +122,14 @@ export function corridorWeight(seed: number, x: number, z: number): number {
   return w;
 }
 
-/** The weight of the town's made ground at a point: its cover and its fill, 0 to 1, with no regard for the ground's height. */
+/** The weight of the town's made ground at a point: its cover and its fill, 0 to 1, with no regard for the ground's height. 0 beyond the town's reach (`beyondTown`), where the cover and the fill are 0 and `madeWeightFull` says 0. */
 export function madeWeight(seed: number, x: number, z: number): number {
+  if (beyondTown(seed, x, z)) return 0;
+  return madeWeightFull(seed, x, z);
+}
+
+/** `madeWeight` with no early answer: the cover and the fill asked at every point. */
+export function madeWeightFull(seed: number, x: number, z: number): number {
   const plan = planFor(seed);
   const xf = x - siteFor(seed).anchor.x;
   const zr = z - COVE_Z;
@@ -144,6 +152,14 @@ export function vergeLateral(seed: number, x: number, z: number): number {
   return m > c ? m : c;
 }
 
+/** `vergeLateral` with the made ground's weight asked in full everywhere. */
+export function vergeLateralFull(seed: number, x: number, z: number): number {
+  const c = corridorWeight(seed, x, z);
+  if (c === 1) return 1;
+  const m = madeWeightFull(seed, x, z);
+  return m > c ? m : c;
+}
+
 /** The share of the lateral weight that stands: 1 on dry land, 0 on the beach below the quay's bank and under the sea. */
 export function dryLand(h: number): number {
   return smooth(VERGE_H_LO, VERGE_H_HI, h);
@@ -159,9 +175,22 @@ export function vergeWeightAt(seed: number, x: number, z: number, h: number): nu
   return lateral === 0 ? 0 : lateral * dryLand(h);
 }
 
+/** `vergeWeightAt` with the made ground's weight asked in full everywhere. */
+export function vergeWeightAtFull(seed: number, x: number, z: number, h: number): number {
+  const lateral = vergeLateralFull(seed, x, z);
+  return lateral === 0 ? 0 : lateral * dryLand(h);
+}
+
 /** `vergeWeightAt`, with the ground's height read from the world (the shore strip hook is not handed it). Nothing is read where the lateral weight is 0. */
 export function vergeWeight(seed: number, x: number, z: number): number {
   const lateral = vergeLateral(seed, x, z);
+  if (lateral === 0) return 0;
+  return lateral * dryLand(elevationAt(seed, x, z));
+}
+
+/** `vergeWeight` with the made ground's weight asked in full everywhere. */
+export function vergeWeightFull(seed: number, x: number, z: number): number {
+  const lateral = vergeLateralFull(seed, x, z);
   if (lateral === 0) return 0;
   return lateral * dryLand(elevationAt(seed, x, z));
 }
