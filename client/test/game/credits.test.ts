@@ -26,11 +26,20 @@ describe("the game's own CREDITS.md", () => {
     expect(OWN_FILE.startsWith("# Credits\n")).toBe(true);
     expect(OWN_FILE).toMatch(/engine/);
     expect(OWN_FILE).toMatch(/Credits screen/);
-    // 38 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 12 vehicle models, the 5 people and the 3 photo textures the cup and the phone in their hands are cut from.
-    expect(own.length).toBe(41);
+    // 48 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 7 only the rooms use, the 12 vehicle models, the 5 people and the 3 photo textures the cup and the phone in their hands are cut from.
+    expect(own.length).toBe(48);
     const textures = own.filter((e) => e.id.startsWith("town."));
     expect(textures.length).toBe(21);
     for (const e of textures) {
+      expect(e.license, e.id).toBe("CC0-1.0");
+      expect(e.author.length, e.id).toBeGreaterThan(0);
+      expect(e.url, e.id).toMatch(/^https:\/\/[a-z.]+\/a\/[A-Za-z0-9_]+$/);
+      expect(e.source, e.id).toMatch(/^[^:]+: .+/);
+    }
+    // The seven works only the rooms use (the interiors' set, loaded on first entry), CC0 and in the same shape.
+    const interiors = own.filter((e) => e.id.startsWith("interior."));
+    expect(interiors.map((e) => e.id)).toEqual(["Marble019", "Carpet004", "oak_veneer_04", "WoodFloor008", "Fabric036", "Tiles036", "Wicker008A"].map((id) => `interior.${id}`));
+    for (const e of interiors) {
       expect(e.license, e.id).toBe("CC0-1.0");
       expect(e.author.length, e.id).toBeGreaterThan(0);
       expect(e.url, e.id).toMatch(/^https:\/\/[a-z.]+\/a\/[A-Za-z0-9_]+$/);
@@ -59,7 +68,7 @@ describe("the game's own CREDITS.md", () => {
       expect(e.license, e.id).toBe("CC0-1.0");
       expect(e.url, e.id).toMatch(/^https:\/\//);
     }
-    expect(own.length).toBe(textures.length + models.length + people.length + hands.length);
+    expect(own.length).toBe(textures.length + interiors.length + models.length + people.length + hands.length);
     expect(new Set(own.map((e) => e.id)).size).toBe(own.length);
   });
 

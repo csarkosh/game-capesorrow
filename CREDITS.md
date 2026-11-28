@@ -1,6 +1,6 @@
 # Credits
 
-The works of others that Cape Sorrow itself carries: the town's texture sets under `client/assets/textures/`, which `tools/textures/build.py` resizes and re-encodes (the paintable ones are made into neutral detail for the game's paint colours to multiply), and the parked vehicles' models under `client/assets/models/`, which `tools/models/build.py` bakes, joins and shrinks (the eleven under Creative Commons Attribution are credited with what was changed in each), and the five people who stand in the shops and the street, models under `client/assets/models/` listed in `people.json` (each under Creative Commons Attribution, with what was changed), with the cup and the phone they hold, whose small shared picture is cut from three CC0 photo textures. One section to a work, each under its licence, in the shape the Credits screen reads (`client/src/game/credits.ts`). What the game ships of other people's besides comes with the engine it is built on: models, textures and sounds published on Sketchfab, Poly Haven, ambientCG and Freesound, and the libraries the engine draws with. The engine credits each of them in its own `CREDITS.md`, and the game's Credits screen shows that list and this one as one. The asphalt shingle layer is original work, made by the build script, and is not listed.
+The works of others that Cape Sorrow itself carries: the town's texture sets (`town.`) and the seven more that only the rooms use (`interior.`: marble, carpet, oak, dark wood, cloth, glazed tile and cane, loaded when a player first walks into a building) under `client/assets/textures/`, which `tools/textures/build.py` resizes and re-encodes (the paintable ones are made into neutral detail for the game's paint colours to multiply; the rooms' set also holds four of the town's layers, which keep their `town.` credits), and the parked vehicles' models under `client/assets/models/`, which `tools/models/build.py` bakes, joins and shrinks (the eleven under Creative Commons Attribution are credited with what was changed in each), and the five people who stand in the shops and the street, models under `client/assets/models/` listed in `people.json` (each under Creative Commons Attribution, with what was changed), with the cup and the phone they hold, whose small shared picture is cut from three CC0 photo textures. One section to a work, each under its licence, in the shape the Credits screen reads (`client/src/game/credits.ts`). What the game ships of other people's besides comes with the engine it is built on: models, textures and sounds published on Sketchfab, Poly Haven, ambientCG and Freesound, and the libraries the engine draws with. The engine credits each of them in its own `CREDITS.md`, and the game's Credits screen shows that list and this one as one. The asphalt shingle layer is original work, made by the build script, and is not listed.
 
 ## town.Bricks097
 
@@ -148,6 +148,55 @@ The works of others that Cape Sorrow itself carries: the town's texture sets und
 - **Author:** Rob Tuytel
 - **Licence:** CC0-1.0
 - **URL:** https://polyhaven.com/a/plywood
+
+## interior.Marble019
+
+- **Source:** ambientCG: Marble 019
+- **Author:** ambientCG
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/a/Marble019
+
+## interior.Carpet004
+
+- **Source:** ambientCG: Carpet 004
+- **Author:** ambientCG
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/a/Carpet004
+
+## interior.oak_veneer_04
+
+- **Source:** Poly Haven: Oak Veneer 04
+- **Author:** Jenelle van Heerden
+- **Licence:** CC0-1.0
+- **URL:** https://polyhaven.com/a/oak_veneer_04
+
+## interior.WoodFloor008
+
+- **Source:** ambientCG: Wood Floor 008
+- **Author:** ambientCG
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/a/WoodFloor008
+
+## interior.Fabric036
+
+- **Source:** ambientCG: Fabric 036
+- **Author:** ambientCG
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/a/Fabric036
+
+## interior.Tiles036
+
+- **Source:** ambientCG: Tiles 036
+- **Author:** ambientCG
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/a/Tiles036
+
+## interior.Wicker008A
+
+- **Source:** ambientCG: Wicker 008 A
+- **Author:** ambientCG
+- **Licence:** CC0-1.0
+- **URL:** https://ambientcg.com/a/Wicker008A
 
 ## vehicle.pickup_a
 

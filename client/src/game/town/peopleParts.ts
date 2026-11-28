@@ -528,7 +528,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         if (batch.model === null) continue;
         for (const i of batch.shown) {
           const p = batch.people[i] as PlacedPerson;
-          visit({ key: keyOf.get(p) as number, x: p.at.x, y: p.at.y, z: p.at.z, yaw: p.at.yaw, scale: p.person.scale, walking: false, seated: p.person.seat !== null, sheltered: !p.outdoor, partner: p.partner ?? -1, venue: p.venue ?? "street" });
+          visit({ key: keyOf.get(p) as number, x: p.at.x, y: p.at.y, z: p.at.z, yaw: p.at.yaw, scale: p.person.scale, walking: false, seated: p.person.seat !== null, sheltered: !p.outdoor, fixed: p.room !== undefined, partner: p.partner ?? -1, venue: p.venue ?? "street" });
         }
         for (const [q, i] of batch.walking.entries()) {
           const at = batch.wplaces[q];

@@ -10,7 +10,7 @@
  */
 import type { MeshArrays } from "../../src/game/town/meshBuilder.js";
 import { paintRank } from "../../src/game/town/paint.js";
-import { MEAN } from "../../src/game/town/materials.js";
+import { meanOf } from "../../src/game/town/materials.js";
 import { TOWN_LAYERS } from "../../src/game/town/townLayers.js";
 
 export type Tri = { readonly layer: string; readonly p: readonly [number, number, number, number, number, number, number, number, number]; readonly n: readonly [number, number, number]; readonly d: number; /** Its index among the mesh's triangles, to find where it came from. */ readonly index: number; readonly tag?: string; /** What it looks like: the texture layer's index (-1 for none), the flat colour (or the texture's tint), and the glow and clearness. */ readonly look: readonly [number, number, number, number, number, number]; /** Its three corners' UVs (in tiles), and its first corner's tint and wear: what a textured face shows where. */ readonly uv: readonly [number, number, number, number, number, number]; readonly tint: readonly [number, number, number, number]; /** Which mesh of the town it is in, when the town's meshes are put together. */ readonly mesh?: string; /** For flat ground, its depth rank (`townMaterial.ts`): a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly rank: number; /** For a face of the standing layers, its rank of paint (`paint.ts`), read from its first corner's colour alpha: a face of a higher rank is drawn that many steps ahead of one of a lower, whatever its distance. 0 for the rest. */ readonly paint: number };
@@ -307,7 +307,7 @@ export function alike(a: Tri, b: Tri, area = Infinity): boolean {
   if (a.look[0] === -1) return true;
   // The colour each shows: its tint times its layer's own mean (a paintable layer's is the tint itself), to the same 3 percent; and its wear.
   const layer = TOWN_LAYERS[a.look[0]];
-  const mean = layer === undefined || layer.paintable ? [1, 1, 1] : MEAN[layer.name];
+  const mean = layer === undefined || layer.paintable ? [1, 1, 1] : meanOf(layer.name);
   for (let k = 0; k < 3; k++) if (Math.abs((a.tint[k] as number) - (b.tint[k] as number)) * (mean[k] as number) > 0.03) return false;
   if (Math.abs(a.tint[3] - b.tint[3]) > 0.05) return false;
   // Two faces of one material and one colour that touch over less than a hand's breadth square (a rail's tube against its post, two logs of a

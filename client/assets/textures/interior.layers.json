@@ -1,0 +1,260 @@
+{
+  "size": 512,
+  "dataSize": 256,
+  "paintGain": 2.0,
+  "about": "Written by tools/textures/build.py: do not edit. The rooms' set, loaded when a player first walks into a building. Tile sizes are metres across and up the layer; colour files are `size` square and data files `dataSize` square; `mean` is the average linear colour of the colour file. Where a work came from is in CREDITS.md, under the layer's credit id.",
+  "layers": [
+    {
+      "name": "marble_tile",
+      "index": 0,
+      "id": "Marble019",
+      "credit": "interior.Marble019",
+      "generated": false,
+      "tile": [
+        1.2,
+        1.2
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.822,
+        0.824,
+        0.823
+      ],
+      "color": "interior.marble_tile.color.webp",
+      "data": "interior.marble_tile.data.webp",
+      "note": "pale marble with fine grey veins, no joints: a slab about 1.2 m across; joints are laid in geometry"
+    },
+    {
+      "name": "carpet",
+      "index": 1,
+      "id": "Carpet004",
+      "credit": "interior.Carpet004",
+      "generated": false,
+      "tile": [
+        0.45,
+        0.45
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.218,
+        0.223,
+        0.228
+      ],
+      "color": "interior.carpet.color.webp",
+      "data": "interior.carpet.data.webp",
+      "note": "grey low-pile carpet with a square motif, 15 squares of 3 cm over the picture"
+    },
+    {
+      "name": "oak",
+      "index": 2,
+      "id": "oak_veneer_04",
+      "credit": "interior.oak_veneer_04",
+      "generated": false,
+      "tile": [
+        1.0,
+        1.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "mean": [
+        0.715,
+        0.482,
+        0.313
+      ],
+      "color": "interior.oak.color.webp",
+      "data": "interior.oak.data.webp",
+      "note": "pale straight-grain oak veneer, grain horizontal in the image"
+    },
+    {
+      "name": "dark_wood",
+      "index": 3,
+      "id": "WoodFloor008",
+      "credit": "interior.WoodFloor008",
+      "generated": false,
+      "tile": [
+        1.5,
+        1.5
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.055,
+        0.03,
+        0.017
+      ],
+      "color": "interior.dark_wood.color.webp",
+      "data": "interior.dark_wood.data.webp",
+      "note": "dark polished boards of about 14 cm, running across the image"
+    },
+    {
+      "name": "cloth",
+      "index": 4,
+      "id": "Fabric036",
+      "credit": "interior.Fabric036",
+      "generated": false,
+      "tile": [
+        0.4,
+        0.4
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.492,
+        0.492,
+        0.492
+      ],
+      "color": "interior.cloth.color.webp",
+      "data": "interior.cloth.data.webp",
+      "note": "plain light-grey woven upholstery: threads of about 1 mm"
+    },
+    {
+      "name": "glazed_tile",
+      "index": 5,
+      "id": "Tiles036",
+      "credit": "interior.Tiles036",
+      "generated": false,
+      "tile": [
+        1.2,
+        1.2
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.636,
+        0.636,
+        0.636
+      ],
+      "color": "interior.glazed_tile.color.webp",
+      "data": "interior.glazed_tile.data.webp",
+      "note": "small square glazed tiles of 12 cm with grey grout, 10 over the picture"
+    },
+    {
+      "name": "cane",
+      "index": 6,
+      "id": "Wicker008A",
+      "credit": "interior.Wicker008A",
+      "generated": false,
+      "tile": [
+        0.3,
+        0.3
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.351,
+        0.246,
+        0.148
+      ],
+      "color": "interior.cane.color.webp",
+      "data": "interior.cane.data.webp",
+      "note": "basket weave of strands about 1 cm wide: the nearest to cane webbing the catalogue has"
+    },
+    {
+      "name": "paint",
+      "index": 7,
+      "id": "paint",
+      "credit": null,
+      "generated": true,
+      "tile": [
+        1.0,
+        1.0
+      ],
+      "tileEstimated": false,
+      "paintable": false,
+      "mean": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "color": "interior.paint.color.webp",
+      "data": "interior.paint.data.webp",
+      "note": "smooth matt emulsion made by this script: a flat near-white wall with a faint roller stipple and a very fine orange peel, for a tint to colour"
+    },
+    {
+      "name": "brick",
+      "index": 8,
+      "id": "Bricks097",
+      "credit": "town.Bricks097",
+      "generated": false,
+      "tile": [
+        3.0,
+        1.5
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.253,
+        0.168,
+        0.105
+      ],
+      "color": "interior.brick.color.webp",
+      "data": "interior.brick.data.webp",
+      "note": "old red brick; 20 courses of 7.5 cm over the picture's height, 2:1"
+    },
+    {
+      "name": "sidewalk",
+      "index": 9,
+      "id": "Concrete047A",
+      "credit": "town.Concrete047A",
+      "generated": false,
+      "tile": [
+        1.5,
+        1.5
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.284,
+        0.246,
+        0.174
+      ],
+      "color": "interior.sidewalk.color.webp",
+      "data": "interior.sidewalk.data.webp",
+      "note": "sidewalk concrete"
+    },
+    {
+      "name": "stucco",
+      "index": 10,
+      "id": "Plaster007",
+      "credit": "town.Plaster007",
+      "generated": false,
+      "tile": [
+        2.0,
+        2.0
+      ],
+      "tileEstimated": true,
+      "paintable": true,
+      "mean": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "color": "interior.stucco.color.webp",
+      "data": "interior.stucco.data.webp",
+      "note": "old stained stucco"
+    },
+    {
+      "name": "rust",
+      "index": 11,
+      "id": "PaintedMetal013",
+      "credit": "town.PaintedMetal013",
+      "generated": false,
+      "tile": [
+        1.0,
+        1.0
+      ],
+      "tileEstimated": true,
+      "paintable": false,
+      "mean": [
+        0.421,
+        0.39,
+        0.378
+      ],
+      "color": "interior.rust.color.webp",
+      "data": "interior.rust.data.webp",
+      "note": "rust and peeling paint: metal things, and the rust overlay"
+    }
+  ]
+}

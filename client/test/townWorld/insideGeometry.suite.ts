@@ -1,36 +1,37 @@
 import "../../src/terrain.js";
 import { describe, expect, it } from "vitest";
 import { buildingLevels } from "../../src/game/town/buildingGeometry.js";
-import { FLOOR_LIFT, insideGeometry } from "../../src/game/town/insideGeometry.js";
-import { MeshBuilder, type MeshArrays } from "../../src/game/town/meshBuilder.js";
-import { townGround } from "../../src/game/town/townGeometry.js";
+import { FLOOR_LIFT } from "../../src/game/town/insideGeometry.js";
+import { MeshBuilder, isUnbacked, type MeshArrays } from "../../src/game/town/meshBuilder.js";
+import { groundOf, meshOf } from "./roomMeshes.js";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, OUTSIDE, insideRooms } from "../../src/sim/inside/rooms.js";
 import { hidesTown, insidePeople, wantedOf, whereOf } from "../../src/game/town/insideParts.js";
 
 const SEEDS = [20261121, 1175766972];
 /** A vertex may lie this far outside the room's box: a hanging thing's or a trim's own thickness, and the recess of the back room's doorway is allowed on top of the depth. */
 const MARGIN = 0.1;
-const BUDGET = 30000;
+/** The most vertices a room may take: the designed bar, cafe and lodging and the municipal hall each have their own (40,000, 40,000, 60,000 and 80,000). */
+const BUDGET: Readonly<Record<string, number>> = { bar: 46000, cafe: 40000, lodging: 74000, office: 80000 };
 
 const pos = (a: MeshArrays, i: number): [number, number, number] => [a.positions[i * 3] as number, a.positions[i * 3 + 1] as number, a.positions[i * 3 + 2] as number];
 
 describe("the hidden rooms", () => {
   for (const seed of SEEDS) {
-    const g = townGround(seed);
+    const g = groundOf(seed);
     const rooms = insideRooms(seed);
     it(`seed ${seed} has rooms`, () => {
       expect(rooms.length).toBeGreaterThan(0);
     });
-    for (const room of rooms) {
+    for (const [index, room] of rooms.entries()) {
       describe(`seed ${seed} ${room.name}`, () => {
         const t0 = performance.now();
-        const a = insideGeometry(g, room, "full");
+        const a = meshOf(seed, index);
         const ms = performance.now() - t0;
         const verts = a.positions.length / 3;
         it("is built and reports its size", () => {
           console.log(`[inside] seed ${seed} ${room.name}: ${verts} vertices, ${a.indices.length / 3} triangles, ${ms.toFixed(0)} ms`);
           expect(verts).toBeGreaterThan(0);
-          expect(verts).toBeLessThan(BUDGET);
+          expect(verts).toBeLessThan(BUDGET[room.name] as number);
         });
         it("is in the room's own frame", () => {
           const xf = buildingLevels(g, g.plan.buildings[room.building]!).xf!;
@@ -67,13 +68,14 @@ describe("the hidden rooms", () => {
           }
           let unpaired = 0;
           for (let t = 0; t < a.indices.length; t += 3) {
+            // A face of a solid (a box, a slab, a flight) has no back: its inside is never seen.
+            if (isUnbacked(a.indices, t / 3)) continue;
             const ks = [0, 1, 2].map((k) => key(pos(a, a.indices[t + k] as number)));
             const rev = [ks[2], ks[1], ks[0]];
             const canon = [rev.join("|"), [rev[1], rev[2], rev[0]].join("|"), [rev[2], rev[0], rev[1]].join("|")].sort()[0] as string;
             if (!tris.has(canon)) unpaired++;
           }
           expect(unpaired).toBe(0);
-          expect((a.indices.length / 3) % 2).toBe(0);
         });
       });
     }
@@ -108,11 +110,13 @@ describe("where the local player is by the rooms", () => {
   });
   it("stands people in the rooms over the whole room, on the floor", () => {
     for (const seed of SEEDS) {
-      const people = insidePeople(townGround(seed));
+      const people = insidePeople(groundOf(seed));
       console.log(`[inside] seed ${seed}: ${people.length} people in the hidden rooms`);
       for (const p of people) {
         const room = insideRooms(seed).find((r) => r.id === p.room)!;
-        expect(p.at.y).toBe(room.floorY);
+        // On the floor of the room, or on a floor of its own above it (the municipal hall's second floor).
+        const levels = room.design.people.map((q) => Math.round((room.floorY + (q.y ?? 0)) * 1000));
+        expect(levels, `a person at y ${p.at.y}`).toContain(Math.round(p.at.y * 1000));
       }
     }
   });

@@ -13,6 +13,13 @@
  *   (`insideWeather.ts`, which also says why the lens needs that).
  * - **The town is hidden while the player is inside** (phase INSIDE only): it is below the floor and costs frame time. It is shown again in
  *   GOING_OUT, so the street is there when the screen clears (`hidesTown`, read by `townParts.ts`).
+ * - **The room's own textures** (`interiorTextures.ts`, imported here and nowhere else). A room drawn from a design (`design.legacy` false) is drawn on the rooms'
+ *   own arrays (`interior.layers.json`: marble, carpet, oak, dark wood, cloth, glazed tile, cane and the few outdoor layers the rooms use), which are fetched
+ *   and made the first time the local player starts to walk into such a room (the first frame of the hold at its door) or is put straight in one, never with
+ *   the town, and kept for the session. The room is built once they are ready, and until then the part tells the session that the room is not drawn
+ *   (`insideReady.ts`), which keeps the screen dark. If they do not load (a warning, once) the room is built on the town's arrays, as the rooms were drawn before they had a
+ *   set (`insideLayers.ts` lays the room's layers on whichever arrays it is drawn on), so a player is never left in the dark. A room drawn the old way
+ *   (`legacy`) never waits for them and never reads them.
  * - **People.** `insidePeople` stands copies of each room's unit's people in the hidden room, over the whole room, for `peopleParts.ts` to show
  *   while the local player is where that room is.
  */
@@ -21,12 +28,16 @@ import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, insideRooms, roomOf, type Inside, type InsideRoom } from "../../sim/inside/rooms.js";
 import { buildingLevels } from "./buildingGeometry.js";
 import { heldBy, tradeAt } from "./handHeld.js";
+import { unitHours } from "./hours.js";
 import { insideGeometry } from "./insideGeometry.js";
-import { PERSON_MODELS, roomPeople, type PersonModel } from "./people.js";
-import { municipalInterior } from "../../sim/inside/municipal.js";
+import { retargetLayers } from "./insideLayers.js";
+import { createInteriorTextures } from "./interiorTextures.js";
+import { setRoomDrawn } from "../insideReady.js";
+import { PERSON_MODELS, roomPeople, type Activity, type PersonModel } from "./people.js";
 import type { PlacedPerson } from "./peopleParts.js";
 import { xd, xp } from "./roomKit.js";
 import { packSurface } from "./surfacePack.js";
+import type { TownTextureSet } from "./townMaterial.js";
 import type { Detail, TownGround } from "./townTypes.js";
 import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
@@ -63,6 +74,20 @@ export type InsideHost = {
   readonly ground: TownGround;
   readonly detail: Detail;
   readonly uploads: FrameUploads;
+  /**
+   * The material of a pane seen through out of focus (`townParts.ts`: the town's `through` material, which reads the frame the opaque draws left and is drawn first after the break) and where it draws; null where the
+   * renderer keeps no frame behind its glass, and the room's windows are the opaque sheets they were. The room's panes are a mesh of their own (`insideGeometry`'s `through`), drawn with it.
+   */
+  readonly through: { readonly material: PbrMaterialProps; readonly order: number } | null;
+  /**
+   * What the rooms' own textures need of the renderer (`townParts.ts`): null where the town has no textures at all. `make` is given the arrays when they have been
+   * made and returns the material that reads them (the town's indoor material, on the rooms' layers) and what to tell it when they have landed.
+   */
+  readonly interior: {
+    readonly low: boolean;
+    readonly signal: AbortSignal;
+    make(textures: TownTextureSet): { readonly material: PbrMaterialProps; landed(filled: boolean): void };
+  } | null;
 };
 
 export type InsideParts = {
@@ -73,11 +98,53 @@ export type InsideParts = {
   dispose(): void;
 };
 
+/** Where the rooms' own textures are: not asked for, being fetched, landed, or not loaded (the town's are used). */
+type Textures = "idle" | "loading" | "ready" | "failed";
+
 export function createInsideParts(host: InsideHost): InsideParts {
   let room = 0;
   let mesh: Mesh | null = null;
+  let glass: Mesh | null = null;
+  let outsideMesh: Mesh | null = null;
+  let textures: Textures = "idle";
+  let rooms: { readonly material: PbrMaterialProps; landed(filled: boolean): void } | null = null;
+  setRoomDrawn(false);
+
+  /** Fetches and makes the rooms' arrays, once: the first time it is called, and never if there is nowhere to put them. */
+  const fetchTextures = (): void => {
+    if (textures !== "idle") return;
+    const interior = host.interior;
+    if (interior === null || !host.textured) {
+      textures = "failed";
+      return;
+    }
+    textures = "loading";
+    try {
+      const arrays = createInteriorTextures(host.engine, interior.low, interior.signal, (filled) => {
+        textures = filled ? "ready" : "failed";
+        rooms?.landed(filled);
+      });
+      rooms = interior.make(arrays);
+    } catch (error) {
+      // The arrays could not be made (no device to make them on): the rooms are drawn on the town's.
+      console.warn("the rooms' texture arrays could not be made; the room is drawn with the town's textures:", error);
+      textures = "failed";
+    }
+  };
 
   const drop = (): void => {
+    if (outsideMesh !== null) {
+      removeFromScene(host.scene, outsideMesh);
+      disposeMeshGpu(outsideMesh);
+      host.uploads.dropped();
+      outsideMesh = null;
+    }
+    if (glass !== null) {
+      removeFromScene(host.scene, glass);
+      disposeMeshGpu(glass);
+      host.uploads.dropped();
+      glass = null;
+    }
     if (mesh === null) return;
     removeFromScene(host.scene, mesh);
     disposeMeshGpu(mesh);
@@ -87,46 +154,93 @@ export function createInsideParts(host: InsideHost): InsideParts {
   };
 
   const build = (r: InsideRoom): void => {
-    const a = insideGeometry(host.ground, r, host.detail);
+    const a = insideGeometry(host.ground, r, host.detail, undefined, host.through !== null && host.textured);
+    // A designed room is drawn on the rooms' own arrays if they landed, else on the town's (`insideLayers.ts`).
+    const own = !r.design.legacy && textures === "ready" && rooms !== null;
+    if (host.textured && !r.design.legacy) retargetLayers(a, own ? "interior" : "town");
     const made = createPackedMesh(host.engine, `inside_${r.id}`, a);
     if (host.textured) made.pluginVertexData = packSurface(a.surface);
-    made.material = host.material;
+    made.material = own && rooms !== null ? rooms.material : host.material;
     made.renderOrder = host.order;
     addToScene(host.scene, made);
     host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
     host.uploads.made();
     mesh = made;
+    // The street and the yard outside its windows: a mesh of its own on the same material, lit by the scene (`roomOutside.ts`).
+    const o = a.outside;
+    if (o !== undefined && o !== null) {
+      if (host.textured && !r.design.legacy) retargetLayers(o, own ? "interior" : "town");
+      const scenery = createPackedMesh(host.engine, `inside_${r.id}_outside`, o);
+      if (host.textured) scenery.pluginVertexData = packSurface(o.surface);
+      scenery.material = own && rooms !== null ? rooms.material : host.material;
+      scenery.renderOrder = host.order;
+      addToScene(host.scene, scenery);
+      host.uploads.count("geometry", packedBytes(o.positions.length / 3, o.indices.length, o.surface.byteLength), 4);
+      host.uploads.made();
+      outsideMesh = scenery;
+    }
+    // The panes: their own mesh, an opaque draw after the break that reads the sky and the far land out of focus (`roomGlass.ts`).
+    const g = a.through;
+    if (g !== undefined && g !== null && host.through !== null) {
+      const sheet = createPackedMesh(host.engine, `inside_${r.id}_glass`, g);
+      sheet.pluginVertexData = packSurface(g.surface);
+      sheet.material = host.through.material;
+      sheet.renderOrder = host.through.order;
+      sheet.afterBreak = true;
+      addToScene(host.scene, sheet);
+      host.uploads.count("geometry", packedBytes(g.positions.length / 3, g.indices.length, g.surface.byteLength), 4);
+      host.uploads.made();
+      glass = sheet;
+    }
     room = r.id;
   };
 
   return {
     frame(inside) {
+      const here = whereOf(inside);
+      // The rooms' arrays are asked for as the player starts to walk into a designed room, or finds themselves in one.
+      const going = inside !== undefined && inside.phase === GOING_IN ? inside.place : here;
+      if (going !== 0) {
+        const target = roomOf(host.ground.seed, going);
+        if (target !== undefined && !target.design.legacy) fetchTextures();
+      }
       const want = wantedOf(inside);
-      if (want === room) return;
-      drop();
-      if (want === 0) return;
-      const r = roomOf(host.ground.seed, want);
-      if (r !== undefined) build(r);
+      if (want !== room) {
+        drop();
+        const r = want === 0 ? undefined : roomOf(host.ground.seed, want);
+        // A designed room waits for its textures, and the screen with it (`insideReady.ts`); a failed fetch is no reason to wait.
+        if (r !== undefined && (r.design.legacy || textures !== "loading")) build(r);
+      }
+      // Drawn: the player is in no room, or the room they are in is built, or there is no such room to build.
+      setRoomDrawn(here === 0 || room === here || roomOf(host.ground.seed, here) === undefined);
     },
     built: () => room,
-    dispose: drop,
+    dispose() {
+      drop();
+      setRoomDrawn(true);
+    },
   };
 }
 
-/** The people of the municipal building's room (`sim/inside/municipal.ts` fixes where they stand and what they do), in the room's frame placed in the world. */
-function hallPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
+/** The people a design places itself (`Design.people`), in the room's frame placed in the world: the municipal building's and the bar's. */
+function designPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
   const b = g.plan.buildings[room.building];
   const xf = b === undefined ? null : buildingLevels(g, b).xf;
   if (xf === null) return [];
-  const m = municipalInterior(g.seed);
-  return m.people.map((p, i): PlacedPerson => {
-    const at = xp(xf, p.s, p.d, room.floorY);
+  // A unit's people are there while it is open; the municipal building's never leave.
+  const unit = b === undefined ? undefined : g.plan.uses[room.building]?.units.find((u) => u.id === room.unit);
+  const hours = b === undefined || unit === undefined ? null : unitHours(b, unit);
+  return room.design.people.map((p, i): PlacedPerson => {
+    const at = xp(xf, room.s0 + p.s, p.d, room.floorY + (p.y ?? 0));
     const way = xd(xf, p.face.s, p.face.d);
     const model = PERSON_MODELS[(i * 2 + room.building) % PERSON_MODELS.length] as PersonModel;
     return {
-      person: { model, activity: p.activity, seat: p.sits === null ? null : { furnishing: 0, top: p.sits, family: "chair" }, scale: 0.97 + 0.02 * ((i + room.building) % 3), offset: 7 * (i + 1), rate: 0.95 + 0.05 * (i % 3) },
+      person: {
+        model, activity: p.activity as Activity, seat: p.sits === null ? null : { furnishing: 0, top: p.sits, family: p.family }, scale: 0.97 + 0.02 * ((i + room.building) % 3), offset: 7 * (i + 1),
+        rate: 0.95 + 0.05 * (i % 3),
+      },
       at: { x: at[0], y: at[1], z: at[2], yaw: Math.atan2(way[0], way[2]) },
-      hours: null,
+      hours,
       outdoor: false,
       held: null,
       room: room.id,
@@ -141,8 +255,8 @@ function hallPeople(g: TownGround, room: InsideRoom): PlacedPerson[] {
 export function insidePeople(g: TownGround): PlacedPerson[] {
   const out: PlacedPerson[] = [];
   for (const room of insideRooms(g.seed)) {
-    if (room.unit === -1) {
-      out.push(...hallPeople(g, room));
+    if (room.design.people.length > 0) {
+      out.push(...designPeople(g, room));
       continue;
     }
     const b = g.plan.buildings[room.building];

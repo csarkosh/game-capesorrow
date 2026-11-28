@@ -5,16 +5,18 @@
  * and a front wall on the inside, into a builder that lays every face's back (`MeshBuilder`'s `backs`), so no face of it is see-through from any
  * side. `insideParts.ts` makes a mesh of it while a player is in it and lets it go when they leave.
  *
+ * That is the room whose design is the converter's (`legacy`); a room with a design of its own is drawn from it by `designGeometry.ts` (`designedGeometry` below), with the same front wall.
+ *
  * What it is built from is what the street side is built from (`planFront`, `frontGeometry.ts`): the unit's own state, hours, finish and light, so
  * a shop shut for the night is as dark inside as it looks from the street. Only its place differs: the floor is at the height the simulation
  * holds the player's feet at, and the frame is the building's own (a test holds it equal to the room's).
  */
 import type { InsideRoom } from "../../sim/inside/rooms.js";
-import { municipalInterior } from "../../sim/inside/municipal.js";
+import { municipalFrame } from "../../sim/inside/designs/municipal.js";
 import type { Opening } from "../../sim/town/types.js";
-import { buildingLevels, roofOver } from "./buildingGeometry.js";
+import { buildingLevels } from "./buildingGeometry.js";
 import { pickOf } from "./buildingKit.js";
-import { municipalDecor } from "./municipalDecor.js";
+import { designMesh, type RoomArrays } from "./designGeometry.js";
 import { unitHours } from "./hours.js";
 import { MeshBuilder, type MeshArrays } from "./meshBuilder.js";
 import { roomGeometry } from "./roomGeometry.js";
@@ -29,9 +31,12 @@ export function doorHeadOf(era: number, fascia: number): number {
   return era < 1940 && fascia > 3.1 ? 2.65 : 2.2;
 }
 
-/** The room of the plan as the arrays of the hidden room: one set for the solid layer (a whole room has no haze, and its panes are sheets in it). */
-export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail): MeshArrays {
-  if (room.unit === -1) return municipalGeometry(g, room, detail);
+/**
+ * The hidden room as arrays: one set for the solid layer (a whole room has no haze, and its panes are sheets in it). A room whose design is not the converter's is drawn from its
+ * design (`designGeometry.ts`); the rest by the street's room builder, as they always were.
+ */
+export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): MeshArrays & { readonly through?: MeshArrays | null; readonly outside?: MeshArrays | null } {
+  if (!room.design.legacy) return designedGeometry(g, room, detail, report, glass);
   const b = g.plan.buildings[room.building];
   const use = g.plan.uses[room.building];
   const u = use?.units.find((x) => x.id === room.unit);
@@ -67,23 +72,42 @@ export function insideGeometry(g: TownGround, room: InsideRoom, detail: Detail):
   return out.take();
 }
 
-/** The most neutral trade the dressing has for a hall of offices: a bank's wooden floor and wainscot and what an office hangs (licences, a calendar, a clock), and nothing of a shop's. */
-const HALL_TRADE = "bank";
-/** The year the hall's fittings date from, for the style of its furniture. */
-const HALL_OPENED = 1940;
+/** A room drawn from its design: the unit's own front (its windows, its hours) with the design's walls, floors and furniture behind it, in the design's own frame (`s` from the unit's left end). */
+function designedGeometry(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): RoomArrays {
+  if (room.unit === -1) return municipalDesigned(g, room, detail, report, glass);
+  const b = g.plan.buildings[room.building];
+  const use = g.plan.uses[room.building];
+  const u = use?.units.find((x) => x.id === room.unit);
+  if (b === undefined || b.id !== room.building || use === undefined || u === undefined) throw new Error(`the town has no unit ${room.unit} of building ${room.building} for the room ${room.id}`);
+  const frame = buildingLevels(g, b).xf;
+  if (frame === null) throw new Error(`building ${room.building} has no front wall frame`);
+  // The design's own `s` runs from the unit's left end: the frame is the building's, moved along its wall to there.
+  const xf = { ...frame, ox: frame.ox + frame.tx * u.s0, oz: frame.oz + frame.tz * u.s0, width: room.design.width, depth: room.design.depth };
+  return designMesh({
+    design: room.design,
+    xf,
+    floorY: room.floorY,
+    seed: b.id * 31 + u.id,
+    hours: unitHours(b, u),
+    detail,
+    glass,
+    front: { openings: u.openings.map((o) => ({ ...o, s0: o.s0 - u.s0, s1: o.s1 - u.s0 })), era: b.era, doorHead: doorHeadOf(b.era, u.fascia) },
+    ...(report === undefined ? {} : { report }),
+  });
+}
+
 
 /**
- * The municipal building's room: its inside is made by `sim/inside/municipal.ts` from the building's frame (the plan holds none), and drawn through the same whole-room path.
- * Its front windows are the street side's (`plainFront`, `openingsGeometry.ts`): the same stations along the front wall, at its sill and head heights, in the look the street side
- * rolls for each (blinds, or a bright pane). The street side skips a window the ground stands too high for; this does not.
+ * The municipal building's hall, drawn from its design (`sim/inside/designs/hall.ts`) behind the building's own front frame (the plan holds no unit for it). Its front windows are at the stations
+ * the street side lays out (`plainFront`, `openingsGeometry.ts`), but tall, a row to each storey, in the look the street side rolls for each (blinds, or a bright pane).
  */
-function municipalGeometry(g: TownGround, room: InsideRoom, detail: Detail): MeshArrays {
+function municipalDesigned(g: TownGround, room: InsideRoom, detail: Detail, report?: (part: string, vertices: number) => void, glass = false): RoomArrays {
   const b = g.plan.buildings[room.building];
   if (b === undefined || b.id !== room.building) throw new Error(`the town has no building ${room.building} for the room ${room.id}`);
   const levels = buildingLevels(g, b);
-  const xf = levels.xf;
-  if (xf === null) throw new Error(`building ${room.building} has no front wall frame`);
-  const m = municipalInterior(g.seed);
+  const frame = levels.xf;
+  if (frame === null) throw new Error(`building ${room.building} has no front wall frame`);
+  const m = municipalFrame(g.seed);
   // The street side's front wall runs from its end `a` along `t`, which may run the other way from the frame's `s`: a wall station `w` is the frame's `(w - s0w) * sign`.
   const fs = levels.sides[levels.frontAt] as (typeof levels.sides)[number];
   const [ax, az] = levels.corner(fs[0], fs[1]);
@@ -91,42 +115,25 @@ function municipalGeometry(g: TownGround, room: InsideRoom, detail: Detail): Mes
   const len = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
   const tx = (bx - ax) / len;
   const tz = (bz - az) / len;
-  const sign = tx * xf.tx + tz * xf.tz >= 0 ? 1 : -1;
-  const s0w = (xf.ox - ax) * tx + (xf.oz - az) * tz;
-  const shape = roofOver(b, levels);
-  const fh = (shape.wallTop - levels.floorY) / Math.max(1, b.storeys);
-  const sill = fh * 0.3;
-  const high = Math.min(1.5, fh * 0.55);
+  const sign = tx * frame.tx + tz * frame.tz >= 0 ? 1 : -1;
+  const s0w = (frame.ox - ax) * tx + (frame.oz - az) * tz;
+  const storey = room.design.height / Math.max(1, m.storeys >= 3 ? 3 : 2);
   const openings: Opening[] = [];
-  for (const bay of m.marks.bays) {
+  for (const bay of m.bays) {
     const state = pickOf(["blinds", "curtained", "lit", "dark", "blinds"] as const, b.id * 5 + bay.index, 483);
-    // The bay's station is in the wall's own stations from its start (the front wall's `a`).
     const frameS = sign * (bay.s - s0w);
-    openings.push({ s0: frameS - 0.5, s1: frameS + 0.5, sill, head: sill + high, cover: state === "blinds" ? "blinds" : "none", widened: false });
+    for (let f = 0; f < (m.storeys >= 3 ? 3 : 2); f++) openings.push({ s0: frameS - 0.7, s1: frameS + 0.7, sill: storey * f + 0.7, head: storey * (f + 1) - 0.6, cover: state === "blinds" ? "blinds" : "none", widened: false });
   }
-  const out = new MeshBuilder(true);
-  roomGeometry(out, {
-    whole: true,
+  const xf = { ...frame, width: room.design.width, depth: room.design.depth };
+  return designMesh({
+    design: room.design,
     xf,
-    floorY: room.floorY - FLOOR_LIFT,
-    s0: 0,
-    s1: m.width,
-    interior: m.interior,
-    state: "open",
-    lit: true,
-    hours: "always",
-    trade: HALL_TRADE,
-    id: b.id * 31 + 7,
-    era: b.era,
-    opened: HALL_OPENED,
+    floorY: room.floorY,
+    seed: b.id * 31 + 7,
+    hours: null,
     detail,
-    openings,
-    remodel: null,
-    past: [],
-    vacantSince: null,
-    door: { s: m.doorS, width: m.doorWidth, head: 2.9 },
-    glassIn: -glassOffOf(detail === "full", isMasonry(b.material)) - 0.07,
-    extras: municipalDecor(m),
+    glass,
+    front: { openings, era: b.era, doorHead: 2.9 },
+    ...(report === undefined ? {} : { report }),
   });
-  return out.take();
 }

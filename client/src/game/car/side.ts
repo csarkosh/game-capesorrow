@@ -16,9 +16,9 @@ import { INTERACT_BIT } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
 import { HEARD_WITHIN, earshot, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
-import { OUTSIDE } from "../../sim/inside/rooms.js";
+import { OUTSIDE, roomOf } from "../../sim/inside/rooms.js";
 import { insidePut } from "../../sim/inside/rules.js";
-import { darkFor, doorLine, goinTarget } from "../doors.js";
+import { darkFor, doorLine, faceYaw, goinTarget } from "../doors.js";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_PUTS_IN, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
 import { captionsShown } from "../town/speech.js";
 
@@ -141,7 +141,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   let hostWorld: WalkWorld | null = null;
   const watch = newClickWatch();
   // What `goin` last asked (a place's name), until the host's local player is in a world to be put there; and that player's id, as the last frame knew it.
-  let goin: string | null = null;
+  let goin: readonly string[] | null = null;
   // What each car was at the last frame that saw it, for the thud; and the local player's ride at that frame, for the door. Cleared with the world.
   const marks = new Map<number, CarMark>();
   let lastPhase = -1;
@@ -280,9 +280,12 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
         goin = null;
         if (world !== hostWorld) host.hud.flash(HOST_PUTS_IN, FLASH_MS);
         else {
-          const target = goinTarget(seed as number, asked);
+          const target = goinTarget(seed as number, asked[0] as string);
           const mine = (world as WalkWorld).state.players.get(localId);
-          if (target !== undefined && mine !== undefined) insidePut(world as WalkWorld, mine, target);
+          if (target !== undefined && mine !== undefined && insidePut(world as WalkWorld, mine, target, asked[1]) && asked[2] !== undefined && target !== 0) {
+            const room = roomOf(seed as number, target);
+            if (room !== undefined) host.input.setLook(faceYaw(room, asked[2]), 0);
+          }
         }
       }
       hear(world as WalkWorld | undefined, state, self);
@@ -290,7 +293,7 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
     applyOwnView(name, args) {
       if (name === "goin") {
         // Asked before a world or a player stands (an address read as the page loads), it waits for the first frame that has both.
-        goin = args[0] ?? "out";
+        goin = args.length === 0 ? ["out"] : args;
         return true;
       }
       if (name !== "carhome") return base.applyOwnView(name, args);

@@ -18,6 +18,7 @@ import { withMat, type MatRef } from "./materials.js";
 import { hash01, scaled, type MeshBuilder, type Rgb, type Vec3 } from "./meshBuilder.js";
 import { PAINTS, pickOf } from "./buildingKit.js";
 import { frameColour } from "./windowGeometry.js";
+import { PANE_SETBACK, glassSheet } from "./roomGlass.js";
 import { slatColour } from "./windowDressing.js";
 import { BAKED, FACE_D, fbox, shade, wallPoint, xd, xp, type Ctx, type Xf } from "./roomKit.js";
 import { VEIL_FROM, VEIL_TO } from "./roomLight.js";
@@ -224,7 +225,7 @@ function layerSurface(f: Layered, origin: Vec3, u: Vec3, v: Vec3): Surface | und
   return f.layer === null ? undefined : { layer: f.layer, frame: { origin, u: unit3(u), v: unit3(v) } as UvFrame, tint: f.gain };
 }
 
-type Band = { y0: number; y1: number; f: Layered; kind: "base" | "wain" | "wall" | "stripe" };
+export type Band = { y0: number; y1: number; f: Layered; kind: "base" | "wain" | "wall" | "stripe"; /** The material the band is of, in the place of its kind's (a designed room's wainscot of dark timber). */ mat?: MatRef };
 
 /** The colour of a pane in daylight, a pale overcast one, and how strongly it lights itself (the day's glow: it is dark at night, `DAY_GLOW_CODE` in `townMaterial.ts`). */
 const PANE: Rgb = [0.8, 0.86, 0.92];
@@ -240,7 +241,7 @@ const PROUD = 0.03;
  * unit has (and its door), a bright pane in each window with its frame (and what covers it: slats, paper, boards), and the door shut in its frame, as
  * the street side lays them out (`frontGeometry.ts`). A pane shows the day and not the street: it is a sheet that glows with the daylight and is dark at night.
  */
-function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
+export function frontWall(c: Ctx, r: Pick<RoomIn, "door" | "openings">, bands: readonly Band[]): void {
   const { out, xf, floorY, s0, s1 } = c;
   const top = c.ceiling;
   const d0 = FACE_D;
@@ -264,18 +265,18 @@ function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
   // ---- the wall: each band cut into strips at the holes' heights, and each strip into the stretches between the holes that cross it
   const piece = (a0: number, a1: number, y0: number, y1: number, b: Band, k: number): void => {
     if (a1 - a0 < 0.03 || y1 - y0 < 0.02) return;
-    const cstep = b.kind === "base" ? 3 : b.kind === "wain" || b.kind === "stripe" ? 1.6 : full ? 1.25 : 5;
+    const cstep = b.kind === "base" ? 3 : b.kind === "wain" || b.kind === "stripe" ? 1.6 : c.designed === true ? 0.75 : full ? 1.25 : 5;
     const us = lines(a0, a1, cstep, [], 43);
-    const rows = b.kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (full ? 0.95 : 3.6))) : 1;
+    const rows = b.kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (c.designed === true ? 0.5 : full ? 0.95 : 3.6))) : 1;
     const vs: number[] = [];
     for (let q = 0; q <= rows; q++) vs.push(y0 + ((y1 - y0) * q) / rows);
     const origin = P(a0, y0, 0);
     const along = xd(xf, a1 - a0, 0);
-    withMat(b.kind === "base" || b.kind === "stripe" ? "boards" : "plaster", () => out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), into, (i, j) => {
+    withMat(b.mat ?? (b.kind === "base" || b.kind === "stripe" ? "boards" : "plaster"), () => out.litGrid(origin, along, [0, y1 - y0, 0], frac(us), frac(vs), into, (i, j) => {
       const y = vs[j] as number;
       let mod = 1 + noise(i * 3 + k, j, 3) * 0.12;
       if (y < 0.5) mod *= 0.9;
-      return shade(c, scaled(b.f.paint, mod * 0.66), us[i] as number, d0, y, 0);
+      return shade(c, scaled(b.f.paint, mod * (c.designed === true ? 1 : 0.66)), us[i] as number, d0, y, 0);
     }, layerSurface(b.f, origin, along, [0, 1, 0]), { glow: 1 }));
   };
   let k = 6;
@@ -305,7 +306,20 @@ function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
     withMat(mat, () => out.poly([P(a0, y0, off), P(a1, y0, off), P(a1, y1, off), P(a0, y1, off)], into, [at(a0, y0), at(a1, y0), at(a1, y1), at(a0, y1)], undefined, { glow: 1 }));
   };
   /** A pane: a bright sheet on the wall's plane that follows the day (the hours code 0 is the day's glow), `lets` of it let through. */
-  const pane = (a0: number, a1: number, y0: number, y1: number, lets: number, colour: Rgb = PANE, glow: number = PANE_GLOW): void => {
+  const pane = (a0: number, a1: number, y0: number, y1: number, lets: number, colour: Rgb = PANE, glow: number = PANE_GLOW, setback = PANE_SETBACK): void => {
+    // Where the room has a layer for through glass (`roomGlass.ts`), a pane is that: a sheet set back into the wall's thickness, with the reveal drawn round it, read out of focus over the sky.
+    if (c.glass != null && glow === PANE_GLOW) {
+      if (setback >= 0.05) {
+        const rev = scaled(frameColour(c.seed, c.era, false), 0.85);
+        const face = (pts: readonly Vec3[], n: Vec3, a: number, y: number): void => withMat("painted", () => out.poly(pts, n, shade(c, rev, a, d0, y, 0), undefined, { glow: 1 }));
+        face([P(a0, y0, 0), P(a0, y0, -setback), P(a0, y1, -setback), P(a0, y1, 0)], xd(xf, 1, 0), a0, (y0 + y1) / 2);
+        face([P(a1, y0, 0), P(a1, y0, -setback), P(a1, y1, -setback), P(a1, y1, 0)], xd(xf, -1, 0), a1, (y0 + y1) / 2);
+        face([P(a0, y0, 0), P(a1, y0, 0), P(a1, y0, -setback), P(a0, y0, -setback)], [0, 1, 0], (a0 + a1) / 2, y0);
+        face([P(a0, y1, 0), P(a1, y1, 0), P(a1, y1, -setback), P(a0, y1, -setback)], [0, -1, 0], (a0 + a1) / 2, y1);
+      }
+      glassSheet(c.glass, [P(a0, y0, -setback), P(a1, y0, -setback), P(a1, y1, -setback), P(a0, y1, -setback)], into, c.seed * 31 + Math.round(a0 * 10) + Math.round(y0 * 7), [y1 - y0, a1 - a0]);
+      return;
+    }
     withMat("painted", () => out.withHours(0, () => out.poly([P(a0, y0, 0), P(a1, y0, 0), P(a1, y1, 0), P(a0, y1, 0)], into, scaled(colour, lets), undefined, { glow })));
   };
   const frame = frameColour(c.seed, c.era, false);
@@ -343,8 +357,8 @@ function frontWall(c: Ctx, r: RoomIn, bands: readonly Band[]): void {
   const leaf: Rgb = c.vacant ? [0.32, 0.28, 0.22] : pickOf([[0.35, 0.22, 0.14], [0.45, 0.45, 0.42], [0.3, 0.34, 0.3]] as readonly Rgb[], c.seed, 742);
   const leafTop = Math.min(2.05, doorHead - 0.05);
   flat(door.a0, door.a1, 0, 0.8, 0, leaf, "boards");
-  pane(door.a0, door.a1, 0.8, leafTop, 1);
-  if (doorHead > 2.3) pane(door.a0, door.a1, leafTop, doorHead, 1);
+  pane(door.a0, door.a1, 0.8, leafTop, 1, PANE, PANE_GLOW, 0.03);
+  if (doorHead > 2.3) pane(door.a0, door.a1, leafTop, doorHead, 1, PANE, PANE_GLOW, 0.03);
   else flat(door.a0, door.a1, leafTop, doorHead, 0, leaf, "boards");
   const w9 = 0.09;
   bar(door.a0, door.a0 + w9, 0, doorHead, leaf);

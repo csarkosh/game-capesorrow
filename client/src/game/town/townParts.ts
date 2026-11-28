@@ -64,7 +64,7 @@ import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady } from "./townMaterial.js";
+import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady } from "./townMaterial.js";
 import { fallenBy, knockMoves, newKnocked, stepKnocked } from "./knocked.js";
 import { MARKS_MOST, markMatrices, newStruck, rockOf, shoveMove, stepStruck, struckMoves, struckSolids } from "./struck.js";
 import { createDamageParts, type DamageParts } from "./damageParts.js";
@@ -432,7 +432,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const town = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       // The material of the room a player walks into: the town's solid one with no wet look (a floor indoors is not wet with the rain; the split of the colour that the wet look ends with is kept). It keeps the air, which also carries the display curve and the grade of the tiers with no post chain.
       const indoor = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
-      indoor.plugins = [baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, false)] : []), surfaceSplitPlugin(), air()];
+      indoor.plugins = [baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, false, undefined, true)] : []), surfaceSplitPlugin(), air()];
       orders.take(indoor);
       if (wearsTextures) textured.push(indoor);
       // The glass: blended over what is behind it (the rooms), after every opaque draw, with the town's plugin for the sky's reflection. It needs the plugin, so without the textures' arrays there is no glass drawn (the openings show their rooms).
@@ -510,7 +510,29 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         },
       };
       const plan = ground.plan;
-      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads });
+      // The rooms' own textures are not made here: `insideParts.ts` asks for them (and so for this material, which reads them) when a player first walks into a designed room.
+      // The material has the town's uniforms (the hour, the glow, the lamps and doors, shared by reference) and a ready flag of its own.
+      const interior = wearsTextures
+        ? {
+            low,
+            signal: loading.signal,
+            make: (arrays: NonNullable<typeof textures>) => {
+              const own: TownReady = { ...readied, townReady: [0] };
+              const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
+              m.plugins = [baseColourPlugin(), townSurfacePlugin(arrays, own, low, undefined, false, INTERIOR_SET), surfaceSplitPlugin(), air()];
+              return {
+                material: m,
+                landed: (filled: boolean) => {
+                  if (!filled || disposed) return;
+                  own.townReady[0] = 1;
+                  markMaterialUboDirty(m);
+                },
+              };
+            },
+          }
+        : null;
+      const roomsThrough = seeThrough?.through ?? null;
+      inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads, through: roomsThrough === null ? null : { material: roomsThrough, order: orders.of(roomsThrough) ?? DRAW_ORDER.scenery }, interior });
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
       const roomers = peopleFor(plan);
