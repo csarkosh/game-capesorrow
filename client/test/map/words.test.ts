@@ -10,7 +10,7 @@ const ROOT = new URL("../../src/", import.meta.url).pathname;
 const files = (dir: string): string[] => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? files(join(dir, n)) : n.endsWith(".ts") ? [join(dir, n)] : []));
 
 /** What no word of the map may name: the player's employer, and a real street-map app or its maker. Written in pieces so that this file is no instance of it. */
-const NOT_NAMED = new RegExp(`\\b(${["fbi", "federal bureau", "bureau", "goo" + "gle", "apple maps", "waze", "mapquest", "bing maps", "here maps", "openstreetmap", "mapbox", "tomtom"].join("|")})\\b`, "i");
+const NOT_NAMED = new RegExp(`\\b(${["fbi", "federal bureau", "bureau", "goo" + "gle", "app" + "le maps", "waze", "mapquest", "bing maps", "here maps", "openstreetmap", "mapbox", "tomtom"].join("|")})\\b`, "i");
 
 describe("what the map says", () => {
   it("names no employer and no real street-map app or brand in any word it shows", () => {
@@ -23,6 +23,14 @@ describe("what the map says", () => {
       for (const l of data.landmarks) expect(l.name, l.name).not.toMatch(NOT_NAMED);
       for (const c of data.cells.values()) for (const l of c.labels) expect(l.text, l.text).not.toMatch(NOT_NAMED);
     }
+  });
+
+  it("names no maker, model or feature of a real phone anywhere in the map's files: it is only ever \"the phone\"", () => {
+    // Written in pieces so that this file is no instance of it.
+    const real = new RegExp(`\\b(${["app" + "le", "i" + "phone", "i" + "os", "dynamic " + "island", "sam" + "sung"].join("|")})\\b`, "i");
+    const here = [...files(join(ROOT, "game/map")), ...files(new URL("./", import.meta.url).pathname.replace(/\/$/, "")).filter((f) => !f.endsWith("words.test.ts"))];
+    for (const f of here) expect(readFileSync(f, "utf8").match(real), f).toBeNull();
+    for (const w of Object.values(words)) expect(String(w), String(w)).not.toMatch(real);
   });
 
   it("has no such name in its code, its comments or its tests either", () => {

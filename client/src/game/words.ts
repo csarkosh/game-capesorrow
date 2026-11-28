@@ -63,3 +63,6 @@ export const PAUSE_LABEL = "Pause";
 
 /** The map button's label for a screen reader: it puts the watch on and takes it off. */
 export const MAP_BUTTON_LABEL = "Map";
+
+/** The phone's search field when there is no destination. */
+export const MAP_SEARCH = "Search places";

@@ -6,13 +6,15 @@
  * The map costs nothing where it cannot be seen (`frame(null)` returns at once) and never throws into the game's frame: a fault in it is
  * logged once and the map is hidden for good, and the game goes on.
  */
-import { MAP_BAR, MAP_CAFE, MAP_CENTRE, MAP_CLEAR, MAP_LODGING, MAP_OFFICE, MAP_OPEN, MAP_PLACES, MAP_ZOOM_IN, MAP_ZOOM_OUT } from "../words.js";
+import { MAP_OPEN } from "../words.js";
 import { canvasCtx, type MapCtx } from "./mapCtx.js";
 import { CSS } from "./mapCss.js";
-import { mapDataFor, type MapData, type PlaceKind } from "./mapData.js";
+import { mapDataFor, type MapData } from "./mapData.js";
 import { WATCH_FIXTURE, mapAsk } from "./mapCommand.js";
 import { installMapDebug, mapDebug } from "./mapDebug.js";
 import { createParty } from "./partyLook.js";
+import { createPhone, type Phone } from "./phoneScreen.js";
+import { SLIDE_SECONDS, phoneLayout, pointerOnCanvas, type PhoneLayout } from "./phoneShape.js";
 import { WATCH_SEEN, type WatchSeen } from "../hand/watchSeen.js";
 import { paletteFor } from "./mapStyle.js";
 import { WATCH_H, WATCH_W, createPlacement, drawWatchStatus, fadeFor, formatClock, watchBacking, type WatchApp } from "./watchScreen.js";
@@ -35,15 +37,6 @@ export const LARGE_BYTES = 9_500_000, MAX_DPR = 2;
 export const DRAW_EVERY = 1 / 30;
 
 export type Rect = { left: number; top: number; width: number; height: number };
-
-/** The large map's rectangle on a window: from 40 percent of the width to the right edge and top to bottom with 20 px margins, or, on a narrow window, the top 56 percent. */
-export function largeRect(w: number, h: number): Rect {
-  if (w >= STACKED) {
-    const left = Math.round(w * 0.4);
-    return { left, top: 20, width: w - left - 20, height: h - 40 };
-  }
-  return { left: 20, top: 20, width: w - 40, height: Math.round(h * 0.56) - 20 };
-}
 
 /** The corner screen's rectangle in a car: the unit's bezel and mount are round it, and keep inside the page's 12 px margin at the bottom right. */
 export function cornerRect(w: number, h: number, size: number): Rect {
@@ -90,12 +83,10 @@ export type Minimap = {
   frame(f: MapFrame | null): void;
   dispose(): void;
   /** What a test reads. */
-  readonly info: () => { dash: HTMLElement; canvasEl: HTMLCanvasElement; shown: boolean; paused: boolean; mode: "off" | "watch" | "corner" | "large"; broken: boolean; rect: Rect; canvas: { width: number; height: number }; root: HTMLElement };
+  readonly info: () => { phone: PhoneLayout | null; phoneEl: HTMLElement | null; dash: HTMLElement; canvasEl: HTMLCanvasElement; shown: boolean; paused: boolean; mode: "off" | "watch" | "corner" | "large"; broken: boolean; rect: Rect; canvas: { width: number; height: number }; root: HTMLElement };
   /** Draws once, at once (a test's). */
   readonly drawNow: () => void;
 };
-
-const KIND_WORD: Record<PlaceKind, string> = { bar: MAP_BAR, cafe: MAP_CAFE, lodging: MAP_LODGING, office: MAP_OFFICE };
 
 export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: MinimapEnv = realEnv()): Minimap {
   const { doc, win } = env;
@@ -154,12 +145,18 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
   let streetName = "";
   let streetAt = -Infinity;
   let listAt = -Infinity;
+  let lens: number[] = [];
   let lastFrame: MapFrame | null = null;
   const durations: number[] = [];
   const drawTimes: number[] = [];
   const last = { ms: 0, ops: 0, cells: 0, draws: 0, buildMs: 0, builds: 0 };
   const keysOff = [] as (() => void)[];
-  let ui: { places: HTMLElement; rows: Map<number, { row: HTMLElement; dist: HTMLElement }> } | null = null;
+  // The phone the large map is: made the first time the game is paused. The canvas lives in it while it is up, and goes back to the root when another place needs it.
+  let phone: Phone | null = null;
+  let phoneLayoutNow: PhoneLayout | null = null;
+  let canvasIn: "root" | "phone" = "root";
+  // When a phone that is sliding away is taken out of the page, in seconds, or 0.
+  let phoneHideAt = 0;
 
   const fail = (e: unknown): void => {
     if (broken) return;
@@ -167,6 +164,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     env.log("The map failed and is hidden:", e);
     root.style.display = "none";
     dash.style.display = "none";
+    if (phone !== null) phone.root.style.display = "none";
     container.classList.remove("capemap-open");
     doc.body?.classList.remove("capemap-open");
   };
@@ -201,10 +199,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
 
   const layout = (): void => {
     smallSize = win.innerWidth < NARROW ? SIZE_NARROW : SIZE;
-    if (paused) {
-      setRect(largeRect(win.innerWidth, win.innerHeight), false);
-      return;
-    }
+    if (paused) return;
     setRect(cornerRect(win.innerWidth, win.innerHeight, smallSize), true);
     placeDash();
   };
@@ -221,7 +216,8 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     const swingOut = was === "corner" && next === "off";
     root.classList.toggle("corner", next === "corner" || swingOut);
     hideAt = swingOut ? env.now() + 0.25 : 0;
-    root.style.display = next === "off" && !swingOut ? "none" : "";
+    root.style.display = (next === "off" && !swingOut) || next === "large" ? "none" : "";
+    if (next === "watch" || next === "corner") reclaimCanvas();
     dash.style.display = next === "corner" || swingOut ? "" : "none";
     if (swingOut) {
       root.classList.add("leaving");
@@ -260,101 +256,88 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     if (canvas.height !== h) canvas.height = h;
   };
 
-  const setPaused = (next: boolean, f: MapFrame): void => {
-    paused = next;
-    root.classList.toggle("paused", next);
-    root.classList.remove("dragging");
-    container.classList.toggle("capemap-open", next);
-    doc.body?.classList.toggle("capemap-open", next);
-    if (next) {
-      const r = largeRect(win.innerWidth, win.innerHeight);
-      bigW = r.width;
-      bigH = r.height;
-      setRect(r, false);
-      setBitmap(bigW, bigH, canvasScale(bigW, bigH, win.devicePixelRatio || 1, LARGE_BYTES));
-      // It opens on the player, at the minimap's scale, north up.
-      openLarge(vs, f.x, f.z, minimapView(vs, smallSize, smallSize, f.x, f.z, f.heading).mpp);
-      buildUi();
-      listAt = -Infinity;
-    } else {
-      pointers.clear();
-      layout();
-      setBitmap(smallSize, smallSize, canvasScale(smallSize, smallSize, win.devicePixelRatio || 1, LARGE_BYTES));
-    }
-    dirty = true;
-    drawnAt = -Infinity;
+  /** Gives the canvas back to the root (the watch's and the corner's place), once the phone is not showing it. */
+  const reclaimCanvas = (): void => {
+    if (canvasIn === "root") return;
+    root.prepend(canvas);
+    canvasIn = "root";
+    canvas.classList.remove("dragging");
   };
 
-  // The large map's interface, made the first time it is wanted.
-  const button = (text: string, label: string, onClick: () => void): HTMLButtonElement => {
-    const b = doc.createElement("button");
-    b.type = "button";
-    b.textContent = text;
-    b.setAttribute("aria-label", label);
-    b.title = label;
-    b.addEventListener("click", guard((e: Event) => {
-      e.stopPropagation();
-      onClick();
-    }));
-    return b;
+  const zoomBy = (k: number): void => {
+    zoomLarge(vs, k, bigW / 2, bigH / 2, bigW, bigH);
+    dirty = true;
   };
-  const buildUi = (): void => {
-    if (ui !== null || data === null) return;
-    const wrap = doc.createElement("div");
-    wrap.className = "ui";
-    const places = doc.createElement("div");
-    places.className = "places";
-    const h = doc.createElement("h2");
-    h.textContent = MAP_PLACES;
-    places.append(h);
-    const rows = new Map<number, { row: HTMLElement; dist: HTMLElement }>();
-    for (const p of data.places) {
-      const row = doc.createElement("button");
-      row.type = "button";
-      const name = doc.createElement("span");
-      name.className = "name";
-      name.textContent = p.name;
-      const dist = doc.createElement("span");
-      dist.className = "dist";
-      const kind = doc.createElement("span");
-      kind.className = "kind";
-      kind.textContent = KIND_WORD[p.kind];
-      row.append(name, dist, kind);
-      row.addEventListener("click", guard((e: Event) => {
-        e.stopPropagation();
-        chooseDestination("place", p.id);
-        // The map goes to the place.
-        vs.lcx = p.x;
-        vs.lcz = p.z;
-        dirty = true;
-      }));
-      places.append(row);
-      rows.set(p.id, { row, dist });
-    }
-    const tools = doc.createElement("div");
-    tools.className = "tools";
-    const zoom = (k: number): void => {
-      zoomLarge(vs, k, bigW / 2, bigH / 2, bigW, bigH);
-      dirty = true;
-    };
-    tools.append(
-      button("+", MAP_ZOOM_IN, () => zoom(1.6)),
-      button("−", MAP_ZOOM_OUT, () => zoom(1 / 1.6)),
-      button(MAP_CENTRE, MAP_CENTRE, () => {
+
+  const makePhone = (d: MapData): Phone =>
+    createPhone(doc, d.places.map((p) => ({ id: p.id, name: p.name, kind: p.kind })), {
+      zoomIn: () => zoomBy(1.6),
+      zoomOut: () => zoomBy(1 / 1.6),
+      centre: () => {
         if (lastFrame !== null) {
           vs.lcx = lastFrame.x;
           vs.lcz = lastFrame.z;
         }
         dirty = true;
-      }),
-      button(MAP_CLEAR, MAP_CLEAR, () => {
+      },
+      clear: () => {
         clearDestination();
         dirty = true;
-      }),
-    );
-    wrap.append(places, tools);
-    root.append(wrap);
-    ui = { places, rows };
+      },
+      pick: (id) => {
+        chooseDestination("place", id);
+        const p = d.places.find((q) => q.id === id);
+        // The map goes to the place.
+        if (p !== undefined) {
+          vs.lcx = p.x;
+          vs.lcz = p.z;
+        }
+        dirty = true;
+      },
+    }, guard);
+
+  const setPaused = (next: boolean, f: MapFrame): void => {
+    paused = next;
+    container.classList.toggle("capemap-open", next);
+    doc.body?.classList.toggle("capemap-open", next);
+    const now = env.now();
+    if (next) {
+      if (phone === null && data !== null) {
+        phone = makePhone(data);
+        container.append(phone.root);
+        // Nothing of the phone's reaches the game's canvas behind it, where a click would resume play.
+        for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "click"]) phone.root.addEventListener(type, (e) => e.stopPropagation());
+      }
+      if (phone === null) return;
+      const l = phoneLayout(win.innerWidth, win.innerHeight);
+      phoneLayoutNow = l;
+      phone.place(l);
+      bigW = l.screenW;
+      bigH = l.screenH;
+      phone.screen.prepend(canvas);
+      canvasIn = "phone";
+      setBitmap(bigW, bigH, canvasScale(bigW, bigH, win.devicePixelRatio || 1, LARGE_BYTES));
+      // The pause panel keeps to the free part of the view: the left of a phone at the side, the top above one at the bottom.
+      container.style.setProperty?.("--cape-phone-left", `${l.left}px`);
+      container.style.setProperty?.("--cape-phone-h", `${l.bodyH + 12}px`);
+      phone.root.classList.remove("out");
+      phone.root.style.display = "block";
+      phone.root.classList.add("in");
+      phoneHideAt = 0;
+      // It opens on the player, at the minimap's scale, north up.
+      openLarge(vs, f.x, f.z, minimapView(vs, smallSize, smallSize, f.x, f.z, f.heading).mpp);
+      listAt = -Infinity;
+    } else if (phone !== null) {
+      pointers.clear();
+      // The phone slides down; the canvas stays in it until another place needs the canvas (the frame's mode asks).
+      phone.root.classList.remove("in");
+      phone.root.classList.add("out");
+      phoneHideAt = now + SLIDE_SECONDS;
+      layout();
+      if (canvasIn === "root") setBitmap(smallSize, smallSize, canvasScale(smallSize, smallSize, win.devicePixelRatio || 1, LARGE_BYTES));
+    }
+    dirty = true;
+    drawnAt = -Infinity;
   };
 
   // Pointers on the large map: one drags, two pinch; a press let go where it began is a click.
@@ -363,9 +346,8 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
   let pinchDist = 0;
   let lastClick: { at: number; x: number; y: number; saved: ReturnType<typeof saveNav> } | null = null;
   const local = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
-    const r = canvas.getBoundingClientRect();
-    const k = r.width > 0 ? bigW / r.width : 1;
-    return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
+    // Through the phone's transform (a slide, a scale): where the canvas is now on the page.
+    return pointerOnCanvas(canvas.getBoundingClientRect(), bigW, bigH, e.clientX, e.clientY);
   };
   const view = (): MapView => largeView(vs, bigW, bigH);
 
@@ -403,7 +385,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     if (!paused || !pointers.has(e.pointerId)) return;
     const wasOne = pointers.size === 1;
     pointers.delete(e.pointerId);
-    root.classList.remove("dragging");
+    canvas.classList.remove("dragging");
     if (!wasOne || press.moved) return;
     const at = local(e);
     const now = env.now();
@@ -444,7 +426,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     if (pointers.size === 1) {
       if (!press.moved && Math.hypot(at.x - press.x, at.y - press.y) > 5) {
         press.moved = true;
-        root.classList.add("dragging");
+        canvas.classList.add("dragging");
       }
       if (press.moved) {
         panLarge(vs, at.x - prev.x, at.y - prev.y);
@@ -474,12 +456,12 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
   canvas.addEventListener("pointerup", guard(up as (e: Event) => void));
   canvas.addEventListener("pointercancel", guard((e: Event) => {
     pointers.delete((e as PointerEvent).pointerId);
-    root.classList.remove("dragging");
+    canvas.classList.remove("dragging");
   }));
   canvas.addEventListener("wheel", guard(wheel as (e: Event) => void), { passive: false });
   // Nothing of the map's pointer reaches the game's canvas behind it, where a click would resume play. A tap on the corner map opens the large one.
   for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend"]) root.addEventListener(type, (e) => {
-    if (paused || touch) e.stopPropagation();
+    if (touch) e.stopPropagation();
   });
   root.addEventListener("click", guard((e: Event) => {
     e.stopPropagation();
@@ -626,17 +608,28 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     else if (room !== undefined) slim = room.name;
     else slim = streetOn(f, now) || null;
 
-    // The large map's list of the four places: how far each is along the streets, once a second.
-    if (paused && ui !== null && now - listAt >= 1) {
-      listAt = now;
-      const lens = routeLengths(graphFor(data), profile, ox, oz, data.places);
-      data.places.forEach((p, i) => {
-        const cell = ui?.rows.get(p.id);
-        const text = formatDistance(lens[i] as number);
-        if (cell !== undefined && cell.dist.textContent !== text) cell.dist.textContent = text;
+    // The phone's own app: its clock, the search field's destination, and the sheet's rows (how far each place is along the streets, once a second).
+    if (paused && phone !== null) {
+      phone.setStatus(formatClock(f.hour), vs.nightGoal === 1);
+      phone.setSearch(goal2 === null ? null : goal2.name, goal2 === null || route === null ? null : formatDistance(route.length));
+      if (now - listAt >= 1) {
+        listAt = now;
+        lens = routeLengths(graphFor(data), profile, ox, oz, data.places);
+      }
+      let nearest = -1;
+      lens.forEach((l, i) => {
+        if (nearest < 0 || l < (lens[nearest] as number)) nearest = i;
       });
+      data.places.forEach((p, i) => phone?.setRow(p.id, formatDistance((lens[i] as number | undefined) ?? 0), i === nearest, nav.dest !== null && nav.dest.kind === "place" && nav.dest.id === p.id));
     }
-    if (ui !== null) for (const [id, cell] of ui.rows) cell.row.classList.toggle("chosen", nav.dest !== null && nav.dest.kind === "place" && nav.dest.id === id);
+    // A phone that has slid away is taken out of the page, and the canvas goes back to the root.
+    if (phoneHideAt > 0 && now >= phoneHideAt && !paused && phone !== null) {
+      phoneHideAt = 0;
+      phone.root.style.display = "none";
+      phone.root.classList.remove("out");
+      reclaimCanvas();
+      if (mode !== "large") setBitmap(smallSize, smallSize, canvasScale(smallSize, smallSize, win.devicePixelRatio || 1, LARGE_BYTES));
+    }
 
     // Redraw policy: the minimap when something it shows changed by a pixel (or the looks are easing), at most 30 a second; the large map on input and when the mark moves.
     if (mode === "off") return;
@@ -648,7 +641,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     const turned = Math.abs(f.heading - drawn.heading) * (paused ? 34 : mode === "watch" || eased(vs.look) > 0.5 ? 110 : 34);
     if (dirty || sig !== drawn.sig || px >= 1 || !(turned < 1) || mmpp !== drawn.mpp || moving(vs)) {
       if (now - drawnAt >= DRAW_EVERY) {
-        paint(f, route, slim);
+        paint(f, route, paused ? null : slim);
         drawn.x = f.x;
         drawn.z = f.z;
         drawn.heading = f.heading;
@@ -720,9 +713,15 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
           everEngaged = false;
           if (paused) {
             paused = false;
-            root.classList.remove("paused");
             container.classList.remove("capemap-open");
             doc.body?.classList.remove("capemap-open");
+          }
+          if (phone !== null) {
+            phone.root.style.display = "none";
+            phone.root.classList.remove("in");
+            phone.root.classList.remove("out");
+            phoneHideAt = 0;
+            reclaimCanvas();
           }
           root.style.display = "none";
           dash.style.display = "none";
@@ -744,10 +743,11 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
       container.classList.remove("capemap-open");
       doc.body?.classList.remove("capemap-open");
       root.remove();
+      phone?.dispose();
       dash.remove();
       style.remove();
     },
-    info: () => ({ dash, canvasEl: canvas, shown, paused, mode, broken, rect: { ...rect }, canvas: { width: canvas.width, height: canvas.height }, root }),
+    info: () => ({ phone: phoneLayoutNow, phoneEl: phone === null ? null : phone.root, dash, canvasEl: canvas, shown, paused, mode, broken, rect: paused && phoneLayoutNow !== null ? { left: phoneLayoutNow.left, top: phoneLayoutNow.top, width: phoneLayoutNow.bodyW, height: phoneLayoutNow.bodyH } : { ...rect }, canvas: { width: canvas.width, height: canvas.height }, root }),
     drawNow() {
       if (lastFrame !== null) guard(() => paint(lastFrame as MapFrame, tracker.route, null))();
     },

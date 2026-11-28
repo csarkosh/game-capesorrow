@@ -39,6 +39,10 @@ body.capemap-open .roster.subdued { display: none; }
 @media (min-width: 720px) {
   body.capemap-open .roster:not(.subdued):not(.hidden) { left: 12px; right: auto; bottom: 12px; }
 }
+/* On a narrow window the phone is at the bottom and the pause panel above it: the full roster goes to the top left corner. */
+@media (max-width: 719px) {
+  body.capemap-open .roster:not(.subdued):not(.hidden) { left: 12px; right: auto; top: 12px; bottom: auto; }
+}
 `;
 
 /** How many of the four bars a round trip fills: 4 under 60 ms, 3 under 120, 2 under 200, else 1; 0 where it is not known. */

@@ -6,12 +6,14 @@ import { createWalkHud } from "../../src/hud.js";
 import { mapDataFor } from "../../src/game/map/mapData.js";
 import type { MapFrame } from "../../src/game/map/mapFeed.js";
 import { CSS } from "../../src/game/map/mapCss.js";
-import { LARGE_BYTES, SIZE, SIZE_NARROW, canvasScale, cornerRect, createMinimap, largeRect, type Minimap, type MinimapEnv } from "../../src/game/map/minimap.js";
+import { LARGE_BYTES, SIZE, SIZE_NARROW, canvasScale, cornerRect, createMinimap, type Minimap, type MinimapEnv } from "../../src/game/map/minimap.js";
 import { mapAsk } from "../../src/game/map/mapCommand.js";
 import { chooseDestination, nav, resetNav } from "../../src/game/map/mapNav.js";
 import { paletteFor } from "../../src/game/map/mapStyle.js";
 import { largeView, worldToScreen } from "../../src/game/map/mapView.js";
 import { WATCH_SEEN, resetWatch } from "../../src/game/hand/watchSeen.js";
+import { PHONE_CSS } from "../../src/game/map/phoneScreen.js";
+import { phoneLayout } from "../../src/game/map/phoneShape.js";
 import { RecordingCtx } from "./fakes.js";
 
 const SEED = 20261121;
@@ -37,14 +39,19 @@ function page(width: number, height: number, dpr = 2) {
   let now = 100;
   const logs: unknown[][] = [];
   let canvas: StandInElement | null = null;
-  const bigBox = { w: 0, h: 0 };
+  // The canvas of the phone's screen is as large as the phone's screen on this window.
+  const L0 = phoneLayout(width, height);
+  const bigBox = { w: L0.screenW, h: L0.screenH };
   const env: MinimapEnv = {
     doc: {
+      createElementNS: (ns: string, tag: string) => doc.createElementNS(ns, tag),
       createElement(tag: string) {
         const el = doc.createElement(tag);
+        // The stand-in has no `prepend`.
+        Object.assign(el, { prepend(node: StandInElement) { node.remove(); node.parent = el; el.children.unshift(node); } });
         if (tag === "canvas") {
           canvas = el;
-          Object.assign(el, { width: 300, height: 150, setPointerCapture: () => undefined, getBoundingClientRect: () => ({ left: 0, top: 0, width: bigBox.w || Number((el.style.width ?? "0").replace("px", "")), height: bigBox.h }) });
+          Object.assign(el, { width: 300, height: 150, setPointerCapture: () => undefined, getBoundingClientRect: () => ({ left: 0, top: 0, width: el.parent !== null && el.parent.className === "pscreen" ? bigBox.w : Number((el.style.width ?? "0").replace("px", "")), height: el.parent !== null && el.parent.className === "pscreen" ? bigBox.h : 0 }) });
         }
         return el;
       },
@@ -69,7 +76,7 @@ function page(width: number, height: number, dpr = 2) {
     vars,
     body: doc.body,
     key: (code: string, extra: Record<string, unknown> = {}) => { const e = { code, repeat: false, defaultPrevented: false, preventDefault() { e.defaultPrevented = true; }, ...extra }; for (const k of [...keys]) k(e); return e; },
-    big: (w: number, h: number) => { bigBox.w = w; bigBox.h = h; },
+    big: () => undefined,
     root: () => map.info().root as unknown as StandInElement,
   };
 }
@@ -133,29 +140,40 @@ describe("the minimap on the screen", () => {
     expect(p.ctx.ops).toBeGreaterThan(10);
   });
 
-  it("is the large map while the game is paused: the right of the screen, over the pause menu, the canvas large only then", () => {
+  it("is the phone while the game is paused: over the pause menu, the canvas in its screen and large only then, and it slides away and gives the canvas back when play resumes", () => {
     const p = page(1440, 900);
-    p.big(844, 860);
     p.map.frame(p.frame());
-    expect(p.root().classList.contains("paused")).toBe(false);
     expect(CSS).toMatch(/\.capemap \{[^}]*z-index: 16/);
-    expect(CSS).toMatch(/\.capemap\.paused \{[^}]*z-index: 19/);
+    expect(PHONE_CSS).toMatch(/\.capephone \{[^}]*z-index: 19/);
+    expect(p.map.info().phoneEl).toBeNull();
     p.tick(1);
     p.map.frame(p.frame({ engaged: false }));
+    const L = phoneLayout(1440, 900);
+    const phoneEl = p.map.info().phoneEl as unknown as StandInElement;
     expect(p.map.info().paused).toBe(true);
-    expect(p.root().classList.contains("paused")).toBe(true);
+    expect(p.map.info().mode).toBe("large");
+    expect(p.root().style.display).toBe("none");
     expect(p.container.classList.contains("capemap-open")).toBe(true);
-    expect(p.map.info().rect).toEqual({ left: 576, top: 20, width: 844, height: 860 });
-    const s = canvasScale(844, 860, 2, LARGE_BYTES);
+    expect(phoneEl.style.display).toBe("block");
+    expect(phoneEl.classList.contains("in")).toBe(true);
+    expect(p.map.info().rect).toEqual({ left: L.left, top: L.top, width: L.bodyW, height: L.bodyH });
+    expect(p.canvas().parent?.className).toBe("pscreen");
+    const s = canvasScale(L.screenW, L.screenH, 2, LARGE_BYTES);
     const { width, height } = p.map.info().canvas;
-    expect([width, height]).toEqual([Math.round(844 * s), Math.round(860 * s)]);
+    expect([width, height]).toEqual([Math.round(L.screenW * s), Math.round(L.screenH * s)]);
     expect(width * height * 4).toBeLessThan(10_000_000);
-    // Resumed, it goes back to the corner and the small canvas.
+    // Resumed, it slides down for 0.3 s, and then the canvas goes back to the corner's root at its small size.
     p.tick(1);
     p.map.frame(p.frame({ engaged: true }));
     expect(p.map.info().paused).toBe(false);
-    expect(p.root().classList.contains("paused")).toBe(false);
+    expect(phoneEl.classList.contains("out")).toBe(true);
+    expect(phoneEl.classList.contains("in")).toBe(false);
+    expect(phoneEl.style.display).toBe("block");
     expect(p.container.classList.contains("capemap-open")).toBe(false);
+    p.tick(0.35);
+    p.map.frame(p.frame({ engaged: true }));
+    expect(phoneEl.style.display).toBe("none");
+    expect(p.canvas().parent).toBe(p.root());
     expect(p.map.info().canvas).toEqual({ width: 440, height: 440 });
     expect(p.map.info().rect).toEqual(cornerRect(1440, 900, 220));
   });
@@ -164,16 +182,6 @@ describe("the minimap on the screen", () => {
     const p = page(1440, 900);
     p.map.frame(p.frame({ engaged: false }));
     expect(p.map.info().paused).toBe(false);
-  });
-
-  it("lays the large map out as the top 56 percent on a screen under 720 px, and from 40 percent of the width on a wide one", () => {
-    expect(largeRect(1440, 900)).toEqual({ left: 576, top: 20, width: 844, height: 860 });
-    expect(largeRect(1000, 700)).toEqual({ left: 400, top: 20, width: 580, height: 660 });
-    expect(largeRect(600, 900)).toEqual({ left: 20, top: 20, width: 560, height: 484 });
-    expect(largeRect(719, 1000).left).toBe(20);
-    expect(largeRect(720, 1000).left).toBe(288);
-    expect(CSS).toContain(".capemap-open .pausemenu.open { box-sizing: border-box; padding-right: 60%; }");
-    expect(CSS).toMatch(/@media \(max-width: 719px\) \{\s*\.capemap-open \.pausemenu\.open \{ padding-right: 0; padding-top: 56vh; \}/);
   });
 
   it("opens the large map on Tab while play has the controls, and on no other press", () => {
@@ -222,12 +230,12 @@ describe("the large map's controls", () => {
   function paused() {
     const p = page(1440, 900);
     const hall = mapDataFor(SEED).places.find((q) => q.kind === "office")!;
-    p.big(844, 860);
     p.map.frame(p.frame({ x: hall.x, z: hall.z }));
     p.tick(1);
     p.map.frame(p.frame({ x: hall.x, z: hall.z, engaged: false }));
     resetNav(SEED);
-    const view = largeView({ look: 0, lookGoal: 0, night: 0, nightGoal: 0, lcx: hall.x, lcz: hall.z, lmpp: 420 / 220 }, 844, 860);
+    const L = phoneLayout(1440, 900);
+    const view = largeView({ look: 0, lookGoal: 0, night: 0, nightGoal: 0, lcx: hall.x, lcz: hall.z, lmpp: 420 / 220 }, L.screenW, L.screenH);
     const at = (x: number, z: number) => worldToScreen(view, x, z, { x: 0, y: 0 });
     const press = (x: number, y: number, to: { x: number; y: number } = { x, y }): void => {
       const c = p.canvas();
@@ -296,15 +304,37 @@ describe("the large map's controls", () => {
     expect(stopped).toBeGreaterThanOrEqual(7);
   });
 
-  it("lists the four places with a button each, and chooses one on a click", () => {
+  it("lists the four places in the phone's sheet, collapsed to the nearest, and chooses one on a tap on its row", () => {
     const { p, hall } = paused();
-    const rows = p.root().querySelectorAll("button").filter((b) => b.classList.contains("chosen") || b.querySelector("span.name") !== null);
+    const phoneEl = p.map.info().phoneEl as unknown as StandInElement;
+    const rows = phoneEl.querySelectorAll("button").filter((b) => b.classList.contains("row"));
     expect(rows).toHaveLength(4);
-    clickOn(rows[3]!);
-    expect(nav.dest).toEqual({ kind: "place", id: 4 });
-    expect(hall.id).toBe(4);
-    const labels = p.root().querySelectorAll("button").map((b) => b.getAttribute("aria-label")).filter((v) => v !== null);
-    expect(labels).toEqual(["Zoom in", "Zoom out", "Centre on me", "Clear destination"]);
+    expect(phoneEl.querySelector("div.sheet")?.classList.contains("collapsed")).toBe(true);
+    // The player stands at the office's door: it is the nearest, and the only row shown while the sheet is collapsed.
+    expect(rows.filter((r) => r.classList.contains("nearest"))).toHaveLength(1);
+    expect(rows[3]!.classList.contains("nearest")).toBe(true);
+    clickOn(rows[1]!);
+    expect(nav.dest).toEqual({ kind: "place", id: 2 });
+    p.tick(1);
+    p.map.frame(p.frame({ x: hall.x, z: hall.z, engaged: false }));
+    expect(rows[1]!.classList.contains("chosen")).toBe(true);
+    const labels = phoneEl.querySelectorAll("button").map((b) => b.getAttribute("aria-label")).filter((v) => v !== null);
+    expect(labels).toEqual(["Search places", "Zoom in", "Zoom out", "Centre on me", "Places"]);
+  });
+
+  it("holds the destination's name and distance in the search field, and clears it on a tap", () => {
+    const { p, hall } = paused();
+    const phoneEl = p.map.info().phoneEl as unknown as StandInElement;
+    const search = phoneEl.querySelector("button.search") as StandInElement;
+    expect(search.classList.contains("empty")).toBe(true);
+    chooseDestination("place", 1);
+    p.tick(1);
+    p.map.frame(p.frame({ x: hall.x, z: hall.z, engaged: false }));
+    expect(search.classList.contains("empty")).toBe(false);
+    expect(search.querySelector("span.n")?.textContent).toBe(mapDataFor(SEED).places[0]!.name);
+    expect(search.querySelector("span.d")?.textContent).toMatch(/^ \u00b7 \d+ m$|^ \u00b7 [\d.]+ km$/);
+    clickOn(search);
+    expect(nav.dest).toBeNull();
   });
 });
 
@@ -365,14 +395,14 @@ describe("the console's map", () => {
   it("opens the large map without a pause, closes it, and makes a place the destination", async () => {
     const { askMap, mapAsk } = await import("../../src/game/map/mapCommand.js");
     const p = page(1440, 900);
-    p.big(844, 860);
     p.map.frame(p.frame());
     expect(p.map.info().paused).toBe(false);
     askMap(["open"]);
     p.tick(1);
     p.map.frame(p.frame());
     expect(p.map.info().paused).toBe(true);
-    expect(p.map.info().rect).toEqual(largeRect(1440, 900));
+    const L = phoneLayout(1440, 900);
+    expect(p.map.info().rect).toEqual({ left: L.left, top: L.top, width: L.bodyW, height: L.bodyH });
     expect(p.body.classList.contains("capemap-open")).toBe(true);
     askMap(["to", "cafe"]);
     p.tick(1);
@@ -465,7 +495,6 @@ describe("how present the small map is", () => {
 
   it("draws the small map in the soft palette and the large one in the full", () => {
     const p = page(1440, 900);
-    p.big(844, 860);
     p.map.frame(p.frame());
     expect(p.ctx.rec.rectColours[0]).toBe(paletteFor(0, 0, true).water);
     p.ctx.reset();
@@ -548,16 +577,15 @@ describe("the watch's screen on foot, and the unit in a car", () => {
     expect(p.map.info().canvas.width).toBe(512);
   });
 
-  it("is not shown while paused (the large map is), and is back after", () => {
+  it("is not shown while paused (the phone is), and is back after", () => {
     const p = page(1440, 900);
-    p.big(844, 860);
     raise(1);
     walk(p);
     expect(p.map.info().mode).toBe("watch");
     walk(p, { engaged: false });
     expect(p.map.info().mode).toBe("large");
     expect(p.root().classList.contains("watch")).toBe(false);
-    expect(p.root().style.transform).toBe("");
+    expect(p.root().style.transform).toBeFalsy();
     expect(p.map.info().dash.style.display).toBe("none");
     walk(p, { engaged: true });
     expect(p.map.info().mode).toBe("watch");

@@ -2,11 +2,12 @@
  * The map's stylesheet. The buttons carry the same cold cast the engine's roster and pause menu and the title page draw theirs in; those
  * tokens are repeated in each place on purpose (each owns its one style text), so they are repeated here.
  *
- * The last rules lean on the engine's pause menu: while the large map is up the container is marked `capemap-open`, and the menu
- * (`.pausemenu`, a flex box that centres its `.panel`) is given room on the left, so that its panel is beside the map and not under it.
+ * The last rules lean on the engine's pause menu: while the phone (the large map) is up the container is marked `capemap-open`, and the menu
+ * (`.pausemenu`, a flex box that centres its `.panel`) is given room (on the left of a phone at the side, above one at the bottom), so that its panel is beside the phone and not under it.
  * `client/test/map/screen.test.ts` reads the engine's source and fails if those two class names are gone.
  */
 import { PARTY_CSS } from "./partyLook.js";
+import { PHONE_CSS } from "./phoneScreen.js";
 
 export const CSS = `
 .capemap {
@@ -30,36 +31,9 @@ export const CSS = `
 /* The watch's screen: a round lit face, laid on the 3D watch by a matrix each frame; no border or shadow of its own (the watch is its frame), no easing. */
 .capemap.watch, .capemap.watch.active { border: none; box-shadow: none; border-radius: 0; transition: none; transform-origin: 0 0; clip-path: circle(50%); will-change: transform; }
 .capemap.tappable { pointer-events: auto; cursor: pointer; }
-.capemap.paused { z-index: 19; pointer-events: auto; border-radius: 10px; cursor: grab; border-color: rgba(60, 64, 67, 0.35); box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35); }
-.capemap.paused.dragging { cursor: grabbing; }
-.capemap .ui { display: none; position: absolute; inset: 0; pointer-events: none; }
-.capemap.paused .ui { display: block; }
-.capemap .places {
-  position: absolute; left: 10px; top: 38px; max-width: min(15rem, 60%); max-height: calc(100% - 60px); overflow-y: auto;
-  display: flex; flex-direction: column; gap: 0.3rem; padding: 0.5rem; pointer-events: auto;
-  background: rgba(12, 14, 18, 0.95); border: 1px solid var(--btn-edge); border-radius: 8px; box-sizing: border-box;
-}
-.capemap .places h2 { margin: 0 0 0.15rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(234, 241, 241, 0.7); }
-.capemap .tools { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 0.35rem; pointer-events: none; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 20px); }
-.capemap button {
-  font: inherit; font-size: 0.78rem; cursor: pointer; pointer-events: auto; padding: 0.4rem 0.7rem; color: #eaf1f1;
-  letter-spacing: 0.08em; text-transform: uppercase; text-align: left;
-  background-image: var(--btn-sheen); background-color: rgba(12, 14, 18, 0.84); border: 1px solid var(--btn-edge); border-radius: 4px;
-  box-shadow: var(--btn-rim); transition: background-color 160ms ease-out, border-color 160ms ease-out;
-}
-.capemap button:hover { background-color: rgba(40, 48, 56, 0.92); border-color: var(--btn-edge-lit); }
-.capemap button:active { background-color: rgba(60, 72, 82, 0.95); }
-.capemap button:focus-visible { outline: 2px solid var(--btn-edge-lit); outline-offset: 2px; }
-.capemap .tools button { min-width: 2.2rem; text-align: center; }
-.capemap .places button { display: grid; grid-template-columns: 1fr auto; column-gap: 0.6rem; width: 100%; letter-spacing: 0.04em; text-transform: none; }
-.capemap .places button.chosen { border-color: var(--btn-edge-lit); background-color: rgba(60, 72, 82, 0.9); }
-.capemap .places .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.capemap .places .dist { opacity: 0.8; }
-.capemap .places .kind { grid-column: 1 / span 2; font-size: 0.66rem; opacity: 0.6; letter-spacing: 0.1em; text-transform: uppercase; }
-.capemap-open .pausemenu.open { box-sizing: border-box; padding-right: 60%; }
+.capemap-open .pausemenu.open { box-sizing: border-box; padding-right: calc(100% - var(--cape-phone-left, 40%)); }
 @media (max-width: 719px) {
-  .capemap-open .pausemenu.open { padding-right: 0; padding-top: 56vh; }
-  .capemap .places { max-width: 11rem; padding: 0.35rem; }
+  .capemap-open .pausemenu.open { padding-right: 0; padding-bottom: var(--cape-phone-h, 70vh); }
 }
 @media (prefers-reduced-motion: reduce) { .capemap { transition: none; } }
 /* The corner screen in a car is a navigation unit stuck to the dash: a dark moulded bezel (thicker at the bottom) round the screen, a power light and flush buttons on it, and a mount behind. No lettering. */
@@ -85,5 +59,5 @@ export const CSS = `
 @keyframes cape-swing-in { from { transform: translateY(90px); } to { transform: none; } }
 @keyframes cape-swing-out { from { transform: none; } to { transform: translateY(90px); } }
 @media (prefers-reduced-motion: reduce) { .capemap.corner, .capedash, .capemap.corner.leaving, .capedash.leaving { animation: none; } }
-${PARTY_CSS}`;
+${PHONE_CSS}${PARTY_CSS}`;
 

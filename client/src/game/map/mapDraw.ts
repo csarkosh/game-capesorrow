@@ -301,7 +301,7 @@ export class MapDrawer {
 
   private labels(s: Scene, pal: Palette, tiles: readonly Tile[]): void {
     const { view: v, e } = s;
-    const size = s.soft ? 9.5 : e > 0.5 ? 11 : 10;
+    const size = s.soft ? 9.5 : s.large || e > 0.5 ? 11 : 10;
     const p = { x: 0, y: 0 };
     for (const tile of tiles) {
       for (const c of tile.cells) for (const l of c.labels) {
@@ -413,7 +413,7 @@ export class MapDrawer {
         this.ops += 3;
         if (spot.label) {
           const d = Math.round(Math.hypot(place.x - s.player.x, place.z - s.player.z));
-          ctx.text(`${d} m`, spot.lx, spot.ly, { size: 9.5, colour: pal.text, halo: pal.halo, bold: !s.soft });
+          ctx.text(`${d} m`, spot.lx, spot.ly, { size: s.large ? 11 : 9.5, colour: pal.text, halo: pal.halo, bold: !s.soft });
           this.ops++;
         }
         return;

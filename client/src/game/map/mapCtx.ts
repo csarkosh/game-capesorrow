@@ -35,7 +35,7 @@ export interface MapCtx {
   measure(s: string, size: number, bold?: boolean): number;
 }
 
-const FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const FONT = "ui-sans-serif, system-ui, 'Segoe UI', sans-serif";
 
 /** A canvas as the map's context. `dpr` is the device pixels to a unit of the screen transform the drawer sets (text turns about its anchor and returns to it). */
 export function canvasCtx(ctx: CanvasRenderingContext2D, dpr: () => number): MapCtx {
