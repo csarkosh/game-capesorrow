@@ -32,7 +32,7 @@ import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { loadSkinnedModel, type SkinClock, type SkinnedModel, type SkinnedPart } from "@csarkosh/engine/game/lite/skinnedModels";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
-import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams, type BakedClip } from "@csarkosh/engine/game/skinInstances";
+import { CLIP_FLOATS, SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams, type BakedClip } from "@csarkosh/engine/game/skinInstances";
 import manifest from "../../../assets/models/people.json" with { type: "json" };
 import { isOpen, wrapHour, type Hours } from "./hours.js";
 import type { Held } from "./handHeld.js";
@@ -65,6 +65,9 @@ export const CLIP_STORED = 0.4;
  * grey ghosts).
  */
 export const INDOOR_DARKEN = 0.92;
+
+/** The clips an arm raised against a light is taken from, the first a model has: one made for it (`shield`), else the nearest the models carry, a hand raised to the head (`call`). */
+export const SHIELD_CLIPS: readonly string[] = ["shield", "call"];
 
 /** The height of the seat the sitting clips were made for (m): a chair's, and a bar stool's. */
 export const CHAIR_CLIP_SEAT = 0.46;
@@ -128,6 +131,12 @@ export type PeopleParts = {
   each(visit: (p: Seen) => void): void;
   /** What moves a body off its schedule from now on (`peopleReact.ts`, `nudgeOf`), or null for nothing: asked for every body drawn, every frame, with the body's key and the yaw its schedule gives it. */
   setNudge(nudge: ((key: number, yaw: number, out: Nudge) => boolean) | null): void;
+  /**
+   * How far a body has thrown an arm up against a light, 0 to 1, asked for every body drawn every frame with the body's key: the weight at which the clip
+   * `SHIELD_CLIPS` names first (that a model has) is mixed into the clip the body plays, by the table's own cross-fade of two clips (`setInstancesBlend`), so the
+   * arm comes up and goes down by the weight and the body is back in its own clip at 0. A body held up is not holding what it was holding.
+   */
+  setShield(shield: ((key: number) => number) | null): void;
   /** One frame: `dt` seconds on. Works out who is near on each quarter second and writes them; sends the clock on a frame that shows anyone. */
   step(dt: number): void;
   /** The hour of day, 0 to 24: who is shown is worked out again at once when it moves. */
@@ -165,6 +174,9 @@ type Batch = {
   wat: Float64Array;
   wrate: Float64Array;
   wbin: Float64Array;
+  /** For each person and each walker, the weight of the shielding clip mixed into their clip at the last step (`setShield`). */
+  shielded: Float32Array;
+  wshielded: Float32Array;
   /** The things in the hand: the primitive and the matrices it is drawn with, one for each body of the model (`capacity`). */
   things: { readonly kind: Exclude<Held, null>; readonly part: SkinnedPart; readonly matrices: Float32Array }[];
 };
@@ -216,7 +228,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     if (people.length > 0 || walk.cap > 0) {
       batches.set(id, {
         id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [], wplaces: [], nudged: new Uint8Array(people.length),
-        wphase: new Float64Array(0), wat: new Float64Array(0), wrate: new Float64Array(0), wbin: new Float64Array(0), things: [],
+        wphase: new Float64Array(0), wat: new Float64Array(0), wrate: new Float64Array(0), wbin: new Float64Array(0), shielded: new Float32Array(people.length), wshielded: new Float32Array(0), things: [],
       });
     }
   }
@@ -224,6 +236,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   const keyOf = new Map<PlacedPerson, number>();
   for (const [i, p] of placed.entries()) keyOf.set(p, i);
   let nudge: ((key: number, yaw: number, out: Nudge) => boolean) | null = null;
+  let shield: ((key: number) => number) | null = null;
   const moved: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
   /** A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for. */
   const seatLift = (person: Body, sitting: boolean): number => (person.seat === null || !sitting ? 0 : person.seat.top - (person.seat.family === "stool" ? STOOL_CLIP_SEAT : CHAIR_CLIP_SEAT));
@@ -374,6 +387,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           batch.wat = new Float64Array(batch.walkers.length).fill(-1);
           batch.wrate = new Float64Array(batch.walkers.length);
           batch.wbin = new Float64Array(batch.walkers.length).fill(-1);
+          batch.wshielded = new Float32Array(batch.walkers.length);
         }
       }
     }
@@ -509,6 +523,44 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           reclipped = true;
         }
       }
+      // A body with an arm up against a light: the shielding clip mixed into its own, by the weight it is asked for (`setShield`).
+      const arm = shield === null ? undefined : SHIELD_CLIPS.map((name) => model.clips.get(name)).find((c) => c !== undefined);
+      if (shield !== null && arm !== undefined) {
+        const put = (k: number, w: number): void => {
+          const at = k * CLIP_FLOATS;
+          const out = model.clipParams;
+          out[at + 4] = arm.fromRow;
+          out[at + 5] = Math.fround(arm.fromRow + Math.max(1, arm.seconds * arm.fps) - 1);
+          out[at + 6] = w;
+          out[at + 7] = out[at + 3] as number;
+        };
+        for (const [k, i] of batch.shown.entries()) {
+          const person = batch.people[i] as PlacedPerson;
+          const w = shield(keyOf.get(person) as number);
+          const was = batch.shielded[i] as number;
+          if (w === 0 && was === 0) continue;
+          put(k, w);
+          batch.shielded[i] = w;
+          reclipped = true;
+          // What they held is put down while their arm is up, and back in the hand after.
+          if (person.held !== null && (w > 0.3 || was > 0.3)) {
+            for (const thing of batch.things) {
+              if (thing.kind !== person.held) continue;
+              if (w > 0.3) thing.matrices.fill(0, k * 16, k * 16 + 16);
+              else thing.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), k * 16);
+              flushThinInstances(thing.part.mesh, k, 1);
+            }
+          }
+        }
+        for (const [q, i] of wnext.entries()) {
+          const w = shield(WALKER_KEY + (batch.walkers[i] as Walker).id);
+          const was = batch.wshielded[i] as number;
+          if (w === 0 && was === 0) continue;
+          put(batch.shown.length + q, w);
+          batch.wshielded[i] = w;
+          reclipped = true;
+        }
+      }
       batch.wplaces = places;
       if (changed || restood || wnext.length > 0) model.show(batch.shown.length + wnext.length, true, reclipped);
     }
@@ -540,6 +592,9 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     },
     setNudge(next) {
       nudge = next;
+    },
+    setShield(next) {
+      shield = next;
     },
     setHour(next) {
       if (next === hour) return;

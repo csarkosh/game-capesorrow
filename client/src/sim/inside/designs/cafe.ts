@@ -232,7 +232,7 @@ export function cafeDesign(site: CafeSite): Design {
 
   const white: [number, number, number] = [1.2, 1.15, 1.05];
   const navy: [number, number, number] = [0.05, 0.083, 0.2];
-  return b.build({
+  const design = b.build({
     name: "cafe",
     legacy: false,
     doorS: site.doorS,
@@ -249,4 +249,23 @@ export function cafeDesign(site: CafeSite): Design {
     },
     mood: { exposure: 1.3, ambient: [1, 0.93, 0.82], ambientK: 0.08, day: 0.3, bounce: 1.6 },
   });
+  // A named place for the console's `goin cafe counter`: two or three metres in front of the first person behind the counter, on the customers' side, and where no seated customer is within
+  // 1.2 m (so none's head fills the view). It is looked for at 2 m first and further out after, and square to the person first and a little to either side after, no more than 0.9 m off their line,
+  // so that the person is within 20 degrees of the way the player looks (the word asked for by `goin cafe counter left`, `right`, `front` or `back`: whichever is nearest to the way to them),
+  // for the torch to be pointed at a face. If no place fits, the first (2 m, square) stands.
+  const staff = design.people.find((p) => p.role === "staff");
+  if (staff === undefined) return design;
+  const seated = design.people.filter((p) => p.sits !== null);
+  const lateral = { s: -staff.face.d, d: staff.face.s };
+  let best = { s: staff.s + staff.face.s * 2, d: staff.d + staff.face.d * 2 };
+  search: for (const out of [2, 2.3, 2.6, 3]) {
+    for (const side of [0, 0.3, -0.3, 0.6, -0.6, 0.9, -0.9]) {
+      const at = { s: staff.s + staff.face.s * out + lateral.s * side, d: staff.d + staff.face.d * out + lateral.d * side };
+      if (seated.every((p) => (p.s - at.s) * (p.s - at.s) + (p.d - at.d) * (p.d - at.d) >= 1.44)) {
+        best = at;
+        break search;
+      }
+    }
+  }
+  return { ...design, marks: [...(design.marks ?? []), { name: "counter", s: best.s, d: best.d, y: 0 }] };
 }

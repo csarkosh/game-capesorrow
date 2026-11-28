@@ -4,6 +4,7 @@
  *
  * - `MEAN`: to a driver who all but ran them down.
  * - `BUMPED`: to a detective who walked into them.
+ * - `DAZZLED`, `DAZZLED_AGAIN`: to a detective who shines a torch in their face, the first time and to one who does it again within a few seconds.
  * - `GREETINGS`: to the detective, in passing, by the time of day; `GREET_ANY` at any hour.
  * - `CHATTER`: between two who stand or walk together, by the kind of place they are at. Overheard, and no part of any case.
  */
@@ -42,6 +43,36 @@ export const BUMPED: readonly string[] = [
   "Not so close.",
   "Hands to yourself.",
   "Some manners, huh?",
+];
+
+/** To a detective whose torch is in their face: short, irritated, a small-town stranger's, never worse than mild. Said while they shield their eyes. */
+export const DAZZLED: readonly string[] = [
+  "Hey! Get that out of my face!",
+  "Do you mind?",
+  "Watch where you point that thing.",
+  "What is wrong with you?",
+  "Ow! I can't see!",
+  "Turn that off!",
+  "Point it somewhere else, will you?",
+  "Are you serious right now?",
+  "That's my eyes, pal!",
+  "Real nice, detective. Real nice.",
+  "Who shines a light in somebody's face?",
+  "Hey, cut it out!",
+];
+
+/** To one who does it again: ruder, and out of patience. */
+export const DAZZLED_AGAIN: readonly string[] = [
+  "Again? Seriously?",
+  "Point that somewhere else before I take it off you.",
+  "You have got to be kidding me.",
+  "I said turn it off!",
+  "Are you doing that on purpose?!",
+  "One more time and we have a problem.",
+  "What part of my eyes do you not get?!",
+  "Unbelievable. Do it again, I dare you.",
+  "Get that thing away from me!",
+  "You think that's funny, detective?",
 ];
 
 export const GREET_MORNING: readonly string[] = ["Morning, detective.", "Good morning, detective.", "Early start, detective?", "Morning."];

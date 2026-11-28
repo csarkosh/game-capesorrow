@@ -1,10 +1,15 @@
 /**
- * The empty game's HUD: what the page asks of any game's (`PageHud`) and no
- * more. A line of status, a line that shows for a few seconds, and a Pause
- * button for a screen with no keyboard to press Esc on. Built with DOM APIs
- * and `textContent`: a status line may carry words that came over the wire.
+ * The game's HUD: what the page asks of any game's (`PageHud`), a line of status, a line that shows for a few seconds, the line at a car's
+ * door, the people's captions, the black cover for a door, the map in the corner (`game/map/`), and, for a keyboard, the Pause button at the
+ * top left under the page's mute button and the lamp's hint at the bottom left, drawn as Day Hike's are (the touch layer has its own
+ * buttons, and the page hides these on a touch screen). Built with DOM APIs and `textContent`: a status line may carry words that came
+ * over the wire.
  */
+import { lineIcon } from "@csarkosh/engine/game/icons";
 import type { PageHud } from "@csarkosh/engine/game/sessionGame";
+import { PAUSE_LABEL } from "./game/words.js";
+import type { MapFrame } from "./game/map/mapFeed.js";
+import { createMinimap } from "./game/map/minimap.js";
 
 const STYLE = `
 .walk-hud { position: absolute; inset: 0; pointer-events: none; font: 14px/1.4 ui-monospace, Menlo, monospace; color: #e8e8ea; }
@@ -12,11 +17,41 @@ const STYLE = `
 .walk-hud .line { position: absolute; left: 0; right: 0; text-align: center; text-shadow: 0 1px 2px #000; }
 .walk-hud .status { top: 46%; }
 .walk-hud .flash { bottom: 12%; }
+/* On a narrow screen the map in the corner (148 px) stands where this line's text would run: the line goes over it. */
+@media (max-width: 519px) { .walk-hud .flash { bottom: 176px; } }
 .walk-hud .prompt { top: 56%; }
 .walk-hud .prompt.pressable { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; padding: 10px 0; }
 .walk-hud .say { position: absolute; transform: translate(-50%, -100%); max-width: 22em; padding: 3px 8px; border-radius: 6px; background: #0b0d10b8; color: #f0efe9; font: 13px/1.3 ui-sans-serif, system-ui, sans-serif; text-align: center; white-space: normal; text-shadow: 0 1px 1px #000; will-change: transform, opacity; }
 .walk-hud .say.mean { color: #ffd9c2; }
-.walk-hud button { position: absolute; top: 12px; right: 12px; pointer-events: auto; font: inherit; color: inherit; background: #0008; border: 1px solid #fff4; border-radius: 4px; padding: 4px 10px; }
+/* The lamp's hint and the Pause button are Day Hike's (game-dayhike client/src/game/hud.ts), to the pixel: the rules are repeated here, not shared. */
+/* The lamp's hint, for a keyboard: the lamp's icon and its key, at the bottom left corner (the map and the roster sit at the right), as faint as the touch controls sit and lit with the lamp. Hidden by default: the touch layer has its own button. */
+.walk-hud .lamp {
+  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: none; align-items: center; gap: 8px; padding: 6px 10px 6px 8px;
+  color: #fff; background: rgba(16, 16, 20, 0.72); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 22px;
+  font: 500 13px/1 system-ui, sans-serif; opacity: 0.35; transition: opacity 300ms ease-out, box-shadow 300ms ease-out;
+}
+.walk-hud .lamp.shown { display: flex; }
+.walk-hud .lamp.lit { opacity: 1; box-shadow: 0 0 0 1px #ffd24d; }
+.walk-hud .lamp svg { width: 22px; height: 22px; display: block; }
+.walk-hud .lamp .key, .walk-hud .pause .key {
+  display: inline-block; min-width: 1.4em; padding: 3px 5px; text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.45); border-bottom-width: 2px; border-radius: 4px;
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.04em;
+}
+/* The Pause button, for a keyboard: the bars and the key that pauses, at the top left corner where the touch layer's own Pause sits; the page's mute sits over it. As faint as the lamp's hint, up under the pointer and on focus, and pressed it pauses as the key does. Hidden by default. */
+.walk-hud .pause {
+  /* Under the mute button, 44px tall at 14px from the corner. */
+  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); top: calc(68px + env(safe-area-inset-top, 0px));
+  display: none; align-items: center; gap: 8px; height: 44px; box-sizing: border-box; padding: 0 12px 0 10px;
+  pointer-events: auto; cursor: pointer;
+  color: #fff; background: rgba(16, 16, 20, 0.72); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 22px;
+  font: 500 13px/1 system-ui, sans-serif; opacity: 0.35; transition: opacity 120ms ease-out;
+}
+.walk-hud .pause.shown { display: flex; }
+.walk-hud .pause:hover, .walk-hud .pause:focus-visible { opacity: 1; }
+.walk-hud .pause:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.7); outline-offset: 3px; }
+.walk-hud .pause svg { width: 22px; height: 22px; display: block; }
 `;
 
 /** How long the screen takes to go black, and to clear, in milliseconds: a door's hold is longer than the first, so the screen is black before a player is moved. */
@@ -28,15 +63,66 @@ export const DARK_MS = 200, CLEAR_MS = 450;
  */
 export type WalkHud = PageHud & {
   setPrompt(line: string | null, press?: { down(): void; up(): void }): void;
+  /** What the lamp's hint shows the icon of: the hand torch on foot, the car's headlights while the local player drives, or null where F switches no lamp (a passenger, a player getting in or out), which hides the hint. */
+  setLampKind(kind: LampKind | null): void;
+  /** The hint now: its kind, its key and whether it is lit, or null while none shows. */
+  lamp(): { kind: LampKind; key: string; on: boolean } | null;
+  /** The Pause button now: its key, or null while none shows. */
+  pause(): { key: string } | null;
   setDark(dark: boolean): void;
   /** The lines the town's people are saying, each over its speaker's head: across and down as shares of the view, the words, and how much of it shows. */
+  /** The local player as the map is to show them, or null where there is none (the map is then hidden). */
+  setMap(frame: MapFrame | null): void;
   setSpeech(lines: readonly { readonly x: number; readonly y: number; readonly text: string; readonly alpha: number; readonly depth: number; readonly mean: boolean }[]): void;
 };
+
+/** What the lamp's hint draws: the hand torch, or the car's headlights. */
+export type LampKind = "lamp" | "headlights";
+
+/**
+ * The car's headlights as a line icon, in the strokes of the engine's (`lineIcon`: 24 units, 1.6 wide, round ends and joins): the lamp's
+ * housing, a D, and three beams leaving it.
+ */
+export function headlightIcon(): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.6");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("stroke-linecap", "round");
+  for (const d of ["M3.5 7.5h5.5a4.5 4.5 0 0 1 0 9H3.5z", "M15.5 8.5l5-2", "M16 12h5", "M15.5 15.5l5 2"]) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
 
 /** A line of status alone, for a start's waits and its failure. */
 export function createStatusLine(container: HTMLElement): { setStatus(line: string | null): void; dispose(): void } {
   const hud = createWalkHud(container, null);
   return { setStatus: hud.setStatus, dispose: hud.dispose };
+}
+
+/** The lamp's hint and the Pause button, as Day Hike's HUD makes them: the button's click is the hook's. */
+function makeControls(hooks: { onPause(): void }): { lamp: HTMLElement; lampKey: HTMLElement; pause: HTMLElement; pauseKey: HTMLElement } {
+  const lamp = document.createElement("div");
+  lamp.className = "lamp";
+  lamp.setAttribute("aria-hidden", "true");
+  const lampKey = document.createElement("span");
+  lampKey.className = "key";
+  const pause = document.createElement("button");
+  pause.type = "button";
+  pause.className = "pause";
+  pause.setAttribute("aria-label", PAUSE_LABEL);
+  const pauseKey = document.createElement("span");
+  pauseKey.className = "key";
+  pause.append(lineIcon("pause"), pauseKey);
+  pause.addEventListener("click", () => hooks.onPause());
+  return { lamp, lampKey, pause, pauseKey };
 }
 
 export function createWalkHud(container: HTMLElement, hooks: { onPause(): void } | null): WalkHud {
@@ -51,10 +137,6 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
   status.className = "line status";
   const flash = document.createElement("div");
   flash.className = "line flash";
-  const pause = document.createElement("button");
-  pause.type = "button";
-  pause.hidden = true;
-  pause.addEventListener("click", () => hooks?.onPause());
   const prompt = document.createElement("div");
   prompt.className = "line prompt";
   // A press of the line is the interact's: down on the pointer's going down, up on its going up or being taken.
@@ -76,9 +158,32 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
   const says: HTMLDivElement[] = [];
   const speech = document.createElement("div");
   speech.className = "speech";
-  root.append(cover, speech, status, flash, prompt, pause);
+  // The lamp's hint and the Pause button: the game's own HUD has them (a status line alone has none).
+  const controls = hooks === null ? null : makeControls(hooks);
+  root.append(cover, speech, status, flash, prompt, ...(controls === null ? [] : [controls.lamp, controls.pause]));
   container.append(style, root);
+  // The map in the corner: only the game's own HUD has one (a status line alone has none), and only where there is a page to put it on.
+  const map = hooks === null || typeof window === "undefined" ? null : createMinimap(container, hooks);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  // The shell says whether a lamp's hint is wanted, with its key and whether the lamp is on; the game says which lamp it is. The hint shows when both do.
+  let wanted: { key: string; on: boolean } | null = null;
+  let kind: LampKind | null = null;
+  let drawn: LampKind | null = null;
+  const icons: Record<LampKind, SVGSVGElement | null> = { lamp: null, headlights: null };
+  const paintLamp = (): void => {
+    if (controls === null) return;
+    const { lamp, lampKey } = controls;
+    const show = wanted !== null && kind !== null;
+    lamp.classList.toggle("shown", show);
+    lamp.classList.toggle("lit", show && wanted?.on === true);
+    lampKey.textContent = show ? (wanted?.key ?? "") : "";
+    const k = kind;
+    if (show && k !== null && k !== drawn) {
+      const icon = (icons[k] ??= k === "lamp" ? lineIcon("lamp") : headlightIcon());
+      lamp.replaceChildren(icon, lampKey);
+      drawn = k;
+    }
+  };
   return {
     setStatus(line) {
       status.textContent = line ?? "";
@@ -97,6 +202,9 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
       press = line === null ? null : (next ?? null);
       prompt.textContent = line ?? "";
       prompt.classList.toggle("pressable", press !== null);
+    },
+    setMap(frame) {
+      map?.frame(frame);
     },
     setDark(dark) {
       cover.style.transition = `opacity ${dark ? DARK_MS : CLEAR_MS}ms ease`;
@@ -123,14 +231,24 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
       }
       for (let i = lines.length; i < says.length; i++) (says[i] as HTMLDivElement).hidden = true;
     },
-    // The empty game carries no lamp, so there is no hint of one to show.
-    setLamp: () => undefined,
-    setPause(shown) {
-      pause.hidden = shown === null || hooks === null;
-      if (shown !== null) pause.textContent = `Pause (${shown.key})`;
+    setLamp(state) {
+      wanted = state;
+      paintLamp();
     },
+    setLampKind(next) {
+      kind = next;
+      paintLamp();
+    },
+    lamp: () => (controls !== null && controls.lamp.classList.contains("shown") && drawn !== null ? { kind: drawn, key: controls.lampKey.textContent ?? "", on: controls.lamp.classList.contains("lit") } : null),
+    setPause(state) {
+      if (controls === null) return;
+      controls.pause.classList.toggle("shown", state !== null);
+      controls.pauseKey.textContent = state?.key ?? "";
+    },
+    pause: () => (controls !== null && controls.pause.classList.contains("shown") ? { key: controls.pauseKey.textContent ?? "" } : null),
     dispose() {
       if (flashTimer !== null) clearTimeout(flashTimer);
+      map?.dispose();
       root.remove();
       style.remove();
     },

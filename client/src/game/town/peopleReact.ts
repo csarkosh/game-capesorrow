@@ -11,6 +11,7 @@
  *   (`BUMPED`). Walked into again, they are pushed further, to `SHOVE_MOST` in all; then they go back. One who is seated is not moved.
  * - **A greeting.** A person the player on foot comes within `GREET_NEAR` of, face to face or in passing, greets the detective by the hour
  *   (`greetingsAt`): most of those who walk, some of those who stand; a stander turns to them. Not twice within `GREET_AGAIN` seconds.
+ * - **A torch in the face** is `peopleDazzle.ts`'s: it moves them through this file's own records (a turn, a move off their schedule, a line).
  * - **Talk.** Two who stand or walk together, with the player within `CHAT_NEAR`, say a line now and then, in turn, of the kind of place they
  *   are at (`CHATTER`).
  *
@@ -92,7 +93,7 @@ export type Nudge = { dx: number; dy: number; dz: number; yaw: number; lx: numbe
 export type Said = { key: number; text: string; x: number; y: number; z: number; age: number; life: number; kind: "mean" | "bumped" | "greeting" | "chatter" };
 
 /** What is kept of a person who has had cause to react. */
-type Mind = {
+export type Mind = {
   /** Where they are off their schedule now, and the move in hand: from, to, how far into how long, its hop and its lean. */
   ox: number; oz: number; fx: number; fz: number; tx: number; tz: number; t: number; dur: number; hop: number; lean: number; lx: number; lz: number;
   /** Seconds they stay where the move left them before they walk back; whether the move in hand is the walk back. */
@@ -117,14 +118,14 @@ export function chance(a: number, b: number): number {
   return v - Math.floor(v);
 }
 
-function wrap(a: number): number {
+export function wrap(a: number): number {
   const w = a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
   return Number.isFinite(w) ? w : 0;
 }
 
 const smooth = (t: number): number => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
-function mindOf(set: ReactSet, key: number): Mind {
+export function mindOf(set: ReactSet, key: number): Mind {
   let m = set.minds.get(key);
   if (m === undefined) {
     m = { ox: 0, oz: 0, fx: 0, fz: 0, tx: 0, tz: 0, t: 0, dur: 0, hop: 0, lean: 0, lx: 1, lz: 0, stay: 0, home: false, turnTo: 0, turnLeft: 0, turned: 0, leapt: -1e9, bumped: -1e9, greeted: -1e9, talked: -1e9, lines: 0, stamp: set.stamp };
@@ -134,7 +135,7 @@ function mindOf(set: ReactSet, key: number): Mind {
 }
 
 /** Begins a move of a person from where they are off their schedule to (`tx`, `tz`) off it. */
-function move(m: Mind, tx: number, tz: number, dur: number, hop: number, lean: number, lx: number, lz: number, stay: number): void {
+export function move(m: Mind, tx: number, tz: number, dur: number, hop: number, lean: number, lx: number, lz: number, stay: number): void {
   m.fx = m.ox;
   m.fz = m.oz;
   m.tx = tx;
@@ -150,7 +151,7 @@ function move(m: Mind, tx: number, tz: number, dur: number, hop: number, lean: n
 }
 
 /** Says a line: in place of what the same person was saying, and in place of the oldest talk where there is no room. */
-function say(set: ReactSet, p: Seen, text: string, kind: Said["kind"]): void {
+export function say(set: ReactSet, p: Seen, text: string, kind: Said["kind"]): void {
   const life = SAY_LEAST + SAY_PER_LETTER * text.length;
   const at = { key: p.key, text, x: p.x, y: p.y + 1.95 * p.scale, z: p.z, age: 0, life, kind };
   const own = set.said.findIndex((q) => q.key === p.key);

@@ -117,18 +117,19 @@ describe("the click that changes nothing", () => {
   }, timeLimit(60_000));
 });
 
-type Said = { speech: string[]; prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null)[]; thuds: number[]; doors: number };
+type Said = { speech: string[]; prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null)[]; thuds: number[]; doors: number; kind: (string | null)[]; maps: unknown[] };
 /** A page's host with the parts the car's side reads, and a record of what it was told. */
 const heard = { hz: 0, engine: 0, tyres: 0 };
 function pageHost(touch: boolean): { host: never; said: Said; world: { current: unknown } } {
-  const said: Said = { speech: [], prompt: [], flash: [], down: 0, up: 0, voice: [], thuds: [], doors: 0 };
+  const said: Said = { speech: [], prompt: [], flash: [], down: 0, up: 0, voice: [], thuds: [], doors: 0, kind: [], maps: [] };
   const world = { current: null as unknown };
   const host = {
     base: { hour: 12 }, appliedHour: 12, appliedWeather: {}, renderer: { setView: () => undefined },
     touchStart: touch,
     touchModel: { interactDown: () => said.down++, interactUp: () => said.up++ },
     ambient: { voice: () => heard, car: (s: { speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null) => { if (s !== null) carVoice(s.speed, s.throttle, s.surface as 0, s.distance, s.driven, heard); said.voice.push(s === null ? null : { ...s }); }, thud: (v: number) => said.thuds.push(v), door: () => said.doors++ },
-    hud: { setDark: () => undefined, setSpeech: (lines: readonly { text: string }[]) => { said.speech = lines.map((l) => l.text); }, setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
+    input: { engaged: true },
+    hud: { setMap: (f: unknown) => said.maps.push(f === null ? null : { ...(f as object) }), setLampKind: (k: string | null) => said.kind.push(k), setDark: () => undefined, setSpeech: (lines: readonly { text: string }[]) => { said.speech = lines.map((l) => l.text); }, setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
     get activeWorld() { return world.current; },
   };
   return { host: host as never, said, world };
@@ -156,6 +157,27 @@ describe("the car's half of a session", () => {
     side.afterSync(undefined as never, s, 7, walker(door.x - 5, door.z), null);
     expect(said.prompt.at(-1)).toEqual([null, undefined]);
     expect(promptShown()).toBeNull();
+  }, timeLimit(60_000));
+
+  it("hands the HUD the hand torch as the lamp's hint on foot, the car's headlights to a seated driver, and none to a passenger or while getting out", () => {
+    const { host, said } = pageHost(false);
+    const side = createCapeSide(host, WALK_SIDE);
+    const c = car({ seats: [7, 0, 0, 0] });
+    const frame = (me: Walker): void => side.afterSync(undefined as never, state([c], [me]), 7, me, null);
+    frame(walker(50, 50));
+    expect(said.kind.at(-1)).toBe("lamp");
+    frame(walker(10, 20, seated(0)));
+    expect(said.kind.at(-1)).toBe("headlights");
+    // Back to the torch on getting out.
+    frame(walker(50, 50));
+    expect(said.kind.at(-1)).toBe("lamp");
+    frame(walker(10, 20, seated(0)));
+    frame(walker(10, 20, seated(2)));
+    expect(said.kind.at(-1)).toBeNull();
+    frame(walker(10, 20, { car: 1, seat: 0, phase: LEAVING, ticks: 10 }));
+    expect(said.kind.at(-1)).toBeNull();
+    side.afterSync(undefined as never, state([c], []), 7, undefined, null);
+    expect(said.kind.at(-1)).toBeNull();
   }, timeLimit(60_000));
 
   it("gives no press to a screen with a keyboard", () => {

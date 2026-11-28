@@ -12,7 +12,7 @@ import { KNOCK_FROM, touching } from "../../sim/car/knock.js";
 import { surfaceAt } from "../../sim/car/surface.js";
 import { knockablesFor } from "../../sim/town/knockables.js";
 import { boardSeat, slowForDoors } from "../../sim/car/seats.js";
-import { INTERACT_BIT } from "../../sim/car/tuning.js";
+import { INTERACT_BIT, LAMP_BIT } from "../../sim/car/tuning.js";
 import { SEATED, FOOT, type Car, type Ride, type Surface } from "../../sim/car/types.js";
 import type { WalkState, WalkWorld, Walker } from "../../sim.js";
 import { HEARD_WITHIN, earshot, thudStrength, type CarMark, type CarSoundApi } from "./carSound.js";
@@ -21,6 +21,10 @@ import { insidePut } from "../../sim/inside/rules.js";
 import { darkFor, doorLine, faceYaw, goinTarget } from "../doors.js";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_PUTS_IN, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
 import { captionsShown } from "../town/speech.js";
+import { HAND_SWITCH, pressLamp, resetHand, sayHand } from "../hand/handSwitch.js";
+import { createTorchKey, type TorchKeyTarget } from "../hand/torchKey.js";
+import { askMap } from "../map/mapCommand.js";
+import { mapFrameFor } from "../map/mapFeed.js";
 
 type CapeSide = SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient>;
 type CapeHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud>;
@@ -139,6 +143,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   let cars: readonly Car[] = [];
   // The host's own world, once this screen hosts: `carhome` is the host's to say, and the page's active world is its own only then.
   let hostWorld: WalkWorld | null = null;
+  // The session this screen is of, for the party's connection mark: a joined player's own round trip is `stats.rttMs`, and the host's is 0.
+  let session: { stats?: { rttMs: number } } | null = null;
   const watch = newClickWatch();
   // What `goin` last asked (a place's name), until the host's local player is in a world to be put there; and that player's id, as the last frame knew it.
   let goin: readonly string[] | null = null;
@@ -150,6 +156,9 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   // The things that give way (`sim/town/knockables.ts`) that some car's body touched at the last frame, and at this one: one newly touched by a moving car is a hit, and is heard.
   let touched = new Set<number>();
   let touchedNow = new Set<number>();
+  // Whether the local player is on foot as of the last frame, and F's own listener (`../hand/torchKey.ts`): F flips the torch, from the keyboard and from nothing else.
+  let onFootNow = true;
+  const undoTorchKey = createTorchKey(typeof window === "undefined" ? null : (window as unknown as TorchKeyTarget), () => typeof document !== "undefined" && document.pointerLockElement !== null, () => onFootNow);
   const forget = (): void => {
     touched.clear();
     marks.clear();
@@ -248,6 +257,10 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       base.atRest(...args);
       forget();
     },
+    hears(s) {
+      base.hears(s);
+      session = s as { stats?: { rttMs: number } };
+    },
     hostStarted(h) {
       base.hostStarted(h);
       hostWorld = (h as { world: WalkWorld }).world;
@@ -257,16 +270,28 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       line = null;
       shown = null;
       hostWorld = null;
+      session = null;
       goin = null;
       forget();
+      undoTorchKey();
+      resetHand();
       host.ambient.car(null);
     },
-    lampOn: (self) => litBy(self, cars),
+    // On foot the lamp is the player's torch, a switch of this screen's (`../hand/handSwitch.ts`); seated it is the car's lights.
+    lampOn: (self) => (self === undefined || self.ride.phase === FOOT ? HAND_SWITCH.on : litBy(self, cars)),
+    // F on foot flips the torch; in a car it is the car's, on the host (`carPressed`).
+    command(sample, me, world) {
+      const out = base.command(sample, me, world);
+      // A touch player's lamp button arrives as the lamp bit; a keyboard's F is read from the keyboard (`torchKey.ts`), so the bit does not flip it.
+      if (host.touchStart) pressLamp(out.buttons, LAMP_BIT, me === undefined || me.ride.phase === FOOT);
+      return out;
+    },
     afterSync(world, state, localId, self, cmd) {
       base.afterSync(world, state, localId, self, cmd);
       cars = state.cars;
       const now = clock();
       const ride = self?.ride;
+      onFootNow = ride === undefined || ride.phase === FOOT;
       const down = cmd !== null && (cmd.buttons & INTERACT_BIT) !== 0;
       watchClick(watch, now, down, ride, ride !== undefined && slowEnough(ride, cars));
       const seed = world === undefined ? null : (world as WalkWorld).forest.seed;
@@ -274,6 +299,10 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       // What the town's people are saying this frame, over their heads (`town/speech.ts`: the renderer's part leaves it there).
       host.hud.setSpeech(captionsShown());
       host.hud.setDark(darkFor(self));
+      // The lamp's hint is the car's headlights while the local player drives (F switches them: `carPressed`); on foot it is the hand torch's (`../hand/handSwitch.ts`).
+      host.hud.setLampKind(self === undefined ? null : self.ride.phase === FOOT ? "lamp" : self.ride.phase === SEATED && self.ride.seat === 0 ? "headlights" : null);
+      // The map in the corner (and the large one a paused game shows): it hides itself where there is no local player.
+      host.hud.setMap(mapFrameFor(seed, state.cars, self, host.appliedHour, host.input.engaged, host.touchStart, session === null ? null : (session.stats?.rttMs ?? 0)));
       if (goin !== null && world !== undefined && self !== undefined) {
         // `goin` is the host's to do, between its ticks, on its own world and its own player.
         const asked = goin;
@@ -294,6 +323,14 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       if (name === "goin") {
         // Asked before a world or a player stands (an address read as the page loads), it waits for the first frame that has both.
         goin = args.length === 0 ? ["out"] : args;
+        return true;
+      }
+      if (name === "map") {
+        askMap(args);
+        return true;
+      }
+      if (name === "hand") {
+        sayHand(args[0]);
         return true;
       }
       if (name !== "carhome") return base.applyOwnView(name, args);

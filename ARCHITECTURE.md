@@ -4,7 +4,7 @@ Cape Sorrow is a game on [`@csarkosh/engine`](https://github.com/csarkosh/engine
 netcode and the deterministic simulation, and owns the page. The game gives the engine's shell one page definition and
 one identity, and lays three things of its own over the engine's world: a generated port town, one car to drive in it,
 and the title page. The game's rules are the engine's walking and the car's. This file says what is true of the
-repository today, in the order the pieces depend on each other: the engine and what the game hands it, the town, the car,
+repository today, in the order the pieces depend on each other: the engine and what the game hands it, the town, the car, the map,
 the title page, hosting, and what is still scaffold and unfinished.
 
 ## The engine and what the game hands it
@@ -263,6 +263,22 @@ and back, a turn of the body, and what they say.
   time; one who stands turns to them. Not the same person twice within a minute and a half, nor two people at once.
 - **Talk.** Two who stand, sit or walk together, with the player within 8 m, say a line now and then (4.5 to 9 s apart),
   in turn, of the kind of place they are at (`CHATTER`: a bar, a cafe, a restaurant, work, a shop or the street).
+
+- **A torch in the face.** A person the player's torch (see "The hand and the flashlight") is shone on is dazzled
+  (`game/town/peopleDazzle.ts`): the torch is lit and the player is on foot, the person's head is inside the torch's
+  cone (half of `TORCH_ANGLE`) within 9 m, with no wall or standing thing between (the same test of a place that a jump
+  uses, tried every half metre along the beam), they face within 100 degrees of the player (a light on the back of a
+  head dazzles nobody), and the light has been on them for a third of a second. A person in a room seen through its
+  glass from the street does not react; one in a room the player is in does. At most the four nearest react at once, and
+  only people within 9 m are looked at, only while the torch is lit. They stop (one who walks is held where they stood
+  and walks home to their path afterwards), turn their body 0.85 rad away from the player, throw an arm up (the clip
+  `shield`, or, since the models carry none, the nearest they do, `call`, a hand raised to the head, mixed into their
+  own by the clip table's cross-fade of two clips, so it comes up in a quarter of a second and goes in under half a
+  second; what they held in that hand is put down meanwhile), and say a line, marked mean (`DAZZLED`), chosen by a hash of
+  them and the moment and never one another person is saying. They hold it while the light is on them and a second
+  after, lower it, look at the player for 1.3 s and go back to what they were doing. One dazzled again within six seconds
+  goes straight to the pose with no wait and is ruder (`DAZZLED_AGAIN`). The car's headlights dazzle nobody: the beam
+  is the torch's only. Nothing is on the wire: each player sees their own.
 
 What is said is not voiced: a line is a caption over the head of the one who says it (`game/town/speech.ts` places it
 on the frame's view, `hud.ts` shows it), no more than four at once, fading with distance to nothing at 26 m. The words
@@ -654,12 +670,73 @@ the ground and none looks at the car through one. The run is drawn from the coun
 same drive. The keys are the screen's own and no part of the command the simulation is sent: they are read only while
 the pointer is locked to the game and not typed into a field, and a touch player has neither.
 
+### The hand and the flashlight
+
+On foot, F (and a touch player's lamp button) switches a torch, and the player sees their own right hand hold it up at the
+lower right of the view. The sim has no lamp for a walker (`carPressed` flips the car's lights from the driver's seat and
+does nothing else), and nobody else sees a walker's torch, so the switch is the screen's own and not on the wire:
+`game/hand/handSwitch.ts` holds it (read by `side.lampOn` for the page's button and by the renderer part's `lampOn`),
+and F flips it from the keyboard itself (`game/hand/torchKey.ts`, as the view's keys are: a key-down that is not a repeat,
+while play has the controls, the key is not being typed into a field and the player is on foot), because the command's
+lamp bit is a level the sampler raises for anything that asks and is the car's switch too; a touch player's lamp button
+still arrives as the bit, which `side.command` reads for a touch screen only. Nothing else flips it. In a car F is the
+car's, as it was, and the torch is left as it was.
+
+- **The shapes** (`game/hand/`): `flashlightGeometry.ts` is a torch of real size (15 cm, 2.6 cm across, a 4.4 cm head
+  with a bezel, a tail cap, a rubber switch, a lens that is dark glass, and a separate lit disc laid in front of it that
+  is drawn only while the lamp is on and lights itself at every hour), `handGeometry.ts` the right hand gripping it in a
+  dark leather glove (four fingers of three segments wrapped round the body, a thumb of two ending on the switch, the
+  back of the hand, the glove's wrist) and a heavy waxed-cotton coat's cuff, sleeve, seam and horn button, both built
+  with the town's `MeshBuilder` from `handShapes.ts` (frustums and boxes with their edges cut away, every one a closed
+  solid). 1,522 vertices and 848 triangles for the hand and the torch, 60 vertices for the lens: under 1,800. Textures
+  are the town's own layers: the glove and the button are `rubber` (the dark asphalt's fine grain, one even near-black
+  brown, no wear), the coat `cloth` (the sidewalk concrete's even grain laid fine and tinted olive), the torch's body
+  and head `sheet` (the aged corrugated metal, laid fine so its ribs read as knurling) and its bezel and switch collar
+  `steel`; the rooms' own layers are not loaded in the street and are not used.
+- **The pose** (`handPose.ts`, pure): the hand is down, out of the view, with the lamp off; it rises over 0.25 s to the
+  hold and lowers over 0.2 s, straight up from and down to 0.55 m below it (the same depth and place across the screen,
+  so it drops out of the bottom of the view and is under it on any window from 4:3 to 21:9, and is not drawn at all
+  then). The hold is worked out from the window's aspect: the lens 0.52 m ahead of the eye, the torch's head at 57
+  percent across and 69 percent down the screen, so the forearm rises from the bottom edge at 62 to 70 percent across and
+  the hand stays left of the corner map and the party's rows at a width of 1,000 px (right edge 71 percent against the
+  map's 75.6; `client/test/hand/handScreen.test.ts`). The torch is turned 1.1 rad about its own axis, and it has two axes:
+  the beam's (`TILT_YAW`, `TILT_PITCH`: ahead, 2 degrees left and 11 degrees down, so the beam's middle meets the ground
+  about 7 m ahead) and the one it is drawn along (`DRAWN_YAW`, `DRAWN_PITCH`: turned in toward the middle of the view and
+  a little up, so the barrel is seen along its side and not the tail cap from behind). The beam leaves the lens's place
+  along the first; the lit lens disc is part of the torch's mesh and faces along the second. A walking bob follows the ground speed, a slow breath sways it when still,
+  it lags a quick turn on a spring by 4 degrees at most, sits lower and steadier when sprinting, rises a little when the
+  view looks steeply down, is pulled in toward the eye by a wall ahead (a probe along the view with the town's own
+  test of a place), and is never nearer the eye than 14 cm. It is hidden while seated, getting in or out and under the
+  dark screen at a door.
+- **The meshes** (`handParts.ts`) are made once, when the torch is first switched on, and placed each frame from the
+  camera's pose and the hand's by the meshes' own position and rotation. They are drawn with the town's indoor material
+  (the layers, the air, the night's lamps), so the hand is lit by the day and dark at night but for its own light and the
+  street's lamps, in the opaque draws with the depth buffer, never in the ink line's mask or the rain's cover. Two draws.
+- **The light.** The engine's one lamp, while the player is on foot with the torch on, is moved to the lens and along the
+  torch's axis, as the car's headlights move it to the car's nose; it is a spot light (a cone, not a point) whose full
+  angle is 1.0 rad (the car's is the engine's 1.5), reaching 22 m, 6 times the walker lamp's brightness at night and about 2 times by day (the headlights'
+  gain at night: the night's grade, exposure 0.28, darkens what the scene's lights light and the engine's lamp is tuned for
+  its own exposure; the gain falls with the hour's lit gain, `torchGainFor`, never over 6), in a warm white, and coming on as the hand arrives. Moving with the hand, it moves with the bob and the lag. A second real light
+  is not possible in this renderer without every lit material paying for it (the scene's lights are in each material's
+  shader loop); the glove and sleeve take a short spill from the torch instead (below), and the lit lens disc is a glow.
+- **Rooms.** The engine's lamp lights only what the scene lights, and a room's surfaces are lit by themselves (a glow
+  of 1: the scene's light is taken off them), so in a dark shut cafe it lit almost nothing. The indoor materials (the
+  rooms', the designed rooms' and the hand's: those the plugin builds with `night`) add the torch to the glow from the
+  surface's own colour (`FLASH_CODE` in `townMaterial.ts`): inside the beam's cone, to a range, with a falloff and a soft
+  wrap, and a short point spill (0.9 m) round the lens; three `vec4` uniforms (`flashP`, `flashD`, `flashC`) written while
+  the torch is on, read only when `flashC.w` is above zero. The street's materials do not compile it in.
+- **The console**: `goin cafe counter left` (seed 20261121; the cafe's design names `counter`, two metres from the person
+  behind the bar, and the word is the way to look) stands the player facing them, for the torch in a face. `hand on` raises the hand and lights the torch, `hand up` raises the hand alone, `hand off` lowers it
+  and puts the torch out (`HAND_COMMANDS`, applied by `side.applyOwnView`).
+
 ### The lamp
 
 The engine has one lamp, the walker's own. While the local player is seated in a car (any seat) with its lights on, that
 lamp is the car's headlights (`headlights.ts`): moved to 2.3 m ahead of the car's centre and 0.65 m up, pointing along
 the heading a little down, reaching 40 m, and six times the walker lamp's brightness. The page's lamp button, and F,
 switch the lights when the player drives; the button reads lit while the car's lights are.
+
+The HUD's lamp hint and its Pause button are Day Hike's, to the pixel (their rules in `hud.ts` repeat those of Day Hike's HUD): the Pause button is a round faint button at the top left, under the page's mute button, with the pause bars and a key cap that shows Esc, brighter under the pointer and on focus; the lamp hint is at the bottom left, with the lamp's icon and a key cap that shows F, lit with a yellow ring while the lamp is on. The shell asks for the hint (`setLamp`) and the game says which lamp F switches (`setLampKind`, from `car/side.ts`): the hand torch (the engine's icon) on foot, the car's headlights (drawn as a housing with three beams) while the local player drives (F switches the car's lights for the driver only, `carPressed`), and no hint where F switches no lamp (a passenger, a player getting in or out). Both are hidden on a touch screen, where the engine's touch layer has its own buttons.
 
 ### The sound
 
@@ -871,6 +948,42 @@ by the street's room builder; a room with a design of its own (the bar) is drawn
 - **Limits.** The deeper part of a room keeps what the street's build puts there (no chairs past `PLAIN_FROM`, and the clutter the front 4 m have); a pane's glow is a flat sheet, not the day's light
   falling in; the room is lit by its own baked light only.
 
+## The map
+
+The map is a street map of the town drawn in the corner of the screen while play has the controls, and large over the right of the screen while the game is paused. It is the game's own interface and a reader of the simulation: `client/src/game/map/` reads the town's plan and its site, and nothing of `client/src/sim/` reads or imports it. It costs nothing where it cannot be seen (no local player, the title page) and never throws into the game's frame: its one entry, `Minimap.frame` in `minimap.ts`, catches a fault, logs it once and hides the map for good.
+
+### The data
+
+`mapData.ts` (`mapDataFor(seed)`, made on first asking and kept) turns the plan into what a street map draws, in world metres (the plan's frame with the site's anchor added): the shore as a line carried straight on due north and south to 3 km (`shoreExtended`), the sea west of it, made ground, woods, blocks, decks, the junctions' pavements (`pavementPolygon`), every street, stair and road out as a segment with its roadway width and class, the highway carried on to 3 km north and south by the world's own line for it (`roadCenterX`), the railroad and its spur, each building's footprint with a kind (ordinary, one of the four places, a landmark), the landmarks' names, and the street-name labels (one for each 250 m of each run of one named street, in the middle of its share, turned along the street). Each feature is in a grid of 64 m cells, and a feature that crosses cells is in each. The four places (`places`: the bar, the cafe, the lodging and the municipal building, ids 1 to 4 as the rooms have them) carry their names (the unit's tenant, the landmark's name for the office) and their door points, which are the plan's street doors moved 0.9 m out, the point `arriveOut` gives; they are made from the plan alone, because building the rooms' designs for it would cost a hundred milliseconds. The data for a town takes 1 to 4 ms to make from a plan already made.
+
+### Routes
+
+`mapRoute.ts` makes a street graph from the data's segments (`graphFor`): a node where two streets cross, where one meets another, and at their ends, and an edge along a street between two nodes with its length, class and name. A street that ends at another's right of way (the stem of a tee, an alley's mouth) opens on the other's centre line. A route (`planRoute`) is the shortest way, by Dijkstra, from any world point to any other, for a person on foot (every street, stairs and alleys and the wharf included) or in a car (no stairs; alleys and wheel tracks cost half as much again): each end is snapped to the nearest point of an allowed street in the graph's main connected piece, the route runs between the two along the streets, and the last stretch is straight from the street to the goal (a door). A start farther than 60 m from every street goes straight to the nearest (`offStreet`). `mapNav.ts` keeps what the player means to do: the destination (a place or a waypoint) and at most five waypoints, in the module for the session, and the route to the destination kept up to date: made again when the goal or the profile changes, when the player is more than 15 m off it (at most once a second), with the part already travelled dropped as the player moves along. Reaching the destination (within 8 m) clears it. A player in a room starts from that building's street door.
+
+### The looks, the view and the drawing
+
+`mapStyle.ts` has two looks, each with a day and a night palette: on foot, north up and about 180 m across the minimap (streets white with a grey casing, buildings a warm grey with a faint edge, the four places' buildings warm, a route as a line of blue dots, a facing cone on the player's dot), and driving, turned so that the car's nose is up and the car's arrowhead a third of the way up from the bottom, about 420 m across (the highway and the avenues wide and yellow with an amber casing, buildings fainter and without edges, names for the bigger streets only, a route as a blue band). Night is from 19:00 to 6:00 by the day's hour, crossed over in half a second; the change between the looks eases scale, turn and the mark's place over 0.6 s. `mapView.ts` holds that state and its maths (`worldToScreen` and back, the large map's own centre and scale with the limits 0.25 to 8 m a pixel); `mapDraw.ts` draws the data through a view on a `MapCtx` (`mapCtx.ts`, a small interface that a canvas fills and a test fakes). The grid's cells index the data; the paths are made for a tile of 4 by 4 cells, once, in world metres, one for each class of feature, so a frame is about a dozen drawing operations for each of the few tiles it shows (a minimap shows four tiles on foot and up to ten driving, 90 to 145 operations a frame with its route, labels and marks). The marks (`mapMarks.ts`) are drawn in screen pixels: a place's pin in the colour of its kind with a glyph drawn in code, a pin on the border with its distance in metres for a place off the edge (pins on one border are slid apart along it, and where there is no room the farther loses its label), the waypoints' blue flags, and the player.
+
+### On the screen
+
+`minimap.ts` makes one canvas in a container in the game's container, bottom right, 12 px in (220 px square, 148 px under 520 px wide), in the very corner, with the party (the engine's roster) standing over it (see "The party" below). It is redrawn only when something it shows has changed by a pixel, and at most 30 times a second. Tab (on a keyboard) or a tap on the map (on touch) calls the HUD's pause hook, and Esc and the Pause button pause as they did: a paused game shows the large map, which eases (0.25 s) to cover the right of the screen (from 40 percent of the width, or the top 56 percent on a screen under 720 px wide), with z-index 19 over the engine's pause menu (18) and under its roster (20). The canvas is resized to the large size (at most 9.5 MB) only while paused. The pause panel is moved aside by a style rule on the engine's `.pausemenu.open` while the container is marked `capemap-open`; `client/test/map/screen.test.ts` reads the engine's source and fails if the class names that rule leans on are gone. On the large map a drag pans, the wheel and a pinch zoom, a double click or tap zooms in, a click on a place's pin makes it the destination, a click elsewhere places a waypoint and makes it the destination, and a click on a flag removes it; buttons zoom, centre the map on the player and clear the destination, and a list of the four places gives each one's distance along the streets now and goes to it on a click. Its pointer events never reach the canvas behind it, where a click would resume play. `hud.ts` makes the map and hands it the frame (`setMap`); `car/side.ts` builds the frame each frame (`mapFeed.ts`).
+
+### How present the small map is
+
+The small map sits back. Its palette is the soft one (`paletteFor(e, night, true)`: the ground, the drawn streets and buildings, the lettering and the pins desaturated and drawn toward a haze, a soft grey-cream by day and near the scene's own dark blue by night; the four places' buildings, the player's mark, the route and the flags are left as they are, and the tests hold their colour difference from the ground above a stated threshold in all four looks), its lettering is lighter and its pins 15 percent smaller. The large map is not soft. With no destination and no waypoint the container is at opacity 0.5; with either, it carries the class `active` and is at 0.9, faded over 0.4 s by CSS alone; the large map is at 1. Reaching a destination (within 8 m) clears it and takes down a waypoint that was reached.
+
+### The party
+
+The engine's roster (`.roster` on the page's body: a panel with a heading, an invite and a row for each player) is the party. While the game is played the engine marks it `subdued`, and `partyLook.ts` restyles it from the game's stylesheet into bare rows over the map: right aligned over the map's width, one row a player, the name with a small connection mark at its right, in small type with a soft shadow, at about half strength, with no panel, heading, invite or border. Paused, the full roster shows as the engine draws it, moved to the bottom left (on a screen 720 px wide or more) so that it does not lie under the large map. The mark is the game's own: four rising bars filled by the round trip (4 under 60 ms, 3 under 120, 2 under 200, else 1). The game can read only the local player's own round trip (`stats.rttMs` of a joined session; 0 for the host), so another player's row shows its bars unfilled: the host keeps every peer's `rttMs` privately, and the roster's rows carry only a name, a host flag and a self flag. A build with no server has no roster, and then there is nothing to restyle and nothing is shown. `client/test/map/party.test.ts` reads the engine's source for the class names the rules lean on.
+
+### The console's `map`
+
+`map open` shows the large map as if the game were paused, without pausing it (and with the pause panel where it is only if it is open); `map close` puts it away; `map to bar|cafe|lodging|office` makes a place the destination. They are kept in the address (`close` is the default and is left out), so `?cmd=map open;map to bar` opens on a route.
+
+### For measuring tools
+
+`globalThis.__capeMap` (`mapDebug.ts`) gives `draw()` (the last and the mean time of the last 120 draws in milliseconds, the draws in the last second, the operations and tiles of the last), `canvas()` (its size in pixels and bytes), `data()` (the feature counts, the build times, the graph's size) and `nav()` (the destination, the flags and the route's length).
+
 ## The title page
 
 Built in `client/src/game/` in the visual language of Day Hike's title page (the same dark ground and vignette, the
@@ -904,7 +1017,7 @@ infrastructure of this game's own, so the public page says `In development.` and
 `client/src/assets.ts` and `client/levels/yard.json` are the engine's empty game as its `tools/new-game.mjs` wrote them
 and are unchanged: the engine's shipped trees, cliffs and sounds (the game has no shipped files of its own), and the
 level a forest world must carry, with no brushes. `hud.ts` and `net.ts` are the scaffold's files with the car added:
-the HUD is a line of status and the line at a car's door, the snapshot is the players' places and the cars. The walking
+the HUD is a line of status, the line at a car's door, the Pause button and the lamp's hint (as Day Hike's are, at the top left and the bottom left) and the map, the snapshot is the players' places and the cars. The walking
 rules keep the engine's names (`WALK_*`, `EMPTY_GAME`), and `sim.ts`, `game.ts` and `world.worker.ts`, which now carry
 the town and the car, are still the scaffold's files in shape. They are to be replaced by Cape Sorrow's own rules and
 parts: there is no case and no people, the only sound of the game's own is the car's, and there is nothing to do in the

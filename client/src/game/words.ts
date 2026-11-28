@@ -37,3 +37,26 @@ export const GO_OUT = "Click to go out";
 
 /** What `goin` says when it is not the host's to do, and when the room is not one of the town's. */
 export const HOST_PUTS_IN = "Only the host can put you in a room.";
+
+/** The map in the corner of the screen and the large map a paused game shows: its buttons, its list of the four places and what its marks are called. */
+export const MAP_ZOOM_IN = "Zoom in";
+export const MAP_ZOOM_OUT = "Zoom out";
+export const MAP_CENTRE = "Centre on me";
+export const MAP_CLEAR = "Clear destination";
+export const MAP_PLACES = "Places";
+export const MAP_OPEN = "Open the map";
+/** What a waypoint the player placed on the map is called, on the slim line and in a pin's label. */
+export const MAP_WAYPOINT = "Waypoint";
+/** The kinds of the four places, as the list says them. */
+export const MAP_BAR = "Bar";
+export const MAP_CAFE = "Cafe";
+export const MAP_LODGING = "Lodging";
+export const MAP_OFFICE = "Office";
+/** What a place is called when the plan gives its unit no tenant's name. */
+export const MAP_BAR_NAME = "The tavern";
+export const MAP_CAFE_NAME = "The cafe";
+export const MAP_LODGING_NAME = "The lodging";
+export const MAP_OFFICE_NAME = "The municipal building";
+
+/** The Pause button's label for a screen reader. */
+export const PAUSE_LABEL = "Pause";

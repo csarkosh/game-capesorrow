@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+import { MeshBuilder, isUnbacked } from "../../src/game/town/meshBuilder.js";
+import { flashlightGeometry, lensGlowGeometry, TORCH } from "../../src/game/hand/flashlightGeometry.js";
+import { handSolids } from "../../src/game/hand/handGeometry.js";
+import { handArrays } from "../../src/game/hand/handParts.js";
+import { HOLD, NEAREST, newHandPose, newHandState, stepHand, torchBasis } from "../../src/game/hand/handPose.js";
+import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
+import { packedBytes } from "../../src/game/town/vertexPack.js";
+
+/** Whether a mesh is closed: every edge of every triangle is met by the same edge the other way, as many times. */
+function openEdges(positions: Float32Array, indices: Uint32Array): number {
+  const key = (i: number): string => `${Math.round((positions[i * 3] as number) * 1e5)},${Math.round((positions[i * 3 + 1] as number) * 1e5)},${Math.round((positions[i * 3 + 2] as number) * 1e5)}`;
+  const edges = new Map<string, number>();
+  const add = (a: string, b: string): void => {
+    if (a === b) return;
+    edges.set(`${a}>${b}`, (edges.get(`${a}>${b}`) ?? 0) + 1);
+  };
+  for (let t = 0; t < indices.length; t += 3) {
+    const v = [key(indices[t] as number), key(indices[t + 1] as number), key(indices[t + 2] as number)];
+    add(v[0] as string, v[1] as string);
+    add(v[1] as string, v[2] as string);
+    add(v[2] as string, v[0] as string);
+  }
+  let open = 0;
+  for (const [e, n] of edges) {
+    const [a, b] = e.split(">") as [string, string];
+    if ((edges.get(`${b}>${a}`) ?? 0) !== n) open++;
+  }
+  return open;
+}
+
+describe("the hand's and the torch's geometry", () => {
+  const { body, lens } = handArrays();
+
+  it("is under 1,800 vertices with the torch, and the lens is a disc", () => {
+    expect(body.positions.length / 3).toBeLessThan(1800);
+    expect(body.positions.length / 3).toBeGreaterThan(600);
+    expect(lens.positions.length / 3).toBeLessThan(80);
+    expect(body.positions.length / 3 + lens.positions.length / 3).toBeLessThan(1800);
+  });
+
+  it("holds no number that is not finite, and every normal is a unit vector", () => {
+    for (const a of [body, lens]) {
+      for (const v of a.positions) expect(Number.isFinite(v)).toBe(true);
+      for (let i = 0; i < a.normals.length; i += 3) expect(Math.hypot(a.normals[i] as number, a.normals[i + 1] as number, a.normals[i + 2] as number)).toBeCloseTo(1, 4);
+    }
+  });
+
+  it("keeps the torch inside its box: 15 cm long, a head 4.5 cm across, the lens at the origin", () => {
+    const b = new MeshBuilder();
+    flashlightGeometry(b);
+    const a = b.take();
+    let zlo = Infinity, zhi = -Infinity, r = 0;
+    for (let i = 0; i < a.positions.length; i += 3) {
+      const x = a.positions[i] as number, y = a.positions[i + 1] as number, z = a.positions[i + 2] as number;
+      zlo = Math.min(zlo, z);
+      zhi = Math.max(zhi, z);
+      // The switch stands up from the top of the body; every other point is within the head's radius of the axis.
+      if (z < -0.05 || z > -0.075) r = Math.max(r, Math.hypot(x, y));
+    }
+    expect(zhi).toBeLessThanOrEqual(0.001);
+    expect(zlo).toBeGreaterThanOrEqual(-TORCH.length - 1e-6);
+    expect(TORCH.length).toBeGreaterThanOrEqual(0.14);
+    expect(TORCH.length).toBeLessThanOrEqual(0.17);
+    expect(TORCH.bodyRadius * 2).toBeCloseTo(0.026, 3);
+    expect(TORCH.headRadius * 2).toBeGreaterThan(0.042);
+    expect(TORCH.headRadius * 2).toBeLessThan(0.046);
+    expect(r).toBeLessThanOrEqual(TORCH.bezelRadius + 1e-6);
+  });
+
+  it("keeps the hand and the sleeve in a box of the lower right: within 55 cm of the lens, and none of it in front of the lens", () => {
+    let zhi = -Infinity, far = 0;
+    for (let i = 0; i < body.positions.length; i += 3) {
+      zhi = Math.max(zhi, body.positions[i + 2] as number);
+      far = Math.max(far, Math.hypot(body.positions[i] as number, body.positions[i + 1] as number, body.positions[i + 2] as number));
+    }
+    expect(zhi).toBeLessThanOrEqual(0.001);
+    expect(far).toBeLessThan(0.55);
+  });
+
+  it("is made of closed solids: every solid of the torch and of the hand has every edge met", () => {
+    const solids = handSolids();
+    expect(solids.length).toBeGreaterThanOrEqual(10);
+    for (const s of solids) {
+      const b = new MeshBuilder();
+      s.lay(b);
+      const a = b.take();
+      expect(a.indices.length, s.name).toBeGreaterThan(0);
+      expect(openEdges(a.positions, a.indices), `${s.name} has open edges`).toBe(0);
+    }
+  });
+
+  it("has a torch whose solids are closed, and no triangle of the hand's meshes that is left without a back it needs", () => {
+    const b = new MeshBuilder();
+    flashlightGeometry(b);
+    const a = b.take();
+    // The lens glass and the bezel's front are single sheets facing forward (the lens is seen from the front only); everything else is closed.
+    let unbacked = 0;
+    for (let t = 0; t < a.indices.length / 3; t++) if (isUnbacked(a.indices, t)) unbacked++;
+    expect(unbacked).toBe(0);
+    const lensBuilder = new MeshBuilder();
+    lensGlowGeometry(lensBuilder);
+    expect(lensBuilder.take().indices.length / 3).toBeGreaterThan(10);
+  });
+
+  it("costs under 170 kilobytes as the town counts bytes", () => {
+    const bytes = packedBytes(body.positions.length / 3, body.indices.length, body.surface.byteLength) + packedBytes(lens.positions.length / 3, lens.indices.length, lens.surface.byteLength);
+    expect(bytes).toBeLessThan(170_000);
+  });
+
+  it("never comes nearer the eye than 14 cm, nor into the near plane, at any point of the raise, the hold or the lowering", () => {
+    const state = newHandState();
+    const pose = newHandPose();
+    const axes = restAxes();
+    cameraAxes(0, 0, 0, axes);
+    const b = new Float64Array(9);
+    let nearest = Infinity;
+    const lookAt = (): void => {
+      torchBasis(axes, pose, b);
+      for (let i = 0; i < body.positions.length; i += 3) {
+        const px = body.positions[i] as number, py = body.positions[i + 1] as number, pz = body.positions[i + 2] as number;
+        // The vertex in the camera's frame (the camera looks along +z, the axes are the rest axes).
+        const x = pose.x + b[0]! * px + b[3]! * py + b[6]! * pz;
+        const y = pose.y + b[1]! * px + b[4]! * py + b[7]! * pz;
+        const z = pose.z + b[2]! * px + b[5]! * py + b[8]! * pz;
+        // A point behind the near plane is not drawn at all; one in front of it is at least the nearest from the eye.
+        if (z > 0.05) nearest = Math.min(nearest, Math.hypot(x, y, z));
+      }
+    };
+    for (let i = 0; i < 400; i++) {
+      stepHand(state, { dt: 1 / 60, want: i < 250, hidden: false, speed: i % 120 / 25, sprinting: false, yaw: Math.sin(i * 0.1) * 2, pitch: Math.sin(i * 0.03) * 1.2, clear: i % 50 < 10 ? 0 : 1, aspect: 1.6 }, pose);
+      if (pose.shown) lookAt();
+    }
+    expect(nearest).toBeGreaterThanOrEqual(NEAREST);
+    expect(HOLD.z).toBeGreaterThan(0.3);
+  });
+});

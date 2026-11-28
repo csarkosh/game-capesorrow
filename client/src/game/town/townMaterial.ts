@@ -323,6 +323,30 @@ export const LAMP_CODE = [
   "}",
 ].join("");
 
+
+/**
+ * The player's flashlight, added to what a room's surfaces and the hand are lit by (the materials that have `night`: the rooms' and the hand's, never the
+ * street's). A room's colour is its own light (a glow), so the scene's lamp, which lights only what is not glowing, did not reach it: a dark shut cafe
+ * stayed dark under the torch. This adds the beam to the glow, from the surface's own colour (`tsBase0`), as the town's lamps are (`LAMP_CODE`): inside
+ * the cone (`flashD`: the torch's axis, and the cosine of its half angle at its edge, eased over the inner third), out to a range (`flashP`.w) with a
+ * falloff, times how much the surface faces the lens (a soft wrap). A second, short term is the spill round the lens itself (the glove and the sleeve are
+ * lit by the torch they hold): a point's light that is gone by `FLASH_SPILL` metres. Nothing is read or computed while the torch is off (`flashC`.w is 0).
+ */
+export const FLASH_SPILL = 0.9;
+export const FLASH_GAIN = 1.2;
+export const FLASH_CODE = [
+  "if(material.flashC.w>0.001&&tsLayer>=0){",
+  "let fd=material.flashP.xyz-input.worldPos;let fr=length(fd);let fl=fd/max(fr,0.001);",
+  "let fw=clamp((dot(N,fl)+0.3)/1.3,0.0,1.0);",
+  "let fcos=dot(-fl,material.flashD.xyz);",
+  "let fcone=smoothstep(material.flashD.w,mix(material.flashD.w,1.0,0.35),fcos);",
+  "let frange=1.0-smoothstep(material.flashP.w*0.3,material.flashP.w,fr);",
+  `let fbeam=fcone*frange*fw*fw/(1.0+fr*fr*0.05);`,
+  `let fspill=(1.0-smoothstep(0.12,${f(FLASH_SPILL)},fr))*fw*0.3;`,
+  `townGlowC=townGlowC+tsBase0*material.flashC.rgb*(material.flashC.w*(fbeam+fspill)*${f(FLASH_GAIN)});`,
+  "}",
+].join("");
+
 /**
  * The sky a textured pixel sees (`skyShade.ts`): its corner's two codes, the height over the ground and the depth under the roof, each eased from
  * its shade to 1 over its reach, and their product kept in `townSky`. A code of 0 is none. The first shares its float with a room's hours
@@ -407,6 +431,7 @@ export function townSurfaceCode(low: boolean, sign = false, ranked = false, set:
     sign ? "" : BLIND_CODE,
     WIRE_CODE,
     LAMP_CODE,
+    ...(night ? [FLASH_CODE] : []),
   ].join("");
 }
 
@@ -525,6 +550,10 @@ export function emptyTownReady(): TownReady {
     r[`lampP${i}`] = [0, 0, 0, 0];
     r[`lampC${i}`] = [0, 0, 0, 0];
   }
+  // The player's flashlight (`FLASH_CODE`): its lens and range, its axis and the cosine of its cone, its colour and strength (0 while it is off).
+  r.flashP = [0, 0, 0, 0];
+  r.flashD = [0, 0, 1, 1];
+  r.flashC = [0, 0, 0, 0];
   return r;
 }
 
