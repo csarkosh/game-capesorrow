@@ -53,7 +53,12 @@ import { createViewKeys, type KeyTarget } from "../car/viewKeys.js";
 import { peopleFor, personWorld } from "./people.js";
 import { openDowntownUnits, outdoorPeopleFor, outdoorWorld } from "./outdoorPeople.js";
 import { createPeopleShade } from "./peopleShade.js";
-import { createHandParts, type HandHost, type HandParts } from "../hand/handParts.js";
+import { HAND_AHEAD_UNITS, createHandParts, type HandHost, type HandParts } from "../hand/handParts.js";
+import { createWatchParts, type WatchParts } from "../hand/watchParts.js";
+import { WATCH_SEEN } from "../hand/watchSeen.js";
+import { armLevel, armLift, type ArmPlace } from "../hand/armLevel.js";
+import { isOpen, unitHours } from "./hours.js";
+import { roomOf } from "../../sim/inside/rooms.js";
 import { HAND_SWITCH } from "../hand/handSwitch.js";
 import { roomDrawn } from "../insideReady.js";
 import { createInsideParts, hidesTown, insidePeople, whereOf, type InsideParts } from "./insideParts.js";
@@ -75,7 +80,7 @@ import { fallenBy, knockMoves, newKnocked, stepKnocked } from "./knocked.js";
 import { MARKS_MOST, markMatrices, newStruck, rockOf, shoveMove, stepStruck, struckMoves, struckSolids } from "./struck.js";
 import { createDamageParts, type DamageParts } from "./damageParts.js";
 import type { CarPose } from "../car/carPose.js";
-import type { Vehicle } from "../../sim/town/types.js";
+import type { TownPlan, Vehicle } from "../../sim/town/types.js";
 import { knockablesFor } from "../../sim/town/knockables.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
@@ -237,6 +242,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   // The player's hand and torch (`../hand/handParts.ts`), made with the town's indoor material; the materials that read the torch's beam (`FLASH_CODE`: the rooms' and the hand's own); the frame's dt and camera axes.
   let hand: HandParts | null = null;
   let handHost: HandHost | null = null;
+  // The left arm with the watch (`../hand/watchParts.ts`), made the first time the watch is wanted, with the same host.
+  let watch: WatchParts | null = null;
   const flashReaders: PbrMaterialProps[] = [];
   let frameDt = 0;
   let viewAspect = 1.6;
@@ -324,6 +331,17 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     boxBlocks(townSolids(worldSeed), x, 0, z, 0, Infinity, 0.25) || boxBlocks(propSolids(worldSeed), x, 0, z, 0, Infinity, 0.25);
   const nowhereBlocked = (): boolean => false;
   /** The people drawn answer the cars and the local player: a jump from a car, a step back from a shove, a greeting, a word between two. */
+  // The plan, for the arms' light in a room (is its unit open?).
+  let armPlan: TownPlan | null = null;
+  const armPlace = (): ArmPlace => {
+    if (whereNow === 0) return "street";
+    const room = roomOf(worldSeed, whereNow);
+    if (room === undefined || armPlan === null) return "open room";
+    const b = armPlan.buildings[room.building];
+    const unit = armPlan.uses[room.building]?.units.find((u) => u.id === room.unit);
+    const hours = b === undefined || unit === undefined ? null : unitHours(b, unit);
+    return hours === null || isOpen(hours, shownHour) ? "open room" : "shut room";
+  };
   const answer = (state: { readonly players: ReadonlyMap<number, unknown> }, localId: number, dt: number): void => {
     if (people === null) return;
     seen.length = 0;
@@ -453,9 +471,18 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       orders.take(indoor);
       if (wearsTextures) textured.push(indoor);
       flashReaders.push(indoor);
+      // The arms' own material: the indoor one with a depth shift toward the eye (`HAND_AHEAD_UNITS`), so that no arm is sunk into a wall.
+      const handMaterial = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: PROP_ROUGHNESS, usePhysicalLightFalloff: true });
+      handMaterial.plugins = [
+        baseColourPlugin(), ...(wearsTextures && textures !== null ? [townSurfacePlugin(textures, readied, low, undefined, false, undefined, true, true)] : []), surfaceSplitPlugin(),
+        ...(HAND_AHEAD_UNITS > 0 ? [ahead(HAND_AHEAD_UNITS, 0)] : []), air(),
+      ];
+      orders.take(handMaterial);
+      if (wearsTextures) textured.push(handMaterial);
+      flashReaders.push(handMaterial);
       // The hand is made when the torch is first switched on (`lamp`), so a game that never lights it never holds it.
       handHost = {
-        engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, uploads: host.uploads, ready: () => ready,
+        engine, scene, material: handMaterial, order: orders.of(handMaterial) ?? DRAW_ORDER.scenery, textured: wearsTextures, uploads: host.uploads, ready: () => ready,
         dirty: () => {
           for (const m of flashReaders) markMaterialUboDirty(m);
         },
@@ -536,6 +563,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         },
       };
       const plan = ground.plan;
+      armPlan = plan;
       // The rooms' own textures are not made here: `insideParts.ts` asks for them (and so for this material, which reads them) when a player first walks into a designed room.
       // The material has the town's uniforms (the hour, the glow, the lamps and doors, shared by reference) and a ready flag of its own.
       const interior = wearsTextures
@@ -776,19 +804,30 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const ride = held.players.get(held.localId)?.ride;
       headlightsFor(lamp, ride, ride === undefined || ride.phase !== SEATED ? null : (car?.pose(ride.car) ?? null));
       if (hand === null && handHost !== null && (HAND_SWITCH.on || HAND_SWITCH.forced)) hand = createHandParts(handHost);
-      if (hand !== null) {
-        // The hand and the torch: placed from the eye the frame has settled on, and the lamp moved to its lens while it is lit on foot.
+      if (watch === null && handHost !== null && WATCH_SEEN.on) watch = createWatchParts(handHost);
+      if ((hand !== null || watch !== null) && ready !== null) {
+        // The light the arms take where the player stands (`../hand/armLevel.ts`), written into the material's uniform when it changes.
+        const level = armLevel(daylightAt(shownHour), armPlace());
+        const lift = armLift(hand?.torch.lit === true ? hand.pose.raised : 0, litGainAt(shownHour));
+        const u = ready.armLevel as number[];
+        if (Math.abs((u[0] as number) - level) > 1e-4 || Math.abs((u[1] as number) - lift) > 1e-4) {
+          u[0] = level;
+          u[1] = lift;
+          for (const m of flashReaders) markMaterialUboDirty(m);
+        }
+      }
+      if (hand !== null || watch !== null) {
+        // The arms: placed from the eye the frame has settled on; the torch's lamp is moved to its lens while it is lit on foot.
         const me = held.players.get(held.localId) as { vel?: { x: number; z: number }; inside?: Inside } | undefined;
         const eye = host.pose;
         const speed = me?.vel === undefined ? 0 : Math.hypot(me.vel.x, me.vel.z);
         const inside = me?.inside?.phase ?? 0;
-        hand.frame(
-          {
-            dt: frameDt, eye, axes: cameraAxes(eye.yaw, eye.pitch, eye.roll, handAxes), ridePhase: ride === undefined ? 0 : ride.phase, insidePhase: inside,
-            roomUndrawn: inside === 2 && !roomDrawn(), speed, sprinting: speed > 6.2, aspect: viewAspect, litGain: litGainAt(shownHour),
-          },
-          lamp,
-        );
+        const frame = {
+          dt: frameDt, eye, axes: cameraAxes(eye.yaw, eye.pitch, eye.roll, handAxes), ridePhase: ride === undefined ? 0 : ride.phase, insidePhase: inside,
+          roomUndrawn: inside === 2 && !roomDrawn(), speed, sprinting: speed > 6.2, aspect: viewAspect, litGain: litGainAt(shownHour),
+        };
+        hand?.frame(frame, lamp);
+        watch?.frame(frame);
       }
       lampSeen.on = lamp.lit.on;
       lampSeen.x = lamp.at.x;
@@ -870,6 +909,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       car = null;
       hand?.dispose();
       hand = null;
+      watch?.dispose();
+      watch = null;
       handHost = null;
       flashReaders.length = 0;
       holding = false;

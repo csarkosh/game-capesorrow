@@ -8,7 +8,7 @@
  *
  * - **At rest the hand is down**, below the view. Lamp turned on: it rises over `RAISE_SECONDS` (0.25 s) to its hold; turned off, it lowers over
  *   `LOWER_SECONDS` (0.2 s). A part-way raise that is turned off goes back down from where it is.
- * - **The hold** is the lens `HOLD_DEPTH` (0.45 m) ahead of the eye and where `HOLD_SCREEN` says on the screen (worked out from the view's aspect). The beam goes along
+ * - **The hold** is the lens `HOLD_DEPTH` (0.55 m) ahead of the eye and where `HOLD_SCREEN` says on the screen (worked out from the view's aspect). The beam goes along
  *   `TILT_YAW` and `TILT_PITCH`; the torch is drawn along `DRAWN_YAW` and `DRAWN_PITCH`, turned in so that its barrel shows. The arm drops straight down `LOWER_DROP` (0.55 m:
  *   a third of the view's height under the bottom edge at the lowest, on every window from 4:3 to 21:9) and rises the same way.
  * - **A walking bob** tied to the ground speed (a step is about two bobs a metre of stride's phase), a **breathing sway** that is the whole of the motion
@@ -29,8 +29,20 @@ export const LOWER_SECONDS = 0.2;
 export const FOV = 1.4;
 export const ASPECT_MIN = 1, ASPECT_MAX = 2.2;
 /** How far ahead of the eye the lens is at the hold (metres), and where it stands on the screen there, as shares of the view's width (from the left) and height (from the top). */
-export const HOLD_DEPTH = 0.45;
-export const HOLD_SCREEN = { x: 0.52, y: 0.64 } as const;
+export const HOLD_DEPTH = 0.55;
+/**
+ * The torch and the hand are drawn this many times life size, about the lens: larger than life on purpose, as a first person view model is, so that the arm fills the
+ * corner of the view as a held thing does to the one who holds it, and reads at a glance. It is the mesh's own scale: the beam, the lens's place and the hold are not scaled.
+ */
+export const HAND_SCALE = 1.65;
+/**
+ * The scale for a view of this aspect: `HAND_SCALE` at 16:10 and wider, and in proportion to the width below it, so that on a narrow window (the arm's size in metres being fixed, its share of the
+ * width grows as the width shrinks) the torch does not come to cover the middle of the view: it is the same share of the width at any shape.
+ */
+export function handScaleFor(aspect: number): number {
+  return HAND_SCALE * Math.min(1, Math.max(ASPECT_MIN, aspect) / 1.6);
+}
+export const HOLD_SCREEN = { x: 0.54, y: 0.5 } as const;
 /**
  * How the torch is tilted at the hold, radians: turned toward the left of the view and pitched down, as a person holds a torch up before them and points it at the
  * ground ahead. The tilt shows the barrel along its side (pointed straight ahead it is seen end on) and sends the beam's middle to the ground about 7 m ahead, so
@@ -42,9 +54,9 @@ export const TILT_YAW = -0.04, TILT_PITCH = 0.2;
  * of the eye that points exactly where the beam goes is seen from behind, its tail cap hiding the rest; drawn turned in like this its barrel is seen along its
  * side, the head the farthest and widest part, as a held torch looks to the one who holds it. The beam keeps `TILT_YAW` and `TILT_PITCH` from the lens. Set by eye.
  */
-export const DRAWN_YAW = -0.95, DRAWN_PITCH = -0.5;
+export const DRAWN_YAW = -1.1, DRAWN_PITCH = -0.58;
 /** The turn of the torch about its own axis at the hold, radians: the hand holds it from the right and below, the forearm rising from the bottom edge of the view. */
-export const HOLD_ROLL = -0.2;
+export const HOLD_ROLL = 0.7;
 /** The lens's place at the hold for a view of this aspect (width over height), in the camera's frame: so that the torch's head stands at `HOLD_SCREEN` whatever the window's shape. */
 export function holdFor(aspect: number): { x: number; y: number; z: number } {
   const a = Math.min(ASPECT_MAX, Math.max(ASPECT_MIN, aspect));
@@ -252,7 +264,7 @@ export function lensWorld(ex: number, ey: number, ez: number, a: CameraAxes, p: 
  * The torch's own axes in the world, as three unit vectors written to `out` (right, up, forward: nine numbers): its forward is the axis the torch is drawn along, its up is the
  * camera's up turned by the roll and squared to the axis, so the torch is the right way up in the hand.
  */
-export function torchBasis(a: CameraAxes, p: HandPose, out: Float64Array | number[]): void {
+export function torchBasis(a: CameraAxes, p: HandPose, out: Float64Array | number[], scale = 1): void {
   // In the camera's frame: forward is (ax, ay, az); up is (0, 1, 0) with its part along forward taken out; right completes the turn (up cross forward).
   const dotUp = p.my;
   let ux = -dotUp * p.mx;
@@ -278,6 +290,7 @@ export function torchBasis(a: CameraAxes, p: HandPose, out: Float64Array | numbe
   world(rx, ry, rz, 0);
   world(ux, uy, uz, 3);
   world(p.mx, p.my, p.mz, 6);
+  if (scale !== 1) for (let k = 0; k < 9; k++) out[k] = (out[k] as number) * scale;
 }
 
 /**

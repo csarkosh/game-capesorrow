@@ -39,12 +39,14 @@ export const TORCH = {
   tailEnd: 0.208,
 } as const;
 
-const STEEL: Rgb = [0.24, 0.245, 0.258];
-const STEEL_DARK: Rgb = [0.14, 0.142, 0.15];
+// Dark gunmetal, with the machined edges (the bezel's ring and the anti-roll ring) a shade lighter so that they catch the light.
+const STEEL: Rgb = [0.11, 0.115, 0.125];
+const STEEL_DARK: Rgb = [0.06, 0.062, 0.068];
+const STEEL_EDGE: Rgb = [0.2, 0.205, 0.215];
 const RUBBER: Rgb = [0.025, 0.027, 0.03];
 const GLASS: Rgb = [0.012, 0.016, 0.02];
 
-const aged = (seed: number, salt: number, base: number): MatSpec => ({ mat: "sheet", scale: 16, wear: base + hash01(seed, salt) * 0.14, wearKind: "grime" });
+const aged = (seed: number, salt: number, base: number): MatSpec => ({ mat: "sheet", scale: 48, wear: base + hash01(seed, salt) * 0.14, wearKind: "grime" });
 
 function tinted(c: Rgb, seed: number, salt: number): Rgb {
   const k = 1 + (hash01(seed, salt) - 0.5) * 0.14;
@@ -64,7 +66,7 @@ export function torchSolids(seed = 1): readonly { readonly name: string; readonl
   const T = TORCH;
   return [
     // The bezel: a wide knurled ring round the lens, the first thing the light leaves by.
-    { name: "bezel", lay: (b) => knurl(b, at(0), at(-T.bezelEnd), T.bezelRadius, 0.0016, 16, tinted(STEEL, seed, 1), aged(seed, 2, 0.12)) },
+    { name: "bezel", lay: (b) => knurl(b, at(0), at(-T.bezelEnd), T.bezelRadius, 0.0016, 16, tinted(STEEL_EDGE, seed, 1), aged(seed, 2, 0.12)) },
     // The head: smooth steel behind the bezel, a little narrower toward the shoulder.
     { name: "head", lay: (b) => round(b, -T.bezelEnd, -T.headEnd, T.headRadius, T.headRadius * 0.96, tinted(STEEL, seed, 3), aged(seed, 4, 0.1)) },
     // The shoulder: the head steps down to the grip.
@@ -74,7 +76,7 @@ export function torchSolids(seed = 1): readonly { readonly name: string; readonl
     { name: "band two", lay: (b) => knurl(b, at(-T.ringEnd), at(-T.bandTwoEnd), T.gripRadius, 0.0014, 14, tinted(STEEL, seed, 9), aged(seed, 10, 0.24)) },
     // The anti-roll ring between them: raised, eight-sided (flats on it), chamfered at both edges.
     { name: "ring front", lay: (b) => frustum(b, at(-T.bandOneEnd), at(-T.bandOneEnd - 0.003), T.gripRadius * 1.05, T.ringRadius, 8, tinted(STEEL_DARK, seed, 11), "steel", tinted(STEEL_DARK, seed, 11), tinted(STEEL_DARK, seed, 11), 0.5) },
-    { name: "ring middle", lay: (b) => frustum(b, at(-T.bandOneEnd - 0.003), at(-T.ringEnd + 0.003), T.ringRadius, T.ringRadius, 8, tinted(STEEL, seed, 12), "steel", tinted(STEEL, seed, 12), tinted(STEEL, seed, 12), 0.5) },
+    { name: "ring middle", lay: (b) => frustum(b, at(-T.bandOneEnd - 0.003), at(-T.ringEnd + 0.003), T.ringRadius, T.ringRadius, 8, tinted(STEEL_EDGE, seed, 12), "steel", tinted(STEEL_EDGE, seed, 12), tinted(STEEL_EDGE, seed, 12), 0.5) },
     { name: "ring back", lay: (b) => frustum(b, at(-T.ringEnd + 0.003), at(-T.ringEnd), T.ringRadius, T.gripRadius * 1.05, 8, tinted(STEEL_DARK, seed, 13), "steel", tinted(STEEL_DARK, seed, 13), tinted(STEEL_DARK, seed, 13), 0.5) },
     // The tail: wide, smooth.
     { name: "tail", lay: (b) => round(b, -T.bandTwoEnd, -T.tailEnd, T.tailRadius, T.tailRadius * 1.02, tinted(STEEL, seed, 14), aged(seed, 15, 0.2)) },

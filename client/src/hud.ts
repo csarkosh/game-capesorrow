@@ -7,7 +7,8 @@
  */
 import { lineIcon } from "@csarkosh/engine/game/icons";
 import type { PageHud } from "@csarkosh/engine/game/sessionGame";
-import { PAUSE_LABEL } from "./game/words.js";
+import { MAP_BUTTON_LABEL, PAUSE_LABEL } from "./game/words.js";
+import { WATCH_SEEN, toggleWatch } from "./game/hand/watchSeen.js";
 import type { MapFrame } from "./game/map/mapFeed.js";
 import { createMinimap } from "./game/map/minimap.js";
 
@@ -26,7 +27,7 @@ const STYLE = `
 /* The lamp's hint and the Pause button are Day Hike's (game-dayhike client/src/game/hud.ts), to the pixel: the rules are repeated here, not shared. */
 /* The lamp's hint, for a keyboard: the lamp's icon and its key, at the bottom left corner (the map and the roster sit at the right), as faint as the touch controls sit and lit with the lamp. Hidden by default: the touch layer has its own button. */
 .walk-hud .lamp {
-  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   display: none; align-items: center; gap: 8px; padding: 6px 10px 6px 8px;
   color: #fff; background: rgba(16, 16, 20, 0.72); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 22px;
   font: 500 13px/1 system-ui, sans-serif; opacity: 0.35; transition: opacity 300ms ease-out, box-shadow 300ms ease-out;
@@ -34,11 +35,24 @@ const STYLE = `
 .walk-hud .lamp.shown { display: flex; }
 .walk-hud .lamp.lit { opacity: 1; box-shadow: 0 0 0 1px #ffd24d; }
 .walk-hud .lamp svg { width: 22px; height: 22px; display: block; }
-.walk-hud .lamp .key, .walk-hud .pause .key {
+.walk-hud .lamp .key, .walk-hud .pause .key, .walk-hud .mapbtn .key {
   display: inline-block; min-width: 1.4em; padding: 3px 5px; text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.45); border-bottom-width: 2px; border-radius: 4px;
   font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.04em;
 }
+/* The map button, under the lamp's hint at the same gap as the Pause button is under the mute (10 px): the watch's switch, lit with the same yellow ring while the watch is on. It is a button on every screen: on a touch screen it stands over the touch layer's own lamp button. */
+.walk-hud .mapbtn {
+  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: none; align-items: center; gap: 8px; padding: 6px 10px 6px 8px; pointer-events: auto; cursor: pointer;
+  color: #fff; background: rgba(16, 16, 20, 0.72); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 22px;
+  font: 500 13px/1 system-ui, sans-serif; opacity: 0.35; transition: opacity 300ms ease-out, box-shadow 300ms ease-out;
+}
+.walk-hud .mapbtn.shown { display: flex; }
+.walk-hud .mapbtn.lit { opacity: 1; box-shadow: 0 0 0 1px #ffd24d; }
+.walk-hud .mapbtn:hover, .walk-hud .mapbtn:focus-visible { opacity: 1; }
+.walk-hud .mapbtn:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.7); outline-offset: 3px; }
+.walk-hud .mapbtn svg { width: 22px; height: 22px; display: block; }
+.walk-hud .mapbtn.touch { bottom: calc(208px + env(safe-area-inset-bottom, 0px)); }
 /* The Pause button, for a keyboard: the bars and the key that pauses, at the top left corner where the touch layer's own Pause sits; the page's mute sits over it. As faint as the lamp's hint, up under the pointer and on focus, and pressed it pauses as the key does. Hidden by default. */
 .walk-hud .pause {
   /* Under the mute button, 44px tall at 14px from the corner. */
@@ -83,7 +97,7 @@ export type LampKind = "lamp" | "headlights";
  * The car's headlights as a line icon, in the strokes of the engine's (`lineIcon`: 24 units, 1.6 wide, round ends and joins): the lamp's
  * housing, a D, and three beams leaving it.
  */
-export function headlightIcon(): SVGSVGElement {
+function lineIconOf(paths: readonly string[]): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
@@ -93,12 +107,21 @@ export function headlightIcon(): SVGSVGElement {
   svg.setAttribute("stroke-width", "1.6");
   svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("stroke-linecap", "round");
-  for (const d of ["M3.5 7.5h5.5a4.5 4.5 0 0 1 0 9H3.5z", "M15.5 8.5l5-2", "M16 12h5", "M15.5 15.5l5 2"]) {
+  for (const d of paths) {
     const path = document.createElementNS(ns, "path");
     path.setAttribute("d", d);
     svg.append(path);
   }
   return svg;
+}
+
+export function headlightIcon(): SVGSVGElement {
+  return lineIconOf(["M3.5 7.5h5.5a4.5 4.5 0 0 1 0 9H3.5z", "M15.5 8.5l5-2", "M16 12h5", "M15.5 15.5l5 2"]);
+}
+
+/** A folded map as a line icon, in the same strokes: three panels, and the two folds. */
+export function mapIcon(): SVGSVGElement {
+  return lineIconOf(["M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z", "M9 4.5v13", "M15 6.5v13"]);
 }
 
 /** A line of status alone, for a start's waits and its failure. */
@@ -108,7 +131,7 @@ export function createStatusLine(container: HTMLElement): { setStatus(line: stri
 }
 
 /** The lamp's hint and the Pause button, as Day Hike's HUD makes them: the button's click is the hook's. */
-function makeControls(hooks: { onPause(): void }): { lamp: HTMLElement; lampKey: HTMLElement; pause: HTMLElement; pauseKey: HTMLElement } {
+function makeControls(hooks: { onPause(): void }): { lamp: HTMLElement; lampKey: HTMLElement; pause: HTMLElement; pauseKey: HTMLElement; mapBtn: HTMLElement } {
   const lamp = document.createElement("div");
   lamp.className = "lamp";
   lamp.setAttribute("aria-hidden", "true");
@@ -122,7 +145,16 @@ function makeControls(hooks: { onPause(): void }): { lamp: HTMLElement; lampKey:
   pauseKey.className = "key";
   pause.append(lineIcon("pause"), pauseKey);
   pause.addEventListener("click", () => hooks.onPause());
-  return { lamp, lampKey, pause, pauseKey };
+  const mapBtn = document.createElement("button");
+  mapBtn.type = "button";
+  mapBtn.className = "mapbtn";
+  mapBtn.setAttribute("aria-label", MAP_BUTTON_LABEL);
+  const mapKey = document.createElement("span");
+  mapKey.className = "key";
+  mapKey.textContent = "M";
+  mapBtn.append(mapIcon(), mapKey);
+  mapBtn.addEventListener("click", () => toggleWatch());
+  return { lamp, lampKey, pause, pauseKey, mapBtn };
 }
 
 export function createWalkHud(container: HTMLElement, hooks: { onPause(): void } | null): WalkHud {
@@ -160,7 +192,7 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
   speech.className = "speech";
   // The lamp's hint and the Pause button: the game's own HUD has them (a status line alone has none).
   const controls = hooks === null ? null : makeControls(hooks);
-  root.append(cover, speech, status, flash, prompt, ...(controls === null ? [] : [controls.lamp, controls.pause]));
+  root.append(cover, speech, status, flash, prompt, ...(controls === null ? [] : [controls.lamp, controls.mapBtn, controls.pause]));
   container.append(style, root);
   // The map in the corner: only the game's own HUD has one (a status line alone has none), and only where there is a page to put it on.
   const map = hooks === null || typeof window === "undefined" ? null : createMinimap(container, hooks);
@@ -205,6 +237,12 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
     },
     setMap(frame) {
       map?.frame(frame);
+      if (controls !== null) {
+        // The map button is there while there is a player to wear the watch; lit while the watch is on; on a touch screen it stands over the touch layer's lamp button.
+        controls.mapBtn.classList.toggle("shown", frame !== null);
+        controls.mapBtn.classList.toggle("lit", WATCH_SEEN.on);
+        controls.mapBtn.classList.toggle("touch", frame?.touch === true);
+      }
     },
     setDark(dark) {
       cover.style.transition = `opacity ${dark ? DARK_MS : CLEAR_MS}ms ease`;

@@ -30,7 +30,7 @@ const GRIP = TORCH.gripRadius;
 const FINGER_R = 0.0106;
 const RING = GRIP + FINGER_R * 0.92;
 /** Where the first finger stands behind the lens, the gap between fingers, and each finger's reach (its share of the turn) and thickness, first to last. */
-const FIRST = 0.1435, GAP = 0.015;
+const FIRST = 0.1495, GAP = 0.015;
 const REACH = [1, 1.04, 1, 0.84] as const;
 const THICK = [1, 1.04, 1, 0.86] as const;
 /** The angles of a finger's knuckle and its tip as it wraps: over the right of the barrel, under it and up the left. */
@@ -43,24 +43,24 @@ const COAT: Rgb = [0.05, 0.056, 0.036];
 const COAT_CUFF: Rgb = [0.034, 0.038, 0.026];
 const COAT_EDGE: Rgb = [0.075, 0.08, 0.05];
 const HORN: Rgb = [0.03, 0.022, 0.016];
-const BUCKLE: Rgb = [0.2, 0.2, 0.21];
+const BUCKLE: Rgb = [0.045, 0.045, 0.05];
 
 const LEATHER_MAT: MatSpec = { mat: "rubber", scale: 6 };
 
 /** The knuckle where the back of the hand meets the fingers, and the way the back runs to the wrist; the wrist; and the forearm's direction from it toward the elbow. */
 const KNUCKLE: Vec3 = [RING * Math.cos(KNUCKLE_A), RING * Math.sin(KNUCKLE_A), -(FIRST + GAP * 1.5)];
-const BACK_DIR = unit([0.95, -0.12, -0.3]);
+const BACK_DIR = unit([0.8, -0.12, -0.58]);
 const BACK_LENGTH = 0.092;
 export const WRIST: Vec3 = along(KNUCKLE, BACK_DIR, BACK_LENGTH);
 /**
  * The forearm runs on from the back of the hand, down and back. The torch is held rolled a quarter turn and more (`HOLD_ROLL`, `handPose.ts`), so the torch frame's +x is
  * about the view's down, and the arm leaves toward the lower right.
  */
-export const FOREARM: Vec3 = unit([0.43, -0.83, -0.4]);
+export const FOREARM: Vec3 = unit([-0.36, -0.32, -0.88]);
 
 const cloth = (seed: number): MatSpec => ({ mat: "cloth", scale: 5, wear: 0.06 + hash01(seed, 62) * 0.06, wearKind: "grime" });
 const forearmAt = (k: number): Vec3 => along(WRIST, FOREARM, k);
-const sleeveR = (k: number): number => 0.0485 + ((0.064 - 0.0485) * (k - 0.09)) / (0.35 - 0.09);
+const sleeveR = (k: number): number => 0.0485 + ((0.085 - 0.0485) * (k - 0.09)) / (0.6 - 0.09);
 
 /** A finger: one tube, a soft knuckle, two soft joints, a rounded tip, round the barrel at its place along the grip. */
 export function finger(b: MeshBuilder, i: number): void {
@@ -77,7 +77,8 @@ export function finger(b: MeshBuilder, i: number): void {
     r *= 1 + 0.06 * Math.exp(-(((t - 0.34) / 0.05) ** 2)) + 0.05 * Math.exp(-(((t - 0.68) / 0.05) ** 2));
     if (t > 0.9) r *= Math.sqrt(Math.max(0.16, 1 - ((t - 0.9) / 0.1) ** 2));
     // The arm of the turn drifts a little toward the tail as it goes round, as a hand's does.
-    sections.push({ c: [RING * Math.cos(a), RING * Math.sin(a), z - 0.0015 * t], rx: r, ry: r });
+    // Wider across the row than thick, so that the neighbouring fingers press into each other and read as one gloved fist, not four balls.
+    sections.push({ c: [RING * Math.cos(a), RING * Math.sin(a), z - 0.0015 * t], rx: r * 1.42, ry: r * 0.92 });
   }
   loft(b, sections, 9, LEATHER, LEATHER_MAT, [0, 0, 1]);
 }
@@ -103,7 +104,7 @@ export function backOfHand(b: MeshBuilder): void {
     const c = along(KNUCKLE, BACK_DIR, BACK_LENGTH * t);
     // Across (along the torch): the knuckles are the widest, the wrist narrower. Thickness: full over the middle.
     const rx = 0.0385 - 0.0095 * t * t;
-    const ry = 0.0125 + 0.0065 * Math.sin(Math.PI * Math.min(1, t * 1.15));
+    const ry = 0.0125 + 0.0065 * Math.sin(Math.PI * Math.min(1, t * 1.15)) + 0.012 * t * t * t;
     sections.push({ c, rx, ry });
   }
   // The first section is the knuckle line: drawn in a little, so the fingers' roots stand out of it.
@@ -135,7 +136,7 @@ export function buckle(b: MeshBuilder): void {
   const centre = along(along(forearmAt(0.0245), out, 0.0345), [0, 0, 1], 0.004);
   const ax = out;
   const az = unit(cross(ax, f));
-  bevelBox(b, centre, ax, f, az, [0.0028, 0.0075, 0.0095], 0.0012, BUCKLE, BUCKLE, "steel");
+  bevelBox(b, centre, ax, f, az, [0.002, 0.0045, 0.0055], 0.0008, BUCKLE, BUCKLE, "steel");
 }
 
 /** The seam down the back of the hand: a thin ridge of the same leather, a shade darker, on the back's top. */
@@ -145,7 +146,7 @@ export function handSeam(b: MeshBuilder): void {
   const out: Vec3 = nrm[1] < 0 ? [-nrm[0], -nrm[1], -nrm[2]] : nrm;
   for (let k = 0; k < 4; k++) {
     const t = 0.16 + 0.7 * (k / 3);
-    const ry = 0.0125 + 0.0065 * Math.sin(Math.PI * Math.min(1, t * 1.15));
+    const ry = 0.0125 + 0.0065 * Math.sin(Math.PI * Math.min(1, t * 1.15)) + 0.012 * t * t * t;
     sections.push({ c: along(along(KNUCKLE, BACK_DIR, BACK_LENGTH * t), out, ry * 0.97), rx: 0.0016, ry: 0.0012 });
   }
   loft(b, sections, 5, LEATHER_SEAM, LEATHER_MAT, [0, 0, 1]);
@@ -161,7 +162,7 @@ export function cuff(b: MeshBuilder, seed: number): void {
 
 /** The sleeve, flaring from the cuff toward the elbow. */
 export function sleeveTube(b: MeshBuilder, seed: number): void {
-  const sections: Section[] = [0.09, 0.15, 0.22, 0.29, 0.35].map((k) => ({ c: forearmAt(k), rx: sleeveR(k), ry: sleeveR(k) }));
+  const sections: Section[] = [0.09, 0.2, 0.32, 0.45, 0.6].map((k) => ({ c: forearmAt(k), rx: sleeveR(k), ry: sleeveR(k) }));
   loft(b, sections, 16, COAT, cloth(seed), [0, 0, 1]);
 }
 
@@ -175,7 +176,7 @@ function radial(want: Vec3): Vec3 {
 /** The seam: a thin ridge down the side of the sleeve that faces up (the view's up: the torch's -x with its roll), so it is seen. */
 export function seam(b: MeshBuilder, seed: number): void {
   const rd = radial([-0.9, -0.2, -0.3]);
-  const sections: Section[] = [0.1, 0.16, 0.22, 0.28, 0.34].map((k) => ({ c: along(forearmAt(k), rd, sleeveR(k) * 0.985), rx: 0.0026, ry: 0.0022 }));
+  const sections: Section[] = [0.1, 0.22, 0.34, 0.46, 0.58].map((k) => ({ c: along(forearmAt(k), rd, sleeveR(k) * 0.985), rx: 0.0026, ry: 0.0022 }));
   loft(b, sections, 5, [0.03, 0.034, 0.022], cloth(seed), [0, 0, 1]);
 }
 

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
-import { FOV, holdFor, newHandPose, newHandState, stepHand, torchBasis, type HandInput } from "../../src/game/hand/handPose.js";
+import { FOV, HAND_SCALE, holdFor, newHandPose, newHandState, stepHand, torchBasis, type HandInput } from "../../src/game/hand/handPose.js";
 
-type Mesh = { name: string; position: { set(x: number, y: number, z: number): void }; rotationQuaternion: { x: number; y: number; z: number; w: number }; visible: boolean };
+type Mesh = { name: string; position: { set(x: number, y: number, z: number): void }; scaling: { set(x: number, y: number, z: number): void }; rotationQuaternion: { x: number; y: number; z: number; w: number }; visible: boolean };
 const meshes: Mesh[] = [];
 const visibleLog: boolean[] = [];
 
@@ -15,7 +15,7 @@ vi.mock("@babylonjs/lite", () => ({
     visibleLog.push(v);
   },
   createMeshFromData: (_e: unknown, name: string) => {
-    const m: Mesh = { name, position: { set: () => undefined }, rotationQuaternion: { x: 0, y: 0, z: 0, w: 1 }, visible: true };
+    const m: Mesh = { name, position: { set: () => undefined }, scaling: { set: () => undefined }, rotationQuaternion: { x: 0, y: 0, z: 0, w: 1 }, visible: true };
     meshes.push(m);
     return m;
   },
@@ -30,7 +30,7 @@ function onScreen(aspect: number, pose: ReturnType<typeof newHandPose>, position
   const W = H * aspect;
   const f = H / 2 / Math.tan(FOV / 2);
   const b = new Float64Array(9);
-  torchBasis(restAxes(), pose, b);
+  torchBasis(restAxes(), pose, b, HAND_SCALE);
   const at = (k: number): number[] => {
     const px = positions[k * 3] as number, py = positions[k * 3 + 1] as number, pz = positions[k * 3 + 2] as number;
     return [pose.x + b[0]! * px + b[3]! * py + b[6]! * pz, pose.y + b[1]! * px + b[4]! * py + b[7]! * pz, pose.z + b[2]! * px + b[5]! * py + b[8]! * pz];

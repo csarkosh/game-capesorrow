@@ -60,3 +60,6 @@ export const MAP_OFFICE_NAME = "The municipal building";
 
 /** The Pause button's label for a screen reader. */
 export const PAUSE_LABEL = "Pause";
+
+/** The map button's label for a screen reader: it puts the watch on and takes it off. */
+export const MAP_BUTTON_LABEL = "Map";

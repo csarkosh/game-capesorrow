@@ -3,8 +3,10 @@ import { MeshBuilder, isUnbacked } from "../../src/game/town/meshBuilder.js";
 import { flashlightGeometry, lensGlowGeometry, torchSolids, TORCH } from "../../src/game/hand/flashlightGeometry.js";
 import { handSolids } from "../../src/game/hand/handGeometry.js";
 import { handArrays } from "../../src/game/hand/handParts.js";
-import { HOLD, NEAREST, newHandPose, newHandState, stepHand, torchBasis } from "../../src/game/hand/handPose.js";
+import { HAND_SCALE, HOLD, NEAREST, newHandPose, newHandState, stepHand, torchBasis } from "../../src/game/hand/handPose.js";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
+import { HAND_AHEAD_UNITS } from "../../src/game/hand/handParts.js";
+import { TORCH_ANGLE } from "../../src/game/hand/handLight.js";
 import { packedBytes } from "../../src/game/town/vertexPack.js";
 
 /** Whether a mesh is closed: every edge of every triangle is met by the same edge the other way, as many times. */
@@ -72,14 +74,14 @@ describe("the hand's and the torch's geometry", () => {
     expect(TORCH.ringRadius).toBeGreaterThan(TORCH.gripRadius * 1.2);
   });
 
-  it("keeps the hand and the sleeve in a box of the lower right: within 55 cm of the lens, and none of it in front of the lens", () => {
+  it("keeps the hand and the sleeve in a box of the lower right: within 85 cm of the lens, and none of it in front of the lens", () => {
     let zhi = -Infinity, far = 0;
     for (let i = 0; i < body.positions.length; i += 3) {
       zhi = Math.max(zhi, body.positions[i + 2] as number);
       far = Math.max(far, Math.hypot(body.positions[i] as number, body.positions[i + 1] as number, body.positions[i + 2] as number));
     }
     expect(zhi).toBeLessThanOrEqual(0.001);
-    expect(far).toBeLessThan(0.55);
+    expect(far).toBeLessThan(0.85);
   });
 
   it("is made of closed solids: every solid of the torch and of the hand has every edge met", () => {
@@ -108,6 +110,36 @@ describe("the hand's and the torch's geometry", () => {
     expect(-TORCH.shoulderEnd - front).toBeGreaterThanOrEqual(0.05);
     expect(front).toBeLessThan(-TORCH.ringEnd);
     expect(back).toBeGreaterThan(-TORCH.tailEnd);
+  });
+
+  it("does not light its own head: no vertex of the torch that is inside the beam's cone faces the lens, and the arms' depth shift keeps every arm point inside the buffer", () => {
+    const state = newHandState();
+    const pose = newHandPose();
+    for (let i = 0; i < 120; i++) stepHand(state, { dt: 1 / 60, want: true, hidden: false, speed: 0, sprinting: false, yaw: 0, pitch: 0, clear: 1, aspect: 1.6 }, pose);
+    const axes = restAxes();
+    const b = new Float64Array(9);
+    torchBasis(axes, pose, b, HAND_SCALE);
+    const half = TORCH_ANGLE / 2;
+    const arrays = new MeshBuilder();
+    flashlightGeometry(arrays);
+    const a = arrays.take();
+    let lit = 0;
+    for (let k = 0; k < a.positions.length / 3; k++) {
+      const px = a.positions[k * 3] as number, py = a.positions[k * 3 + 1] as number, pz = a.positions[k * 3 + 2] as number;
+      const w = [b[0]! * px + b[3]! * py + b[6]! * pz, b[1]! * px + b[4]! * py + b[7]! * pz, b[2]! * px + b[5]! * py + b[8]! * pz];
+      const d = Math.hypot(w[0]!, w[1]!, w[2]!);
+      if (d < 1e-6) continue;
+      const cosCone = (w[0]! * pose.ax + w[1]! * pose.ay + w[2]! * pose.az) / d;
+      if (cosCone < Math.cos(half)) continue;
+      // The normal in the camera's frame, and whether it faces the lens (toward the origin of the offset).
+      const nx = a.normals[k * 3] as number, ny = a.normals[k * 3 + 1] as number, nz = a.normals[k * 3 + 2] as number;
+      const n = [(b[0]! * nx + b[3]! * ny + b[6]! * nz) / HAND_SCALE, (b[1]! * nx + b[4]! * ny + b[7]! * nz) / HAND_SCALE, (b[2]! * nx + b[5]! * ny + b[8]! * nz) / HAND_SCALE];
+      if (-(n[0]! * w[0]! + n[1]! * w[1]! + n[2]! * w[2]!) / d > 0.05) lit++;
+    }
+    expect(lit).toBe(0);
+    // The depth shift: the nearest an arm point can be is NEAREST from the eye, whose depth under the near plane's 0.05 is 0.357; shifted it must stay under 1.
+    expect(0.05 / NEAREST + HAND_AHEAD_UNITS / 2 ** 24).toBeLessThan(1);
+    expect(0.05 / 0.6 + HAND_AHEAD_UNITS / 2 ** 24).toBeGreaterThan(0.45);
   });
 
   it("is made of closed solids in the torch too: every part of it, laid alone, has every edge met", () => {
@@ -150,7 +182,7 @@ describe("the hand's and the torch's geometry", () => {
     const b = new Float64Array(9);
     let nearest = Infinity;
     const lookAt = (): void => {
-      torchBasis(axes, pose, b);
+      torchBasis(axes, pose, b, HAND_SCALE);
       for (let i = 0; i < body.positions.length; i += 3) {
         const px = body.positions[i] as number, py = body.positions[i + 1] as number, pz = body.positions[i + 2] as number;
         // The vertex in the camera's frame (the camera looks along +z, the axes are the rest axes).

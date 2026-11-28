@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StandInElement, asHtml, installStandInDom } from "@csarkosh/engine/testing/standInDom";
 import { createWalkHud } from "../../src/hud.js";
-import { PAUSE_LABEL } from "../../src/game/words.js";
+import { MAP_BUTTON_LABEL, PAUSE_LABEL } from "../../src/game/words.js";
+import { WATCH_SEEN, resetWatch } from "../../src/game/hand/watchSeen.js";
+import type { MapFrame } from "../../src/game/map/mapFeed.js";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  resetWatch();
+});
 
 const made = (hooks: { onPause(): void } | null = null): { container: StandInElement; hud: ReturnType<typeof createWalkHud> } => {
   const doc = installStandInDom();
@@ -60,7 +66,7 @@ describe("the HUD's lamp hint, as Day Hike's is", () => {
   it("sits at the bottom left, lit with the lamp, in Day Hike's rules", () => {
     const { container, hud } = made({ onPause: () => undefined });
     const css = (container.children[0] as StandInElement).textContent;
-    expect(css).toContain("bottom: calc(14px + env(safe-area-inset-bottom, 0px))");
+    expect(css).toContain("bottom: calc(60px + env(safe-area-inset-bottom, 0px))");
     expect(css).toMatch(/\.walk-hud \.lamp \{[^}]*padding: 6px 10px 6px 8px[^}]*border-radius: 22px[^}]*opacity: 0\.35/);
     expect(css).toContain(".walk-hud .lamp.lit { opacity: 1; box-shadow: 0 0 0 1px #ffd24d; }");
     hud.dispose();
@@ -110,6 +116,66 @@ describe("the HUD's lamp hint, as Day Hike's is", () => {
     expect(lamp.querySelector("span.key")?.textContent).toBe("F");
     hud.setLampKind("lamp");
     expect(lamp.querySelector("svg")).toBe(torch);
+    hud.dispose();
+  });
+});
+
+describe("the HUD's map button", () => {
+  const frame = (over: Partial<MapFrame> = {}): MapFrame => ({ seed: 1, x: 0, z: 0, heading: 0, driving: false, place: 0, hour: 12, engaged: true, touch: false, rtt: null, ...over });
+
+  it("stands under the lamp's hint with the same gap as the Pause button is under the mute, with a map icon and an M key cap", () => {
+    const { container, hud } = made({ onPause: () => undefined });
+    const css = (container.children[0] as StandInElement).textContent;
+    // The button at 14 px from the bottom, 36 px tall; the lamp's hint 10 px above it.
+    expect(css).toMatch(/\.walk-hud \.mapbtn \{[^}]*bottom: calc\(14px \+ env\(safe-area-inset-bottom, 0px\)\)[^}]*padding: 6px 10px 6px 8px[^}]*border-radius: 22px[^}]*opacity: 0\.35/);
+    expect(14 + 36 + 10).toBe(60);
+    const btn = container.querySelector("button.mapbtn") as StandInElement;
+    expect(btn.getAttribute("aria-label")).toBe(MAP_BUTTON_LABEL);
+    expect(btn.querySelector("span.key")?.textContent).toBe("M");
+    expect(btn.querySelector("svg")?.querySelectorAll("path")).toHaveLength(3);
+    // The lamp's hint comes before it, so that it is above it in the column.
+    const root = container.children[1] as StandInElement;
+    const order = root.children.map((c) => c.className);
+    expect(order.indexOf("lamp")).toBeLessThan(order.indexOf("mapbtn"));
+    hud.dispose();
+  });
+
+  it("shows with a player, is lit with the yellow ring while the watch is on, and goes when there is none", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { container, hud } = made({ onPause: () => undefined });
+    const btn = container.querySelector("button.mapbtn") as StandInElement;
+    expect(btn.classList.contains("shown")).toBe(false);
+    hud.setMap(frame());
+    expect(btn.classList.contains("shown")).toBe(true);
+    expect(btn.classList.contains("lit")).toBe(false);
+    WATCH_SEEN.on = true;
+    hud.setMap(frame());
+    expect(btn.classList.contains("lit")).toBe(true);
+    expect((container.children[0] as StandInElement).textContent).toContain(".walk-hud .mapbtn.lit { opacity: 1; box-shadow: 0 0 0 1px #ffd24d; }");
+    hud.setMap(null);
+    expect(btn.classList.contains("shown")).toBe(false);
+    hud.dispose();
+  });
+
+  it("flips the watch's switch when pressed, and on a touch screen stands over the touch layer's lamp button", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { container, hud } = made({ onPause: () => undefined });
+    const btn = container.querySelector("button.mapbtn") as StandInElement;
+    hud.setMap(frame());
+    btn.click();
+    expect(WATCH_SEEN.on).toBe(true);
+    btn.click();
+    expect(WATCH_SEEN.on).toBe(false);
+    expect(btn.classList.contains("touch")).toBe(false);
+    hud.setMap(frame({ touch: true }));
+    expect(btn.classList.contains("touch")).toBe(true);
+    expect((container.children[0] as StandInElement).textContent).toContain("bottom: calc(208px + env(safe-area-inset-bottom, 0px))");
+    hud.dispose();
+  });
+
+  it("is no part of a status line alone", () => {
+    const { container, hud } = made(null);
+    expect(container.querySelector("button.mapbtn")).toBeNull();
     hud.dispose();
   });
 });

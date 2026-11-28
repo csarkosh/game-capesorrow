@@ -175,7 +175,8 @@ describe("drawing the map", () => {
 describe("pins on the border", () => {
   it("are slid apart along it, and where there is no room the farther loses its label", async () => {
     const { placeSpots } = await import("../../src/game/map/mapMarks.js");
-    const out: { x: number; y: number; border: boolean; label: boolean }[] = [];
+    type Spot = import("../../src/game/map/mapMarks.js").Spot;
+    const out: Spot[] = [];
     // Three places straight east and a little apart, far off the right edge of a 220 px view whose mark is at its middle.
     placeSpots(220, 220, 110, 110, [{ x: 900, y: 110 }, { x: 900, y: 115 }, { x: 900, y: 118 }], out);
     expect(out.every((s) => s.border)).toBe(true);

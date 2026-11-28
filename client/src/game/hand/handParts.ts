@@ -24,10 +24,18 @@ import { TORCH_COLOUR } from "./handLight.js";
 import { lightTorch, newTorchState } from "./handLight.js";
 import { flashlightGeometry, lensGlowGeometry } from "./flashlightGeometry.js";
 import { handGeometry } from "./handGeometry.js";
-import { basisQuaternion, clearAhead, handHidden, lensWorld, newHandPose, newHandState, stepHand, torchBasis, type HandPose } from "./handPose.js";
+import { HAND_SCALE, handScaleFor, basisQuaternion, clearAhead, handHidden, lensWorld, newHandPose, newHandState, stepHand, torchBasis, type HandPose } from "./handPose.js";
 import { HAND_SWITCH, handWanted, torchLit } from "./handSwitch.js";
 
 export { TORCH_ANGLE, TORCH_COLOUR, TORCH_GAIN, TORCH_RANGE } from "./handLight.js";
+/**
+ * How far toward the eye, in steps of the 24-bit depth buffer (the engine's `ahead`: depth runs from 1 at the near plane to 0 far away, so a shift of `n / 2^24` is `n` steps up),
+ * both arms are drawn: 0.4 of the buffer's range. A first person arm held out 0.3 to 0.5 m is a depth of 0.1 to 0.2 (the near plane's 0.05 over its distance); shifted by 0.4 it
+ * is 0.5 to 0.6, which no wall seen from a body's length off reaches (a wall at 0.1 m is 0.5), so the arms are never sunk into a wall that the player stands against. Their own
+ * order is kept (the shift is the same for every point). It is a vertex-stage shift of the town's `ahead` plugin, written at the material (`townParts.ts`). Set it to 0 to take it off.
+ */
+export const HAND_AHEAD_UNITS = Math.round(0.4 * 2 ** 24);
+
 /** The beam as the rooms' own-lit surfaces take it (`FLASH_CODE`): the cone's half angle (radians) and its range (metres), and the strength it is added with. */
 export const FLASH_HALF_ANGLE = 0.45;
 export const FLASH_RANGE = 14;
@@ -94,31 +102,37 @@ export function handArrays(seed = 1): { body: MeshArrays; lens: MeshArrays } {
   return { body: body.take(), lens: lens.take() };
 }
 
+/**
+ * Makes one of the hand's meshes: packed as the town's are, drawn with the host's material among the opaque draws, in the scene and hidden until a frame shows it, `scale`
+ * times life size about its origin (larger than life on purpose: see `HAND_SCALE`). Its bounds are the arrays' own.
+ */
+export function makeHandMesh(host: HandHost, name: string, a: MeshArrays, scale: number): Mesh {
+  const mesh = createPackedMesh(host.engine, name, a);
+  if (host.textured) mesh.pluginVertexData = packSurface(a.surface);
+  mesh.material = host.material;
+  mesh.renderOrder = host.order;
+  mesh.scaling.set(scale, scale, scale);
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < a.positions.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k] as number, a.positions[i + k] as number);
+      hi[k] = Math.max(hi[k] as number, a.positions[i + k] as number);
+    }
+  }
+  mesh.boundMin = lo as [number, number, number];
+  mesh.boundMax = hi as [number, number, number];
+  addToScene(host.scene, mesh);
+  setMeshVisible(mesh, false);
+  host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
+  host.uploads.made();
+  return mesh;
+}
+
 export function createHandParts(host: HandHost): HandParts {
   const arrays = handArrays();
-  const make = (name: string, a: MeshArrays): Mesh => {
-    const mesh = createPackedMesh(host.engine, name, a);
-    if (host.textured) mesh.pluginVertexData = packSurface(a.surface);
-    mesh.material = host.material;
-    mesh.renderOrder = host.order;
-    const lo = [Infinity, Infinity, Infinity];
-    const hi = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < a.positions.length; i += 3) {
-      for (let k = 0; k < 3; k++) {
-        lo[k] = Math.min(lo[k] as number, a.positions[i + k] as number);
-        hi[k] = Math.max(hi[k] as number, a.positions[i + k] as number);
-      }
-    }
-    mesh.boundMin = lo as [number, number, number];
-    mesh.boundMax = hi as [number, number, number];
-    addToScene(host.scene, mesh);
-    setMeshVisible(mesh, false);
-    host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
-    host.uploads.made();
-    return mesh;
-  };
-  const body = make("hand_torch", arrays.body);
-  const lens = make("hand_lens", arrays.lens);
+  const body = makeHandMesh(host, "hand_torch", arrays.body, HAND_SCALE);
+  const lens = makeHandMesh(host, "hand_lens", arrays.lens, HAND_SCALE);
   const cost = {
     vertices: arrays.body.positions.length / 3 + arrays.lens.positions.length / 3,
     bytes: packedBytes(arrays.body.positions.length / 3, arrays.body.indices.length, arrays.body.surface.byteLength) + packedBytes(arrays.lens.positions.length / 3, arrays.lens.indices.length, arrays.lens.surface.byteLength),
@@ -184,8 +198,10 @@ export function createHandParts(host: HandHost): HandParts {
       lensWorld(f.eye.x, f.eye.y, f.eye.z, f.axes, pose, place);
       torchBasis(f.axes, pose, basis);
       basisQuaternion(basis, quat);
+      const size = handScaleFor(f.aspect);
       for (const mesh of [body, lens]) {
         mesh.position.set(place.x, place.y, place.z);
+        if (mesh.scaling.x !== size) mesh.scaling.set(size, size, size);
         mesh.rotationQuaternion.x = quat[0] as number;
         mesh.rotationQuaternion.y = quat[1] as number;
         mesh.rotationQuaternion.z = quat[2] as number;

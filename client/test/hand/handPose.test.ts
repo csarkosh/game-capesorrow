@@ -58,7 +58,7 @@ describe("the hand's rise and fall", () => {
 });
 
 describe("the hold", () => {
-  it("stands the torch's head where the screen says, whatever the window's shape: 52 percent across and 64 percent down", () => {
+  it("stands the torch's head where the screen says, whatever the window's shape: 54 percent across and 50 percent down", () => {
     for (const aspect of [1.25, 1.6, 16 / 9, 2.1]) {
       const state = newHandState();
       const pose = newHandPose();
@@ -70,7 +70,7 @@ describe("the hold", () => {
       expect(down).toBeCloseTo(HOLD_SCREEN.y, 1);
     }
     expect(holdFor(1.6).z).toBeCloseTo(HOLD_DEPTH, 6);
-    expect(HOLD_DEPTH).toBeCloseTo(0.45, 6);
+    expect(HOLD_DEPTH).toBeCloseTo(0.55, 6);
   });
 
   it("tilts the torch down so that the middle of its beam lands on the ground a few metres ahead of a hand 1.5 m up", () => {

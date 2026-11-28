@@ -19,9 +19,9 @@ describe("the party while playing and while paused", () => {
     for (const m of PARTY_CSS.matchAll(/\.roster(?:\.|\s+\.)([a-z]+)/g)) expect(roster, m[1]).toContain(m[1] as string);
   });
 
-  it("restyles the subdued roster to bare rows over the map, at half strength, with no heading, invite, panel or border, and the full one to the left while the map is large", () => {
+  it("restyles the subdued roster to bare rows at the top right corner, at half strength, with no heading, invite, panel or border, and the full one to the left while the map is large", () => {
     expect(CSS).toContain(PARTY_CSS);
-    expect(PARTY_CSS).toMatch(/body \.roster\.subdued \{[^}]*bottom: var\(--cape-party-bottom[^}]*background: none; border: none[^}]*box-shadow: none[^}]*opacity: 0\.55/);
+    expect(PARTY_CSS).toMatch(/body \.roster\.subdued \{[^}]*top: calc\(12px[^}]*bottom: auto[^}]*background: none; border: none[^}]*box-shadow: none[^}]*opacity: 0\.55/);
     expect(PARTY_CSS).toMatch(/\.roster\.subdued \.head, [^{]*\.invite[^{]*\{ display: none; \}/);
     expect(PARTY_CSS).toMatch(/\.roster\.subdued li \{[^}]*text-shadow/);
     expect(PARTY_CSS).toContain("body.capemap-open .roster:not(.subdued):not(.hidden) { left: 12px; right: auto; bottom: 12px; }");
@@ -58,7 +58,7 @@ describe("the party while playing and while paused", () => {
     expect(rows[0]!.querySelectorAll("span.link")).toHaveLength(1);
     // A roster that is not there (a build with no server) is nothing to do.
     const none = createParty({ querySelector: () => null, documentElement: undefined } as unknown as Document);
-    expect(() => { none.update(10, 1); none.place(10, 10); none.dispose(); }).not.toThrow();
+    expect(() => { none.update(10, 1); none.dispose(); }).not.toThrow();
     party.dispose();
   });
 });

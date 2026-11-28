@@ -23,6 +23,9 @@ import { CAR_RETURNED, GET_IN, GET_OUT, HOST_PUTS_IN, HOST_RETURNS_CAR, NO_ROOM_
 import { captionsShown } from "../town/speech.js";
 import { HAND_SWITCH, pressLamp, resetHand, sayHand } from "../hand/handSwitch.js";
 import { createTorchKey, type TorchKeyTarget } from "../hand/torchKey.js";
+import { createWatchKeys, realPage, type WatchKeyTarget } from "../hand/watchKey.js";
+import { sayWatch } from "../hand/watchCommand.js";
+import { resetWatch } from "../hand/watchSeen.js";
 import { askMap } from "../map/mapCommand.js";
 import { mapFrameFor } from "../map/mapFeed.js";
 
@@ -159,6 +162,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   // Whether the local player is on foot as of the last frame, and F's own listener (`../hand/torchKey.ts`): F flips the torch, from the keyboard and from nothing else.
   let onFootNow = true;
   const undoTorchKey = createTorchKey(typeof window === "undefined" ? null : (window as unknown as TorchKeyTarget), () => typeof document !== "undefined" && document.pointerLockElement !== null, () => onFootNow);
+  // M flips the watch and N is the sound (`../hand/watchKey.ts`: a stopgap until the engine lets a game choose the mute's key).
+  const undoWatchKeys = createWatchKeys(typeof window === "undefined" ? null : (window as unknown as WatchKeyTarget), realPage(), () => typeof document !== "undefined" && document.pointerLockElement !== null);
   const forget = (): void => {
     touched.clear();
     marks.clear();
@@ -274,7 +279,9 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       goin = null;
       forget();
       undoTorchKey();
+      undoWatchKeys();
       resetHand();
+      resetWatch();
       host.ambient.car(null);
     },
     // On foot the lamp is the player's torch, a switch of this screen's (`../hand/handSwitch.ts`); seated it is the car's lights.
@@ -327,6 +334,10 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       }
       if (name === "map") {
         askMap(args);
+        return true;
+      }
+      if (name === "watch") {
+        sayWatch(args[0]);
         return true;
       }
       if (name === "hand") {

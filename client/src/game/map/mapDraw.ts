@@ -9,7 +9,8 @@
  */
 import type { MapCtx, PathLike } from "./mapCtx.js";
 import { CELL, cellKey, type MapCell, type MapData, type MapPlace, type Poly, type Seg } from "./mapData.js";
-import { drawDriver, drawFlag, drawPin, drawWalker, placeSpots, type Spot } from "./mapMarks.js";
+import { drawDriver, drawFlag, drawPin, drawWalker, placeSpots, ringSpots, type Spot } from "./mapMarks.js";
+import { WATCH_KEEP_OUT, WATCH_RING, drawWatchRim } from "./watchScreen.js";
 import { namedAt, paletteFor, streetColours, streetWidths, type Palette } from "./mapStyle.js";
 import { directionOnScreen, worldToScreen, type MapView } from "./mapView.js";
 
@@ -36,6 +37,8 @@ export type Scene = {
   readonly destination: { readonly kind: "place" | "waypoint"; readonly id: number } | null;
   /** The slim line's words, or none. */
   readonly slim: string | null;
+  /** The map is the watch's screen: the slim line stands lower, under the watch's status line, and the border pins keep clear of both. */
+  readonly watch?: boolean;
 };
 
 type StreetGroup = { readonly cls: number; readonly w: number; readonly path: PathLike };
@@ -93,6 +96,7 @@ export class MapDrawer {
   private readonly widths = new Map<string, number>();
   private readonly spots: Spot[] = [];
   private readonly at: { x: number; y: number }[] = [];
+  private readonly routeDots: { x: number; y: number }[] = [];
   private readonly dir = { x: 0, y: 0 };
 
   constructor(private readonly ctx: MapCtx, private readonly clock: () => number = () => performance.now()) {}
@@ -288,6 +292,11 @@ export class MapDrawer {
     if (s.route !== null) this.route(s, pal);
     this.marks(s, pal);
     if (s.slim !== null) this.slim(s, pal, s.slim);
+    // The round screen's rim, over everything.
+    if (s.watch === true) {
+      drawWatchRim(ctx, v.w, v.h);
+      this.ops += 2;
+    }
   }
 
   private labels(s: Scene, pal: Palette, tiles: readonly Tile[]): void {
@@ -382,7 +391,20 @@ export class MapDrawer {
     data.places.forEach((place, i) => {
       at[i] = worldToScreen(v, place.x, place.z, at[i] ?? { x: 0, y: 0 });
     });
-    placeSpots(v.w, v.h, m.x, m.y, at, this.spots);
+    if (s.watch === true) {
+      // The distances keep off the route's dots where they can: the route as points on the screen.
+      const avoid = this.routeDots;
+      avoid.length = 0;
+      if (s.route !== null) {
+        const q = { x: 0, y: 0 };
+        for (let i = 0; i < s.route.pts.length && avoid.length < 200; i += 2) {
+          worldToScreen(v, s.route.pts[i] as number, s.route.pts[i + 1] as number, q);
+          avoid.push({ x: q.x, y: q.y });
+        }
+      }
+      ringSpots(v.w / 2, v.h / 2, WATCH_RING, m.x, m.y, at, this.spots, 30, avoid, WATCH_KEEP_OUT);
+    }
+    else placeSpots(v.w, v.h, m.x, m.y, at, this.spots);
     data.places.forEach((place, i) => {
       const spot = this.spots[i] as Spot;
       const chosen = s.destination !== null && s.destination.kind === "place" && s.destination.id === place.id;
@@ -391,7 +413,7 @@ export class MapDrawer {
         this.ops += 3;
         if (spot.label) {
           const d = Math.round(Math.hypot(place.x - s.player.x, place.z - s.player.z));
-          ctx.text(`${d} m`, spot.x, spot.y + 9, { size: 9.5, colour: pal.text, halo: pal.halo, bold: !s.soft });
+          ctx.text(`${d} m`, spot.lx, spot.ly, { size: 9.5, colour: pal.text, halo: pal.halo, bold: !s.soft });
           this.ops++;
         }
         return;
@@ -426,14 +448,22 @@ export class MapDrawer {
   }
 
   /** The slim line under the map's top edge: a destination and the distance left, or the street the player is on. */
-  private slim(s: Scene, pal: Palette, words: string): void {
+  private slim(s: Scene, pal: Palette, text0: string): void {
     const ctx = this.ctx;
-    const size = 11.5;
+    const watch = s.watch === true;
+    const size = watch ? 10.5 : 11.5;
+    // On the round screen the line is short, inside the circle with a margin. What gives way is the name: the distance after it ("· 210 m") is kept whole, and a name too long for the room ends in an ellipsis.
+    const room = watch ? 120 : s.view.w - 16;
+    const cut = text0.lastIndexOf(" \u00b7 ");
+    const tail = cut > 0 ? text0.slice(cut) : "";
+    let name = cut > 0 ? text0.slice(0, cut) : text0;
+    while (name.length > 1 && ctx.measure(name + tail, size, true) + 22 > room) name = `${name.slice(0, -2).trimEnd()}\u2026`;
+    const words = name + tail;
     const tw = ctx.measure(words, size, true);
-    const w = Math.min(s.view.w - 16, tw + 22);
+    const w = Math.min(room, tw + 22);
     const h = 21;
     const x = (s.view.w - w) / 2;
-    const y = 7;
+    const y = watch ? 25 : 7;
     const box = ctx.newPath();
     const r = h / 2;
     box.moveTo(x + r, y);
@@ -442,7 +472,9 @@ export class MapDrawer {
     box.lineTo(x + r, y + h);
     box.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5);
     box.closePath();
-    ctx.fill(box, pal.panel, 0.92);
+    // On the watch the line has the face's own colour behind it, faintly, and no white lozenge.
+    if (watch) ctx.fill(box, pal.land, 0.6);
+    else ctx.fill(box, pal.panel, 0.92);
     ctx.text(words, s.view.w / 2, y + h / 2 + 0.5, { size, colour: pal.panelText, bold: true });
     this.ops += 2;
   }

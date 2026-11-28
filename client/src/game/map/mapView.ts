@@ -109,6 +109,14 @@ export function minimapView(s: ViewState, w: number, h: number, x: number, z: nu
   return make(w, h, x, z, minimapScale(e, w, h), -wrapPi(heading) * e, w / 2, h / 2 + (e * h) / 6);
 }
 
+/**
+ * The watch's view: a screen `w` by `h` that shows the town at the on-foot scale, turned so that what the player faces is up, with the player's mark a little below the middle
+ * (55 percent of the way down), so that more of what lies ahead shows.
+ */
+export function watchView(w: number, h: number, x: number, z: number, heading: number): MapView {
+  return make(w, h, x, z, FOOT_ACROSS / Math.min(w, h), -wrapPi(heading), w / 2, h * 0.55);
+}
+
 /** The large map's view: north up whatever the look, the player's mark wherever it is. */
 export function largeView(s: ViewState, w: number, h: number): MapView {
   return make(w, h, s.lcx, s.lcz, s.lmpp, 0, w / 2, h / 2);

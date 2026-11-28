@@ -7,9 +7,11 @@ import { mapDataFor } from "../../src/game/map/mapData.js";
 import type { MapFrame } from "../../src/game/map/mapFeed.js";
 import { CSS } from "../../src/game/map/mapCss.js";
 import { LARGE_BYTES, SIZE, SIZE_NARROW, canvasScale, cornerRect, createMinimap, largeRect, type Minimap, type MinimapEnv } from "../../src/game/map/minimap.js";
-import { nav, resetNav } from "../../src/game/map/mapNav.js";
+import { mapAsk } from "../../src/game/map/mapCommand.js";
+import { chooseDestination, nav, resetNav } from "../../src/game/map/mapNav.js";
 import { paletteFor } from "../../src/game/map/mapStyle.js";
 import { largeView, worldToScreen } from "../../src/game/map/mapView.js";
+import { WATCH_SEEN, resetWatch } from "../../src/game/hand/watchSeen.js";
 import { RecordingCtx } from "./fakes.js";
 
 const SEED = 20261121;
@@ -28,6 +30,8 @@ function page(width: number, height: number, dpr = 2) {
     removeEventListener: (type: string, fn: Listener) => { if (type === "keydown") keys.splice(keys.indexOf(fn), 1); },
   };
   const ctx = new RecordingCtx();
+  // These tests are of the corner screen, which is a car's (M switches it); the watch's own are below.
+  WATCH_SEEN.on = true;
   let roster: StandInElement | null = null;
   const vars: Record<string, string> = {};
   let now = 100;
@@ -56,7 +60,7 @@ function page(width: number, height: number, dpr = 2) {
   };
   const calls = { pause: 0 };
   const map: Minimap = createMinimap(asHtml(container), { onPause: () => calls.pause++ }, env);
-  const frame = (over: Partial<MapFrame> = {}): MapFrame => ({ seed: SEED, x: -254.7, z: 83.5, heading: 0, driving: false, place: 0, hour: 12, engaged: true, touch: false, rtt: null, ...over });
+  const frame = (over: Partial<MapFrame> = {}): MapFrame => ({ seed: SEED, x: -254.7, z: 83.5, heading: 0, driving: true, place: 0, hour: 12, engaged: true, touch: false, rtt: null, ...over });
   return {
     doc, container, win, ctx, map, calls, logs, frame,
     tick: (seconds: number) => { now += seconds; },
@@ -79,6 +83,10 @@ const ptr = (x: number, y: number, id = 1): Partial<StandInEvent> => ({ clientX:
 afterEach(() => {
   vi.unstubAllGlobals();
   resetNav();
+  resetWatch();
+  mapAsk.watch = false;
+  mapAsk.dash = false;
+  mapAsk.open = false;
 });
 
 describe("the minimap on the screen", () => {
@@ -86,17 +94,18 @@ describe("the minimap on the screen", () => {
     const wide = page(1440, 900, 3);
     wide.map.frame(wide.frame());
     expect(wide.map.info().rect).toEqual(cornerRect(1440, 900, SIZE));
-    expect(wide.map.info().rect).toEqual({ left: 1440 - 12 - 220, top: 900 - 12 - 220, width: 220, height: 220 });
+    expect(wide.map.info().rect).toEqual({ left: 1440 - 12 - 8 - 220, top: 900 - 12 - 28 - 220, width: 220, height: 220 });
     // A device pixel ratio of 3 is drawn at 2: under a megabyte.
     expect(wide.map.info().canvas).toEqual({ width: 440, height: 440 });
     expect(440 * 440 * 4).toBeLessThan(1_000_000);
     const narrow = page(400, 800, 2);
     narrow.map.frame(narrow.frame());
-    expect(narrow.map.info().rect).toEqual({ left: 400 - 12 - 148, top: 800 - 12 - 148, width: 148, height: 148 });
+    expect(narrow.map.info().rect).toEqual({ left: 400 - 12 - 8 - 148, top: 800 - 12 - 28 - 148, width: 148, height: 148 });
     expect(SIZE_NARROW).toBe(148);
     // The corner keeps clear of a notch and a home bar, and is a rounded square with an edge and a shadow.
     expect(wide.root().style.left).toContain("env(safe-area-inset-right");
     expect(CSS).toMatch(/\.capemap \{[^}]*border-radius: 14px[^}]*border: 1px solid[^}]*box-shadow/);
+    expect(CSS).toMatch(/\.capemap\.corner \{[^}]*border: none[^}]*box-shadow: none/);
   });
 
   it("takes no pointer while playing on a desktop, a tap on a touch screen, and shows from the first frame with a player to none without", () => {
@@ -167,18 +176,6 @@ describe("the minimap on the screen", () => {
     expect(CSS).toMatch(/@media \(max-width: 719px\) \{\s*\.capemap-open \.pausemenu\.open \{ padding-right: 0; padding-top: 56vh; \}/);
   });
 
-  it("stands in the very corner, 12 px in, with the party's own place over it as wide as it is", () => {
-    const p = page(1440, 900);
-    p.map.frame(p.frame());
-    expect(p.map.info().rect.top).toBe(900 - 12 - 220);
-    expect(p.vars["--cape-party-width"]).toBe("220px");
-    expect(p.vars["--cape-party-bottom"]).toContain(`${12 + 220 + 8}px`);
-    const q = page(400, 800);
-    q.map.frame(q.frame());
-    expect(q.vars["--cape-party-width"]).toBe("148px");
-    expect(q.map.info().rect.top).toBe(800 - 12 - 148);
-  });
-
   it("opens the large map on Tab while play has the controls, and on no other press", () => {
     const p = page(1440, 900);
     p.map.frame(p.frame());
@@ -230,7 +227,7 @@ describe("the large map's controls", () => {
     p.tick(1);
     p.map.frame(p.frame({ x: hall.x, z: hall.z, engaged: false }));
     resetNav(SEED);
-    const view = largeView({ look: 0, lookGoal: 0, night: 0, nightGoal: 0, lcx: hall.x, lcz: hall.z, lmpp: 180 / 220 }, 844, 860);
+    const view = largeView({ look: 0, lookGoal: 0, night: 0, nightGoal: 0, lcx: hall.x, lcz: hall.z, lmpp: 420 / 220 }, 844, 860);
     const at = (x: number, z: number) => worldToScreen(view, x, z, { x: 0, y: 0 });
     const press = (x: number, y: number, to: { x: number; y: number } = { x, y }): void => {
       const c = p.canvas();
@@ -340,15 +337,15 @@ describe("when the minimap is drawn", () => {
     p.tick(0.05);
     p.map.frame(p.frame());
     expect(p.ctx.ops).toBe(first);
-    // A pixel on (0.82 m a pixel), it is.
+    // A pixel on (1.9 m a pixel driving), it is.
     p.tick(0.05);
-    p.map.frame(p.frame({ x: -254.7 + 1.5 }));
+    p.map.frame(p.frame({ x: -254.7 + 4 }));
     expect(p.ctx.ops).toBeGreaterThan(first);
     // Moving every frame at 200 a second: at most 30 draws in a second.
     const before = p.ctx.rec.rects;
     for (let i = 0; i < 200; i++) {
       p.tick(0.005);
-      p.map.frame(p.frame({ x: -253 + i * 0.05 * 3 }));
+      p.map.frame(p.frame({ x: -253 + i * 2.5 }));
     }
     expect(p.ctx.rec.rects - before).toBeLessThanOrEqual(31);
     expect(p.ctx.rec.rects - before).toBeGreaterThanOrEqual(25);
@@ -359,7 +356,7 @@ describe("the console's map", () => {
   it("takes open, close and to <place>, and keeps open in the address but not close", async () => {
     const { MAP_COMMANDS } = await import("../../src/game/map/mapCommand.js");
     const spec = MAP_COMMANDS[0]!;
-    for (const ok of [["open"], ["close"], ["to", "bar"], ["to", "cafe"], ["to", "lodging"], ["to", "office"]]) expect(spec.validate(ok), ok.join(" ")).toBeNull();
+    for (const ok of [["open"], ["close"], ["watch"], ["unwatch"], ["dash"], ["undash"], ["to", "bar"], ["to", "cafe"], ["to", "lodging"], ["to", "office"]]) expect(spec.validate(ok), ok.join(" ")).toBeNull();
     for (const bad of [[], ["to"], ["to", "moon"], ["open", "x"], ["zoom"]]) expect(spec.validate(bad), bad.join(" ")).toMatch(/map takes/);
     expect(spec.scriptValue?.(["close"])).toBe(spec.defaultValue);
     expect(spec.scriptValue?.(["open"])).not.toBe(spec.defaultValue);
@@ -411,7 +408,7 @@ describe("what the handle says of drawing", () => {
 });
 
 describe("how present the small map is", () => {
-  const level = (p: ReturnType<typeof page>): boolean => p.root().classList.contains("active");
+  const level = (p: ReturnType<typeof page>): boolean => p.map.info().canvasEl.classList.contains("active");
 
   it("is quiet with no destination and no waypoint, comes up with either, and goes back when it is cleared or reached", async () => {
     const { clearDestination, chooseDestination, placeWaypoint, removeWaypoint } = await import("../../src/game/map/mapNav.js");
@@ -453,13 +450,17 @@ describe("how present the small map is", () => {
     expect(level(p)).toBe(false);
   });
 
-  it("is half seen at rest and nearly whole with a destination, fading over 0.4 s, and not dimmed at all when it is the large map", () => {
-    expect(CSS).toMatch(/\.capemap \{[^}]*opacity: 0\.5/);
-    expect(CSS).toMatch(/\.capemap \{[^}]*transition:[^;]*opacity 400ms/);
-    expect(CSS).toContain(".capemap.active { opacity: 0.9; }");
-    expect(CSS).toMatch(/\.capemap\.paused \{[^}]*opacity: 1;/);
-    // The party's own strength is its own.
-    expect(CSS).toContain("opacity: 0.55");
+  it("is half seen at rest and nearly whole with a destination, fading over 0.4 s, on the canvas alone, and not dimmed at all when it is the large map", () => {
+    expect(CSS).toMatch(/\.capemap canvas \{[^}]*opacity: 1; transition: opacity 400ms ease/);
+    expect(CSS).toContain(".capemap.corner canvas { opacity: 0.5; }");
+    expect(CSS).toContain(".capemap.corner canvas.active { opacity: 0.9; }");
+    // The container and the frame carry no dimming of their own: the large map and the bezel stay whole.
+    expect(CSS).not.toMatch(/\.capemap \{[^}]*opacity: 0\.5/);
+    expect(CSS).not.toMatch(/\.capedash[^{]*\{[^}]*opacity: 0\.[59]\b/);
+    const p = page(1440, 900);
+    p.map.frame(p.frame());
+    expect(p.root().classList.contains("active")).toBe(false);
+    expect(p.map.info().dash.classList.contains("active")).toBe(false);
   });
 
   it("draws the small map in the soft palette and the large one in the full", () => {
@@ -474,8 +475,177 @@ describe("how present the small map is", () => {
     expect(paletteFor(0, 0, true).water).not.toBe(paletteFor(0, 0, false).water);
   });
 
-  it("hides the party's compact rows while the large map is open by the console's word", async () => {
-    const { PARTY_CSS } = await import("../../src/game/map/partyLook.js");
-    expect(PARTY_CSS).toContain("body.capemap-open .roster.subdued { display: none; }");
+});
+
+describe("the watch's screen on foot, and the unit in a car", () => {
+  const QUAD = [0.32, 0.55, 0.45, 0.575, 0.442, 0.795, 0.312, 0.77];
+  const raise = (raised: number, shown = true): void => {
+    WATCH_SEEN.shown = shown;
+    WATCH_SEEN.raised = raised;
+    WATCH_SEEN.quad.set(QUAD);
+  };
+  const walk = (p: ReturnType<typeof page>, over: Partial<MapFrame> = {}): void => {
+    p.tick(1);
+    p.map.frame(p.frame({ driving: false, ...over }));
+  };
+
+  it("is hidden on foot while the watch is not shown (the corner tile is a car's), and shown on its face when it is", () => {
+    const p = page(1440, 900);
+    WATCH_SEEN.on = true;
+    raise(1, false);
+    walk(p);
+    expect(p.map.info().mode).toBe("off");
+    expect(p.root().style.display).toBe("none");
+    expect(p.ctx.ops).toBe(0);
+    raise(1);
+    walk(p);
+    expect(p.map.info().mode).toBe("watch");
+    expect(p.root().style.display).toBe("");
+    expect(p.root().classList.contains("watch")).toBe(true);
+    expect(p.root().style.transform).toMatch(/^matrix3d\(/);
+    expect(p.root().style.width).toBe("180px");
+    expect(p.root().style.height).toBe("180px");
+    // Full strength while up: no rest or active level on the watch, and no border or shadow of its own.
+    expect(p.root().style.opacity).toBe("1");
+    expect(CSS).toMatch(/\.capemap\.watch, \.capemap\.watch\.active \{[^}]*border: none[^}]*box-shadow: none[^}]*clip-path: circle\(50%\)/);
+    // The car's unit is not there.
+    expect(p.map.info().dash.style.display).toBe("none");
+    // The screen was drawn, with the clock.
+    expect(p.ctx.rec.texts).toContain("12:00");
+  });
+
+  it("comes on as the wrist rises: dark below 0.6 raised, half at 0.8", () => {
+    const p = page(1440, 900);
+    raise(0.5);
+    walk(p);
+    expect(p.map.info().mode).toBe("off");
+    raise(0.8);
+    walk(p);
+    expect(p.map.info().mode).toBe("watch");
+    expect(Number(p.root().style.opacity)).toBeCloseTo(0.5, 2);
+    raise(1);
+    walk(p);
+    expect(p.root().style.opacity).toBe("1");
+  });
+
+  it("sizes the backing to the face times the device's ratio, at most 512, without resizing for a small change", () => {
+    const p = page(1440, 900, 2);
+    raise(1);
+    walk(p);
+    // The face is about 0.13 of 1440 px across: 187 px, 375 backing.
+    const w0 = p.map.info().canvas.width;
+    expect(w0).toBeGreaterThan(300);
+    expect(w0).toBeLessThanOrEqual(512);
+    expect(p.map.info().canvas.height).toBe(w0);
+    // A bob of a pixel or two does not resize it.
+    const bob = QUAD.map((v, i) => v + (i % 2 === 0 ? 2 / 1440 : 0));
+    WATCH_SEEN.quad.set(bob);
+    walk(p);
+    expect(p.map.info().canvas.width).toBe(w0);
+    // A face twice as large is capped.
+    WATCH_SEEN.quad.set([0.2, 0.3, 0.6, 0.3, 0.6, 0.8, 0.2, 0.8]);
+    walk(p);
+    expect(p.map.info().canvas.width).toBe(512);
+  });
+
+  it("is not shown while paused (the large map is), and is back after", () => {
+    const p = page(1440, 900);
+    p.big(844, 860);
+    raise(1);
+    walk(p);
+    expect(p.map.info().mode).toBe("watch");
+    walk(p, { engaged: false });
+    expect(p.map.info().mode).toBe("large");
+    expect(p.root().classList.contains("watch")).toBe(false);
+    expect(p.root().style.transform).toBe("");
+    expect(p.map.info().dash.style.display).toBe("none");
+    walk(p, { engaged: true });
+    expect(p.map.info().mode).toBe("watch");
+  });
+
+  it("shows nothing of the watch in a car, where the corner tile and its unit follow the switch, and swings away over a quarter of a second", () => {
+    const p = page(1440, 900);
+    WATCH_SEEN.on = false;
+    raise(1);
+    p.tick(1);
+    p.map.frame(p.frame({ driving: true }));
+    expect(p.map.info().mode).toBe("off");
+    expect(p.map.info().dash.style.display).toBe("none");
+    WATCH_SEEN.on = true;
+    p.tick(1);
+    p.map.frame(p.frame({ driving: true }));
+    expect(p.map.info().mode).toBe("corner");
+    expect(p.root().style.display).toBe("");
+    expect(p.root().classList.contains("watch")).toBe(false);
+    expect(p.root().style.transform).toBeFalsy();
+    expect(p.map.info().dash.style.display).toBe("");
+    WATCH_SEEN.on = false;
+    p.tick(0.05);
+    p.map.frame(p.frame({ driving: true }));
+    expect(p.map.info().mode).toBe("off");
+    expect(p.map.info().dash.classList.contains("leaving")).toBe(true);
+    expect(p.map.info().dash.style.display).toBe("");
+    p.tick(0.3);
+    p.map.frame(p.frame({ driving: true }));
+    expect(p.map.info().dash.style.display).toBe("none");
+    expect(p.root().style.display).toBe("none");
+  });
+
+  it("frames the corner screen as a car's unit: the canvas keeps its size inside the bezel, the dimming is the canvas's and not the frame's, and it is a car's alone", () => {
+    for (const [w, h, size] of [[1440, 900, 220], [400, 800, 148]] as const) {
+      const p = page(w, h);
+      raise(1);
+      walk(p);
+      expect(p.map.info().dash.style.display).toBe("none");
+      p.tick(1);
+      p.map.frame(p.frame({ driving: true }));
+      const r = p.map.info().rect;
+      expect([r.width, r.height]).toEqual([size, size]);
+      expect(p.map.info().canvas.width).toBe(size * 2);
+      const dash = p.map.info().dash;
+      // The unit is the screen with a bezel of 8 px at the sides and top and 14 px at the bottom, and a mount under it that stays inside the page's margin.
+      expect(dash.style.width).toBe(`${size + 16}px`);
+      expect(dash.style.height).toBe(`${size + 8 + 28}px`);
+      expect(r.top + size + 28).toBeLessThanOrEqual(h - 12);
+      expect(r.left + size + 8).toBeLessThanOrEqual(w - 12);
+      // Dimming is on the canvas, never on the frame.
+      chooseDestination("place", 1);
+      p.tick(1);
+      p.map.frame(p.frame({ driving: true }));
+      expect(p.map.info().canvasEl.classList.contains("active")).toBe(true);
+      expect(dash.classList.contains("active")).toBe(false);
+      expect(p.root().classList.contains("active")).toBe(false);
+      expect((dash as unknown as StandInElement).children.map((c) => c.className)).toEqual(["stalk", "foot", "bezel", "light", "btns"]);
+      resetNav();
+    }
+    // The frame has no lettering and no brand: it is made of boxes alone.
+    expect(CSS).not.toMatch(/\.capedash[^{]*\{[^}]*content:/);
+  });
+
+  it("shows the car's unit on foot with the console's `map dash`, in the driving look, and takes it away with `map undash`", () => {
+    const p = page(1440, 900);
+    WATCH_SEEN.on = false;
+    raise(1, false);
+    walk(p);
+    expect(p.map.info().mode).toBe("off");
+    mapAsk.dash = true;
+    walk(p);
+    expect(p.map.info().mode).toBe("corner");
+    expect(p.map.info().dash.style.display).toBe("");
+    expect(p.map.info().rect).toEqual(cornerRect(1440, 900, 220));
+    expect(p.map.info().canvasEl.classList.contains("active")).toBe(false);
+    mapAsk.dash = false;
+    walk(p);
+    expect(p.map.info().mode).toBe("off");
+  });
+
+  it("shows the watch on a made-up face with the console's `map watch`, with no arm", () => {
+    const p = page(1440, 900);
+    mapAsk.watch = true;
+    WATCH_SEEN.on = false;
+    WATCH_SEEN.shown = false;
+    walk(p);
+    expect(p.map.info().mode).toBe("watch");
+    expect(p.root().style.transform).toMatch(/^matrix3d\(/);
   });
 });

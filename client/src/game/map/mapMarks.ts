@@ -150,7 +150,7 @@ export function pinSpot(w: number, h: number, mx: number, my: number, tx: number
 }
 
 /** Where a place's pin stands, and whether its distance is written under it. */
-export type Spot = { x: number; y: number; border: boolean; label: boolean };
+export type Spot = { x: number; y: number; border: boolean; label: boolean; /** Where the distance is written: under a pin on a rectangle's border, inside the ring on a round one. */ lx: number; ly: number };
 
 /** The least room two pins on one border need along it, pixels: a pin and its label stacked, down a side; a label's width, along the top or bottom. */
 export const GAP_SIDE = 34, GAP_ALONG = 40;
@@ -161,15 +161,14 @@ export const GAP_SIDE = 34, GAP_ALONG = 40;
  * no two (nor their distance labels) lie over one another. Where there is no room to slide them all, the nearer keeps its label and the
  * farther loses it. The result is written into `out`, one spot to a place.
  */
-export function placeSpots(w: number, h: number, mx: number, my: number, at: readonly { x: number; y: number }[], out: Spot[]): void {
+export function placeSpots(w: number, h: number, mx: number, my: number, at: readonly { x: number; y: number }[], out: Spot[], top = 22): void {
   const inset = 16;
-  const top = 22;
   const tmp = { x: 0, y: 0, border: false };
   out.length = at.length;
   for (let i = 0; i < at.length; i++) {
     const a = at[i] as { x: number; y: number };
     pinSpot(w, h, mx, my, a.x, a.y, inset, top, tmp);
-    const o = out[i] ?? (out[i] = { x: 0, y: 0, border: false, label: true });
+    const o = out[i] ?? (out[i] = { x: 0, y: 0, border: false, label: true, lx: 0, ly: 0 });
     o.x = tmp.x;
     o.y = tmp.y;
     o.border = tmp.border;
@@ -213,4 +212,105 @@ export function placeSpots(w: number, h: number, mx: number, my: number, at: rea
       }
     }
   });
+  for (const o of out) {
+    o.lx = o.x;
+    o.ly = o.y + 9;
+  }
+}
+
+/** A rectangle of the screen, left, top, right, bottom. */
+export type Box = { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number };
+
+/** Half the width of the arc at twelve o'clock where the watch's clock is and no pin stands, radians (about 25 degrees). */
+export const CLOCK_ARC = 0.436;
+
+/**
+ * The pins' places on a round screen (the watch's): a place inside the ring (`radius` from the circle's centre (`cx`, `cy`)) is where it is; one outside has its pin on the ring, on the line from
+ * the mark (`mx`, `my`) to it, and its distance is written just inside the ring, on the side of the pin that keeps farthest from the points in `avoid` (the route's). Pins on the ring are kept `gap` pixels apart along it and out of the top arc where the watch's clock is (`CLOCK_ARC` either side of twelve o'clock), and where there is no room the farther loses its label.
+ */
+export function ringSpots(cx: number, cy: number, radius: number, mx: number, my: number, at: readonly { x: number; y: number }[], out: Spot[], gap = 30, avoid: readonly { x: number; y: number }[] = [], keepOut: readonly Box[] = []): void {
+  out.length = at.length;
+  const ringed: number[] = [];
+  for (let i = 0; i < at.length; i++) {
+    const a = at[i] as { x: number; y: number };
+    const o = out[i] ?? (out[i] = { x: 0, y: 0, border: false, label: true, lx: 0, ly: 0 });
+    o.label = true;
+    if (Math.hypot(a.x - cx, a.y - cy) <= radius) {
+      o.x = a.x;
+      o.y = a.y;
+      o.border = false;
+      o.lx = a.x;
+      o.ly = a.y + 9;
+      continue;
+    }
+    // Where the line from the mark meets the ring (the mark is inside it).
+    const dx = a.x - mx, dy = a.y - my, fx = mx - cx, fy = my - cy;
+    const A = dx * dx + dy * dy;
+    const B = 2 * (fx * dx + fy * dy);
+    const C = fx * fx + fy * fy - radius * radius;
+    const t = A > 0 ? (-B + Math.sqrt(Math.max(0, B * B - 4 * A * C))) / (2 * A) : 0;
+    o.x = mx + dx * t;
+    o.y = my + dy * t;
+    o.border = true;
+    ringed.push(i);
+  }
+  const angle = (i: number): number => Math.atan2((out[i] as Spot).y - cy, (out[i] as Spot).x - cx);
+  const place = (i: number, th: number): void => {
+    (out[i] as Spot).x = cx + radius * Math.cos(th);
+    (out[i] as Spot).y = cy + radius * Math.sin(th);
+  };
+  const th = new Map<number, number>();
+  for (const i of ringed) th.set(i, angle(i));
+  ringed.sort((a, b) => (th.get(a) as number) - (th.get(b) as number));
+  const arc = gap / radius;
+  // Forward passes keep the pins an arc apart, and a pin that falls in the clock's arc goes to its nearer edge; repeated, since each can push the other.
+  const top = -Math.PI / 2;
+  for (let pass = 0; pass < 4; pass++) {
+    for (let k = 0; k < ringed.length; k++) {
+      const i = ringed[k] as number;
+      let v = th.get(i) as number;
+      if (k > 0) v = Math.max(v, (th.get(ringed[k - 1] as number) as number) + arc);
+      if (Math.abs(v - top) < CLOCK_ARC) v = v < top ? top - CLOCK_ARC : top + CLOCK_ARC;
+      th.set(i, v);
+    }
+  }
+  for (let k = 0; k < ringed.length; k++) {
+    const i = ringed[k] as number;
+    place(i, th.get(i) as number);
+    const next = ringed[(k + 1) % ringed.length] as number;
+    if (ringed.length > 1) {
+      let span = (th.get(next) as number) - (th.get(i) as number);
+      if (k === ringed.length - 1) span += Math.PI * 2;
+      // No room (the pins have gone round the ring): the farther of two that touch loses its label.
+      if (span < arc * 0.6) {
+        const di = Math.hypot((out[i] as Spot).x - mx, (out[i] as Spot).y - my);
+        const dn = Math.hypot((out[next] as Spot).x - mx, (out[next] as Spot).y - my);
+        (out[di > dn ? i : next] as Spot).label = false;
+      }
+    }
+    const o = out[i] as Spot;
+    // The distance goes just inside the ring: toward its centre, or to either side of that, whichever keeps farthest from the route's dots.
+    const ix = (cx - o.x) / radius;
+    const iy = (cy - o.y) / radius;
+    let best = -1;
+    let free = false;
+    for (const [a, b] of [[0, 0], [1, 1], [1, -1]] as const) {
+      const lx = o.x + ix * 13 + (-iy) * 17 * b * a;
+      const ly = o.y + iy * 13 + ix * 17 * b * a;
+      // Never under the line's backing or the clock (a label is about 34 by 11 px).
+      if (keepOut.some((k) => lx + 17 > k.x0 && lx - 17 < k.x1 && ly + 6 > k.y0 && ly - 6 < k.y1)) continue;
+      free = true;
+      let near = Infinity;
+      for (const p of avoid) near = Math.min(near, Math.hypot(p.x - lx, p.y - ly));
+      // The middle one is kept unless a side is clearly clearer (by 6 px), so that labels do not wander without a route.
+      const score = near + (a === 0 ? 6 : 0);
+      if (score > best) {
+        best = score;
+        o.lx = lx;
+        o.ly = ly + 1;
+      }
+    }
+    // No place for it that is clear: the pin stays and its distance is left out.
+    if (!free) o.label = false;
+  }
 }

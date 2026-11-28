@@ -10,18 +10,23 @@ import { MAP_BAR, MAP_CAFE, MAP_CENTRE, MAP_CLEAR, MAP_LODGING, MAP_OFFICE, MAP_
 import { canvasCtx, type MapCtx } from "./mapCtx.js";
 import { CSS } from "./mapCss.js";
 import { mapDataFor, type MapData, type PlaceKind } from "./mapData.js";
-import { mapAsk } from "./mapCommand.js";
+import { WATCH_FIXTURE, mapAsk } from "./mapCommand.js";
 import { installMapDebug, mapDebug } from "./mapDebug.js";
 import { createParty } from "./partyLook.js";
+import { WATCH_SEEN, type WatchSeen } from "../hand/watchSeen.js";
+import { paletteFor } from "./mapStyle.js";
+import { WATCH_H, WATCH_W, createPlacement, drawWatchStatus, fadeFor, formatClock, watchBacking, type WatchApp } from "./watchScreen.js";
 import { MapDrawer, type Scene } from "./mapDraw.js";
 import type { MapFrame } from "./mapFeed.js";
 import { ARRIVED, chooseDestination, clearDestination, formatDistance, goalOf, nav, navFor, newTracker, placeWaypoint, removeWaypoint, restoreNav, saveNav, updateTracker } from "./mapNav.js";
 import { graphFor, routeLengths, type Profile } from "./mapRoute.js";
 import { placeSpots, type Spot } from "./mapMarks.js";
-import { aimView, eased, isNight, largeView, minimapView, moving, newViewState, openLarge, panLarge, screenToWorld, snapView, worldToScreen, stepView, zoomLarge, type MapView } from "./mapView.js";
+import { aimView, eased, isNight, largeView, minimapView, moving, newViewState, openLarge, panLarge, screenToWorld, snapView, worldToScreen, stepView, watchView, zoomLarge, type MapView } from "./mapView.js";
 
 /** The minimap's side, pixels, on a wide screen and on one under `NARROW` pixels wide; its distance from the corner. */
 export const SIZE = 220, SIZE_NARROW = 148, NARROW = 520, MARGIN = 12;
+/** The car's navigation unit round the corner screen: the bezel's width at the sides and top and at the bottom, and how far the mount reaches below the screen, pixels. */
+export const BEZEL = 8, BEZEL_BOTTOM = 14, DASH_BELOW = 28;
 /** A screen narrower than this puts the large map on top and the pause panel under it. */
 export const STACKED = 720;
 /** The most the large canvas may hold, bytes (the target is under 10 MB), and the most a device pixel ratio the map draws at. */
@@ -40,9 +45,9 @@ export function largeRect(w: number, h: number): Rect {
   return { left: 20, top: 20, width: w - 40, height: Math.round(h * 0.56) - 20 };
 }
 
-/** The minimap's rectangle in the bottom right corner (the party stands over it). */
+/** The corner screen's rectangle in a car: the unit's bezel and mount are round it, and keep inside the page's 12 px margin at the bottom right. */
 export function cornerRect(w: number, h: number, size: number): Rect {
-  return { left: w - MARGIN - size, top: h - MARGIN - size, width: size, height: size };
+  return { left: w - MARGIN - BEZEL - size, top: h - MARGIN - DASH_BELOW - size, width: size, height: size };
 }
 
 /** The scale a canvas of `w` by `h` css pixels is made at: the device's, to at most `MAX_DPR`, and less where the canvas would hold more than `bytes`. */
@@ -85,7 +90,7 @@ export type Minimap = {
   frame(f: MapFrame | null): void;
   dispose(): void;
   /** What a test reads. */
-  readonly info: () => { shown: boolean; paused: boolean; broken: boolean; rect: Rect; canvas: { width: number; height: number }; root: HTMLElement };
+  readonly info: () => { dash: HTMLElement; canvasEl: HTMLCanvasElement; shown: boolean; paused: boolean; mode: "off" | "watch" | "corner" | "large"; broken: boolean; rect: Rect; canvas: { width: number; height: number }; root: HTMLElement };
   /** Draws once, at once (a test's). */
   readonly drawNow: () => void;
 };
@@ -102,8 +107,18 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
   const canvas = doc.createElement("canvas");
   canvas.setAttribute("aria-label", MAP_OPEN);
   root.append(canvas);
+  // The unit the corner screen is in, in a car: a bezel, a power light, buttons and a mount, made once and shown only there (CSS draws all of it).
+  const dash = doc.createElement("div");
+  dash.className = "capedash";
+  dash.style.display = "none";
+  for (const name of ["stalk", "foot", "bezel", "light", "btns"]) {
+    const part = doc.createElement("div");
+    part.className = name;
+    if (name === "btns") for (let i = 0; i < 3; i++) part.append(doc.createElement("i"));
+    dash.append(part);
+  }
   // The map comes before the engine's pause menu in its container, and over the touch layer while play has the controls.
-  container.append(style, root);
+  container.append(style, dash, root);
 
   let broken = false;
   let shown = false;
@@ -118,6 +133,14 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
   let scale = 1;
   let smallSize = SIZE;
   const party = createParty(doc);
+  // What the map is now: the watch's screen (on foot, the arm up), the corner tile (in a car, with the switch on), the large map (paused), or nothing.
+  let mode: "off" | "watch" | "corner" | "large" = "off";
+  const placement = createPlacement(root);
+  let fade = -1;
+  // The map moves between its places without easing after the watch (the watch is placed every frame), and eases again two frames later.
+  let jump = 0;
+  // When the unit that swung away is taken out of the page, in seconds, or 0.
+  let hideAt = 0;
   let rect: Rect = { left: 0, top: 0, width: 0, height: 0 };
   let bigW = 0;
   let bigH = 0;
@@ -143,6 +166,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     broken = true;
     env.log("The map failed and is hidden:", e);
     root.style.display = "none";
+    dash.style.display = "none";
     container.classList.remove("capemap-open");
     doc.body?.classList.remove("capemap-open");
   };
@@ -165,6 +189,16 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     root.style.height = `${r.height}px`;
   };
 
+  const placeDash = (): void => {
+    const r = rect;
+    dash.style.left = `calc(${r.left - BEZEL}px - env(safe-area-inset-right, 0px))`;
+    dash.style.top = `calc(${r.top - BEZEL}px - env(safe-area-inset-bottom, 0px))`;
+    dash.style.width = `${r.width + 2 * BEZEL}px`;
+    dash.style.height = `${r.height + BEZEL + DASH_BELOW}px`;
+    // (The size of the screen, for the bezel's rules.)
+    dash.style.setProperty?.("--s", `${r.width}px`);
+  };
+
   const layout = (): void => {
     smallSize = win.innerWidth < NARROW ? SIZE_NARROW : SIZE;
     if (paused) {
@@ -172,8 +206,50 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
       return;
     }
     setRect(cornerRect(win.innerWidth, win.innerHeight, smallSize), true);
-    // The party stands over the map, as wide as it is.
-    party.place(MARGIN + smallSize + 8, smallSize);
+    placeDash();
+  };
+
+  const watchSeen = (): WatchSeen => (mapAsk.watch ? WATCH_FIXTURE : WATCH_SEEN);
+
+  const enter = (next: typeof mode): void => {
+    const was = mode;
+    mode = next;
+    root.classList.toggle("watch", next === "watch");
+    root.classList.remove("leaving");
+    dash.classList.remove("leaving");
+    // The unit swings away and back over a quarter of a second; the others go at once.
+    const swingOut = was === "corner" && next === "off";
+    root.classList.toggle("corner", next === "corner" || swingOut);
+    hideAt = swingOut ? env.now() + 0.25 : 0;
+    root.style.display = next === "off" && !swingOut ? "none" : "";
+    dash.style.display = next === "corner" || swingOut ? "" : "none";
+    if (swingOut) {
+      root.classList.add("leaving");
+      dash.classList.add("leaving");
+    }
+    if (was === "watch" || next === "watch") {
+      root.style.transition = "none";
+      jump = 2;
+    }
+    if (was === "watch") {
+      root.style.transform = "";
+      root.style.opacity = "";
+      placement.forget();
+    }
+    if (next === "watch") {
+      fade = -1;
+      rect = { left: -1, top: -1, width: -1, height: -1 };
+      root.style.left = "0px";
+      root.style.top = "0px";
+      root.style.width = `${WATCH_W}px`;
+      root.style.height = `${WATCH_H}px`;
+    } else if (next === "corner") {
+      rect = { left: -1, top: -1, width: -1, height: -1 };
+      layout();
+      setBitmap(smallSize, smallSize, canvasScale(smallSize, smallSize, win.devicePixelRatio || 1, LARGE_BYTES));
+    }
+    dirty = true;
+    drawnAt = -Infinity;
   };
 
   const setBitmap = (cssW: number, cssH: number, s: number): void => {
@@ -466,10 +542,7 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     const now = env.now();
     const dt = lastNow < 0 ? 0 : Math.min(0.25, Math.max(0, now - lastNow));
     lastNow = now;
-    if (!shown) {
-      shown = true;
-      root.style.display = "";
-    }
+    shown = true;
     lastFrame = f;
     touch = f.touch;
     engaged = f.engaged;
@@ -486,18 +559,50 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
       ctx = env.context(canvas, () => scale);
       if (ctx === null) throw new Error("the canvas has no 2d context");
       drawer = new MapDrawer(ctx, env.clock);
-      snapView(vs, f.driving, isNight(f.hour));
+      snapView(vs, f.driving || mapAsk.dash, isNight(f.hour));
       layout();
       setBitmap(smallSize, smallSize, canvasScale(smallSize, smallSize, win.devicePixelRatio || 1, LARGE_BYTES));
     }
     const wantPaused = mapAsk.open || (!f.engaged && everEngaged);
     if (wantPaused !== paused) setPaused(wantPaused, f);
-    if (!paused) layout();
+    if (jump > 0 && --jump === 0) root.style.transition = "";
+    if (hideAt > 0 && now >= hideAt && mode === "off") {
+      hideAt = 0;
+      root.style.display = "none";
+      dash.style.display = "none";
+      root.classList.remove("leaving");
+      root.classList.remove("corner");
+      dash.classList.remove("leaving");
+    }
+    const seen = watchSeen();
+    // `map dash` is a car's unit shown on foot, for looking at it.
+    const driving = f.driving || mapAsk.dash;
+    const want = paused ? "large" : driving ? (seen.on || mapAsk.dash ? "corner" : "off") : seen.shown && fadeFor(seen.raised) > 0 ? "watch" : "off";
+    if (want !== mode) enter(want);
+    if (mode === "corner") layout();
+    if (mode === "watch") {
+      // The watch's screen is laid on the lit face each frame: one matrix, written only when the face has moved, and its fade.
+      const level = fadeFor(seen.raised);
+      if (Math.abs(level - fade) > 0.004) {
+        fade = level;
+        root.style.opacity = String(+level.toFixed(3));
+      }
+      const vw = win.innerWidth;
+      const vh = win.innerHeight;
+      placement.place(seen.quad, vw, vh);
+      const q = seen.quad;
+      const across = Math.hypot(((q[2] as number) - (q[0] as number)) * vw, ((q[3] as number) - (q[1] as number)) * vh);
+      const backing = watchBacking(across, win.devicePixelRatio || 1, canvas.width);
+      if (backing !== canvas.width) {
+        setBitmap(WATCH_W, WATCH_H, backing / WATCH_W);
+        dirty = true;
+      }
+    }
     party.update(f.rtt, now);
-    root.classList.toggle("tappable", touch && !paused);
-    aimView(vs, f.driving, isNight(f.hour));
+    root.classList.toggle("tappable", touch && mode === "corner");
+    aimView(vs, driving, isNight(f.hour));
     stepView(vs, dt);
-    profile = f.driving ? "drive" : "foot";
+    profile = driving ? "drive" : "foot";
 
     // The destination, and the route to it from the player (from their building's street door inside one).
     const goal = goalOf(data);
@@ -512,7 +617,9 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     }
     const goal2 = goalOf(data);
     // At rest (no destination and no waypoint) the small map is quiet and see-through; with one it comes up. CSS fades between the two.
-    root.classList.toggle("active", nav.dest !== null || nav.waypoints.length > 0);
+    // (The dimming is the screen's alone: the canvas carries it, the bezel and the mount stay solid.)
+    canvas.classList.toggle("active", nav.dest !== null || nav.waypoints.length > 0);
+    dash.classList.toggle("night", vs.nightGoal === 1);
     const route = updateTracker(tracker, () => graphFor(data as MapData), now, ox, oz, profile, goal2);
     let slim: string | null;
     if (goal2 !== null) slim = route === null ? goal2.name : `${goal2.name} · ${formatDistance(route.length)}`;
@@ -532,11 +639,13 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     if (ui !== null) for (const [id, cell] of ui.rows) cell.row.classList.toggle("chosen", nav.dest !== null && nav.dest.kind === "place" && nav.dest.id === id);
 
     // Redraw policy: the minimap when something it shows changed by a pixel (or the looks are easing), at most 30 a second; the large map on input and when the mark moves.
-    const w = paused ? bigW : smallSize;
-    const mmpp = paused ? vs.lmpp : minimapView(vs, w, w, f.x, f.z, f.heading).mpp;
-    const sig = `${route === null ? "" : `${route.pts.length}:${Math.round(route.length)}`}|${slim ?? ""}|${nav.waypoints.length}|${nav.dest?.id ?? 0}${nav.dest?.kind ?? ""}|${paused ? 1 : 0}`;
+    if (mode === "off") return;
+    const w = paused ? bigW : mode === "watch" ? WATCH_W : smallSize;
+    const mmpp = paused ? vs.lmpp : mode === "watch" ? watchView(WATCH_W, WATCH_H, f.x, f.z, f.heading).mpp : minimapView(vs, w, w, f.x, f.z, f.heading).mpp;
+    const clock = mode === "watch" ? formatClock(f.hour) : "";
+    const sig = `${clock}|${route === null ? "" : `${route.pts.length}:${Math.round(route.length)}`}|${slim ?? ""}|${nav.waypoints.length}|${nav.dest?.id ?? 0}${nav.dest?.kind ?? ""}|${paused ? 1 : 0}`;
     const px = Math.hypot(f.x - drawn.x, f.z - drawn.z) / mmpp;
-    const turned = Math.abs(f.heading - drawn.heading) * (paused ? 34 : eased(vs.look) > 0.5 ? 110 : 34);
+    const turned = Math.abs(f.heading - drawn.heading) * (paused ? 34 : mode === "watch" || eased(vs.look) > 0.5 ? 110 : 34);
     if (dirty || sig !== drawn.sig || px >= 1 || !(turned < 1) || mmpp !== drawn.mpp || moving(vs)) {
       if (now - drawnAt >= DRAW_EVERY) {
         paint(f, route, slim);
@@ -551,17 +660,35 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
     }
   };
 
+  // The map as the watch's app: it draws the scene this frame has made on the screen it is given.
+  let pending: Scene | null = null;
+  const mapApp: WatchApp = {
+    name: "map",
+    draw: () => {
+      if (drawer !== null && pending !== null) drawer.draw(pending);
+    },
+  };
+
   const paint = (f: MapFrame, route: { pts: readonly number[] } | null, slim: string | null): void => {
     if (ctx === null || drawer === null || data === null) return;
     const t0 = env.clock();
+    const watch = mode === "watch";
     const w = paused ? bigW : smallSize;
-    const v = paused ? view() : minimapView(vs, w, w, f.x, f.z, f.heading);
+    const v = paused ? view() : watch ? watchView(WATCH_W, WATCH_H, f.x, f.z, f.heading) : minimapView(vs, w, w, f.x, f.z, f.heading);
     const scene: Scene = {
-      data, view: v, e: eased(vs.look), night: eased(vs.night), dpr: scale, large: paused, soft: !paused,
+      data, view: v, e: watch ? 0 : eased(vs.look), night: eased(vs.night), dpr: scale, large: paused, soft: !paused && !watch, watch,
       player: { x: f.x, z: f.z, heading: f.heading, driving: f.driving },
       route, waypoints: nav.waypoints, destination: nav.dest, slim,
     };
-    drawer.draw(scene);
+    // The watch draws its one app, the map; the other places draw the map directly.
+    pending = scene;
+    if (watch) mapApp.draw(ctx, WATCH_W, WATCH_H, scale);
+    else drawer.draw(scene);
+    // The watch's own status line, the game's clock.
+    if (watch) {
+      drawWatchStatus(ctx, WATCH_W, paletteFor(0, scene.night, false), f.hour);
+      drawer.ops++;
+    }
     const ms = env.clock() - t0;
     // A draw that built paths is not drawing's cost: it is counted apart.
     if (drawer.built > 0) {
@@ -593,6 +720,9 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
             doc.body?.classList.remove("capemap-open");
           }
           root.style.display = "none";
+          dash.style.display = "none";
+          mode = "off";
+          root.classList.remove("watch");
         }
         return;
       }
@@ -609,9 +739,10 @@ export function createMinimap(container: HTMLElement, hooks: MinimapHooks, env: 
       container.classList.remove("capemap-open");
       doc.body?.classList.remove("capemap-open");
       root.remove();
+      dash.remove();
       style.remove();
     },
-    info: () => ({ shown, paused, broken, rect: { ...rect }, canvas: { width: canvas.width, height: canvas.height }, root }),
+    info: () => ({ dash, canvasEl: canvas, shown, paused, mode, broken, rect: { ...rect }, canvas: { width: canvas.width, height: canvas.height }, root }),
     drawNow() {
       if (lastFrame !== null) guard(() => paint(lastFrame as MapFrame, tracker.route, null))();
     },

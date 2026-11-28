@@ -26,6 +26,7 @@ import { createIndoorWeather } from "./game/insideWeather.js";
 import { townParts } from "./game/town/townParts.js";
 import { createWalkHud, type WalkHud } from "./hud.js";
 import { HAND_COMMANDS } from "./game/hand/handSwitch.js";
+import { WATCH_COMMANDS } from "./game/hand/watchCommand.js";
 import { MAP_COMMANDS } from "./game/map/mapCommand.js";
 import { CAPE_LOOK } from "./look.js";
 import { WALK, type WalkSnapshot } from "./net.js";
@@ -34,7 +35,7 @@ import { townStart } from "./sim/town/start.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
 // The console's own commands, `carhome`, `goin` and `hand`, are the game's: known to the bar and to an address before any world stands.
-registerCommands([...CAR_COMMANDS, ...INSIDE_COMMANDS, ...HAND_COMMANDS, ...MAP_COMMANDS]);
+registerCommands([...CAR_COMMANDS, ...INSIDE_COMMANDS, ...HAND_COMMANDS, ...WATCH_COMMANDS, ...MAP_COMMANDS]);
 
 export type WalkRenderer = WorldRenderer<WalkState> & NoPartsApi;
 export type WalkHost = HostSession<WalkWorld, never>;

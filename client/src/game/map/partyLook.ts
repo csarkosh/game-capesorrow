@@ -15,8 +15,8 @@
 
 export const PARTY_CSS = `
 body .roster.subdued {
-  left: auto; right: calc(12px + env(safe-area-inset-right, 0px)); bottom: var(--cape-party-bottom, 244px);
-  width: var(--cape-party-width, 220px); min-width: 0; max-width: none; box-sizing: border-box;
+  left: auto; right: calc(12px + env(safe-area-inset-right, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto;
+  width: 220px; min-width: 0; max-width: none; box-sizing: border-box;
   padding: 0; background: none; border: none; border-radius: 0; box-shadow: none; backdrop-filter: none; opacity: 0.55;
   font-size: 0.72rem;
 }
@@ -50,8 +50,6 @@ export function barsFor(rttMs: number | null): number {
 export type Party = {
   /** Keeps the marks in the rows: the local player's round trip in milliseconds, or null where it is not known. Cheap: the page is looked at twice a second. */
   update(ownRttMs: number | null, now: number): void;
-  /** Where the party stands over the map: its bottom edge's distance from the page's bottom, and its width, pixels. */
-  place(bottom: number, width: number): void;
   dispose(): void;
 };
 
@@ -92,16 +90,8 @@ export function createParty(doc: Document): Party {
       attach(doc.querySelector(".roster"));
       mark();
     },
-    place(bottom, width) {
-      const style = doc.documentElement?.style;
-      style?.setProperty("--cape-party-bottom", `calc(${bottom}px + env(safe-area-inset-bottom, 0px))`);
-      style?.setProperty("--cape-party-width", `${width}px`);
-    },
     dispose() {
       observer?.disconnect();
-      const style = doc.documentElement?.style;
-      style?.removeProperty("--cape-party-bottom");
-      style?.removeProperty("--cape-party-width");
       roster = null;
     },
   };
