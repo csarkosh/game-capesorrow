@@ -23,7 +23,7 @@
  * - **People.** `insidePeople` stands copies of each room's unit's people in the hidden room, over the whole room, for `peopleParts.ts` to show
  *   while the local player is where that room is.
  */
-import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, type Mesh, type PbrMaterialProps, type SceneContext, type EngineContext } from "@babylonjs/lite";
+import { addToScene, disposeMeshGpu, removeFromScene, type Mesh, type PbrMaterialProps, type SceneContext, type EngineContext } from "@babylonjs/lite";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, insideRooms, roomOf, type Inside, type InsideRoom } from "../../sim/inside/rooms.js";
 import { buildingLevels } from "./buildingGeometry.js";
@@ -39,6 +39,7 @@ import { xd, xp } from "./roomKit.js";
 import { packSurface } from "./surfacePack.js";
 import type { TownTextureSet } from "./townMaterial.js";
 import type { Detail, TownGround } from "./townTypes.js";
+import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
 /** How many ticks into the hold at the street door the room is built: the screen is dark by then (the hold is `DOOR_TICKS` and the fade takes the first of it). */
 export const BUILD_AFTER = 12;
@@ -157,37 +158,37 @@ export function createInsideParts(host: InsideHost): InsideParts {
     // A designed room is drawn on the rooms' own arrays if they landed, else on the town's (`insideLayers.ts`).
     const own = !r.design.legacy && textures === "ready" && rooms !== null;
     if (host.textured && !r.design.legacy) retargetLayers(a, own ? "interior" : "town");
-    const made = createMeshFromData(host.engine, `inside_${r.id}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
+    const made = createPackedMesh(host.engine, `inside_${r.id}`, a);
     if (host.textured) made.pluginVertexData = packSurface(a.surface);
     made.material = own && rooms !== null ? rooms.material : host.material;
     made.renderOrder = host.order;
     addToScene(host.scene, made);
-    host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
+    host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
     host.uploads.made();
     mesh = made;
     // The street and the yard outside its windows: a mesh of its own on the same material, lit by the scene (`roomOutside.ts`).
     const o = a.outside;
     if (o !== undefined && o !== null) {
       if (host.textured && !r.design.legacy) retargetLayers(o, own ? "interior" : "town");
-      const scenery = createMeshFromData(host.engine, `inside_${r.id}_outside`, o.positions, o.normals, o.indices, o.uvs, undefined, undefined, o.colors);
+      const scenery = createPackedMesh(host.engine, `inside_${r.id}_outside`, o);
       if (host.textured) scenery.pluginVertexData = packSurface(o.surface);
       scenery.material = own && rooms !== null ? rooms.material : host.material;
       scenery.renderOrder = host.order;
       addToScene(host.scene, scenery);
-      host.uploads.count("geometry", o.positions.byteLength + o.normals.byteLength + o.colors.byteLength + o.uvs.byteLength + o.surface.byteLength + o.indices.byteLength, 4);
+      host.uploads.count("geometry", packedBytes(o.positions.length / 3, o.indices.length, o.surface.byteLength), 4);
       host.uploads.made();
       outsideMesh = scenery;
     }
     // The panes: their own mesh, an opaque draw after the break that reads the sky and the far land out of focus (`roomGlass.ts`).
     const g = a.through;
     if (g !== undefined && g !== null && host.through !== null) {
-      const sheet = createMeshFromData(host.engine, `inside_${r.id}_glass`, g.positions, g.normals, g.indices, g.uvs, undefined, undefined, g.colors);
+      const sheet = createPackedMesh(host.engine, `inside_${r.id}_glass`, g);
       sheet.pluginVertexData = packSurface(g.surface);
       sheet.material = host.through.material;
       sheet.renderOrder = host.through.order;
       sheet.afterBreak = true;
       addToScene(host.scene, sheet);
-      host.uploads.count("geometry", g.positions.byteLength + g.normals.byteLength + g.colors.byteLength + g.uvs.byteLength + g.surface.byteLength + g.indices.byteLength, 4);
+      host.uploads.count("geometry", packedBytes(g.positions.length / 3, g.indices.length, g.surface.byteLength), 4);
       host.uploads.made();
       glass = sheet;
     }

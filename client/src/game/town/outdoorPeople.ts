@@ -140,10 +140,15 @@ const OFFICES: readonly Trade[] = [
 /** Where a paper cup of coffee is right outside, at night as by day. */
 const CUP_AT: readonly Trade[] = [...COFFEE, "diner", "convenience store", "gas station"];
 
-/** The most people at one unit at once, over all its reasons: a tavern's door four, a cafe's three, an office's two, and two anywhere else. */
+/**
+ * Where nobody stands alone: outside a bar, a restaurant or a cafe everyone is one of two who talk, whatever brought them there (a wait for a table, a
+ * coffee, a smoke, a lift). Only the shopkeeper at their own door is alone at one.
+ */
+export const SOCIAL: readonly Trade[] = ["tavern", "restaurant", "pizza and burgers", "diner", "cafe", "espresso stand", "bakery"];
+
+/** The most people at one unit at once, over all its reasons: four at a tavern's, a restaurant's, a cafe's or the theater's door (two pairs), and two anywhere else. */
 export function unitCap(trade: Trade): number {
-  if (trade === "tavern" || trade === "movie theater") return 4;
-  if (COFFEE.includes(trade) || trade === "diner") return 3;
+  if (trade === "movie theater" || SOCIAL.includes(trade)) return 4;
   return 2;
 }
 
@@ -155,15 +160,15 @@ export function unitCap(trade: Trade): number {
  */
 export const REASONS: readonly Reason[] = [
   {
-    id: "morning drink", why: "a coffee outside a cafe, a bakery or the espresso stand: one with a cup, one on the phone, a pair talking",
-    needs: { trades: [...COFFEE, "diner"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.3] }, cap: 3, apart: PEOPLE_APART,
-    acts: [["cup", 5], ["phone", 2], ["pair", 3]],
+    id: "morning drink", why: "a coffee outside a cafe, a bakery or the espresso stand: two talking, with a cup each or one of them with one",
+    needs: { trades: [...COFFEE, "diner"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.3] }, cap: 4, apart: PEOPLE_APART,
+    acts: [["cups", 4], ["pair", 5]],
     bands: [{ from: open(0), to: abs(10.5), mean: 4.5, stay: [0.5, 1.2] }],
   },
   {
-    id: "lunch", why: "waiting for a table or a pickup at a diner, a restaurant or a pizza place: one waiting, or a pair",
-    needs: { trades: ["diner", "restaurant", "pizza and burgers", "cafe"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.4] }, cap: 2, apart: PEOPLE_APART,
-    acts: [["wait", 3], ["arms", 2], ["phone", 3], ["call", 1], ["idle", 0.4], ["pair", 3]],
+    id: "lunch", why: "waiting for a table or a pickup at a diner, a restaurant or a pizza place: two together",
+    needs: { trades: ["diner", "restaurant", "pizza and burgers", "cafe"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.55, 1.4] }, cap: 4, apart: PEOPLE_APART,
+    acts: [["pair", 1]],
     bands: [{ from: abs(11), to: abs(14.5), mean: 3.4, stay: [0.5, 1.1] }
     ],
   },
@@ -196,7 +201,7 @@ export const REASONS: readonly Reason[] = [
   {
     id: "break", why: "a break outside an office, a bank or the post office at about ten, noon and three: leaning on the wall, on the phone, with a cup",
     needs: { trades: OFFICES }, spot: { kind: "beside", gap: [1.1, 4.2], out: [0.4, 0.9] }, cap: 2, apart: 2.5,
-    acts: [["lean", 3], ["phone", 3], ["call", 2], ["cup", 2], ["pair", 1.5]],
+    acts: [["pair", 7], ["lean", 1.5], ["phone", 1], ["call", 0.5], ["cup", 1]],
     bands: [
       { from: abs(9.5), to: abs(16.5), mean: 7, stay: [0.5, 1] },
       { from: abs(11.5), to: abs(13.5), mean: 2.5, stay: [0.5, 1] },
@@ -217,14 +222,14 @@ export const REASONS: readonly Reason[] = [
     needs: { place: "corner" }, spot: { kind: "corner" }, cap: 1, apart: PEOPLE_APART,
     acts: [["wait", 3], ["phone", 2], ["arms", 1], ["call", 1], ["idle", 0.3]],
     bands: [
-      { from: abs(7.5), to: abs(20.5), mean: 9, stay: [0.3, 0.5] },
-      { from: abs(11), to: abs(17.5), mean: 4.5, stay: [0.3, 0.5] },
+      { from: abs(7.5), to: abs(20.5), mean: 3, stay: [0.3, 0.5] },
+      { from: abs(11), to: abs(17.5), mean: 1.5, stay: [0.3, 0.5] },
     ],
   },
   {
-    id: "tavern", why: "outside a tavern from early evening until it closes: talking in pairs, on the phone, leaning on the wall, waiting; the last leave at closing",
+    id: "tavern", why: "outside a tavern from early evening until it closes: talking in pairs; the last leave at closing",
     needs: { trades: ["tavern"] }, spot: { kind: "beside", gap: [0.8, 4.5], out: [0.8, 2.0] }, cap: 4, apart: PEOPLE_APART,
-    acts: [["pair", 4], ["call", 1], ["phone", 2], ["lean", 2], ["wait", 2]],
+    acts: [["pair", 1]],
     bands: [
       { from: abs(16.5), to: abs(20), mean: 5.5, stay: [0.6, 1.5] },
       { from: abs(20), to: abs(23), mean: 6.12, stay: [0.6, 1.8] },
@@ -232,15 +237,15 @@ export const REASONS: readonly Reason[] = [
     ],
   },
   {
-    id: "dinner", why: "outside a restaurant between six and nine: a pair, or one waiting",
-    needs: { trades: ["restaurant", "pizza and burgers"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.6, 1.5] }, cap: 2, apart: PEOPLE_APART,
-    acts: [["pair", 3], ["phone", 1], ["wait", 2], ["arms", 1]],
+    id: "dinner", why: "outside a restaurant between six and nine: two together",
+    needs: { trades: ["restaurant", "pizza and burgers"] }, spot: { kind: "beside", gap: [0.9, 4.2], out: [0.6, 1.5] }, cap: 4, apart: PEOPLE_APART,
+    acts: [["pair", 1]],
     bands: [{ from: abs(18), to: abs(21), mean: 4.5, stay: [0.5, 1] }],
   },
   {
     id: "theater", why: "outside the movie theater for the half hour before seven and nine: a small group",
     needs: { trades: ["movie theater"] }, spot: { kind: "beside", gap: [0.9, 2.6], out: [0.7, 1.6] }, cap: 4, apart: PEOPLE_APART,
-    acts: [["pair", 3], ["phone", 2], ["wait", 2], ["arms", 1]],
+    acts: [["pair", 7], ["wait", 1], ["phone", 1]],
     bands: [
       { from: abs(18.2), to: abs(19.2), mean: 3.0, stay: [0.5, 0.8] },
       { from: abs(20.2), to: abs(21.2), mean: 3.0, stay: [0.5, 0.8] },
@@ -268,9 +273,9 @@ export const REASONS: readonly Reason[] = [
     bands: [{ from: abs(5), to: abs(8), mean: 0.7, stay: [0.6, 1.5] }],
   },
   {
-    id: "quay by day", why: "looking at the water through the day: waiting, arms folded, or on a call",
-    needs: { place: "quay" }, spot: { kind: "apron", off: [1.6, 3.0] }, cap: 3, apart: PEOPLE_APART,
-    acts: [["wait", 3], ["arms", 2], ["call", 1]],
+    id: "quay by day", why: "looking at the water through the day: two talking, or one waiting, arms folded, or on a call",
+    needs: { place: "quay" }, spot: { kind: "apron", off: [1.6, 3.0] }, cap: 4, apart: PEOPLE_APART,
+    acts: [["pair", 9], ["wait", 1], ["arms", 0.5], ["call", 0.5]],
     bands: [{ from: abs(8), to: abs(18), mean: 6, stay: [0.6, 1.5] }],
   },
   {
@@ -281,8 +286,8 @@ export const REASONS: readonly Reason[] = [
   },
   {
     id: "waiting", why: "someone waiting outside any open business for a lift, a friend or a call: only where the day would otherwise leave a small town's street empty (`DAY_FLOOR`)",
-    needs: { place: "any" }, spot: { kind: "beside", gap: [0.9, 7], out: [0.5, 2.2] }, cap: 1, apart: PEOPLE_APART,
-    acts: [["wait", 3], ["arms", 2], ["phone", 3], ["call", 1]],
+    needs: { place: "any" }, spot: { kind: "beside", gap: [0.9, 7], out: [0.5, 2.2] }, cap: 2, apart: PEOPLE_APART,
+    acts: [["pair", 5], ["wait", 2], ["arms", 1], ["phone", 2], ["call", 1]],
     bands: [{ from: abs(7.5), to: abs(20), mean: 0, stay: [0.5, 0.9] }],
   },
 ];
@@ -842,8 +847,10 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
   }
 
   /** Places a person (or a pair) in front of a unit by its reason's spot and its clip: the first of a few tries that is clear, clear of a wall or a pole ahead of them and with room at the place. */
-  function placeAtUnit(reason: Reason, unit: Unit, use: BuildingUse, fr: NonNullable<BuildingUse["frame"]>, base: Draft, act: Act, trade: Trade, key: number, idx: number, sideBias: number): void {
+  function placeAtUnit(reason: Reason, unit: Unit, use: BuildingUse, fr: NonNullable<BuildingUse["frame"]>, base: Draft, asked: Act, trade: Trade, key: number, idx: number, sideBias: number): void {
     const spot = reason.spot;
+    // Outside a bar, a restaurant or a cafe nobody stands alone (`SOCIAL`): whoever is there, for whatever reason, is one of two who talk. The shopkeeper at their own door is the one exception.
+    const act: Act = SOCIAL.includes(trade) && reason.id !== "shopkeeper" && asked !== "pair" && asked !== "cups" ? "pair" : asked;
     const P = (s: number, out: number): { x: number; z: number } => ({ x: fr.origin.x + fr.t.x * s + fr.n.x * out, z: fr.origin.z + fr.t.z * s + fr.n.z * out });
     const pair = act === "pair" || act === "cups";
     const wipe = act === "wipe";
@@ -1049,7 +1056,7 @@ export function outdoorPeopleFor(plan: TownPlan, anchor: { readonly x: number; r
               const when = stay(band, key, idx, null);
               if (when === null) continue;
               const act = pick(reason.acts, roll(key, idx, 5, 39));
-              const pair = act === "cups";
+              const pair = act === "cups" || act === "pair";
               const [ca, cb] = pairClips(act, reason.id, key, idx);
               const base: Draft = {
                 reason: reason.id, x: 0, z: 0, yaw: 0, ...rollStyle(reason, key, idx), activity: pair ? ca : (act as Activity), hours: hoursOfStay(when.start, when.length), start: when.start, length: when.length,
@@ -1159,6 +1166,8 @@ function thinned(all: readonly Placed[], units: number): Placed[] {
     let n = here.length;
     for (const p of here) {
       if (n <= cap) break;
+      // Already gone with the other of their pair, and counted then.
+      if (gone.has(p.id)) continue;
       gone.add(p.id);
       n--;
       if (p.partner >= 0 && !gone.has(p.partner)) {

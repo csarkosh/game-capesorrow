@@ -1,5 +1,6 @@
 // The rooms' own textures: when they are asked for, what the room waits for and what it is drawn on if they do not come. The renderer's pieces and the
 // geometry are replaced by recorders; the rooms, their designs and the layers are the real ones.
+import { unpackSurface } from "../../src/game/town/surfacePack.js";
 import "../../src/terrain.js";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -138,11 +139,11 @@ describe("the rooms' textures", () => {
     expect(roomDrawn()).toBe(true);
     const made = mocks.made[0] as { material: unknown; pluginVertexData: Float32Array };
     expect(made.material).toBe(roomsMaterial);
-    // The packed records are 16-bit floats: read the first number of each (the layer).
-    const halves = new Uint16Array(made.pluginVertexData.buffer);
+    // The packed records are 16 bytes (`surfacePack.ts`): read the first number of each (the layer) back.
     const layerOf = (v: number): number => {
-      const h = halves[v * 12] as number;
-      return h === 0 ? 0 : (1 + ((h & 0x3ff) / 1024)) * 2 ** (((h >> 10) & 0x1f) - 15) * ((h & 0x8000) !== 0 ? -1 : 1);
+      const out = new Float32Array(12);
+      unpackSurface(made.pluginVertexData, v, out);
+      return out[0] as number;
     };
     expect(layerOf(0)).toBe(INTERIOR_LAYERS.findIndex((l) => l.name === "marble_tile"));
     expect(layerOf(1)).toBe(INTERIOR_LAYERS.findIndex((l) => l.name === "brick"));
@@ -164,9 +165,10 @@ describe("the rooms' textures", () => {
     expect(p.built()).toBe(designed.id);
     expect(roomDrawn()).toBe(true);
     expect(mocks.made[0]?.material).toBe(townMaterial);
-    const h = new Uint16Array((mocks.made[0] as { pluginVertexData: Float32Array }).pluginVertexData.buffer);
-    // Marble has no layer in the town's set: it is the stone (index 9, whose half-float is 0x4880).
-    expect(h[0]).toBe(0x4880);
+    const first = new Float32Array(12);
+    unpackSurface((mocks.made[0] as { pluginVertexData: Float32Array }).pluginVertexData, 0, first);
+    // Marble has no layer in the town's set: it is the stone (index 9).
+    expect(first[0]).toBe(9);
     expect(layerIndex("stone")).toBe(9);
   });
 

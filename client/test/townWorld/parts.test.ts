@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { noParts } from "@csarkosh/engine/game/lite/noParts";
 import type { RenderHost, RenderMakeLate } from "@csarkosh/engine/game/lite/renderGame";
 import type { Slices } from "@csarkosh/engine/game/syncJobs";
-import { boundsOf, townParts } from "../../src/game/town/townParts.js";
+import { boundsOf, retireStandIns, townParts } from "../../src/game/town/townParts.js";
 import { createForest } from "@csarkosh/engine/sim/forest";
 import "../../src/terrain.js";
 
@@ -72,5 +72,23 @@ describe("the town's part of the renderer", () => {
     const b = boundsOf(positions);
     expect([b.x, b.y, b.z]).toEqual([5, 2, 10]);
     expect(b.radius).toBeCloseTo(Math.sqrt(100 + 16 + 400) / 2, 5);
+  });
+
+  it("lets each stand-in go once when its model is made, keeps the rest in order, and keeps a model's stand-ins that has not landed", () => {
+    type M = { id: number; model?: string };
+    const list: M[] = [{ id: 1 }, { id: 2, model: "a" }, { id: 3, model: "b" }, { id: 4 }, { id: 5, model: "a" }];
+    const dropped: number[] = [];
+    const landed = new Set<string>();
+    retireStandIns(list, (m) => landed.has(m), (m) => dropped.push(m.id));
+    expect(list.length).toBe(5);
+    expect(dropped).toEqual([]);
+    landed.add("a");
+    retireStandIns(list, (m) => landed.has(m), (m) => dropped.push(m.id));
+    expect(dropped).toEqual([2, 5]);
+    expect(list.map((m) => m.id)).toEqual([1, 3, 4]);
+    // Asked again, nothing is let go twice; the model whose file failed never lands, so its stand-in stays.
+    retireStandIns(list, (m) => landed.has(m), (m) => dropped.push(m.id));
+    expect(dropped).toEqual([2, 5]);
+    expect(list.map((m) => m.id)).toEqual([1, 3, 4]);
   });
 });

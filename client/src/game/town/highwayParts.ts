@@ -15,14 +15,15 @@
  * - **Counts.** `highwayStats()` gives what stands: cells, vertices, triangles and the bytes the GPU holds for them.
  */
 import { leanMesh } from "./leanMesh.js";
-import { packSurface } from "./surfacePack.js";
-import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, setMeshVisible, type Mesh } from "@babylonjs/lite";
+import { SURFACE_PACKED_BYTES, packSurface } from "./surfacePack.js";
+import { addToScene, disposeMeshGpu, removeFromScene, setMeshVisible, type Mesh } from "@babylonjs/lite";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import type { RenderHost } from "@csarkosh/engine/game/lite/renderGame";
 import type { Slices } from "@csarkosh/engine/game/syncJobs";
 import { HIGHWAY_CELL, cellInStrip, highwayCellSlices, highwayWorld, type HighwayLod } from "./highwayCells.js";
 import type { RailDraw } from "./railParts.js";
 import type { MeshArrays } from "./meshBuilder.js";
+import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
 /** Cells within this distance of the camera are built, and are let go beyond `RELEASE_REACH`, metres: the full tiers' and the low tier's. */
 export const BUILD_REACH = 600;
@@ -52,10 +53,10 @@ export function highwayLodFor(d: number, held: HighwayLod | null, near: number =
   return d < near + (held === 0 ? HYSTERESIS : 0) ? 0 : 1;
 }
 
-/** The bytes a cell's arrays take on the GPU: positions, normals, colours, UVs, the packed surface records (24 bytes a vertex) and the indices. */
+/** The bytes a cell's arrays take on the GPU: positions, UVs, the packed normals and colours, the packed surface records (`SURFACE_PACKED_BYTES` a vertex) and the indices (`vertexPack.ts`). */
 export function gpuBytes(a: MeshArrays): number {
   const vertices = a.positions.length / 3;
-  return vertices * (12 + 12 + 16 + 8 + 24) + a.indices.length * 4;
+  return packedBytes(vertices, a.indices.length, vertices * SURFACE_PACKED_BYTES);
 }
 
 function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
@@ -99,10 +100,10 @@ export function createHighwayStream(host: RenderHost, draw: RailDraw, seed: numb
     let made: Mesh | null = null;
     let bounds = { x: 0, y: 0, z: 0, radius: 0 };
     if (arrays !== null) {
-      const bytes = arrays.positions.byteLength + arrays.normals.byteLength + arrays.colors.byteLength + arrays.uvs.byteLength + arrays.surface.byteLength + arrays.indices.byteLength;
+      const bytes = packedBytes(arrays.positions.length / 3, arrays.indices.length, arrays.surface.byteLength);
       yield* host.uploads.hold(bytes);
       if (disposed || cells.get(cell.k) !== cell) return;
-      const mesh = createMeshFromData(draw.engine, `highway_${cell.k}_${lod}`, arrays.positions, arrays.normals, arrays.indices, arrays.uvs, undefined, undefined, arrays.colors);
+      const mesh = createPackedMesh(draw.engine, `highway_${cell.k}_${lod}`, arrays);
       if (draw.textured) mesh.pluginVertexData = packSurface(arrays.surface);
       mesh.material = draw.materials.flat;
       mesh.renderOrder = draw.orders.flat;

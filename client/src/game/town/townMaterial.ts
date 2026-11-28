@@ -4,7 +4,8 @@
  * are loaded by `townTextures.ts`.
  *
  * **A vertex carries**, beside Lite's own position, normal, colour (the flat colour) and UV, two more attributes in the mesh's
- * plugin vertex data (`Mesh.pluginVertexData`: twelve numbers a vertex, packed as 16-bit floats, 24 bytes, one interleaved buffer; `surfacePack.ts`):
+ * plugin vertex data (`Mesh.pluginVertexData`: twelve numbers a vertex, packed in 16 bytes, one interleaved buffer; `surfacePack.ts`), unpacked at the top of
+ * the vertex stage into the names below:
  *
  * - `townSurface` (floats 0 to 3): x, the texture layer's index (`townLayers.ts`), or -1 (`NO_LAYER`) for a vertex that is
  *   flat colour, drawn as every town vertex was before this material (read rounded, since the interpolation across a polygon
@@ -71,7 +72,7 @@ import {
   ALWAYS_CODE, CODE_BASE, CODE_STRIDE, DAWN_HOUR, DUSK_HOUR, FADE_HOURS, HOURS_PER_DAY, NIGHT_BASE, NIGHT_FADE_HOURS, NIGHT_LEAD_HOURS, OFF_FIRST_HOUR, OFF_STEPS, OFF_STEP_HOURS, ON_STEP_HOURS, UNTIL_DAWN,
 } from "./hours.js";
 import { MAX_LAMPS, type LampList } from "./lampLight.js";
-import { SURFACE_PACKED_BYTES } from "./surfacePack.js";
+import { GLOW_STEPS, HEIGHT_PER_UNIT, KIND_PER_UNIT, SEED_STEPS, SURFACE_PACKED_BYTES, TINT_ONE } from "./surfacePack.js";
 import { KNOCK_OVER, KNOCK_UNDER, PAINT_RANKS } from "./paint.js";
 import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
@@ -81,7 +82,7 @@ import { INTERIOR_LAYERS } from "./interiorLayers.js";
 import { PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY, layerIndex } from "./townLayers.js";
 import { EAVE_CODE, EAVE_REACH, EAVE_SHADE, FOOT_CODE, FOOT_REACH, FOOT_SHADE, FOOT_UNIT } from "./skyShade.js";
 
-/** The attribute and varying names. */
+/** The names the vertex stage unpacks the record into (`TOWN_UNPACK`), and the varyings it is handed to the fragment stage by. */
 export const TOWN_ATTRIBUTE = "townSurface";
 export const TOWN_VARYING = "vTownSurface";
 export const TOWN_TINT_ATTRIBUTE = "townTint";
@@ -90,6 +91,23 @@ export const TOWN_TINT_VARYING = "vTownTint";
 export const TOWN_VERTEX_FLOATS = 12;
 export const TOWN_WEAR_ATTRIBUTE = "townWear";
 export const TOWN_WEAR_VARYING = "vTownWear";
+/** The record's four attributes as the GPU holds it (`surfacePack.ts`): two 16-bit floats and three 32-bit words. */
+export const TOWN_PACK_HALVES = "townPackH";
+export const TOWN_PACK_A = "townPackA";
+export const TOWN_PACK_B = "townPackB";
+export const TOWN_PACK_C = "townPackC";
+/**
+ * The top of the vertex stage: the record unpacked into the three names the rest of the plugin reads, as the 32-bit floats they have always been.
+ * `townSurface` is the layer (the third word's low five bits, less one), the first wear's amount (the first word's top byte), its kind (the second
+ * word's top four bits plus the third's fraction over `SEED_STEPS`) and the glow; `townTint` the tint (12 bits a colour over `TINT_ONE`, squared) and
+ * how clear; `townWear` the second wear's amount and kind (the third word's upper bits) and the two 16-bit floats.
+ */
+export const TOWN_UNPACK =
+  `let tpA=${TOWN_PACK_A};let tpB=${TOWN_PACK_B};let tpC=${TOWN_PACK_C};` +
+  `let tpT=vec3<f32>(f32(tpA&4095u),f32((tpA>>12u)&4095u),f32(tpB&4095u))/${TINT_ONE.toFixed(1)};` +
+  `let ${TOWN_ATTRIBUTE}=vec4<f32>(f32(tpC&31u)-1.0,f32(tpA>>24u)/255.0,f32(tpB>>28u)+f32((tpC>>5u)&127u)/${SEED_STEPS.toFixed(1)},f32((tpB>>12u)&255u)/${GLOW_STEPS.toFixed(1)}-1.0);` +
+  `let ${TOWN_TINT_ATTRIBUTE}=vec4<f32>(tpT*tpT,f32((tpB>>20u)&255u)/255.0);` +
+  `let ${TOWN_WEAR_ATTRIBUTE}=vec4<f32>(f32((tpC>>12u)&1023u)/${HEIGHT_PER_UNIT.toFixed(1)},f32(tpC>>22u)/${KIND_PER_UNIT.toFixed(1)},${TOWN_PACK_HALVES}.x,${TOWN_PACK_HALVES}.y);`;
 
 /** How much of the occlusion map darkens the colour: all of it would shade the sun's light by a crevice that a map made for ambient light. */
 const AO_STRENGTH = 0.85;
@@ -691,12 +709,13 @@ export function townSurfacePlugin(textures: TownTextureSet, ready: TownReady, lo
     getCustomCode: (stage) =>
       stage === "fragment"
         ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: surface, CUSTOM_FRAGMENT_BEFORE_LIGHTS: townAlphaCode(low) + (signAtlas === undefined ? "" : "alpha=alpha*townSignA;"), CUSTOM_FRAGMENT_LIGHT: TOWN_LIGHT_CODE, CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: TOWN_COMPOSE_CODE }
-        : { CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX + (ranked ? "" : DOOR_VERTEX + KNOCK_VERTEX), CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE + DOOR_UNPAINT + KNOCK_UNPAINT}` },
+        : { CUSTOM_VERTEX_MAIN_BEGIN: TOWN_UNPACK, CUSTOM_VERTEX_UPDATE_WORLDPOS: WIRE_VERTEX + (ranked ? "" : DOOR_VERTEX + KNOCK_VERTEX), CUSTOM_VERTEX_MAIN_END: `out.${TOWN_VARYING}=${TOWN_ATTRIBUTE};out.${TOWN_TINT_VARYING}=${TOWN_TINT_ATTRIBUTE};out.${TOWN_WEAR_VARYING}=${TOWN_WEAR_ATTRIBUTE};${ranked ? RANK_CODE : PAINT_CODE + DOOR_UNPAINT + KNOCK_UNPAINT}` },
     getVertexAttributes: () => [
-      // Twelve 16-bit floats a vertex (`surfacePack.ts`): the shader reads them as the 32-bit floats they stand for.
-      { name: TOWN_ATTRIBUTE, type: "vec4<f32>", format: "float16x4", stride: SURFACE_PACKED_BYTES, offset: 0 },
-      { name: TOWN_TINT_ATTRIBUTE, type: "vec4<f32>", format: "float16x4", stride: SURFACE_PACKED_BYTES, offset: 8 },
-      { name: TOWN_WEAR_ATTRIBUTE, type: "vec4<f32>", format: "float16x4", stride: SURFACE_PACKED_BYTES, offset: 16 },
+      // Sixteen bytes a vertex (`surfacePack.ts`), unpacked at the top of the vertex stage (`TOWN_UNPACK`).
+      { name: TOWN_PACK_HALVES, type: "vec2<f32>", format: "float16x2", stride: SURFACE_PACKED_BYTES, offset: 0 },
+      { name: TOWN_PACK_A, type: "u32", format: "uint32", stride: SURFACE_PACKED_BYTES, offset: 4 },
+      { name: TOWN_PACK_B, type: "u32", format: "uint32", stride: SURFACE_PACKED_BYTES, offset: 8 },
+      { name: TOWN_PACK_C, type: "u32", format: "uint32", stride: SURFACE_PACKED_BYTES, offset: 12 },
     ],
     getVaryings: () => [{ name: TOWN_VARYING, type: "vec4<f32>" }, { name: TOWN_TINT_VARYING, type: "vec4<f32>" }, { name: TOWN_WEAR_VARYING, type: "vec4<f32>" }],
     getUniforms: () => ({ ubo: [...READY_FIELDS] }),

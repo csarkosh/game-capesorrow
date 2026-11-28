@@ -92,7 +92,7 @@ describe("the page's black cover", () => {
     const root = container.children[1] as El;
     const cover = root.children[0] as El;
     expect(cover.className).toBe("dark");
-    expect(root.children.map((c) => c.className)).toEqual(["dark", "line status", "line flash", "line prompt", ""]);
+    expect(root.children.map((c) => c.className)).toEqual(["dark", "speech", "line status", "line flash", "line prompt", ""]);
     // The style puts it over the whole screen, clear to begin with, and ignoring the pointer.
     const css = (container.children[0] as El).textContent;
     expect(css).toMatch(/\.walk-hud \.dark \{[^}]*inset: 0[^}]*opacity: 0[^}]*pointer-events: none/);
@@ -149,7 +149,7 @@ describe("the console's goin", () => {
       base: { hour: 12 }, appliedHour: 12, appliedWeather: {}, renderer: { setView: () => undefined }, touchStart: false,
       touchModel: { interactDown: () => undefined, interactUp: () => undefined },
       ambient: { voice: () => ({ hz: 0, engine: 0, tyres: 0 }), car: () => undefined, thud: () => undefined, door: () => undefined },
-      hud: { setDark: (d: boolean) => dark.push(d), setPrompt: () => undefined, flash: (l: string) => flash.push(l) },
+      hud: { setDark: (d: boolean) => dark.push(d), setSpeech: () => undefined, setPrompt: () => undefined, flash: (l: string) => flash.push(l) },
       get activeWorld() { return world.current; },
     };
     return { host: host as never, dark, flash, world };
