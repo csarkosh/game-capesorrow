@@ -72,14 +72,14 @@ describe("the hand and the corner map", () => {
       process.stdout.write(`${name}: head at ${(still.head[0] * 100).toFixed(0)}% across and ${(still.head[1] * 100).toFixed(0)}% down; right edge ${(still.xmax * 100).toFixed(1)}%; crosses the bottom at ${(still.bottom[0] * 100).toFixed(0)} to ${(still.bottom[1] * 100).toFixed(0)}%; map rectangle starts at ${(((W - BLOCK.width) / W) * 100).toFixed(1)}% across\n`);
     });
 
-    it(`holds the torch's head at 57 percent across and 69 percent down and has the forearm rise from the bottom edge between 55 and 74 percent (${name})`, () => {
+    it(`holds the torch's head at 52 percent across and 64 percent down and has the forearm rise from the bottom edge between 60 and 76 percent (${name})`, () => {
       const s = seen(W, H, 120, {});
-      expect(s.head[0]).toBeGreaterThan(0.55);
+      expect(s.head[0]).toBeGreaterThan(0.5);
       expect(s.head[0]).toBeLessThan(0.6);
-      expect(s.head[1]).toBeGreaterThan(0.66);
+      expect(s.head[1]).toBeGreaterThan(0.62);
       expect(s.head[1]).toBeLessThan(0.72);
-      expect(s.bottom[0]).toBeGreaterThan(0.55);
-      expect(s.bottom[1]).toBeLessThan(0.74);
+      expect(s.bottom[0]).toBeGreaterThan(0.6);
+      expect(s.bottom[1]).toBeLessThan(0.76);
     });
   }
 });

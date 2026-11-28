@@ -125,3 +125,79 @@ export function bevelBox(b: MeshBuilder, centre: Vec3, ax: Vec3, ay: Vec3, az: V
     }
   }
 }
+
+/** One cross-section of a lofted body: where it is, and its half sizes across (`rx` along the body's `up` hint's way, `ry` across that). */
+export type Section = { readonly c: Vec3; readonly rx: number; readonly ry: number };
+
+/**
+ * A smooth body lofted through `sections`, each an ellipse of `sides` corners about its centre, the frames carried along the path so that a bend does not twist it.
+ * The faces share their corners (`MeshBuilder.grid`: normals are averaged, so the body is round and not faceted), and each end is closed with a flat cap, so the body is a
+ * solid. The ring's seam is at the `up` hint's side of the body. `colour` is one colour or one by row and corner. Fingers, the back of a hand, a sleeve and a rounded
+ * torch part are all this.
+ */
+export function loft(b: MeshBuilder, sections: readonly Section[], sides: number, colour: Rgb | ((i: number, j: number) => Rgb), mat: MatRef, up: Vec3 = [0, 1, 0]): void {
+  const n = sections.length;
+  if (n < 2) return;
+  const rows: Vec3[][] = [];
+  const centres: Vec3[] = [];
+  const tans: Vec3[] = [];
+  let prevU: Vec3 = up;
+  for (let i = 0; i < n; i++) {
+    const a = (sections[Math.max(0, i - 1)] as Section).c;
+    const c = (sections[Math.min(n - 1, i + 1)] as Section).c;
+    const t = unit(sub(c, a));
+    // The frame: the previous one's up with its part along the path taken out.
+    const k = prevU[0] * t[0] + prevU[1] * t[1] + prevU[2] * t[2];
+    let u: Vec3 = [prevU[0] - t[0] * k, prevU[1] - t[1] * k, prevU[2] - t[2] * k];
+    if (len(u) < 1e-6) u = across(t)[0];
+    u = unit(u);
+    const v = cross(t, u);
+    prevU = u;
+    const s = sections[i] as Section;
+    const ring: Vec3[] = [];
+    for (let j = 0; j <= sides; j++) {
+      const ang = ((j % sides) / sides) * Math.PI * 2;
+      ring.push(add(add(s.c, u, Math.cos(ang) * s.rx), v, Math.sin(ang) * s.ry));
+    }
+    rows.push(ring);
+    centres.push(s.c);
+    tans.push(t);
+  }
+  b.grid(rows, centres, { colour, mat });
+  const at = (i: number, j: number): Rgb => (typeof colour === "function" ? colour(i, j) : colour);
+  const first = (rows[0] as Vec3[]).slice(0, sides);
+  const last = (rows[n - 1] as Vec3[]).slice(0, sides);
+  const t0 = tans[0] as Vec3;
+  const t1 = tans[n - 1] as Vec3;
+  b.poly(first, [-t0[0], -t0[1], -t0[2]], at(0, 0), mat);
+  b.poly(last, t1, at(n - 1, 0), mat);
+}
+
+/**
+ * A knurled band: a prism from `p0` to `p1` whose ring alternates between `r` and `r - depth` over `teeth` teeth, so that the grip has ridges and grooves, and a fan of
+ * triangles from the middle closes each end. Its faces are flat, so each ridge and groove catches the light its own way; the texture laid on it supplies the fine pattern.
+ */
+export function knurl(b: MeshBuilder, p0: Vec3, p1: Vec3, r: number, depth: number, teeth: number, colour: Rgb, mat: MatRef): void {
+  const axis = unit(sub(p1, p0));
+  const [u, v] = across(axis);
+  const count = teeth * 2;
+  const ring = (c: Vec3): Vec3[] => {
+    const pts: Vec3[] = [];
+    for (let j = 0; j <= count; j++) {
+      const ang = ((j % count) / count) * Math.PI * 2;
+      const rr = j % 2 === 0 ? r : r - depth;
+      pts.push(add(add(c, u, Math.cos(ang) * rr), v, Math.sin(ang) * rr));
+    }
+    return pts;
+  };
+  const a = ring(p0);
+  const z = ring(p1);
+  // Flat faces, so that the ridges and the grooves catch the light each its own way.
+  for (let j = 0; j < count; j++) {
+    const mid = ((j + 0.5) / count) * Math.PI * 2;
+    b.poly([a[j] as Vec3, a[j + 1] as Vec3, z[j + 1] as Vec3, z[j] as Vec3], add(add([0, 0, 0], u, Math.cos(mid)), v, Math.sin(mid)), colour, mat);
+  }
+  for (const [pts, c, out] of [[a, p0, [-axis[0], -axis[1], -axis[2]] as Vec3], [z, p1, axis]] as const) {
+    for (let j = 0; j < count; j++) b.poly([c, pts[j] as Vec3, pts[j + 1] as Vec3], out, colour, mat);
+  }
+}

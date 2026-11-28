@@ -8,9 +8,9 @@
  *
  * - **At rest the hand is down**, below the view. Lamp turned on: it rises over `RAISE_SECONDS` (0.25 s) to its hold; turned off, it lowers over
  *   `LOWER_SECONDS` (0.2 s). A part-way raise that is turned off goes back down from where it is.
- * - **The hold** is the lens `HOLD_DEPTH` (0.52 m) ahead of the eye and where `HOLD_SCREEN` says on the screen (worked out from the view's aspect). The beam goes along
+ * - **The hold** is the lens `HOLD_DEPTH` (0.45 m) ahead of the eye and where `HOLD_SCREEN` says on the screen (worked out from the view's aspect). The beam goes along
  *   `TILT_YAW` and `TILT_PITCH`; the torch is drawn along `DRAWN_YAW` and `DRAWN_PITCH`, turned in so that its barrel shows. The arm drops straight down `LOWER_DROP` (0.55 m:
- *   29 percent of the view's height under the bottom edge at the lowest, on every window from 4:3 to 21:9) and rises the same way.
+ *   a third of the view's height under the bottom edge at the lowest, on every window from 4:3 to 21:9) and rises the same way.
  * - **A walking bob** tied to the ground speed (a step is about two bobs a metre of stride's phase), a **breathing sway** that is the whole of the motion
  *   when standing still, a **lag behind a quick turn** of the view (the hand follows the camera on a spring; at most `MAX_LAG`, 4 degrees), **lower and steadier
  *   when sprinting**, and **raised a little when the view looks steeply down**, so that it does not fill the view.
@@ -29,8 +29,8 @@ export const LOWER_SECONDS = 0.2;
 export const FOV = 1.4;
 export const ASPECT_MIN = 1, ASPECT_MAX = 2.2;
 /** How far ahead of the eye the lens is at the hold (metres), and where it stands on the screen there, as shares of the view's width (from the left) and height (from the top). */
-export const HOLD_DEPTH = 0.52;
-export const HOLD_SCREEN = { x: 0.57, y: 0.69 } as const;
+export const HOLD_DEPTH = 0.45;
+export const HOLD_SCREEN = { x: 0.52, y: 0.64 } as const;
 /**
  * How the torch is tilted at the hold, radians: turned toward the left of the view and pitched down, as a person holds a torch up before them and points it at the
  * ground ahead. The tilt shows the barrel along its side (pointed straight ahead it is seen end on) and sends the beam's middle to the ground about 7 m ahead, so
@@ -42,9 +42,9 @@ export const TILT_YAW = -0.04, TILT_PITCH = 0.2;
  * of the eye that points exactly where the beam goes is seen from behind, its tail cap hiding the rest; drawn turned in like this its barrel is seen along its
  * side, the head the farthest and widest part, as a held torch looks to the one who holds it. The beam keeps `TILT_YAW` and `TILT_PITCH` from the lens. Set by eye.
  */
-export const DRAWN_YAW = -0.25, DRAWN_PITCH = -0.25;
+export const DRAWN_YAW = -0.95, DRAWN_PITCH = -0.5;
 /** The turn of the torch about its own axis at the hold, radians: the hand holds it from the right and below, the forearm rising from the bottom edge of the view. */
-export const HOLD_ROLL = -1.1;
+export const HOLD_ROLL = -0.2;
 /** The lens's place at the hold for a view of this aspect (width over height), in the camera's frame: so that the torch's head stands at `HOLD_SCREEN` whatever the window's shape. */
 export function holdFor(aspect: number): { x: number; y: number; z: number } {
   const a = Math.min(ASPECT_MAX, Math.max(ASPECT_MIN, aspect));

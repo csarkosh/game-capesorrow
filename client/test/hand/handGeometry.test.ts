@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MeshBuilder, isUnbacked } from "../../src/game/town/meshBuilder.js";
-import { flashlightGeometry, lensGlowGeometry, TORCH } from "../../src/game/hand/flashlightGeometry.js";
+import { flashlightGeometry, lensGlowGeometry, torchSolids, TORCH } from "../../src/game/hand/flashlightGeometry.js";
 import { handSolids } from "../../src/game/hand/handGeometry.js";
 import { handArrays } from "../../src/game/hand/handParts.js";
 import { HOLD, NEAREST, newHandPose, newHandState, stepHand, torchBasis } from "../../src/game/hand/handPose.js";
@@ -32,11 +32,12 @@ function openEdges(positions: Float32Array, indices: Uint32Array): number {
 describe("the hand's and the torch's geometry", () => {
   const { body, lens } = handArrays();
 
-  it("is under 1,800 vertices with the torch, and the lens is a disc", () => {
-    expect(body.positions.length / 3).toBeLessThan(1800);
-    expect(body.positions.length / 3).toBeGreaterThan(600);
-    expect(lens.positions.length / 3).toBeLessThan(80);
-    expect(body.positions.length / 3 + lens.positions.length / 3).toBeLessThan(1800);
+  it("is under 6,000 vertices with the torch, in two draws, and the lens is a disc", () => {
+    expect(body.positions.length / 3).toBeLessThan(6000);
+    expect(body.positions.length / 3).toBeGreaterThan(1500);
+    expect(lens.positions.length / 3).toBeLessThan(100);
+    expect(body.positions.length / 3 + lens.positions.length / 3).toBeLessThan(6000);
+    expect(body.indices.length / 3).toBeLessThan(6000);
   });
 
   it("holds no number that is not finite, and every normal is a unit vector", () => {
@@ -46,7 +47,7 @@ describe("the hand's and the torch's geometry", () => {
     }
   });
 
-  it("keeps the torch inside its box: 15 cm long, a head 4.5 cm across, the lens at the origin", () => {
+  it("keeps the torch inside its box: 21 cm long, a head 5.5 cm across and a bezel 6 cm, a grip 4 cm, the lens at the origin", () => {
     const b = new MeshBuilder();
     flashlightGeometry(b);
     const a = b.take();
@@ -55,17 +56,20 @@ describe("the hand's and the torch's geometry", () => {
       const x = a.positions[i] as number, y = a.positions[i + 1] as number, z = a.positions[i + 2] as number;
       zlo = Math.min(zlo, z);
       zhi = Math.max(zhi, z);
-      // The switch stands up from the top of the body; every other point is within the head's radius of the axis.
-      if (z < -0.05 || z > -0.075) r = Math.max(r, Math.hypot(x, y));
+      r = Math.max(r, Math.hypot(x, y));
     }
     expect(zhi).toBeLessThanOrEqual(0.001);
     expect(zlo).toBeGreaterThanOrEqual(-TORCH.length - 1e-6);
-    expect(TORCH.length).toBeGreaterThanOrEqual(0.14);
-    expect(TORCH.length).toBeLessThanOrEqual(0.17);
-    expect(TORCH.bodyRadius * 2).toBeCloseTo(0.026, 3);
-    expect(TORCH.headRadius * 2).toBeGreaterThan(0.042);
-    expect(TORCH.headRadius * 2).toBeLessThan(0.046);
+    expect(TORCH.length).toBeGreaterThanOrEqual(0.19);
+    expect(TORCH.length).toBeLessThanOrEqual(0.22);
+    expect(TORCH.gripRadius * 2).toBeGreaterThan(0.038);
+    expect(TORCH.gripRadius * 2).toBeLessThan(0.042);
+    expect(TORCH.headRadius * 2).toBeGreaterThan(0.054);
+    expect(TORCH.headRadius * 2).toBeLessThan(0.057);
+    expect(TORCH.bezelRadius).toBeGreaterThan(TORCH.headRadius);
     expect(r).toBeLessThanOrEqual(TORCH.bezelRadius + 1e-6);
+    // The grip is thinner than the head, and the anti-roll ring stands proud of it.
+    expect(TORCH.ringRadius).toBeGreaterThan(TORCH.gripRadius * 1.2);
   });
 
   it("keeps the hand and the sleeve in a box of the lower right: within 55 cm of the lens, and none of it in front of the lens", () => {
@@ -90,6 +94,34 @@ describe("the hand's and the torch's geometry", () => {
     }
   });
 
+  it("grips the second band with the head clear of the fist by 5 cm or more, the fingers on the grip and not on the head or the tail's guard", () => {
+    let front = -Infinity, back = Infinity;
+    for (const s of handSolids().filter((q) => q.name.startsWith("finger"))) {
+      const b = new MeshBuilder();
+      s.lay(b);
+      const a = b.take();
+      for (let i = 2; i < a.positions.length; i += 3) {
+        front = Math.max(front, a.positions[i] as number);
+        back = Math.min(back, a.positions[i] as number);
+      }
+    }
+    expect(-TORCH.shoulderEnd - front).toBeGreaterThanOrEqual(0.05);
+    expect(front).toBeLessThan(-TORCH.ringEnd);
+    expect(back).toBeGreaterThan(-TORCH.tailEnd);
+  });
+
+  it("is made of closed solids in the torch too: every part of it, laid alone, has every edge met", () => {
+    const solids = torchSolids();
+    expect(solids.length).toBeGreaterThanOrEqual(14);
+    for (const s of solids) {
+      const b = new MeshBuilder();
+      s.lay(b);
+      const a = b.take();
+      expect(a.indices.length, s.name).toBeGreaterThan(0);
+      expect(openEdges(a.positions, a.indices), `${s.name} has open edges`).toBe(0);
+    }
+  });
+
   it("has a torch whose solids are closed, and no triangle of the hand's meshes that is left without a back it needs", () => {
     const b = new MeshBuilder();
     flashlightGeometry(b);
@@ -103,9 +135,11 @@ describe("the hand's and the torch's geometry", () => {
     expect(lensBuilder.take().indices.length / 3).toBeGreaterThan(10);
   });
 
-  it("costs under 170 kilobytes as the town counts bytes", () => {
-    const bytes = packedBytes(body.positions.length / 3, body.indices.length, body.surface.byteLength) + packedBytes(lens.positions.length / 3, lens.indices.length, lens.surface.byteLength);
-    expect(bytes).toBeLessThan(170_000);
+  it("costs under 0.35 MB on the GPU (a vertex is 52 bytes packed, an index 2), and under 450 kilobytes as the town counts bytes", () => {
+    const real = (v: number, i: number): number => v * 52 + i * 2;
+    expect(real(body.positions.length / 3, body.indices.length) + real(lens.positions.length / 3, lens.indices.length)).toBeLessThan(350_000);
+    const counted = packedBytes(body.positions.length / 3, body.indices.length, body.surface.byteLength) + packedBytes(lens.positions.length / 3, lens.indices.length, lens.surface.byteLength);
+    expect(counted).toBeLessThan(450_000);
   });
 
   it("never comes nearer the eye than 14 cm, nor into the near plane, at any point of the raise, the hold or the lowering", () => {

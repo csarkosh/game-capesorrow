@@ -697,32 +697,38 @@ lamp bit is a level the sampler raises for anything that asks and is the car's s
 still arrives as the bit, which `side.command` reads for a touch screen only. Nothing else flips it. In a car F is the
 car's, as it was, and the torch is left as it was.
 
-- **The shapes** (`game/hand/`): `flashlightGeometry.ts` is a torch of real size (15 cm, 2.6 cm across, a 4.4 cm head
-  with a bezel, a tail cap, a rubber switch, a lens that is dark glass, and a separate lit disc laid in front of it that
-  is drawn only while the lamp is on and lights itself at every hour), `handGeometry.ts` the right hand gripping it in a
-  dark leather glove (four fingers of three segments wrapped round the body, a thumb of two ending on the switch, the
-  back of the hand, the glove's wrist) and a heavy waxed-cotton coat's cuff, sleeve, seam and horn button, both built
-  with the town's `MeshBuilder` from `handShapes.ts` (frustums and boxes with their edges cut away, every one a closed
-  solid). 1,522 vertices and 848 triangles for the hand and the torch, 60 vertices for the lens: under 1,800. Textures
-  are the town's own layers: the glove and the button are `rubber` (the dark asphalt's fine grain, one even near-black
-  brown, no wear), the coat `cloth` (the sidewalk concrete's even grain laid fine and tinted olive), the torch's body
-  and head `sheet` (the aged corrugated metal, laid fine so its ribs read as knurling) and its bezel and switch collar
-  `steel`; the rooms' own layers are not loaded in the street and are not used.
+- **The shapes** (`game/hand/`): `flashlightGeometry.ts` is a chunky machined-steel tactical torch of real size (21 cm, a
+  5.5 cm head under a 6 cm knurled bezel ring, a stepped shoulder, a 4 cm grip of two knurled bands with a raised eight-sided
+  anti-roll ring between them, a wide tail with six guard posts round a recessed button, a lens that is dark glass, and a
+  separate lit disc laid in front of it that is drawn only while the lamp is on and lights itself at every hour).
+  `handGeometry.ts` is the right hand gripping the second band in a smooth dark leather glove: each finger one lofted tube
+  from a soft knuckle to a rounded tip wrapping the barrel, a thumb along it toward the head, a full rounded back of the
+  hand with a seam, a thick wrist with a cuff strap and buckle, and a dark waxed coat's cuff (with a piped edge), sleeve,
+  seam and horn button; the head stands 7 cm clear of the fist. Both are built with the town's `MeshBuilder` from
+  `handShapes.ts` (`loft`, smooth bodies through ellipse sections; `knurl`, a ring that alternates between two radii; frustums
+  and boxes with their edges cut away), every one a closed solid. 3,318 vertices and 3,310 triangles for the hand and the
+  torch, 80 vertices for the lens: 3,398 in all, about 0.19 MB on the GPU, two draws. Textures are the town's own layers: the
+  glove is `rubber` (the dark asphalt's fine grain, one even near-black brown, no wear), the coat `cloth` (the sidewalk
+  concrete's even grain laid fine and tinted olive), the torch's steel `sheet` (the aged corrugated metal, laid fine so its
+  ribs and grime read as the machining and the wear) and its ring, posts and buckle `steel`; the rooms' own layers are not
+  loaded in the street and are not used. `client/tools/handPreview.ts` (`npx tsx tools/handPreview.ts`, run from `client/`)
+  draws the hand the way the game places it, in software, to PNGs on the external disk, for judging the form and the place
+  without a browser.
 - **The pose** (`handPose.ts`, pure): the hand is down, out of the view, with the lamp off; it rises over 0.25 s to the
   hold and lowers over 0.2 s, straight up from and down to 0.55 m below it (the same depth and place across the screen,
   so it drops out of the bottom of the view and is under it on any window from 4:3 to 21:9, and is not drawn at all
-  then). The hold is worked out from the window's aspect: the lens 0.52 m ahead of the eye, the torch's head at 57
-  percent across and 69 percent down the screen, so the forearm rises from the bottom edge at 62 to 70 percent across and
-  the hand stays left of the corner map and the party's rows at a width of 1,000 px (right edge 71 percent against the
-  map's 75.6; `client/test/hand/handScreen.test.ts`). The torch is turned 1.1 rad about its own axis, and it has two axes:
-  the beam's (`TILT_YAW`, `TILT_PITCH`: ahead, 2 degrees left and 11 degrees down, so the beam's middle meets the ground
-  about 7 m ahead) and the one it is drawn along (`DRAWN_YAW`, `DRAWN_PITCH`: turned in toward the middle of the view and
-  a little up, so the barrel is seen along its side and not the tail cap from behind). The beam leaves the lens's place
-  along the first; the lit lens disc is part of the torch's mesh and faces along the second. A walking bob follows the ground speed, a slow breath sways it when still,
-  it lags a quick turn on a spring by 4 degrees at most, sits lower and steadier when sprinting, rises a little when the
-  view looks steeply down, is pulled in toward the eye by a wall ahead (a probe along the view with the town's own
-  test of a place), and is never nearer the eye than 14 cm. It is hidden while seated, getting in or out and under the
-  dark screen at a door.
+  then). The hold is worked out from the window's aspect: the lens (the head's front) 0.45 m ahead of the eye, at 52 percent
+  across and 64 percent down the screen, so the forearm rises from the bottom edge at 62 to 72 percent across and the hand
+  stays left of the corner map and the party's rows at a width of 1,000 px (right edge 72.6 percent against the map's
+  75.6; `client/test/hand/handScreen.test.ts`). The torch is turned 0.2 rad about its own axis, and it has two axes: the
+  beam's (`TILT_YAW`, `TILT_PITCH`: ahead, 2 degrees left and 11 degrees down, so the beam's middle meets the ground about
+  7 m ahead) and the one it is drawn along (`DRAWN_YAW` -0.95, `DRAWN_PITCH` -0.5: across the view toward the upper left, the
+  head up and far, the tail low and near, as a held torch looks to the one who holds it). The beam leaves the lens's place
+  along the first; the lit lens disc is part of the torch's mesh and faces along the second. A walking bob follows the ground
+  speed, a slow breath sways it when still, it lags a quick turn on a spring by 4 degrees at most, sits lower and steadier
+  when sprinting, rises a little when the view looks steeply down, is drawn in toward the eye by a wall ahead (a probe
+  along the view with the town's own test of a place; none in a room), and is never nearer the eye than 14 cm. It is
+  hidden while seated, getting in or out and under the dark screen at a door.
 - **The meshes** (`handParts.ts`) are made once, when the torch is first switched on, and placed each frame from the
   camera's pose and the hand's by the meshes' own position and rotation. They are drawn with the town's indoor material
   (the layers, the air, the night's lamps), so the hand is lit by the day and dark at night but for its own light and the
