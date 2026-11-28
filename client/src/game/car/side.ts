@@ -20,6 +20,7 @@ import { OUTSIDE } from "../../sim/inside/rooms.js";
 import { insidePut } from "../../sim/inside/rules.js";
 import { darkFor, doorLine, goinTarget } from "../doors.js";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_PUTS_IN, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../words.js";
+import { captionsShown } from "../town/speech.js";
 
 type CapeSide = SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient>;
 type CapeHost = SessionHost<WalkWorld, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud>;
@@ -270,6 +271,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       watchClick(watch, now, down, ride, ride !== undefined && slowEnough(ride, cars));
       const seed = world === undefined ? null : (world as WalkWorld).forest.seed;
       set(lineFor(watch, now, promptFor(self, cars, seed)));
+      // What the town's people are saying this frame, over their heads (`town/speech.ts`: the renderer's part leaves it there).
+      host.hud.setSpeech(captionsShown());
       host.hud.setDark(darkFor(self));
       if (goin !== null && world !== undefined && self !== undefined) {
         // `goin` is the host's to do, between its ticks, on its own world and its own player.

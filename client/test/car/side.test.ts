@@ -3,6 +3,7 @@ import { timeLimit } from "@csarkosh/engine/testing/timeLimit";
 import { CAR_RETURNED, GET_IN, GET_OUT, HOST_RETURNS_CAR, NO_ROOM_TO_GET_OUT } from "../../src/game/words.js";
 import { CAR_COMMANDS, NO_ROOM_AFTER, NO_ROOM_SHOWN, createCapeSide, knockLoudness, lineFor, litBy, newClickWatch, promptFor, promptShown, watchClick } from "../../src/game/car/side.js";
 import { knockablesFor, type Knockable } from "../../src/sim/town/knockables.js";
+import { showCaptions } from "../../src/game/town/speech.js";
 import { WALK_SIDE } from "../../src/game.js";
 import { carVoice } from "../../src/game/car/carSound.js";
 import { voiceShown } from "../../src/game/car/side.js";
@@ -116,18 +117,18 @@ describe("the click that changes nothing", () => {
   }, timeLimit(60_000));
 });
 
-type Said = { prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null)[]; thuds: number[]; doors: number };
+type Said = { speech: string[]; prompt: [string | null, unknown][]; flash: string[]; down: number; up: number; voice: ({ speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null)[]; thuds: number[]; doors: number };
 /** A page's host with the parts the car's side reads, and a record of what it was told. */
 const heard = { hz: 0, engine: 0, tyres: 0 };
 function pageHost(touch: boolean): { host: never; said: Said; world: { current: unknown } } {
-  const said: Said = { prompt: [], flash: [], down: 0, up: 0, voice: [], thuds: [], doors: 0 };
+  const said: Said = { speech: [], prompt: [], flash: [], down: 0, up: 0, voice: [], thuds: [], doors: 0 };
   const world = { current: null as unknown };
   const host = {
     base: { hour: 12 }, appliedHour: 12, appliedWeather: {}, renderer: { setView: () => undefined },
     touchStart: touch,
     touchModel: { interactDown: () => said.down++, interactUp: () => said.up++ },
     ambient: { voice: () => heard, car: (s: { speed: number; throttle: number; surface: number; distance: number; driven: boolean } | null) => { if (s !== null) carVoice(s.speed, s.throttle, s.surface as 0, s.distance, s.driven, heard); said.voice.push(s === null ? null : { ...s }); }, thud: (v: number) => said.thuds.push(v), door: () => said.doors++ },
-    hud: { setDark: () => undefined, setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
+    hud: { setDark: () => undefined, setSpeech: (lines: readonly { text: string }[]) => { said.speech = lines.map((l) => l.text); }, setPrompt: (line: string | null, press?: unknown) => said.prompt.push([line, press]), flash: (line: string) => said.flash.push(line) },
     get activeWorld() { return world.current; },
   };
   return { host: host as never, said, world };
@@ -355,6 +356,18 @@ describe("the car's half of a session", () => {
       expect(knockLoudness(20)).toBeGreaterThan(knockLoudness(2));
       expect(knockLoudness(200)).toBe(1);
     }, timeLimit(120_000));
+
+    it("hands the hud what the town's people are saying this frame, and nothing when they are quiet", () => {
+      const { host, said } = pageHost(false);
+      const side = createCapeSide(host, WALK_SIDE);
+      const me = walker(10, 20);
+      showCaptions([{ x: 0.5, y: 0.4, text: "Morning, detective.", alpha: 1, depth: 3, mean: false }]);
+      side.afterSync(undefined as never, at(10, [], [me]), 7, me, null);
+      expect(said.speech).toEqual(["Morning, detective."]);
+      showCaptions([]);
+      side.afterSync(undefined as never, at(11, [], [me]), 7, me, null);
+      expect(said.speech).toEqual([]);
+    }, timeLimit(60_000));
 
     it("does not thud on a car out of earshot, and softens one far off", () => {
       const { host, said } = pageHost(false);

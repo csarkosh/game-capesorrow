@@ -78,6 +78,8 @@ export const FURNITURE_CLEAR = 0.3;
 /** How far apart two standing people stand, at least; with a sitter in the pair, `SEATED_APART`. */
 export const PEOPLE_APART = 0.7;
 export const SEATED_APART = 0.45;
+/** How near two who are together in a bar, a restaurant or a cafe are: across a table, on stools side by side, one behind the other at the counter (metres). */
+export const TOGETHER = 1.7;
 /** How far a standing person stands from a chair, at least. */
 const CHAIR_CLEAR = 0.4;
 /** Past the door's width on each side, and how deep from the glass, the door's zone reaches. */
@@ -322,7 +324,11 @@ function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[
   const r = roll(id, uid, 1, 2);
   const seatedRoom = room.type === "dining room" || room.type === "counter service";
   const raw = room.type === "bar" ? 1 + (r < 0.15 ? 0 : r < 0.4 ? 1 : r < 0.65 ? 2 : r < 0.85 ? 3 : 4) : seatedRoom ? (r < 0.25 ? 0 : r < 0.5 ? 1 : r < 0.7 ? 2 : r < 0.88 ? 3 : 4) : r < 0.3 ? 0 : r < 0.7 ? 1 : r < 0.9 ? 2 : 3;
-  const want = Math.max(least, Math.min(most, raw));
+  // At a bar, a restaurant or a cafe nobody is on their own: the customers come two together (an odd one out has someone to be with: one is never one).
+  const social = room.type === "bar" || seatedRoom;
+  const wanted = Math.max(least, Math.min(most, raw));
+  // An even number there, so that each has someone: one more where it is odd, or one fewer at the room's most.
+  const want = social && wanted % 2 === 1 ? (wanted + 1 <= most ? wanted + 1 : wanted - 1) : wanted;
   type Kind = "queue" | "aisle" | "seat" | "stool" | "hightable" | "pool" | "wash" | "fold" | "bench" | "wall" | "work";
   const kinds: Kind[] = [];
   switch (room.type) {
@@ -337,9 +343,14 @@ function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[
   let queued = 0;
   let queueFirst: Task | null = null;
   let lastTable = -1;
+  // The first of two who are together: what they were put at and where, so that the second is put with them.
+  let mateKind: Kind | null = null;
+  let mateAt: { s: number; d: number } | null = null;
   const seatsOfKinds = (ks: FurnishingKind[]): Seat[] => indexed.filter((q) => ks.includes(q.f.kind)).flatMap((q) => seatsBy[q.k] as Seat[]);
   for (let k = 0; k < want && kinds.length > 0; k++) {
     const index = 1 + k;
+    // The first of two found no place: the second does not come in alone.
+    if (social && k % 2 === 1 && mateKind === null) continue;
     const sides = roll(id, uid, index, 5) < 0.5 ? [1, -1] : [-1, 1];
     const t0 = (roll(id, uid, index, 6) - 0.5) * 1.2;
     const slides = [t0, 0, -t0, 0.5, -0.5, 0.8, -0.8];
@@ -350,8 +361,13 @@ function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[
       return list.map((_, j) => list[(at + j) % n] as { f: Furnishing; k: number });
     };
     let done = false;
-    for (let a = 0; a < kinds.length && !done; a++) {
-      const kind = kinds[(start + a) % kinds.length] as Kind;
+    // The second of two goes where the first went: the same table, the next stool, behind them in the line. Elsewhere only if there is no room there.
+    const second = social && k % 2 === 1 && mateKind !== null && mateAt !== null;
+    const turn: Kind[] = second ? [mateKind as Kind, ...kinds.filter((q) => q !== mateKind)] : kinds.map((_, a) => kinds[(start + a) % kinds.length] as Kind);
+    const with_ = mateAt;
+    let used: Kind | null = null;
+    for (let a = 0; a < turn.length && !done; a++) {
+      const kind = turn[a] as Kind;
       const phoneOrTalk: Activity = roll(id, uid, index, 16) < 0.5 ? "phone" : "talk";
       switch (kind) {
         case "queue": {
@@ -389,7 +405,7 @@ function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[
           const seats = seatsOfKinds(["table", "booth"]);
           // The same table as the last sitter half the time: two at one table face each other.
           const order = seats.map((_, j) => seats[(Math.floor(roll(id, uid, index, 8) * seats.length) + j) % seats.length] as Seat);
-          const same = lastTable >= 0 && roll(id, uid, index, 18) < 0.5 ? order.filter((q) => q.furnishing === lastTable) : [];
+          const same = lastTable >= 0 && (second || roll(id, uid, index, 18) < 0.5) ? order.filter((q) => q.furnishing === lastTable) : [];
           const act: Activity = roll(id, uid, index, 19) < 0.6 ? "sit_eat" : "sit_table";
           for (const q of [...same, ...order]) {
             if (place(sit(q, act), index, "customer")) {
@@ -402,7 +418,9 @@ function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[
         }
         case "stool": {
           const stools = seatsOfKinds(["stool row", "windowbar"]);
-          const order = stools.map((_, j) => stools[(Math.floor(roll(id, uid, index, 8) * stools.length) + j) % stools.length] as Seat);
+          const shuffledStools = stools.map((_, j) => stools[(Math.floor(roll(id, uid, index, 8) * stools.length) + j) % stools.length] as Seat);
+          // The second of two takes the stool nearest the first.
+          const order = second && with_ !== null ? [...shuffledStools].sort((p, q) => Math.hypot(p.s - with_.s, p.d - with_.d) - Math.hypot(q.s - with_.s, q.d - with_.d)) : shuffledStools;
           for (const q of order) {
             // Seated at a window bar, side-on to the glass: not looking out through it.
             const turnedQ: Seat = (furn[q.furnishing] as Furnishing).kind === "windowbar" ? { ...q, fs: roll(id, uid, index, 12) < 0.5 ? 1 : -1, fd: 0 } : q;
@@ -467,6 +485,32 @@ function unitPeople(b: Building, unit: Unit, zone: number = FRONT_ZONE): Person[
           break;
         }
       }
+      if (done) used = kind;
+    }
+    if (done && used !== null && k % 2 === 0) {
+      const put = drafts[drafts.length - 1] as { s: number; d: number };
+      mateKind = used;
+      mateAt = { s: put.s, d: put.d };
+    }
+    if (social && k % 2 === 1) {
+      // Two together, or neither: where the second found no place within `TOGETHER` of the first (the next table was full, the bar had one stool), both are
+      // left out, and their seats and their place in the line are free again.
+      const mine = done ? (drafts[drafts.length - 1] as { s: number; d: number }) : null;
+      const apart = mine === null || with_ === null ? Infinity : Math.hypot(mine.s - with_.s, mine.d - with_.d);
+      if (apart > TOGETHER) {
+        for (let back = 0; back < (done ? 2 : 1); back++) {
+          const gone = drafts[drafts.length - 1];
+          if (gone === undefined || gone.role !== "customer") break;
+          drafts.pop();
+          if (gone.seat !== null) taken.delete(seatKey(gone.seat));
+          if (queueFirst !== null && gone.target === queueFirst.target && !gone.sitting && queued > 0) {
+            queued--;
+            if (queued === 0) queueFirst = null;
+          }
+        }
+      }
+      mateKind = null;
+      mateAt = null;
     }
   }
 

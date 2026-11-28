@@ -55,7 +55,11 @@ import { openDowntownUnits, outdoorPeopleFor, outdoorWorld } from "./outdoorPeop
 import { createPeopleShade } from "./peopleShade.js";
 import { createInsideParts, hidesTown, insidePeople, whereOf, type InsideParts } from "./insideParts.js";
 import type { Inside } from "../../sim/inside/rooms.js";
-import { createPeopleParts, type PeopleParts } from "./peopleParts.js";
+import { createPeopleParts, type PeopleParts, type PlacedPerson } from "./peopleParts.js";
+import { newReact, nudgeOf, pairUp, stepReact, venueOfReason, venueOfTrade, type ReactPlayer, type Seen } from "./peopleReact.js";
+import { captionsOf, showCaptions, type Caption } from "./speech.js";
+import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
+import { PLAYER_HALF } from "@csarkosh/engine/sim/constants";
 import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
@@ -95,6 +99,19 @@ export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
 
 /** The state of a game that has no cars. */
 const NO_CARS: readonly Car[] = [];
+const NO_POSES: readonly CarPose[] = [];
+
+/** What a measuring tool may read of the town's people (`globalThis.__capePeople`, while the town's part lives). */
+export type PeopleDebug = {
+  /** Everyone drawn at the last frame, where their schedule has them. */
+  seen(): Seen[];
+  /** The lines being said now. */
+  said(): { key: number; text: string; x: number; y: number; z: number; age: number; life: number; kind: string }[];
+  /** How far a person is moved off their schedule now (`peopleReact.ts`), or null for one who is not. */
+  moved(key: number): { dx: number; dy: number; dz: number; yaw: number; lx: number; lz: number; lean: number } | null;
+  /** Makes a person react as if a car came at them from behind (`car`) or someone walked into their back (`walker`), by the frame's own rules: for looking at a reaction without driving at anyone. Answers whether they did. */
+  provoke(key: number, what: "car" | "walker"): boolean;
+};
 
 /** How far the hour moves before the materials are written again (a hundredth of an hour). */
 const HOUR_STEP = 0.01;
@@ -280,6 +297,35 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     knockedDown = moving;
     for (const m of textured) markMaterialUboDirty(m);
   };
+  // How the people answer the player (`peopleReact.ts`): who is drawn, the local player, what each says, and the view the captions are placed on.
+  const react = newReact();
+  const seen: Seen[] = [];
+  const captions: Caption[] = [];
+  const speechAxes = restAxes();
+  const reactPlayer = { x: 0, y: 0, z: 0, vx: 0, vz: 0, onFoot: true };
+  /** Whether a place is in a building or a thing that stands: nobody jumps or is knocked into one. */
+  const standBlocked = (x: number, z: number): boolean =>
+    boxBlocks(townSolids(worldSeed), x, 0, z, 0, Infinity, 0.25) || boxBlocks(propSolids(worldSeed), x, 0, z, 0, Infinity, 0.25);
+  const nowhereBlocked = (): boolean => false;
+  /** The people drawn answer the cars and the local player: a jump from a car, a step back from a shove, a greeting, a word between two. */
+  const answer = (state: { readonly players: ReadonlyMap<number, unknown> }, localId: number, dt: number): void => {
+    if (people === null) return;
+    seen.length = 0;
+    people.each((p) => seen.push(p));
+    const me = state.players.get(localId) as { pos: { x: number; y: number; z: number }; vel: { x: number; y: number; z: number }; ride?: Ride } | undefined;
+    let player: ReactPlayer | null = null;
+    if (me !== undefined) {
+      reactPlayer.x = me.pos.x;
+      reactPlayer.y = me.pos.y - PLAYER_HALF.y;
+      reactPlayer.z = me.pos.z;
+      reactPlayer.vx = me.vel.x;
+      reactPlayer.vz = me.vel.z;
+      reactPlayer.onFoot = me.ride === undefined || me.ride.phase === FOOT;
+      player = reactPlayer;
+    }
+    // In a room the town's walls are not the room's: nobody is held out of them there.
+    stepReact(react, seen, whereNow === 0 ? knockCars : NO_POSES, player, dt, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
+  };
   let ready: TownReady | null = null;
   // Every lamp the town has (once the town's plan is known), the nearest lit ones to the eye as the materials were last written, and where the eye and the hour then were.
   let lamps: readonly Lamp[] = [];
@@ -299,6 +345,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       ...base.side.wildlife,
       look(state, x, y, z, yaw, pitch, fov, aspect, hour, mist) {
         base.side.wildlife.look(state, x, y, z, yaw, pitch, fov, aspect, hour, mist);
+        // What the people are saying, placed on this frame's view for the HUD (`speech.ts`).
+        showCaptions(captionsOf(react.said, x, y, z, cameraAxes(yaw, pitch, 0, speechAxes), fov, aspect, captions));
         const moved = Math.abs(hour - shownHour) > HOUR_STEP;
         if (moved) {
           shownHour = hour;
@@ -440,16 +488,49 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       damage = createDamageParts({ engine, scene, air, ahead });
       (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
+      // What a measuring tool may read of the people: who is drawn (where their schedule has them), what is being said, and how far a person is moved off their schedule. Copies.
+      (globalThis as { __capePeople?: PeopleDebug }).__capePeople = {
+        seen: () => seen.map((p) => ({ ...p })),
+        said: () => react.said.map((q) => ({ ...q })),
+        moved(key) {
+          const n = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+          return nudgeOf(react, key, 0, n) ? n : null;
+        },
+        provoke(key, what) {
+          const p = seen.find((q) => q.key === key);
+          if (p === undefined) return false;
+          // The same rules as a frame's, with a car or a walker made up for the purpose: a car coming at them from behind, or someone walking into their back.
+          const bx = -Math.sin(p.yaw);
+          const bz = -Math.cos(p.yaw);
+          const before = react.said.length;
+          // (One in a room is taken to be in the open for it: there is no other way to look at a jump up close.)
+          if (what === "car") stepReact(react, seen.map((q) => (q.key === key ? { ...q, sheltered: false } : q)), [{ x: p.x + bx * 5 + bz * 0.3, z: p.z + bz * 5 - bx * 0.3, hx: -bx, hz: -bz, speed: 9, slip: 0 }], null, 0, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
+          else stepReact(react, seen, NO_POSES, { x: p.x + bx * 0.45, y: p.y, z: p.z + bz * 0.45, vx: -bx * 1.4, vz: -bz * 1.4, onFoot: true }, 0, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
+          return react.said.length > before || nudgeOf(react, key, 0, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 });
+        },
+      };
       const plan = ground.plan;
       inside = createInsideParts({ engine, scene, material: indoor, order: orders.of(indoor) ?? DRAW_ORDER.scenery, textured: wearsTextures, ground, detail: low ? "low" : "full", uploads: host.uploads });
       lamps = lampSites(ground);
       lampMax = low ? LOW_LAMPS : MAX_LAMPS;
-      const placed = [
-        ...peopleFor(plan).map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
-        ...outdoorPeopleFor(plan, ground.anchor).map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)) })),
+      const roomers = peopleFor(plan);
+      const outside = outdoorPeopleFor(plan, ground.anchor);
+      const placedBare: PlacedPerson[] = [
+        ...roomers.map((person) => ({ person, at: personWorld(ground, plan, person), hours: person.hours, outdoor: false, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)), venue: venueOfTrade(tradeAt(plan, person.building, person.unit)) })),
+        // Two who stand together outside are each other's partner, by their places in this list.
+        ...outside.map((person) => ({ person, at: outdoorWorld(ground, person), hours: person.hours, outdoor: true, held: heldBy(person.activity, tradeAt(plan, person.building, person.unit)), venue: venueOfReason(person.reason), ...(person.partner < 0 ? {} : { partner: roomers.length + person.partner }) })),
         // The copies of the three rooms' people in the hidden rooms, shown only to a player in that room.
         ...insidePeople(ground),
       ];
+      // In a room, two near each other are together (`pairUp`): the ones at one table, side by side at the bar.
+      const together = pairUp(placedBare.map((p, i) => ({ x: p.at.x, z: p.at.z, group: p.outdoor ? `o${i}` : `${p.room ?? 0}:${Math.round(p.at.y * 4)}:${(p.person as { building?: number }).building ?? -1}:${(p.person as { unit?: number }).unit ?? -1}` })));
+      // A room's people talk of what the room is (its copy's as the room's own do).
+      const venued = (p: PlacedPerson): PlacedPerson => {
+        if (p.venue !== undefined) return p;
+        const of = p.person as { building?: number; unit?: number };
+        return of.building === undefined || of.unit === undefined ? p : { ...p, venue: venueOfTrade(tradeAt(plan, of.building, of.unit)) };
+      };
+      const placed = placedBare.map((p, i): PlacedPerson => venued(p.outdoor || (together[i] as number) < 0 ? p : { ...p, partner: together[i] as number }));
       const walkCap = walkCapacity(openDowntownUnits(plan));
       // The soft dark under each person shown (`peopleShade.ts`): one draw, written by the people's part with the set it shows and each frame for the walkers; not on the low tier.
       const shade = low ? undefined : createPeopleShade({ engine, scene, air, ahead, aheadUnits: SHADE_AHEAD_UNITS, order: SHADE_ORDER + 0.5 }, placed.length + walkCap);
@@ -464,6 +545,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       );
       people.setHour(shownHour);
       people.setInside(whereNow);
+      people.setNudge((key, yaw, out) => nudgeOf(react, key, yaw, out));
       {
         const job = walkerJob(plan, ground.anchor);
         const slice = (): void => {
@@ -578,6 +660,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       whereNow = whereOf(by);
       townHidden = hidesTown(by);
       people?.setInside(whereNow);
+      answer(state, localId, dt);
     },
 
     shot(seconds, pose, local, state, localId, alpha) {
@@ -722,6 +805,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       shownSeat = 0;
       viewKeys.dispose();
       cineOn = false;
+      react.minds.clear();
+      react.said.length = 0;
+      showCaptions([]);
       knocked.list.length = 0;
       struck.marks.length = 0;
       struck.shoves.length = 0;
@@ -734,6 +820,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       held.cars = NO_CARS;
       held.players = new Map();
       delete (globalThis as { __capeCar?: CarDebug }).__capeCar;
+      delete (globalThis as { __capePeople?: PeopleDebug }).__capePeople;
       people?.dispose();
       people = null;
       inside?.dispose();

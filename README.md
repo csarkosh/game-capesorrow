@@ -33,7 +33,9 @@ while. It will not go faster than
 10 m/s yet. Click again to get out once it is
 nearly stopped and there is room beside it on ground at the car's level; the car can only be got into when it is nearly
 stopped too. Typing `/carhome` in the command bar puts the car back at the office (only
-the host can). That is all there is to do yet. Two browser tabs can join each other through the dev server.
+the host can). The town's people answer you: drive at one and they jump out of the way and tell you what they
+think of you; walk into one and they are knocked back a step and annoyed; walk past and most greet the detective; and
+two who stand, sit or walk together can be overheard. That is all there is to do yet. Two browser tabs can join each other through the dev server.
 
 The towns the game generates can be looked at as maps at <http://localhost:5174/town.html> (a contact sheet of twelve is at
 `/town.html?sheet=12&from=1`). That page is for development and is not part of the build.
