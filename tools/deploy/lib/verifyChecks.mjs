@@ -10,6 +10,14 @@ export const GAMES_INDEX = 'https://csarko.sh/games';
 /** The title this game's page carries. */
 export const TITLE = 'Something Haunts Port Ashton';
 
+/** The title of the title film's page (`client/title.html`), a development page that production must never serve. */
+export const FILM_TITLE = 'Port Ashton title film';
+
+/** Whether `html` is the title film's page: its title, or its canvas. Production's `/title.html` is the game's own page by the site's rewrite, never this. */
+export function isFilmPage(html) {
+  return pageTitle(html) === FILM_TITLE || /<canvas\b[^>]*\bid=["']film["']/i.test(html);
+}
+
 export const VERIFY_USAGE = 'Usage: npm run deploy:verify [-- --base <url>] [-- --sha <build tag>]';
 
 /**

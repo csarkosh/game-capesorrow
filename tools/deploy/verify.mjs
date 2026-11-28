@@ -14,7 +14,7 @@ import { baseOf } from './lib/buildEnv.mjs';
 import { production } from './lib/preconditions.mjs';
 import { reach } from './lib/reach.mjs';
 import {
-  checkedBase, contentTypeFits, DAYHIKE_PAGE, DAYHIKE_TITLE, entryScript, findBuildTags, GAMES_INDEX, isBuildTag, isImmutable,
+  checkedBase, contentTypeFits, DAYHIKE_PAGE, DAYHIKE_TITLE, entryScript, findBuildTags, GAMES_INDEX, isBuildTag, isFilmPage, isImmutable,
   isNoCache, locationOf, mp4Named, modulePreloads, pageTitle, parseVerifyArgs, referencedUrls, SITE_ROOT, TITLE, VERIFY_USAGE,
 } from './lib/verifyChecks.mjs';
 
@@ -55,6 +55,12 @@ async function verify() {
   // The title film is the script's to fetch after the page has loaded; the html names none.
   const films = mp4Named(html);
   check(films.length === 0, 'the page names no .mp4', `the html names ${films.slice(0, 3).join(', ')}`);
+
+  // The title film's page is for a preview channel: on production, /title.html is the game's page by the rewrite (or absent), never the film's.
+  const filmUrl = `${siteUrl}/title.html`;
+  const filmPage = await reach(filmUrl);
+  const filmHtml = filmPage.status === 200 ? await filmPage.text() : '';
+  check(!isFilmPage(filmHtml), `${filmUrl} is not the title film's page`, `it answers ${filmPage.status} with the film page (title ${JSON.stringify(pageTitle(filmHtml))}): a film build reached this site`);
 
   // 2. Every file the page names under its base answers 200 with a type that fits it; the entry
   // script is JavaScript, not the page again.

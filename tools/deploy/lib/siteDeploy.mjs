@@ -19,11 +19,24 @@ export const CLIENT_DIST = 'client/dist';
 export const SITE_RULES = 'tools/deploy/site.rules.json';
 
 /**
- * Why a deploy must not go ahead as asked, or null. A dirty tree is refused for production: a build
- * is tagged with its commit, and a dirty one names no commit. A preview channel or a dry run
- * releases nothing to production, so it may be dirty.
+ * Why a deploy must not go ahead as asked, or null.
+ *
+ * - Firebase Hosting's production channel is named `live`: a channel of that name (in any case) is refused always, so a preview channel
+ *   can never be production by name.
+ * - A build in another mode (the title film's page) goes to a named preview channel only, a dry run included.
+ * - A dirty tree is refused for production: a build is tagged with its commit, and a dirty one names no commit. A preview channel or a
+ *   dry run releases nothing to production, so it may be dirty.
+ *
+ * @param {{ dirty: boolean, channel: string | null, dryRun: boolean, mode?: string | null }} what
+ * @returns {string | null}
  */
-export function deployRefusal({ dirty, channel, dryRun }) {
+export function deployRefusal({ dirty, channel, dryRun, mode = null }) {
+  if (channel !== null && channel.toLowerCase() === 'live') {
+    return 'the channel `live` is Firebase Hosting\'s production channel. Production is `npm run deploy:client` with no --channel; a preview channel needs another name.';
+  }
+  if (mode !== null && channel === null) {
+    return 'a build in another mode (the title film\'s page) goes to a preview channel only: add --channel <name>.';
+  }
   if (dirty && channel === null && !dryRun) {
     return 'the working tree is not clean. Commit first (the build is tagged with the commit), or deploy to a preview channel with `--channel <name>`, or check the plan with `--dry-run`.';
   }

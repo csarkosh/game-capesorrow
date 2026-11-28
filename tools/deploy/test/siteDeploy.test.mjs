@@ -43,6 +43,19 @@ describe('deployRefusal', () => {
   it('lets a clean tree go anywhere', () => {
     expect(deployRefusal({ dirty: false, channel: null, dryRun: false })).toBe(null);
   });
+  it('refuses the production channel by its Firebase name, in any case, always', () => {
+    for (const channel of ['live', 'LIVE', 'Live']) {
+      expect(deployRefusal({ dirty: false, channel, dryRun: false })).toMatch(/production/);
+      expect(deployRefusal({ dirty: true, channel, dryRun: true, mode: 'film' })).toMatch(/production/);
+    }
+    expect(deployRefusal({ dirty: false, channel: 'live-ish', dryRun: false })).toBe(null);
+  });
+  it('refuses a build in another mode without a preview channel', () => {
+    expect(deployRefusal({ dirty: false, channel: null, dryRun: false, mode: 'film' })).toMatch(/--channel/);
+    expect(deployRefusal({ dirty: false, channel: null, dryRun: true, mode: 'film' })).toMatch(/--channel/);
+    expect(deployRefusal({ dirty: false, channel: 'film', dryRun: false, mode: 'film' })).toBe(null);
+    expect(deployRefusal({ dirty: true, channel: 'film', dryRun: false, mode: 'film' })).toBe(null);
+  });
 });
 
 describe('checkProduction', () => {

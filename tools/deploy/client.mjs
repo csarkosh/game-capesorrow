@@ -9,9 +9,9 @@
 // game's deploy touches the other's.
 //
 // Usage: npm run deploy:client [-- --channel <name>] [-- --dry-run] [-- --mode <name>]
-//   --channel <name>  a Firebase Hosting preview channel, not production (a dirty tree may go)
+//   --channel <name>  a Firebase Hosting preview channel, not production (a dirty tree may go); `live`, the production channel, is refused
 //   --dry-run         everything but the release (a dirty tree may go)
-//   --mode <name>     vite's build mode; `film` adds the title film's page (title.html), for a preview channel only
+//   --mode <name>     vite's build mode; `film` adds the title film's page (title.html), for a named preview channel only (--mode needs --channel, even with --dry-run)
 
 import { existsSync } from 'node:fs';
 import { parseDeployArgs, USAGE } from './lib/args.mjs';
@@ -24,13 +24,12 @@ import { deployRefusal, SITE_TOOL, SITE_TOOL_MISSING, siteDeployArgs } from './l
 const args = parseDeployArgs(process.argv.slice(2));
 if ('error' in args) fail(`${args.error}. ${USAGE}`);
 const { channel, dryRun, mode } = args;
-if (mode !== null && channel === null && !dryRun) fail('a build in another mode (the title film\'s page) goes to a preview channel only: add --channel <name>.');
 
 requireCommand('npm', 'Install Node 22 or later.');
 const prod = production();
 requireGcloudProject(prod.gcp_project_id);
 
-const refusal = deployRefusal({ dirty: treeIsDirty(), channel, dryRun });
+const refusal = deployRefusal({ dirty: treeIsDirty(), channel, dryRun, mode });
 if (refusal !== null) fail(refusal);
 
 // Before the build, which takes a while: the tool that ships it must be there.

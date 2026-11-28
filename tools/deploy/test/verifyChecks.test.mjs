@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkedBase, contentTypeFits, entryScript, findBuildTags, isBuildTag, isImmutable, isNoCache, locationOf, modulePreloads, mp4Named, pageTitle,
-  parseVerifyArgs, referencedUrls,
+  parseVerifyArgs, referencedUrls, FILM_TITLE, isFilmPage,
 } from '../lib/verifyChecks.mjs';
 
 const PAGE = 'https://games.csarko.sh/portashton/';
@@ -135,5 +135,16 @@ describe('the title film', () => {
     expect(mp4Named(HTML)).toEqual([]);
     expect(mp4Named(`${HTML}<video src="/portashton/assets/title-Ab12.mp4"></video>`)).toEqual(['/portashton/assets/title-Ab12.mp4']);
     expect(mp4Named('<link rel="preload" href="/portashton/assets/title-Ab12.MP4?x=1">')).toHaveLength(1);
+  });
+});
+
+describe('the film page must not be on production', () => {
+  const FILM = '<!doctype html><html><head><title>Port Ashton title film</title></head><body><canvas id="film"></canvas><script type="module" src="/portashton/assets/titleFilmMain-abc.js"></script></body></html>';
+  it('knows the film page from the game page', () => {
+    expect(FILM_TITLE).toBe('Port Ashton title film');
+    expect(isFilmPage(FILM)).toBe(true);
+    expect(isFilmPage(HTML)).toBe(false);
+    expect(isFilmPage('')).toBe(false);
+    expect(isFilmPage('<canvas id="film"></canvas>')).toBe(true);
   });
 });
