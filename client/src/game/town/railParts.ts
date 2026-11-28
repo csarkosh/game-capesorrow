@@ -18,12 +18,13 @@
  */
 import { leanMesh } from "./leanMesh.js";
 import { packSurface } from "./surfacePack.js";
-import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, setMeshVisible, type EngineContext, type Mesh, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
+import { addToScene, disposeMeshGpu, removeFromScene, setMeshVisible, type EngineContext, type Mesh, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import type { RenderHost } from "@csarkosh/engine/game/lite/renderGame";
 import type { Slices } from "@csarkosh/engine/game/syncJobs";
 import { RAIL_CELL, railCell, type RailCellArrays, type RailLod, type RailWorld } from "./railGeometry.js";
 import { railWorld } from "./railWorld.js";
+import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
 /** Cells within this distance of the camera are built, and are let go beyond `RELEASE_REACH`, metres. */
 export const BUILD_REACH = 4300;
@@ -114,10 +115,10 @@ export function createRailStream(host: RenderHost, draw: RailDraw, seed: number)
     for (const layer of ["flat", "solid"] as const) {
       const a = arrays[layer];
       if (a === null) continue;
-      const bytes = a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength;
+      const bytes = packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength);
       yield* host.uploads.hold(bytes);
       if (disposed || cells.get(cell.k) !== cell) return;
-      const mesh = createMeshFromData(draw.engine, `rail_${layer}_${cell.k}_${lod}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
+      const mesh = createPackedMesh(draw.engine, `rail_${layer}_${cell.k}_${lod}`, a);
       if (draw.textured) mesh.pluginVertexData = packSurface(a.surface);
       mesh.material = draw.materials[layer];
       mesh.renderOrder = draw.orders[layer];

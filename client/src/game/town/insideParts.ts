@@ -16,7 +16,7 @@
  * - **People.** `insidePeople` stands copies of each room's unit's people in the hidden room, over the whole room, for `peopleParts.ts` to show
  *   while the local player is where that room is.
  */
-import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, type Mesh, type PbrMaterialProps, type SceneContext, type EngineContext } from "@babylonjs/lite";
+import { addToScene, disposeMeshGpu, removeFromScene, type Mesh, type PbrMaterialProps, type SceneContext, type EngineContext } from "@babylonjs/lite";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
 import { DOOR_TICKS, GOING_IN, GOING_OUT, INSIDE, insideRooms, roomOf, type Inside, type InsideRoom } from "../../sim/inside/rooms.js";
 import { buildingLevels } from "./buildingGeometry.js";
@@ -28,6 +28,7 @@ import type { PlacedPerson } from "./peopleParts.js";
 import { xd, xp } from "./roomKit.js";
 import { packSurface } from "./surfacePack.js";
 import type { Detail, TownGround } from "./townTypes.js";
+import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
 /** How many ticks into the hold at the street door the room is built: the screen is dark by then (the hold is `DOOR_TICKS` and the fade takes the first of it). */
 export const BUILD_AFTER = 12;
@@ -87,12 +88,12 @@ export function createInsideParts(host: InsideHost): InsideParts {
 
   const build = (r: InsideRoom): void => {
     const a = insideGeometry(host.ground, r, host.detail);
-    const made = createMeshFromData(host.engine, `inside_${r.id}`, a.positions, a.normals, a.indices, a.uvs, undefined, undefined, a.colors);
+    const made = createPackedMesh(host.engine, `inside_${r.id}`, a);
     if (host.textured) made.pluginVertexData = packSurface(a.surface);
     made.material = host.material;
     made.renderOrder = host.order;
     addToScene(host.scene, made);
-    host.uploads.count("geometry", a.positions.byteLength + a.normals.byteLength + a.colors.byteLength + a.uvs.byteLength + a.surface.byteLength + a.indices.byteLength, 4);
+    host.uploads.count("geometry", packedBytes(a.positions.length / 3, a.indices.length, a.surface.byteLength), 4);
     host.uploads.made();
     mesh = made;
     room = r.id;
