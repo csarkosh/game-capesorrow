@@ -1,9 +1,23 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { mergeConfig } from "vite";
 import { defineConfig } from "vitest/config";
 import { enginePreset } from "@csarkosh/engine/vite/preset";
 import { timeLimit } from "@csarkosh/engine/vite/timeLimit";
 
-export default mergeConfig(
+/**
+ * The pages the build makes. `title.html`, the title film's page (`src/film/titleFilm.ts`), is an input only of the film build
+ * (`vite build --mode film`, `npm run recording:build`): production's has none, so it is never deployed to the site.
+ */
+export function buildInputs(mode: string): Record<string, string> {
+  const dir = dirname(fileURLToPath(import.meta.url));
+  return {
+    main: resolve(dir, "index.html"),
+    ...(mode === "film" ? { title: resolve(dir, "title.html") } : {}),
+  };
+}
+
+export default defineConfig(({ mode }) => mergeConfig(
   enginePreset(),
   defineConfig({
     // The web build lives under games.csarko.sh/portashton. The deploy script sets PORTASHTON_BASE
@@ -27,6 +41,7 @@ export default mergeConfig(
       // Source maps, written beside the chunks but not referenced by them: the engine's site deploy
       // leaves `.map` files out of the site.
       sourcemap: "hidden",
+      rollupOptions: { input: buildInputs(mode) },
     },
     test: {
       environment: "node",
@@ -49,4 +64,4 @@ export default mergeConfig(
       ],
     },
   }),
-);
+));

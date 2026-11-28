@@ -22,11 +22,14 @@
     "test:tools": "vitest run --root tools",
     "gate": "node node_modules/@csarkosh/engine/tools/gate.mjs",
     "deploy:client": "node tools/deploy/client.mjs",
-    "deploy:verify": "node tools/deploy/verify.mjs"
+    "deploy:verify": "node tools/deploy/verify.mjs",
+    "recording:build": "PORTASHTON_BASE=/portashton/ npm run build -w client -- --mode film",
+    "recording:channel": "node tools/deploy/client.mjs --channel film --mode film"
   },
   "devDependencies": {
     "concurrently": "10.0.4",
     "eslint": "10.8.0",
+    "sharp": "0.34.5",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"

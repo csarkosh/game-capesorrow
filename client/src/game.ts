@@ -13,6 +13,7 @@ import { carSound, type CarSoundApi } from "./game/car/carSound.js";
 import type { NoPartsApi } from "@csarkosh/engine/game/lite/noParts";
 import { createLiteRenderer } from "@csarkosh/engine/game/lite/renderer";
 import { registerCommands } from "@csarkosh/engine/game/commands";
+import type { RenderGame, RenderPlayer, RenderState } from "@csarkosh/engine/game/lite/renderGame";
 import type { ModeList } from "@csarkosh/engine/game/modeList";
 import type { WorldRenderer } from "@csarkosh/engine/game/rendererTypes";
 import type { SessionGame, SessionHost, SessionSide } from "@csarkosh/engine/game/sessionGame";
@@ -103,7 +104,14 @@ export function walkSide(host: WalkSessionHost): SessionSide<WalkWorld, WalkStat
   };
 }
 
-export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud, WalkHost, WalkClient> = {
+/** The session game's renderer, made with `town` as its one game part (play's `townParts`; the title film's has its own windows). */
+export function walkRenderer(town: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPartsApi>): EmptyGame["renderer"] {
+  return (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, town);
+}
+
+type EmptyGame = SessionGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud, WalkHost, WalkClient>;
+
+export const EMPTY_GAME: EmptyGame = {
   /** A forest world carries a level of its own with no brushes; this is the least the parser takes. */
   level: yard as unknown,
   modes: WALK_MODES,
@@ -113,7 +121,7 @@ export const EMPTY_GAME: SessionGame<WalkWorld, WalkState, Walker, WalkRenderer,
   weatherIsOwn: () => false,
   /** The game's look in the place of the engine's: no strokes, its own palette, weather and exposure (`look.ts`). */
   look: PORTASHTON_LOOK,
-  renderer: (canvas, level, forest, options) => createLiteRenderer<WalkState, Walker, NoPartsApi>(canvas, level, forest, options, townParts),
+  renderer: walkRenderer(townParts),
   audio: () => createAmbientAudio(carSound),
   hud: createWalkHud,
   side: (host) => createCapeSide(host, walkSide(host)),

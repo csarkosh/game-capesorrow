@@ -47,3 +47,14 @@ export function productionEnv(production, tag) {
   if (production.signaling_url) env.VITE_SIGNALING_URL = signalingWsUrl(production.signaling_url);
   return env;
 }
+
+/**
+ * The arguments of `npm` for the client build: the plain `npm run build`, or with a vite `--mode` passed through (the title film's
+ * build, `--mode film`, adds its page, `client/vite.config.ts`). Named for the client workspace, so npm does not read `--mode` itself.
+ *
+ * @param {string | null} mode
+ * @returns {string[]}
+ */
+export function buildArgs(mode) {
+  return mode === null ? ['run', 'build'] : ['run', 'build', '-w', 'client', '--', '--mode', mode];
+}

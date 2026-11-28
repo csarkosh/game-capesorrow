@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseOf, buildTagOf, productionEnv, signalingWsUrl, sitePathOf } from '../lib/buildEnv.mjs';
+import { buildArgs, baseOf, buildTagOf, productionEnv, signalingWsUrl, sitePathOf } from '../lib/buildEnv.mjs';
 
 const SITE = 'https://games.csarko.sh/portashton';
 
@@ -42,5 +42,12 @@ describe('productionEnv', () => {
       VITE_BUILD_SHA: 'abc1234-dirty',
       VITE_SIGNALING_URL: 'wss://signal.example.invalid/ws',
     });
+  });
+});
+
+describe('buildArgs', () => {
+  it('is the plain production build with no mode, and passes --mode through to vite when asked', () => {
+    expect(buildArgs(null)).toEqual(['run', 'build']);
+    expect(buildArgs('film')).toEqual(['run', 'build', '-w', 'client', '--', '--mode', 'film']);
   });
 });

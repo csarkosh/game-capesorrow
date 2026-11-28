@@ -17,6 +17,7 @@ import { landingModel, type LandingInput } from "./game/landingModel.js";
 import { createStatusLine, type WalkHud } from "./hud.js";
 import { PORTASHTON_IDENTITY } from "./identity.js";
 import { WALK_PROTOCOL } from "./net.js";
+import { WORLD_WORKERS } from "./worldWorkers.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
 /** Port Ashton's own of the page: made once by the shell, called at the page's own points. */
@@ -118,10 +119,8 @@ export const PORTASHTON_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRendere
   away: { still: () => null, credits: creditsEntries },
   protocol: WALK_PROTOCOL,
   statusLine: createStatusLine,
-  /** The worker that makes a session's world: the entry is the game's, since a worker is named by a path. */
-  worldWorker: () => new Worker(new URL("./world.worker.ts", import.meta.url), { type: "module" }),
-  /** Two world workers, both made from `worldWorker`: the second looks up the ground clutter's cells, the first builds the terrain's rings and the rock faces. */
-  worldWorkers: 2,
+  /** The world workers (`worldWorkers.ts`): shared with the title film, which has no page. */
+  ...WORLD_WORKERS,
   /** No scene is staged yet: a scene's address draws nothing. */
   scene: () => ({ dispose: () => undefined }),
   /** What the tier check draws as it measures the renderer: the yard with nobody in it. */
