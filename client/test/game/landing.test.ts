@@ -38,9 +38,9 @@ describe("the title page's title", () => {
     expect(name).toContain("font-size: clamp(2.6rem, 9vw, 6rem)");
     expect(name).toContain("letter-spacing: -0.05em");
     expect(name).toContain("overflow-wrap: anywhere");
-    expect(name).toContain("transform: scaleY(1.6)");
-    // The transform leaves the layout box as it is: the margins are (1.6 - 1) / 2 of the 0.88em line above and below.
-    expect(name).toContain("margin: 0.264em 0");
+    expect(name).toContain("transform: scaleY(2)");
+    // The transform leaves the layout box as it is: the margins are (2 - 1) / 2 of the 0.88em line above and below.
+    expect(name).toContain("margin: 0.44em 0");
   });
 
   it("is smaller on a phone", () => {

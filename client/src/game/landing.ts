@@ -118,12 +118,12 @@ export const LANDING_STYLE = `
   .landing h1 .title-lead {
     font-size: clamp(1.1rem, 3vw, 2rem); letter-spacing: -0.03em; white-space: nowrap;
   }
-  /* The name is drawn tall: stretched 1.6 times by a transform, which leaves its layout box as it
-     was, so its margins give the stretch its room, (1.6 - 1) / 2 of its 0.88em line above and below. */
+  /* The name is drawn tall: stretched 2 times by a transform, which leaves its layout box as it
+     was, so its margins give the stretch its room, (2 - 1) / 2 of its 0.88em line above and below. */
   .landing h1 .title-name {
-    display: block; margin: 0.264em 0; font-size: clamp(2.6rem, 9vw, 6rem);
+    display: block; margin: 0.44em 0; font-size: clamp(2.6rem, 9vw, 6rem);
     letter-spacing: -0.05em; overflow-wrap: anywhere;
-    transform: scaleY(1.6); transform-origin: center;
+    transform: scaleY(2); transform-origin: center;
   }
   .landing p {
     margin: 0; max-width: 32rem; text-align: center;
