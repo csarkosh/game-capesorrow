@@ -30,7 +30,7 @@ on and off. Signs, trash cans, benches, pallets and mailboxes give way when the 
 and stand back up a little later. A building, a parked vehicle, a dumpster or a utility pole stops it; a building is
 left with a mark where it was struck, and a parked vehicle or a dumpster is marked, rocked and shoved a little, for a
 while. It will not go faster than
-10 m/s yet. Click again to get out once it is
+10 m/s in the town's streets yet, nor than 15 m/s on the highway and past the town. Click again to get out once it is
 nearly stopped and there is room beside it on ground at the car's level; the car can only be got into when it is nearly
 stopped too. Typing `/carhome` in the command bar puts the car back at the office (only
 the host can). The town's people answer you: drive at one and they jump out of the way and tell you what they

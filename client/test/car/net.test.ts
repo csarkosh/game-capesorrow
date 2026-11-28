@@ -76,7 +76,7 @@ describe("the car on the wire", () => {
   }, timeLimit(60_000));
 
   it("is laid out as designed: the mover is 31 bytes and the car 35, the car's fields at their offsets", () => {
-    expect([MOVER_BYTES, CAR_BYTES, WALK_PROTOCOL]).toEqual([31, 35, 4]);
+    expect([MOVER_BYTES, CAR_BYTES, WALK_PROTOCOL]).toEqual([31, 35, 5]);
     const bytes = encodeWalkSnapshot(snap);
     const v = new DataView(bytes);
     const mover1 = 10 + MOVER_BYTES;
