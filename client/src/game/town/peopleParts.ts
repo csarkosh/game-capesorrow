@@ -27,7 +27,7 @@
  * - **A soft dark under each one shown** (`peopleShade.ts`): written with the set a model shows, in one draw for everyone, and let go with the part. A walker's is written every frame, with its body, under one key of its own for all of them (`walkers`), and taken away the frame the last one is not shown.
  * - **They wear the town's air, and are darker than the open sky would make them**, since they stand indoors (`dress`).
  */
-import { markMaterialUboDirty, setMeshVisible, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
+import { flushThinInstances, markMaterialUboDirty, setMeshVisible, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
 import { loadSkinnedModel, type SkinClock, type SkinnedModel, type SkinnedPart } from "@csarkosh/engine/game/lite/skinnedModels";
@@ -42,6 +42,8 @@ import { alongAt, pathSpeed, type Walker } from "./walkers.js";
 import type { LampList } from "./lampLight.js";
 import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
 import { personShade, type PeopleShade, type ShadePlace } from "./peopleShade.js";
+import { WALK_VENUE, type Nudge, type Seen } from "./peopleReact.js";
+import type { Venue } from "../peopleWords.js";
 
 /** How far from the eye a person is drawn (m), and on the low tier. */
 export const PEOPLE_REACH = 60;
@@ -97,6 +99,9 @@ export type Body = {
  */
 export type PlacedPerson = {
   readonly person: Body; readonly at: PersonWorld; readonly hours: Hours | null; readonly outdoor: boolean; /** What they hold in the right hand (`heldBy`). */ readonly held: Held;
+  /** The one they stand or sit with, as a place in the list the parts were made with, and the kind of place they are at (what two together talk of): `peopleReact.ts` reads both. */
+  readonly partner?: number;
+  readonly venue?: Venue;
   /** The id of the room (`sim/inside/rooms.ts`) this person stands in the hidden copy of, over the street: shown only while the local player is where that room is (`setInside`), and nobody else is shown then. */
   readonly room?: number;
 };
@@ -113,9 +118,16 @@ export type Walking = {
   readonly at: (w: Walker, hour: number) => PersonWorld | null;
 };
 
+/** The key of a walker among the people (`Seen.key`): past every stander's, which is their place in the list the parts were made with. */
+export const WALKER_KEY = 1_000_000;
+
 export type PeopleParts = {
   /** Begins loading the models the people use. Once. */
   begin(): void;
+  /** Calls `visit` with each person drawn at the last step, where their schedule has them (before any nudge): the standers by their place in the list, the walkers by `WALKER_KEY` and their id. */
+  each(visit: (p: Seen) => void): void;
+  /** What moves a body off its schedule from now on (`peopleReact.ts`, `nudgeOf`), or null for nothing: asked for every body drawn, every frame, with the body's key and the yaw its schedule gives it. */
+  setNudge(nudge: ((key: number, yaw: number, out: Nudge) => boolean) | null): void;
   /** One frame: `dt` seconds on. Works out who is near on each quarter second and writes them; sends the clock on a frame that shows anyone. */
   step(dt: number): void;
   /** The hour of day, 0 to 24: who is shown is worked out again at once when it moves. */
@@ -142,9 +154,12 @@ type Batch = {
   /** For each person, whether they are shown (a person outside keeps what they were until they change out of sight) and whether that has been decided at all. */
   on: Uint8Array;
   decided: Uint8Array;
-  /** The walkers of this model, and which are shown now (indices into `walkers`, in the order written after the standers). */
+  /** The walkers of this model, and which are shown now (indices into `walkers`, in the order written after the standers), and where each of those was at the last step. */
   walkers: Walker[];
   walking: number[];
+  wplaces: (PersonWorld | null)[];
+  /** For each person, whether their body was written moved off its schedule at the last step (so it is written back when the move is over). */
+  nudged: Uint8Array;
   /** For each walker: where in the clip they were (clip seconds) at the clock's run `wat`, the clip rate written, and the 5 percent step of their ground speed it was made for. */
   wphase: Float64Array;
   wat: Float64Array;
@@ -171,6 +186,28 @@ export function mayChange(dx: number, dz: number, d2: number, yaw: number): bool
   return (dx * Math.sin(yaw) + dz * Math.cos(yaw)) / d < Math.cos(OUT_OF_VIEW);
 }
 
+/**
+ * A body's matrix with a nudge over it: shifted, lifted and turned, and leaned by `n.lean` radians toward (`n.lx`, `n.lz`) about its feet (with d the
+ * way of the lean and u up, R = I + (cos - 1)(d d^T + u u^T) + sin (d u^T - u d^T) takes u toward d: the three axes are turned, the feet stay).
+ */
+export function writeNudged(out: Float32Array, index: number, x: number, y: number, z: number, yaw: number, scale: number, n: Nudge): void {
+  writeBodyMatrix(out, index, x + n.dx, y + n.dy, z + n.dz, yaw + n.yaw, scale);
+  if (n.lean === 0) return;
+  const c = Math.cos(n.lean);
+  const s = Math.sin(n.lean);
+  const k1 = c - 1;
+  const at = index * 16;
+  for (let col = 0; col < 3; col++) {
+    const vx = out[at + col * 4] as number;
+    const vy = out[at + col * 4 + 1] as number;
+    const vz = out[at + col * 4 + 2] as number;
+    const along = n.lx * vx + n.lz * vz;
+    out[at + col * 4] = vx + k1 * n.lx * along + s * n.lx * vy;
+    out[at + col * 4 + 1] = vy + k1 * vy - s * along;
+    out[at + col * 4 + 2] = vz + k1 * n.lz * along + s * n.lz * vy;
+  }
+}
+
 export function createPeopleParts(host: PeoplePartsHost, placed: readonly PlacedPerson[], walk: Walking = { cap: 0, get: () => [], at: () => null }): PeopleParts {
   const batches = new Map<PersonModel, Batch>();
   for (const id of PERSON_MODELS) {
@@ -178,11 +215,18 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     const people = placed.filter((p) => p.person.model === id && !(host.low && !p.outdoor && p.person.seat !== null));
     if (people.length > 0 || walk.cap > 0) {
       batches.set(id, {
-        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [],
+        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [], wplaces: [], nudged: new Uint8Array(people.length),
         wphase: new Float64Array(0), wat: new Float64Array(0), wrate: new Float64Array(0), wbin: new Float64Array(0), things: [],
       });
     }
   }
+  // Each person's key: their place in the list the parts were made with.
+  const keyOf = new Map<PlacedPerson, number>();
+  for (const [i, p] of placed.entries()) keyOf.set(p, i);
+  let nudge: ((key: number, yaw: number, out: Nudge) => boolean) | null = null;
+  const moved: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+  /** A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for. */
+  const seatLift = (person: Body, sitting: boolean): number => (person.seat === null || !sitting ? 0 : person.seat.top - (person.seat.family === "stool" ? STOOL_CLIP_SEAT : CHAIR_CLIP_SEAT));
   const loads = new AbortController();
   const missing = new Set<string>();
   const orders = createDrawOrders(DRAW_ORDER.bodies);
@@ -395,9 +439,9 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
             }
             clip = idle;
           }
-          // A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for.
-          const y = at.y + (person.seat === null || clip === idle ? 0 : person.seat.top - (person.seat.family === "stool" ? STOOL_CLIP_SEAT : CHAIR_CLIP_SEAT));
+          const y = at.y + seatLift(person, clip !== idle);
           writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
+          batch.nudged[i] = 0;
           // A fold of the clock writes every body's floats again. Where in the clip a body is now is worked out from the clock's whole run, so a
           // body that was already shown goes on from where it was when the set changes, and does not start again.
           model.clipParams[k * 8] = -1;
@@ -429,6 +473,26 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           if (holders > 0) host.uploads.count("instances", (next.length + wnext.length) * 64);
         }
       }
+      // A stander who is moved off their schedule (`setNudge`: made to jump, knocked back, turned to the player) is written every frame they are, and
+      // once more, back where they stand, when it is over; what they hold goes with them.
+      let restood = false;
+      if (nudge !== null || batch.nudged.some((v) => v === 1)) {
+        for (const [k, i] of batch.shown.entries()) {
+          const { person, at } = batch.people[i] as PlacedPerson;
+          const off = nudge !== null && nudge(keyOf.get(batch.people[i] as PlacedPerson) as number, at.yaw, moved);
+          if (!off && batch.nudged[i] === 0) continue;
+          const y = at.y + seatLift(person, model.clips.has(person.activity));
+          if (off) writeNudged(model.matrices, k, at.x, y, at.z, at.yaw, person.scale, moved);
+          else writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
+          batch.nudged[i] = off ? 1 : 0;
+          restood = true;
+          for (const thing of batch.things) {
+            if ((batch.people[i] as PlacedPerson).held !== thing.kind) continue;
+            thing.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), k * 16);
+            flushThinInstances(thing.part.mesh, k, 1);
+          }
+        }
+      }
       // The walkers' matrices, every frame they are shown; and a walker whose ground speed has moved by a twentieth (a pair's outer one in a bend) has
       // their clip's rate written again, from where in the clip they are, so that their feet keep to the ground.
       let reclipped = changed;
@@ -437,14 +501,16 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       for (const [q, i] of wnext.entries()) {
         const w = batch.walkers[i] as Walker;
         const at = places[q] as PersonWorld;
-        writeBodyMatrix(model.matrices, batch.shown.length + q, at.x, at.y, at.z, at.yaw, w.scale);
+        if (nudge !== null && nudge(WALKER_KEY + w.id, at.yaw, moved)) writeNudged(model.matrices, batch.shown.length + q, at.x, at.y, at.z, at.yaw, w.scale, moved);
+        else writeBodyMatrix(model.matrices, batch.shown.length + q, at.x, at.y, at.z, at.yaw, w.scale);
         walkShade.push(personShade({ at, person: { seat: null, scale: w.scale } }));
         if (!changed && Math.abs(Math.round(pathSpeed(w, alongAt(w, now)) * 20) / 20 - (batch.wbin[i] as number)) > 1e-6) {
           writeWalker(batch, model, i, batch.shown.length + q, walkClip2, spec2, now);
           reclipped = true;
         }
       }
-      if (changed || wnext.length > 0) model.show(batch.shown.length + wnext.length, true, reclipped);
+      batch.wplaces = places;
+      if (changed || restood || wnext.length > 0) model.show(batch.shown.length + wnext.length, true, reclipped);
     }
     // The walkers' dark moves with them every frame, under one key for all, and goes the frame the last of them is not shown.
     if (walkShade.length > 0 || walkShadeDrawn) host.shade?.write("walkers", walkShade);
@@ -457,6 +523,24 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   return {
     begin,
     step,
+    each(visit) {
+      for (const batch of batches.values()) {
+        if (batch.model === null) continue;
+        for (const i of batch.shown) {
+          const p = batch.people[i] as PlacedPerson;
+          visit({ key: keyOf.get(p) as number, x: p.at.x, y: p.at.y, z: p.at.z, yaw: p.at.yaw, scale: p.person.scale, walking: false, seated: p.person.seat !== null, sheltered: !p.outdoor, partner: p.partner ?? -1, venue: p.venue ?? "street" });
+        }
+        for (const [q, i] of batch.walking.entries()) {
+          const at = batch.wplaces[q];
+          const w = batch.walkers[i];
+          if (at === null || at === undefined || w === undefined) continue;
+          visit({ key: WALKER_KEY + w.id, x: at.x, y: at.y, z: at.z, yaw: at.yaw, scale: w.scale, walking: true, seated: false, sheltered: false, partner: w.partner < 0 ? -1 : WALKER_KEY + w.partner, venue: WALK_VENUE[w.reason] });
+        }
+      }
+    },
+    setNudge(next) {
+      nudge = next;
+    },
     setHour(next) {
       if (next === hour) return;
       hourRun = runNow();
