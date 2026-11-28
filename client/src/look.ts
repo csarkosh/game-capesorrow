@@ -134,8 +134,9 @@ export const PORTASHTON_LOOK: Partial<GameLook> = {
  * The cloud is the look's own weather's, which is the only weather the game has; when the weather turns, this must read the sky's.
  */
 export const LIT_GAIN = 0.86;
-export function litGainAt(hour: number): number {
-  const grade = lookGradeAt(gameLook(PORTASHTON_LOOK), hour, DAMP.cloudCover);
+export function litGainAt(hour: number, look: Partial<GameLook> = PORTASHTON_LOOK): number {
+  const full = gameLook(look);
+  const grade = lookGradeAt(full, hour, full.weather.cloudCover);
   return grade === null ? 1 : Math.max(1, LIT_GAIN / grade.exposure);
 }
 
