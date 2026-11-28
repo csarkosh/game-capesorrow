@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { LANDING_STYLE, TITLE_CREAM } from "../../src/game/landing.js";
+import { LANDING_STYLE, TITLE_CREAM, TITLE_RED } from "../../src/game/landing.js";
 import { TITLE, TITLE_LEAD, TITLE_NAME } from "../../src/game/words.js";
 
 const SOURCE = readFileSync(fileURLToPath(new URL("../../src/game/landing.ts", import.meta.url)), "utf8")
@@ -16,30 +16,33 @@ const rule = (css: string, selector: string): string => {
 };
 
 describe("the title page's title", () => {
-  it("is cream, the lead small on one line above the name", () => {
-    expect(TITLE_CREAM).toBe("#ede4cc");
+  it("is set as the poster's headline: the heaviest wide sans, italic, capitals, tight, in red", () => {
+    expect(TITLE_RED).toBe("#bc0708");
     const h1 = rule(LANDING_STYLE, ".landing h1");
-    expect(h1).toContain(`color: ${TITLE_CREAM}`);
-    expect(h1).toContain("flex-direction: column");
+    expect(h1).toContain(`color: ${TITLE_RED}`);
+    expect(h1).toContain('font-family: "Arial Black"');
+    expect(h1).toContain("font-weight: 900");
+    expect(h1).toContain("font-style: italic");
+    expect(h1).toContain("line-height: 0.88");
     expect(h1).toContain("text-transform: uppercase");
-    const lead = rule(LANDING_STYLE, ".landing h1 .title-lead");
-    expect(lead).toContain("white-space: nowrap");
-    expect(lead).toContain("letter-spacing: 0.06em");
+    expect(h1).toContain("flex-direction: column");
+    // No font is fetched for it: nothing is loaded before Play but the title's still and film.
+    expect(LANDING_STYLE).not.toMatch(/@font-face|@import|fonts\.googleapis/);
   });
 
-  it("draws the name very large and tall, set tight, with room for its stretch", () => {
+  it("puts the lead small on one line above a very large name, both letter-spaced tight", () => {
+    const lead = rule(LANDING_STYLE, ".landing h1 .title-lead");
+    expect(lead).toContain("white-space: nowrap");
+    expect(lead).toContain("letter-spacing: -0.03em");
     const name = rule(LANDING_STYLE, ".landing h1 .title-name");
     expect(name).toContain("font-size: clamp(2.6rem, 9vw, 6rem)");
-    expect(name).toContain("transform: scaleY(1.6)");
-    // The transform leaves the layout box as it is: the margins are (1.6 - 1) / 2 of the line above and below.
-    expect(name).toContain("margin: 0.3em 0");
-    expect(name).toContain("letter-spacing: 0.02em");
+    expect(name).toContain("letter-spacing: -0.05em");
     expect(name).toContain("overflow-wrap: anywhere");
   });
 
   it("is smaller on a phone", () => {
     const phone = LANDING_STYLE.slice(LANDING_STYLE.indexOf("max-width: 480px"));
-    expect(rule(phone, "    .landing h1 .title-name")).toContain("font-size: clamp(2rem, 11vw, 3rem)");
+    expect(rule(phone, "    .landing h1 .title-name")).toContain("font-size: clamp(1.8rem, 10vw, 3rem)");
     expect(rule(phone, "    .landing h1 .title-lead")).toContain("font-size");
   });
 });

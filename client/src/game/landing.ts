@@ -1,6 +1,8 @@
 /** The title page, in Day Hike's visual language: the same dark ground, type and button slabs. */
 /** The title's colour: cream, warm against the cold cast of the controls. */
 export const TITLE_CREAM = "#ede4cc";
+/** The title's red: a horror poster's headline red, the colour of the reference's type. */
+export const TITLE_RED = "#bc0708";
 
 /** The page's stylesheet, exported so a test can read it without a DOM. */
 export const LANDING_STYLE = `
@@ -86,21 +88,23 @@ export const LANDING_STYLE = `
   .landing button.secondary {
     margin-top: 0.25rem; padding: 0.4rem 1.25rem; font-size: 0.85rem;
   }
-  /* The title in two parts: the lead small on one line, and the name under it, drawn tall. The
-     name is stretched with a transform, which leaves its layout box as it was, so its margins give
-     the stretch its room: (1.6 - 1) / 2 of its line above and below. */
+  /* The title in two parts, set as a horror poster's headline is: the heaviest wide sans there is
+     on the machine (Arial Black on macOS and Windows; elsewhere the heaviest sans), italic, in
+     capitals, letter-spaced tight and leaded tighter, in one saturated red. The lead is smaller and
+     on one line above the name. No font is fetched for it: nothing is loaded before Play but the
+     title's still and film. */
   .landing h1 {
     margin: 0 0 0.25rem; display: flex; flex-direction: column; align-items: center;
-    font-weight: 600; line-height: 1; color: ${TITLE_CREAM}; text-align: center;
-    text-transform: uppercase;
+    font-family: "Arial Black", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 900; font-style: italic; line-height: 0.88; color: ${TITLE_RED};
+    text-align: center; text-transform: uppercase;
   }
   .landing h1 .title-lead {
-    font-size: clamp(0.95rem, 2.6vw, 1.75rem); letter-spacing: 0.06em; white-space: nowrap;
+    font-size: clamp(1.1rem, 3vw, 2rem); letter-spacing: -0.03em; white-space: nowrap;
   }
   .landing h1 .title-name {
-    display: block; margin: 0.3em 0; font-size: clamp(2.6rem, 9vw, 6rem);
-    letter-spacing: 0.02em; overflow-wrap: anywhere;
-    transform: scaleY(1.6); transform-origin: center;
+    display: block; font-size: clamp(2.6rem, 9vw, 6rem);
+    letter-spacing: -0.05em; overflow-wrap: anywhere;
   }
   .landing p {
     margin: 0; max-width: 32rem; text-align: center;
@@ -170,7 +174,7 @@ export const LANDING_STYLE = `
        last credit) above it however big the party. */
     .landing .panel { padding: 1rem 1rem calc(var(--roster-height, 0px) + 1.5rem + 1.0625rem + 0.5rem); gap: 0.6rem; }
     .landing h1 .title-lead { font-size: clamp(0.8rem, 4.4vw, 1.1rem); }
-    .landing h1 .title-name { font-size: clamp(2rem, 11vw, 3rem); }
+    .landing h1 .title-name { font-size: clamp(1.8rem, 10vw, 3rem); }
     .landing p { font-size: 0.85rem; max-width: 100%; }
     .landing button { width: 100%; max-width: 20rem; margin-top: 0.75rem; }
     .landing button.secondary { width: auto; }
