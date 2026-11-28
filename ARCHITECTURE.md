@@ -9,7 +9,7 @@ the title page, hosting, and what is still scaffold and unfinished.
 
 ## The engine and what the game hands it
 
-The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.40). The engine
+The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.41). The engine
 makes the world from a seed: the coast (the engine's `olympic` terrain, with its cove, its highway and its massif), the
 forest and the clutter on it, the weather and the sky. A game registers the coast with a place laid over it, and the
 world is then the engine's coast with that place's ground.
@@ -271,6 +271,25 @@ on the frame's view, `hud.ts` shows it), no more than four at once, fading with 
 are `game/peopleWords.ts`, tables to be read and changed, a line chosen by a hash of who says it and how many they have
 said. No clip is made for a hop or a stumble: the body is shifted, hopped, leaned and turned by its matrix as it plays
 the clip it was playing (`PeopleParts.setNudge`, `writeNudged`), and what it holds goes with it.
+
+**Each person has a look of their own on a few models** (`game/town/peopleLook.ts`). A model costs memory (its clip
+table, its pictures, its mesh); a look costs twenty floats for a body drawn. A model's base-colour picture says in its
+alpha, which nothing else uses, what each texel is: five times the alpha is 0 for a shoe, 1 for what is worn on the
+legs, 2 for what is worn on the body and arms, 3 for skin, 4 for hair and 5 for what is never recoloured, in the order
+they meet on a body, so where the picture's filtering blends two neighbours the colours blend and no third shows
+between them. The manifest gives each region's mean colour (`look.regions`). The shader draws a region in the look's
+colour times the texel's luminance over the region's mean, so folds, seams and wear stay; a texel brighter than the
+mean counts for less than in proportion (to 1.8 times at the most), or fair hair made of dark hair and a white shirt
+beside a black waistcoat would burn out. A look is a function of the person's key and of what the model's manifest says
+of the person the model is (`lookOf`): colours from tables of what people of a wet northern port wear, each moved a
+little in lightness and warmth by the person's own draws, and a breadth within six parts in a hundred of the model's, so
+the same person looks the same every time and on every screen, and of 1,500 people no two look alike. A look does not
+change who a model is: the skin keeps the picture's tone but for a few parts in a hundred, hair is grey or white as
+often as it is at the model's age (`GREY_AT`), and a model whose hair is dark is never made fair. The town's mix of
+ages and backgrounds is to come from which models there are and how often each is drawn, not from repainting a face.
+The floats ride beside the bodies' matrices as an instance attribute of the body's mesh; a model whose manifest has no
+`look` is drawn as its picture is. What it does not do: two garments in one region take one colour (a waistcoat stays
+darker than its shirt, but of its hue), a pattern keeps its pattern, and there are still only as many faces as models.
 
 **The dive is a clip and a list of distances made together.** Each model's file holds `dive`, played once: a crouch, a
 dive onto the hands, a roll over the back, a crouch on both feet and a stand that ends as `idle` begins. The clip stays

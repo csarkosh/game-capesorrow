@@ -15,10 +15,9 @@
  * - **Only the near ones are drawn.** Every quarter second the people within `REACH` of the eye (less on the low tier) are written to their
  *   models' matrices and clip parameters and shown; a quarter second in which the set has not changed writes nothing.
  * - **A cup or a phone only in the hand that holds one.** Each model has two small primitives skinned to the right hand, with materials named
- *   `prop.cup` and `prop.phone`. The engine draws every primitive with the same bodies, so as they came everyone would hold both. They are not
- *   drawn by the engine (`dress` says no); each is given a matrix array of its own here, the same size as the bodies' (a thing's instance k is
- *   body k, since the clip a body plays is read by the instance's index), holding the body's own matrix for a body that holds that thing
- *   (`handHeld.ts`) and a matrix that draws nothing for every other.
+ *   `prop.cup` and `prop.phone`. A model's primitives draw the same bodies, so as they came everyone would hold both. Each is asked to have
+ *   bodies of its own instead (the loader's `own`): one for each body that holds that thing (`handHeld.ts`), given that body's matrix and its
+ *   place in its clip, and none for anyone else, so the thing's vertices are worked only where one is held.
 * - **Walkers** (`walkers.ts`) are bodies of the same models playing `walk`, after the standers in each model's matrices. Where a walker is is a function of
  *   the hour alone, so their matrices are written every frame they are shown (a few dozen at most), from an hour that runs on between the day clock's
  *   pushes by the skin clock's own seconds; their clip floats are written once, when the set shown changes: the clip's rate is the speed over the stride
@@ -27,12 +26,12 @@
  * - **A soft dark under each one shown** (`peopleShade.ts`): written with the set a model shows, in one draw for everyone, and let go with the part. A walker's is written every frame, with its body, under one key of its own for all of them (`walkers`), and taken away the frame the last one is not shown.
  * - **They wear the town's air, and are darker than the open sky would make them**, since they stand indoors (`dress`).
  */
-import { flushThinInstances, markMaterialUboDirty, setMeshVisible, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
+import { flushThinInstances, markMaterialUboDirty, markThinInstancePluginData, type EngineContext, type MaterialPlugin, type PbrMaterialProps, type SceneContext } from "@babylonjs/lite";
 import { modelUrl } from "@csarkosh/engine/game/assetUrls";
 import { DRAW_ORDER, createDrawOrders } from "@csarkosh/engine/game/lite/drawOrder";
-import { loadSkinnedModel, type SkinClock, type SkinnedModel, type SkinnedPart } from "@csarkosh/engine/game/lite/skinnedModels";
+import { loadSkinnedModel, type PartBodies, type SkinClock, type SkinnedModel, type SkinnedPart } from "@csarkosh/engine/game/lite/skinnedModels";
 import type { FrameUploads } from "@csarkosh/engine/game/lite/frameUploads";
-import { SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams, type BakedClip } from "@csarkosh/engine/game/skinInstances";
+import { CLIP_FLOATS, SKIN_CLOCK_FOLD, writeBodyMatrix, writeClipParams, type BakedClip } from "@csarkosh/engine/game/skinInstances";
 import manifest from "../../../assets/models/people.json" with { type: "json" };
 import { isOpen, wrapHour, type Hours } from "./hours.js";
 import type { Held } from "./handHeld.js";
@@ -43,6 +42,7 @@ import type { LampList } from "./lampLight.js";
 import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
 import { personShade, type PeopleShade, type ShadePlace } from "./peopleShade.js";
 import { diveStored } from "./dive.js";
+import { LOOK_FLOATS, lookOf, lookRegions, lookTraits, peopleLookPlugin, widen, writeLook } from "./peopleLook.js";
 import { WALK_VENUE, type Nudge, type Seen } from "./peopleReact.js";
 import type { Venue } from "../peopleWords.js";
 
@@ -164,13 +164,20 @@ type Batch = {
   /** For each person and for each walker, whether their body is playing the `dive` clip (so their own clip is written back when the dive is over). */
   diving: Uint8Array;
   wdiving: Uint8Array;
+  /** Each drawn body's look (`peopleLook.ts`, `LOOK_FLOATS` each, in the order the bodies are written), or null for a model whose picture has no regions; and how broad each person and each walker is drawn. */
+  looks: Float32Array | null;
+  wide: Float32Array;
+  wwide: Float32Array;
   /** For each walker: where in the clip they were (clip seconds) at the clock's run `wat`, the clip rate written, and the 5 percent step of their ground speed it was made for. */
   wphase: Float64Array;
   wat: Float64Array;
   wrate: Float64Array;
   wbin: Float64Array;
-  /** The things in the hand: the primitive and the matrices it is drawn with, one for each body of the model (`capacity`). */
-  things: { readonly kind: Exclude<Held, null>; readonly part: SkinnedPart; readonly matrices: Float32Array }[];
+  /**
+   * The things in the hand: the primitive, the bodies of its own it is drawn with (`SkinnedPart.own`: only those who hold it), and for each body of
+   * the model shown, which of the thing's bodies is theirs (-1 for one who does not hold it).
+   */
+  things: { readonly kind: Exclude<Held, null>; readonly part: SkinnedPart; readonly bodies: PartBodies; readonly slot: Int32Array }[];
 };
 
 /** The file's size in the manifest, counted as uploaded once its model has landed. */
@@ -219,7 +226,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     const people = placed.filter((p) => p.person.model === id && !(host.low && !p.outdoor && p.person.seat !== null));
     if (people.length > 0 || walk.cap > 0) {
       batches.set(id, {
-        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [], wplaces: [], nudged: new Uint8Array(people.length), diving: new Uint8Array(people.length), wdiving: new Uint8Array(0),
+        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [], wplaces: [], nudged: new Uint8Array(people.length), diving: new Uint8Array(people.length), wdiving: new Uint8Array(0), looks: null, wide: new Float32Array(people.length).fill(1), wwide: new Float32Array(0),
         wphase: new Float64Array(0), wat: new Float64Array(0), wrate: new Float64Array(0), wbin: new Float64Array(0), things: [],
       });
     }
@@ -227,6 +234,11 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   // Each person's key: their place in the list the parts were made with.
   const keyOf = new Map<PlacedPerson, number>();
   for (const [i, p] of placed.entries()) keyOf.set(p, i);
+  // How broad each is drawn: a part of their look, for a model whose picture has regions.
+  for (const batch of batches.values()) {
+    if (lookRegions(batch.id) === null) continue;
+    for (const [i, p] of batch.people.entries()) batch.wide[i] = lookOf(keyOf.get(p) as number, lookTraits(batch.id)).wide;
+  }
   let nudge: ((key: number, yaw: number, out: Nudge) => boolean) | null = null;
   const moved: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
   /** A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for. */
@@ -273,16 +285,18 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         clock: host.clock,
         signal: loads.signal,
         // The material keeps the file's own textures and wears the town's air; indoors, so darker than the sky would light it.
+        // A thing in the hand has bodies of its own: it is drawn for those who hold it, not as nothing for everyone.
+        own: (part) => PROP_MATERIALS.has(part.name),
         dress(part) {
           const base = part.material.baseColorFactor ?? [1, 1, 1, 1];
           part.material.baseColorFactor = [base[0] * INDOOR_DARKEN, base[1] * INDOOR_DARKEN, base[2] * INDOOR_DARKEN, base[3]];
           part.material.usePhysicalLightFalloff = true;
-          part.material.plugins = [host.air(), peopleLampPlugin(lamps)];
+          // A body whose picture says what is cloth, hair and skin wears its people's own looks; a thing in the hand is as its picture is.
+          part.material.plugins = lookRegions(batch.id) !== null && !PROP_MATERIALS.has(part.name) ? [host.air(), peopleLookPlugin(), peopleLampPlugin(lamps)] : [host.air(), peopleLampPlugin(lamps)];
           dressed.push(part.material);
           orders.take(part.material);
           part.mesh.renderOrder = orders.of(part.material) ?? DRAW_ORDER.bodies;
-          // A thing in the hand is drawn by this file and not by the engine (see above).
-          return !PROP_MATERIALS.has(part.name);
+          return true;
         },
         uploads: host.uploads,
       }).then(
@@ -298,14 +312,18 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
             return;
           }
           batch.model = model;
+          // The looks ride beside the bodies' matrices, on the body's own mesh.
+          if (lookRegions(batch.id) !== null) {
+            batch.looks = new Float32Array(model.capacity * LOOK_FLOATS);
+            for (const part of model.parts) {
+              if (PROP_MATERIALS.has(part.name) || part.mesh.thinInstances === undefined || part.mesh.thinInstances === null) continue;
+              part.mesh.thinInstances.pluginData = batch.looks;
+            }
+          }
           for (const part of model.parts) {
             const kind = PROP_MATERIALS.get(part.name);
-            if (kind === undefined) continue;
-            // Its own matrices, of the bodies' count: all of them draw nothing until a body that holds it is shown.
-            const matrices = new Float32Array(model.capacity * 16);
-            setThinInstances(part.mesh, matrices, model.capacity);
-            setThinInstanceCount(part.mesh, 0);
-            batch.things.push({ kind, part, matrices });
+            if (kind === undefined || part.own === null) continue;
+            batch.things.push({ kind, part, bodies: part.own, slot: new Int32Array(model.capacity).fill(-1) });
           }
           landed++;
           host.uploads.count("geometry", bytesOf(batch.id), 4);
@@ -396,6 +414,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           batch.wrate = new Float64Array(batch.walkers.length);
           batch.wbin = new Float64Array(batch.walkers.length).fill(-1);
           batch.wdiving = new Uint8Array(batch.walkers.length);
+          batch.wwide = Float32Array.from(batch.walkers, (w) => (lookRegions(batch.id) !== null ? lookOf(WALKER_KEY + w.id, lookTraits(batch.id)).wide : 1));
         }
       }
     }
@@ -447,6 +466,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       }
       const idle = model.clips.get("idle");
       if (idle === undefined) continue;
+      const regions = lookRegions(batch.id);
       if (changed) {
         batch.shown = next;
         batch.walking = wnext;
@@ -463,6 +483,8 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           }
           const y = at.y + seatLift(person, clip !== idle);
           writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
+          widen(model.matrices, k, batch.wide[i] as number);
+          if (batch.looks !== null && regions !== null) writeLook(batch.looks, k, lookOf(keyOf.get(batch.people[i] as PlacedPerson) as number, lookTraits(batch.id)), regions);
           batch.nudged[i] = 0;
           // (One in the middle of a dive is given their own clip here with everyone, and the dive again below, from where in it they are.)
           batch.diving[i] = 0;
@@ -476,22 +498,28 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           missing.add(`${batch.id}:walk`);
           console.warn(`the person model ${batch.id} has no walk clip; its walkers glide standing idle`);
         }
-        for (const [q, i] of wnext.entries()) writeWalker(batch, model, i, next.length + q, walkClip ?? idle, spec, now);
+        for (const [q, i] of wnext.entries()) {
+          writeWalker(batch, model, i, next.length + q, walkClip ?? idle, spec, now);
+          if (batch.looks !== null && regions !== null) writeLook(batch.looks, next.length + q, lookOf(WALKER_KEY + (batch.walkers[i] as Walker).id, lookTraits(batch.id)), regions);
+        }
+        // The looks of the bodies now drawn, in their order.
+        if (batch.looks !== null) {
+          for (const part of model.parts) if (!PROP_MATERIALS.has(part.name)) markThinInstancePluginData(part.mesh, 0, (next.length + wnext.length) * LOOK_FLOATS);
+        }
         host.shade?.write(batch.id, next.map((i) => personShade(batch.people[i] as PlacedPerson)));
-        // The things in the hand: the body's own matrix for a body that holds one, and none that draws for the rest (a walker holds nothing).
+        // The things in the hand: a body of the thing's own for each body that holds one, with that body's matrix and its place in its clip (a
+        // walker holds nothing).
         for (const thing of batch.things) {
+          thing.slot.fill(-1);
           let holders = 0;
           for (const [k, i] of next.entries()) {
-            const at = k * 16;
-            if ((batch.people[i] as PlacedPerson).held === thing.kind) {
-              thing.matrices.set(model.matrices.subarray(at, at + 16), at);
-              holders++;
-            } else thing.matrices.fill(0, at, at + 16);
+            if ((batch.people[i] as PlacedPerson).held !== thing.kind) continue;
+            thing.slot[k] = holders;
+            thing.bodies.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), holders * 16);
+            thing.bodies.clipParams.set(model.clipParams.subarray(k * CLIP_FLOATS, (k + 1) * CLIP_FLOATS), holders * CLIP_FLOATS);
+            holders++;
           }
-          thing.matrices.fill(0, next.length * 16, (next.length + wnext.length) * 16);
-          setThinInstanceCount(thing.part.mesh, holders > 0 ? next.length + wnext.length : 0);
-          setMeshVisible(thing.part.mesh, holders > 0);
-          if (holders > 0) host.uploads.count("instances", (next.length + wnext.length) * 64);
+          thing.bodies.show(holders, true, true);
         }
       }
       // A stander who is moved off their schedule (`setNudge`: made to jump, knocked back, turned to the player) is written every frame they are, and
@@ -512,12 +540,14 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           const y = at.y + seatLift(person, model.clips.has(person.activity));
           if (off) writeNudged(model.matrices, k, at.x, y, at.z, at.yaw, person.scale, moved);
           else writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
+          widen(model.matrices, k, batch.wide[i] as number);
           batch.nudged[i] = off ? 1 : 0;
           restood = true;
           shadeMoved = true;
           // The dive's clip from the frame the dive begins, and their own again the frame it is over.
           const diving = off && moved.dive >= 0 && diveClip !== undefined;
-          if (diving !== (batch.diving[i] === 1)) {
+          const flipped = diving !== (batch.diving[i] === 1);
+          if (flipped) {
             if (diving) writeDive(batch, model, k, diveClip, moved.dive);
             else writeOwnClip(model, k, person, model.clips.get(person.activity) ?? idle);
             batch.diving[i] = diving ? 1 : 0;
@@ -525,10 +555,16 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           }
           // What they hold goes with them, but not through a dive: the cup or the phone is not drawn until they are on their feet.
           for (const thing of batch.things) {
-            if ((batch.people[i] as PlacedPerson).held !== thing.kind) continue;
-            if (diving) thing.matrices.fill(0, k * 16, k * 16 + 16);
-            else thing.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), k * 16);
-            flushThinInstances(thing.part.mesh, k, 1);
+            const mine = thing.slot[k] as number;
+            if (mine < 0) continue;
+            if (diving) thing.bodies.matrices.fill(0, mine * 16, mine * 16 + 16);
+            else thing.bodies.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), mine * 16);
+            flushThinInstances(thing.part.mesh, mine, 1);
+            // Back on their feet, the thing is where in the clip the body is again.
+            if (flipped) {
+              thing.bodies.clipParams.set(model.clipParams.subarray(k * CLIP_FLOATS, (k + 1) * CLIP_FLOATS), mine * CLIP_FLOATS);
+              thing.bodies.show(thing.bodies.count, false, true);
+            }
           }
         }
         // The dark under each goes where the body went (a dive is metres from where they stood): read back from the matrices just written.
@@ -551,6 +587,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
         const off = nudge !== null && nudge(WALKER_KEY + w.id, at.yaw, moved);
         if (off) writeNudged(model.matrices, slot, at.x, at.y, at.z, at.yaw, w.scale, moved);
         else writeBodyMatrix(model.matrices, slot, at.x, at.y, at.z, at.yaw, w.scale);
+        widen(model.matrices, slot, batch.wwide[i] as number);
         walkShade.push(personShade({ at: off ? { x: at.x + moved.dx, y: at.y, z: at.z + moved.dz, yaw: at.yaw } : at, person: { seat: null, scale: w.scale } }));
         // A walker who dives plays the dive, and walks again from where in their stride they were when it is over.
         const diving = off && moved.dive >= 0 && diveClip !== undefined;

@@ -1,12 +1,12 @@
 {
   "about": "Written by hand, not by tools/models/build.py (these five models were rigged, given their clips and a cup and a phone for the right hand, and reduced elsewhere; the files are what is shipped, and the manifest says what they are). Metres; the files stand on y = 0 and face +z; `height` is the model's own, from its POSITION bounds. Where a work came from is in CREDITS.md, under the credit id.",
-  "total_bytes": 16470372,
+  "total_bytes": 16529044,
   "people": [
     {
       "id": "person.nathan",
       "file": "person.nathan.glb",
-      "bytes": 2973592,
-      "sha256": "e4480c86f85f78c960c822d96209af55fbbfc89b09565a86c6ac8e13f2f9e697",
+      "bytes": 2973284,
+      "sha256": "932615d7e61a102764e8a04329724bfebfa3b1bf14a03403798918d4b36fe658",
       "credit": "person.nathan",
       "height": 1.894,
       "walk": {
@@ -80,13 +80,57 @@
           2.781,
           2.781
         ]
+      },
+      "look": {
+        "regions": {
+          "shoes": {
+            "mean": [
+              0.387,
+              0.31,
+              0.303
+            ],
+            "share": 0.069
+          },
+          "bottoms": {
+            "mean": [
+              0.24,
+              0.261,
+              0.335
+            ],
+            "share": 0.393
+          },
+          "top": {
+            "mean": [
+              0.685,
+              0.683,
+              0.745
+            ],
+            "share": 0.307
+          },
+          "skin": {
+            "mean": [
+              0.673,
+              0.434,
+              0.369
+            ],
+            "share": 0.173
+          },
+          "hair": {
+            "mean": [
+              0.25,
+              0.182,
+              0.171
+            ],
+            "share": 0.043
+          }
+        }
       }
     },
     {
       "id": "person.eric",
       "file": "person.eric.glb",
-      "bytes": 3579992,
-      "sha256": "8acee16ffaf606d6dff98696069e029fc799e76ee14637d249bb9ca0f09115c1",
+      "bytes": 3608080,
+      "sha256": "2f5d1052ec2c49b6ed4dec5419654beb23caaa396825a393db217827e50a96a1",
       "credit": "person.eric",
       "height": 1.862,
       "walk": {
@@ -160,13 +204,57 @@
           2.781,
           2.781
         ]
+      },
+      "look": {
+        "regions": {
+          "shoes": {
+            "mean": [
+              0.157,
+              0.136,
+              0.129
+            ],
+            "share": 0.064
+          },
+          "bottoms": {
+            "mean": [
+              0.124,
+              0.107,
+              0.113
+            ],
+            "share": 0.313
+          },
+          "top": {
+            "mean": [
+              0.65,
+              0.605,
+              0.596
+            ],
+            "share": 0.348
+          },
+          "skin": {
+            "mean": [
+              0.682,
+              0.448,
+              0.345
+            ],
+            "share": 0.21
+          },
+          "hair": {
+            "mean": [
+              0.276,
+              0.174,
+              0.142
+            ],
+            "share": 0.033
+          }
+        }
       }
     },
     {
       "id": "person.sophia",
       "file": "person.sophia.glb",
-      "bytes": 2681488,
-      "sha256": "0cf5f9ceac457dfeba04e2fd396b03b7bd6498bc4846fd62dde02a56ff70396b",
+      "bytes": 2689804,
+      "sha256": "9148d5e193861aced946abc4200e73f885cfd6509d0a868116c83000c23e0f85",
       "credit": "person.sophia",
       "height": 1.771,
       "walk": {
@@ -240,13 +328,57 @@
           2.781,
           2.781
         ]
+      },
+      "look": {
+        "regions": {
+          "shoes": {
+            "mean": [
+              0.677,
+              0.527,
+              0.437
+            ],
+            "share": 0.07
+          },
+          "bottoms": {
+            "mean": [
+              0.176,
+              0.187,
+              0.221
+            ],
+            "share": 0.336
+          },
+          "top": {
+            "mean": [
+              0.867,
+              0.797,
+              0.757
+            ],
+            "share": 0.261
+          },
+          "skin": {
+            "mean": [
+              0.728,
+              0.457,
+              0.33
+            ],
+            "share": 0.194
+          },
+          "hair": {
+            "mean": [
+              0.331,
+              0.188,
+              0.125
+            ],
+            "share": 0.124
+          }
+        }
       }
     },
     {
       "id": "person.carla",
       "file": "person.carla.glb",
-      "bytes": 3599292,
-      "sha256": "47da90c807c8468ae608395b06b33027b27b11269c13ccebd862976c5f260860",
+      "bytes": 3610372,
+      "sha256": "4b593a08d12879a885ab9e23a69038ab5f4de2a2ee9a2d0c5aac12e10e12df32",
       "credit": "person.carla",
       "height": 1.728,
       "walk": {
@@ -320,13 +452,57 @@
           2.781,
           2.781
         ]
+      },
+      "look": {
+        "regions": {
+          "shoes": {
+            "mean": [
+              0.15,
+              0.133,
+              0.143
+            ],
+            "share": 0.045
+          },
+          "bottoms": {
+            "mean": [
+              0.489,
+              0.467,
+              0.488
+            ],
+            "share": 0.369
+          },
+          "top": {
+            "mean": [
+              0.099,
+              0.089,
+              0.108
+            ],
+            "share": 0.401
+          },
+          "skin": {
+            "mean": [
+              0.594,
+              0.368,
+              0.307
+            ],
+            "share": 0.131
+          },
+          "hair": {
+            "mean": [
+              0.16,
+              0.121,
+              0.126
+            ],
+            "share": 0.041
+          }
+        }
       }
     },
     {
       "id": "person.claudia",
       "file": "person.claudia.glb",
-      "bytes": 3636008,
-      "sha256": "fa50ab875582b0d747caa825b43c707730a2cabf4090d41a4ba88f9ece4e25e5",
+      "bytes": 3647504,
+      "sha256": "e04ad24b73bb6f09ac2f4c5e3434a7646079bf0838a09a4101b87ea26783ab6a",
       "credit": "person.claudia",
       "height": 1.776,
       "walk": {
@@ -400,6 +576,50 @@
           2.781,
           2.781
         ]
+      },
+      "look": {
+        "regions": {
+          "shoes": {
+            "mean": [
+              0.772,
+              0.62,
+              0.536
+            ],
+            "share": 0.057
+          },
+          "bottoms": {
+            "mean": [
+              0.757,
+              0.705,
+              0.705
+            ],
+            "share": 0.382
+          },
+          "top": {
+            "mean": [
+              0.862,
+              0.812,
+              0.841
+            ],
+            "share": 0.39
+          },
+          "skin": {
+            "mean": [
+              0.732,
+              0.524,
+              0.467
+            ],
+            "share": 0.111
+          },
+          "hair": {
+            "mean": [
+              0.532,
+              0.393,
+              0.31
+            ],
+            "share": 0.059
+          }
+        }
       }
     }
   ],

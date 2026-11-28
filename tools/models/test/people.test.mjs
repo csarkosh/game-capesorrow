@@ -12,7 +12,7 @@ const NAMES = ['nathan', 'eric', 'sophia', 'carla', 'claudia'];
 const fetched = readFileSync(`${OUT}/person.nathan.glb`).toString('latin1', 0, 4) === 'glTF';
 
 describe('client/assets/models/people.json', () => {
-  it('lists the five files, each with a credit id, a height and a size within the budget: 3.7 MB a person, 16.5 MB in all', () => {
+  it('lists the five files, each with a credit id, a height and a size within the budget: 3.7 MB a person, 16.6 MB in all (the base pictures carry their regions in alpha)', () => {
     expect(manifest.people.map((p) => p.id)).toEqual(NAMES.map((n) => `person.${n}`));
     for (const p of manifest.people) {
       expect(p.file).toBe(`${p.id}.glb`);
@@ -22,7 +22,7 @@ describe('client/assets/models/people.json', () => {
       expect(p.bytes, p.id).toBeLessThanOrEqual(3_700_000);
     }
     expect(manifest.total_bytes).toBe(manifest.people.reduce((n, p) => n + p.bytes, 0));
-    expect(manifest.total_bytes).toBeLessThanOrEqual(16_500_000);
+    expect(manifest.total_bytes).toBeLessThanOrEqual(16_600_000);
   });
 
   it('lists the clips every file carries, which the game plays by name', () => {
@@ -77,6 +77,25 @@ describe('client/assets/models/people.json', () => {
     expect(fastest).toBeLessThan(5);
     expect(travel[3]).toBeLessThan(0.05);
     expect(travel[travel.length - 16]).toBe(total);
+  });
+
+  it('says what each model\'s picture holds of shoes, legs, body, skin and hair: a mean colour and a share of the picture for each, the shares no more than the whole', () => {
+    for (const p of manifest.people) {
+      const regions = p.look.regions;
+      expect(Object.keys(regions).sort(), p.id).toEqual(['bottoms', 'hair', 'shoes', 'skin', 'top']);
+      let whole = 0;
+      for (const [name, r] of Object.entries(regions)) {
+        expect(r.mean.length, `${p.id} ${name}`).toBe(3);
+        for (const v of r.mean) {
+          expect(v, `${p.id} ${name}`).toBeGreaterThanOrEqual(0);
+          expect(v, `${p.id} ${name}`).toBeLessThanOrEqual(1);
+        }
+        expect(r.share, `${p.id} ${name}`).toBeGreaterThan(0.02);
+        whole += r.share;
+      }
+      expect(whole, p.id).toBeGreaterThan(0.9);
+      expect(whole, p.id).toBeLessThanOrEqual(1.0001);
+    }
   });
 
   it('says it is written by hand, and names no source in its text', () => {
