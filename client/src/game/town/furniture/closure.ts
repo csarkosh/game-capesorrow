@@ -66,7 +66,7 @@ export function cone(g: Geo, it: Item): void {
   L.frustum(0, 0, 0.26, 0.34, 0.08, 0.065, 8, "painted", { tint: [1.5, 1.5, 1.45] }, false, false);
 }
 
-/** A work light on a tripod, 1.7 m: three legs and a lamp head that glows cool white. */
+/** A work light on a three-legged stand, 1.7 m: the legs and a lamp head that glows cool white. */
 export function workLight(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
   for (let k = 0; k < 3; k++) {
