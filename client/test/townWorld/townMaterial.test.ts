@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { PAINT_GAIN, TOWN_LAYERS, layerIndex } from "../../src/game/town/townLayers.js";
-import { PAINT_CODE, PAINT_K, PAINT_UNITS, RANK_CODE, TOWN_ATTRIBUTE, TOWN_TINT_ATTRIBUTE, TOWN_VERTEX_FLOATS, TOWN_WEAR_ATTRIBUTE, emptyTownReady, townDefinitions, townSurfaceCode, townSurfacePlugin } from "../../src/game/town/townMaterial.js";
+import { PAINT_CODE, PAINT_K, PAINT_UNITS, RANK_CODE, TOWN_ATTRIBUTE, TOWN_PACK_A, TOWN_PACK_B, TOWN_PACK_C, TOWN_PACK_HALVES, TOWN_TINT_ATTRIBUTE, TOWN_UNPACK, TOWN_VERTEX_FLOATS, TOWN_WEAR_ATTRIBUTE, emptyTownReady, townDefinitions, townSurfaceCode, townSurfacePlugin } from "../../src/game/town/townMaterial.js";
 import { PAINT_RANKS, paintAlpha, paintRank } from "../../src/game/town/paint.js";
 import { SURFACE_FLOATS } from "../../src/game/town/meshBuilder.js";
+import { SURFACE_PACKED_BYTES } from "../../src/game/town/surfacePack.js";
 import { townTextureBytes, townTextureSize } from "../../src/game/town/townTextures.js";
 
 describe("the town's material plugin", () => {
@@ -31,12 +32,17 @@ describe("the town's material plugin", () => {
     expect(townSurfaceCode(false)).toContain("vTownTint");
   });
 
-  it("declares its vertex data as the builder lays it out, packed: twelve 16-bit floats, the surface, the tint, then the second wear", () => {
+  it("declares its vertex data as the packer lays it out, 16 bytes: two 16-bit floats, then three 32-bit words", () => {
     expect(TOWN_VERTEX_FLOATS).toBe(SURFACE_FLOATS);
     const ready = emptyTownReady();
     const plugin = townSurfacePlugin({ color: {} as never, data: {} as never }, ready, false);
     const attributes = plugin.getVertexAttributes?.() ?? [];
-    expect(attributes.map((a) => [a.name, a.offset, a.stride, a.format])).toEqual([[TOWN_ATTRIBUTE, 0, 24, "float16x4"], [TOWN_TINT_ATTRIBUTE, 8, 24, "float16x4"], [TOWN_WEAR_ATTRIBUTE, 16, 24, "float16x4"]]);
+    expect(attributes.map((a) => [a.name, a.offset, a.stride, a.format])).toEqual([[TOWN_PACK_HALVES, 0, 16, "float16x2"], [TOWN_PACK_A, 4, 16, "uint32"], [TOWN_PACK_B, 8, 16, "uint32"], [TOWN_PACK_C, 12, 16, "uint32"]]);
+    expect(attributes.every((a) => a.stride === SURFACE_PACKED_BYTES)).toBe(true);
+    // The vertex stage unpacks them into the names the rest of it reads, first thing.
+    const vertex = plugin.getCustomCode?.("vertex") ?? {};
+    expect(vertex.CUSTOM_VERTEX_MAIN_BEGIN).toBe(TOWN_UNPACK);
+    for (const name of [TOWN_ATTRIBUTE, TOWN_TINT_ATTRIBUTE, TOWN_WEAR_ATTRIBUTE]) expect(TOWN_UNPACK).toContain(`let ${name}=`);
     expect(plugin.priority).toBe(200);
     expect(plugin.getSamplers?.().map((s) => s.texture)).toEqual(["townColor", "townData"]);
     const out: { texture: unknown; sampler?: false }[] = [];
