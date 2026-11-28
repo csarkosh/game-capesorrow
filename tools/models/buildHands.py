@@ -222,21 +222,21 @@ GRIP = dict(
     finger_half=0.95,  # half a finger's thickness: a finger's middle line lies this far outside the barrel
     along=-2.0,  # where the barrel's axis lies from the knuckle line toward the wrist (negative is toward the wrist), and
     above=5.0,  # how far out of the hand's back-to-front middle (the knuckles' level) along the palm's normal: the palm's face is 3.5 to 4.8 out
-    hold_z=-1.6,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
-    cock=1.25,  # the wrist's turn toward the little finger (ulnar deviation)
+    hold_z=-3.7,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
+    cock=1.55,  # the wrist's turn toward the little finger (ulnar deviation)
     roll=0.0,  # the turn of the whole hand and torch about the torch's axis, to the frame's +y (see right_hand)
     thumb_angle=0.35,  # where the thumb lies round the barrel: 0 is straight out from the palm over the top, positive toward the fingers
     thumb_reach=1.35,  # how far outside the barrel the thumb's middle line lies
 )
-# The torch is turned in the grip, about the point of its axis under the middle finger, so that its head end points further away into the scene than the hand's own
-# knuckle line takes it. `yaw` turns the head toward the file's -x (as the loader stands the file, toward the view's right-hand side as seen along the torch: the head swings away
-# from the forearm), `pitch` toward the back of the hand (+y); both in degrees, in the right file's frame (z along the barrel as it lay in the grip, y out of the back of the hand). The
-# arm is as it was: only the torch moves, and the fingers are curled again, as little as needed, round the turned barrel. The lens and the axis it ends with are in `hands.json`.
+# The torch can be turned in the grip, about the point of its axis under the middle finger: `yaw` toward the file's -x, `pitch` toward the back of the hand (+y), in degrees, in the right file's frame
+# (z along the barrel, y out of the back of the hand); the fingers are curled again round the turned barrel and the thumb follows part of the way, and `hands.json` gives the lens and the axis the torch ends with.
+# It is 0, 0 now: the torch points straight away from the viewer by posing the whole hand for it (the wrist cocked 1.55 rad, the forearm nearly in line behind the fist, the fist toward the tail end at `hold_z`, the hold in `handPose.ts`), and a turn in the grip
+# past about 30 degrees cannot be gripped cleanly.
 # How far (radians) a finger's joints may be curled again from where they lay round the straight barrel, and what a radian of change costs against the distance to the turned barrel.
 RECURL_WINDOW = 0.6
 RECURL_COST = 0.2
 THUMB_FOLLOW = 0.5
-TORCH_IN_GRIP = dict(yaw=-30.0, pitch=10.0)
+TORCH_IN_GRIP = dict(yaw=0.0, pitch=0.0)
 RELAXED = dict(
     curl=dict(point=(0.75, 0.95, 0.5), middle=(0.8, 1.0, 0.55), ring=(0.85, 1.0, 0.55), pink=(0.9, 1.05, 0.55)),
     thumb=(0.25, 0.2, 0.1),
@@ -245,7 +245,7 @@ RELAXED = dict(
 # The left sleeve comes toward the eye (the arm is held across the front of the body): past 6 cm along the forearm it is at the near plane, so it is cut there and capped at once.
 FOREARM_CUT_LEFT = 6.0
 SLEEVE_RUN_LEFT = (1.5, 3.0)
-SLEEVE_RUN = (1.5, 3.0)  # the sleeve's end is carried on by rings this far (the arms' unit) along the forearm's own line, as one closed tube
+SLEEVE_RUN = (1.0, 3.0, 5.0, 6.5)  # the sleeve's end is carried on by rings this far (the arms' unit) along the forearm's own line, as one closed tube
 FOREARM_CUT = 10.0  # the right sleeve is cut this far from the elbow's place along the forearm (the wrist is at 24): the forearm comes at the eye, and past about 7 cm behind the wrist it is at the near plane
 
 

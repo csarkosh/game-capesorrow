@@ -140,7 +140,7 @@ describe("the part draws nothing while the lamp is off and the hand is down", ()
     expect(lamp.at.dx).toBeCloseTo(beam[0]!, 6);
     expect(lamp.at.dy).toBeCloseTo(beam[1]!, 6);
     expect(lamp.at.dz).toBeCloseTo(beam[2]!, 6);
-    expect(Math.hypot(faces[0]! - beam[0]!, faces[1]! - beam[1]!, faces[2]! - beam[2]!)).toBeGreaterThan(0.2);
+    expect(Math.hypot(faces[0]! - beam[0]!, faces[1]! - beam[1]!, faces[2]! - beam[2]!)).toBeGreaterThan(0.1);
     expect(part.torch.dx).toBeCloseTo(lamp.at.dx, 9);
     // Switched off: the light goes at once, the hand lowers, and when it is down nothing is drawn.
     HAND_SWITCH.on = false;

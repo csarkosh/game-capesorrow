@@ -27,6 +27,7 @@ import { createWatchKey, type WatchKeyTarget } from "../hand/watchKey.js";
 import { sayWatch } from "../hand/watchCommand.js";
 import { resetWatch } from "../hand/watchSeen.js";
 import { askMap } from "../map/mapCommand.js";
+import { SWAY_INPUT } from "../hand/armSway.js";
 import { mapFrameFor } from "../map/mapFeed.js";
 
 type CapeSide = SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient>;
@@ -146,6 +147,8 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
   let cars: readonly Car[] = [];
   // The host's own world, once this screen hosts: `carhome` is the host's to say, and the page's active world is its own only then.
   let hostWorld: WalkWorld | null = null;
+  // The renderer whose bob scale this side is watching (the engine keeps the scale to itself, and the arms' sway follows it).
+  let watchedRenderer: object | null = null;
   // The session this screen is of, for the party's connection mark: a joined player's own round trip is `stats.rttMs`, and the host's is 0.
   let session: { stats?: { rttMs: number } } | null = null;
   const watch = newClickWatch();
@@ -308,6 +311,17 @@ export function createCapeSide(host: CapeHost, base: CapeSide, clock: () => numb
       host.hud.setDark(darkFor(self));
       // The lamp's hint is the car's headlights while the local player drives (F switches them: `carPressed`); on foot it is the hand torch's (`../hand/handSwitch.ts`).
       host.hud.setLampKind(self === undefined ? null : self.ride.phase === FOOT ? "lamp" : self.ride.phase === SEATED && self.ride.seat === 0 ? "headlights" : null);
+      // The arms' sway follows the bob's scale and holds still while the game is paused: the scale is seen as the engine sets it on the renderer, and the pause is the controls being let go.
+      SWAY_INPUT.paused = !host.input.engaged;
+      const renderer = host.renderer as { setBobScale?: (scale: number) => void } | undefined;
+      if (renderer !== undefined && renderer !== watchedRenderer && typeof renderer.setBobScale === "function") {
+        watchedRenderer = renderer;
+        const set = renderer.setBobScale.bind(renderer);
+        renderer.setBobScale = (scale: number): void => {
+          SWAY_INPUT.scale = scale;
+          set(scale);
+        };
+      }
       // The map in the corner (and the large one a paused game shows): it hides itself where there is no local player.
       host.hud.setMap(mapFrameFor(seed, state.cars, self, host.appliedHour, host.input.engaged, host.touchStart, session === null ? null : (session.stats?.rttMs ?? 0)));
       if (goin !== null && world !== undefined && self !== undefined) {

@@ -14,6 +14,7 @@ import { doorPlace } from "../../src/sim/car/seats.js";
 import { INTERACT_BIT, LEAVE_SPEED } from "../../src/sim/car/tuning.js";
 import { newCar } from "../../src/sim/car/start.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "../../src/sim/car/types.js";
+import { SWAY_INPUT } from "../../src/game/hand/armSway.js";
 import { WORLD_SEEDS, worldFor } from "../townWorld/world.js";
 
 const seed = WORLD_SEEDS[0] as number;
@@ -178,6 +179,35 @@ describe("the car's half of a session", () => {
     expect(said.kind.at(-1)).toBeNull();
     side.afterSync(undefined as never, state([c], []), 7, undefined, null);
     expect(said.kind.at(-1)).toBeNull();
+  }, timeLimit(60_000));
+
+  it("hands the arms' sway the bob's scale as the engine sets it on the renderer, and whether the game is paused", () => {
+    const { host } = pageHost(false);
+    const h = host as unknown as { renderer: { setBobScale?: (s: number) => void }; input: { engaged: boolean } };
+    const set: number[] = [];
+    h.renderer.setBobScale = (v) => set.push(v);
+    const side = createCapeSide(host, WALK_SIDE);
+    const me = walker(50, 50);
+    const frame = (): void => side.afterSync(undefined as never, state([], [me]), 7, me, null);
+    frame();
+    expect(SWAY_INPUT.paused).toBe(false);
+    // The engine sets the scale (a `/bob 1.5` or `/bob off`); the sway sees it and the engine still gets it.
+    h.renderer.setBobScale(1.5);
+    expect(SWAY_INPUT.scale).toBe(1.5);
+    h.renderer.setBobScale(0);
+    expect(SWAY_INPUT.scale).toBe(0);
+    expect(set).toEqual([1.5, 0]);
+    h.input.engaged = false;
+    frame();
+    expect(SWAY_INPUT.paused).toBe(true);
+    h.input.engaged = true;
+    frame();
+    expect(SWAY_INPUT.paused).toBe(false);
+    // Wrapped once: a second frame does not wrap it again.
+    frame();
+    h.renderer.setBobScale(0.5);
+    expect(set).toEqual([1.5, 0, 0.5]);
+    SWAY_INPUT.scale = 0.5;
   }, timeLimit(60_000));
 
   it("gives no press to a screen with a keyboard", () => {

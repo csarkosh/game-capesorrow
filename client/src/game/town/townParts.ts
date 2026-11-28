@@ -57,6 +57,7 @@ import { emptyPeopleLamps, writePeopleLamps } from "./peopleLight.js";
 import { loadHandParts, type HandHost, type HandParts } from "../hand/handParts.js";
 import { loadWatchParts, type WatchParts } from "../hand/watchParts.js";
 import { WATCH_SEEN } from "../hand/watchSeen.js";
+import { SWAY_INPUT, createArmSway } from "../hand/armSway.js";
 import { HAND_SWITCH } from "../hand/handSwitch.js";
 import { roomDrawn } from "../insideReady.js";
 import { createInsideParts, hidesTown, insidePeople, whereOf, type InsideParts } from "./insideParts.js";
@@ -237,6 +238,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     if (drawnGround !== null && boxBlocks(propSolids(worldSeed), x, y, z, PROP_THIN_HALF, drawnGround(x, z) + PROP_TOP, BOX_MARGIN)) return true;
     return carBlocks(held.cars, chasedCar, x, y, z);
   };
+  // The view's small answer to an arm rising or falling (`../hand/armSway.ts`), added to the eye in `shot`.
+  const armSway = createArmSway();
   // The player's hand and torch (`../hand/handParts.ts`), loaded from their file the first time the torch is switched on and made then; the materials that read the torch's beam
   // (`FLASH_CODE`: the rooms'); the frame's dt and camera axes.
   let hand: HandParts | null = null;
@@ -744,8 +747,18 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         shownSeat = 0;
         viewKeys.cineOff();
         cineOn = false;
-        return base.side.shot(seconds, pose, local, state, localId, alpha);
+        const out = base.side.shot(seconds, pose, local, state, localId, alpha);
+        // The arms' small answer in the view, last of all on the eye (the arms are placed from this pose, after this): on foot only, and not while a door holds the player.
+        const phase = (local as { inside?: Inside }).inside?.phase ?? 0;
+        const foot = ride === undefined || ride.phase === FOOT;
+        const hidden = !foot || phase === 1 || phase === 3;
+        const sway = armSway.step(dt, hidden ? null : (hand === null ? 0 : hand.pose.raised), hidden ? null : WATCH_SEEN.raised, SWAY_INPUT.scale, SWAY_INPUT.paused);
+        pose.y += sway.dy;
+        pose.pitch += sway.pitch;
+        pose.roll += sway.roll;
+        return out;
       }
+      armSway.reset();
       if (ride.car !== chasedCar) chase.started = false;
       chasedCar = ride.car;
       shownSeat = seatStep(shownSeat, seatTarget(ride.phase, ride.ticks), dt);

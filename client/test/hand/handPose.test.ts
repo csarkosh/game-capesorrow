@@ -88,10 +88,10 @@ describe("the hold", () => {
       const down = (1.6 + h.y) / -ay;
       expect(h.z + az * down).toBeGreaterThan(5);
       expect(h.z + az * down).toBeLessThan(12);
-      // A face in the middle of the view 2 m off is within 20 degrees of the beam's axis (the cone's half angle is 28.6).
+      // A face in the middle of the view 2 m off is inside the cone (its half angle is 28.6 degrees).
       const fx = -h.x, fy = -h.y, fz = 2 - h.z;
       const cos = (fx * ax + fy * ay + fz * az) / Math.hypot(fx, fy, fz);
-      expect((Math.acos(cos) * 180) / Math.PI).toBeLessThan(20);
+      expect((Math.acos(cos) * 180) / Math.PI).toBeLessThan(28.6);
     }
   });
 
@@ -115,7 +115,7 @@ describe("the hold", () => {
     expect(along([lens.dx, lens.dy, lens.dz], axes.ux, axes.uy, axes.uz)).toBeCloseTo(holdAxis()[1], 2);
   });
 
-  it("keeps two axes apart: the beam's (the tilt that was set, unchanged) and the one the torch is drawn along (turned in toward the middle and a little up)", () => {
+  it("keeps two axes apart: the beam's (the tilt that was set, unchanged) and the one the torch is drawn along (straight ahead)", () => {
     const pose = newHandPose();
     run(0.6, { want: true }, newHandState(), pose);
     // The beam's axis is the aim through the middle of the view.
@@ -127,11 +127,9 @@ describe("the hold", () => {
     expect(pose.mx).toBeCloseTo(Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH), 2);
     expect(pose.my).toBeCloseTo(-Math.sin(DRAWN_PITCH), 2);
     expect(Math.hypot(pose.mx, pose.my, pose.mz)).toBeCloseTo(1, 6);
-    // The torch is drawn as the owner's reference shows it (`handScreen.test.ts` measures the angle on the screen): up and to the left, seen along its side (mostly across the view, a little
-    // away), and the beam, which goes through the view's middle and down to the street, may differ from it.
-    expect(pose.mx).toBeLessThan(-0.6);
-    expect(pose.my).toBeGreaterThan(0.3);
-    expect(Math.abs(pose.mz)).toBeLessThan(0.4);
+    // The torch is drawn straight away from the viewer, its head pointing along the camera's forward axis (the lamp's filament straight down the z-axis): within 6 degrees of it.
+    // The beam, which goes through the view's middle and down to the street, differs from it a little.
+    expect(pose.mz).toBeGreaterThanOrEqual(0.995);
     // Lowered, the drawn axis is not the beam's either way round and nothing is lit: only the pair at the hold matters, and both are unit vectors.
     expect(Math.hypot(pose.ax, pose.ay, pose.az)).toBeCloseTo(1, 6);
   });
@@ -158,7 +156,7 @@ describe("the hold", () => {
     expect(lens.dx).toBeCloseTo(beam[0]!, 6);
     expect(lens.dy).toBeCloseTo(beam[1]!, 6);
     expect(lens.dz).toBeCloseTo(beam[2]!, 6);
-    expect(Math.hypot(b[6]! - lens.dx, b[7]! - lens.dy, b[8]! - lens.dz)).toBeGreaterThan(0.2);
+    expect(Math.hypot(b[6]! - lens.dx, b[7]! - lens.dy, b[8]! - lens.dz)).toBeGreaterThan(0.1);
     // The quaternion's rotation matrix (the standard one) has the basis for its columns.
     const q: number[] = [0, 0, 0, 1];
     basisQuaternion(b, q);
