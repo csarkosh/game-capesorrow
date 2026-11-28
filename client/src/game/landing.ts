@@ -33,6 +33,10 @@ export const LANDING_STYLE = `
     --btn-solid: rgb(237, 228, 204);
     --btn-solid-lit: rgb(246, 239, 221);
     --btn-solid-hit: rgb(251, 247, 236);
+    /* The dark slab the secondary buttons are: Play's label colour, lifted a step under the pointer and the press. */
+    --btn-dark: rgb(12, 15, 17);
+    --btn-dark-lit: rgb(30, 31, 32);
+    --btn-dark-hit: rgb(44, 44, 42);
   }
   /* The film and its still cover the page behind the title, centred and cropped, never stretched.
      The still fades out (class gone) once the film can play through. */
@@ -84,9 +88,21 @@ export const LANDING_STYLE = `
   /* The list is a tab stop (the engine's credits screen sets tabIndex) so it can be scrolled from
      the keyboard; that stop has to be visible when it is reached. */
   .landing ul.credits:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 4px; }
-  /* Secondary: the same cream slab as Play, smaller, so Play still leads by its size. */
+  /* Secondary: a dark slab with a cream label and a faint cream edge, so Play is the only light
+     shape on the screen; it lightens under the pointer and the press. */
   .landing button.secondary {
-    margin-top: 0.25rem; padding: 0.4rem 1.25rem; font-size: 0.85rem;
+    margin-top: 0.25rem; padding: 0.4rem 1.25rem; font-size: 0.85rem; color: ${TITLE_CREAM};
+    background-image: none; background-color: var(--btn-dark);
+    border-color: var(--btn-edge);
+    box-shadow: var(--btn-rim), 0 0 0 rgba(237, 228, 204, 0);
+  }
+  .landing button.secondary:hover:not(:disabled) {
+    background-color: var(--btn-dark-lit); border-color: var(--btn-edge-lit);
+    box-shadow: var(--btn-rim), 0 0 14px var(--btn-bloom);
+  }
+  .landing button.secondary:active:not(:disabled) {
+    background-color: var(--btn-dark-hit); border-color: var(--btn-edge-lit);
+    box-shadow: var(--btn-rim), 0 0 6px var(--btn-bloom);
   }
   /* The title in two parts, set as a horror poster's headline is: the heaviest wide sans there is
      on the machine (Arial Black on macOS and Windows; elsewhere the heaviest sans), italic, in
@@ -102,9 +118,12 @@ export const LANDING_STYLE = `
   .landing h1 .title-lead {
     font-size: clamp(1.1rem, 3vw, 2rem); letter-spacing: -0.03em; white-space: nowrap;
   }
+  /* The name is drawn tall: stretched 1.6 times by a transform, which leaves its layout box as it
+     was, so its margins give the stretch its room, (1.6 - 1) / 2 of its 0.88em line above and below. */
   .landing h1 .title-name {
-    display: block; font-size: clamp(2.6rem, 9vw, 6rem);
+    display: block; margin: 0.264em 0; font-size: clamp(2.6rem, 9vw, 6rem);
     letter-spacing: -0.05em; overflow-wrap: anywhere;
+    transform: scaleY(1.6); transform-origin: center;
   }
   .landing p {
     margin: 0; max-width: 32rem; text-align: center;

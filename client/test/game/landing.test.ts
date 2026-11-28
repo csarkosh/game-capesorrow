@@ -38,6 +38,9 @@ describe("the title page's title", () => {
     expect(name).toContain("font-size: clamp(2.6rem, 9vw, 6rem)");
     expect(name).toContain("letter-spacing: -0.05em");
     expect(name).toContain("overflow-wrap: anywhere");
+    expect(name).toContain("transform: scaleY(1.6)");
+    // The transform leaves the layout box as it is: the margins are (1.6 - 1) / 2 of the 0.88em line above and below.
+    expect(name).toContain("margin: 0.264em 0");
   });
 
   it("is smaller on a phone", () => {
@@ -48,15 +51,17 @@ describe("the title page's title", () => {
 });
 
 describe("the title page's controls", () => {
-  it("are slabs of solid cream with dark labels, Play and the secondary buttons alike", () => {
+  it("are Play a slab of solid cream with a dark label, and the others dark slabs with cream labels", () => {
     expect(TITLE_CREAM).toBe("#ede4cc");
     expect(LANDING_STYLE).toContain("--btn-solid: rgb(237, 228, 204)");
+    expect(LANDING_STYLE).toContain("--btn-dark: rgb(12, 15, 17)");
     expect(LANDING_STYLE).not.toMatch(/198, 222, 222|214, 234, 234|#eaf1f1/);
     const button = rule(LANDING_STYLE, ".landing button");
     expect(button).toContain("background-color: var(--btn-solid)");
     expect(button).toContain("color: #0c0f11");
-    // The secondary buttons are only smaller: no fill, edge or colour of their own.
-    expect(rule(LANDING_STYLE, ".landing button.secondary")).not.toMatch(/background|border|color/);
+    const secondary = rule(LANDING_STYLE, ".landing button.secondary");
+    expect(secondary).toContain("background-color: var(--btn-dark)");
+    expect(secondary).toContain(`color: ${TITLE_CREAM}`);
   });
 });
 
