@@ -5,11 +5,13 @@
  */
 import "../assets.js";
 import "../terrain.js";
+import engine from "@csarkosh/engine/package.json" with { type: "json" };
 import { startFilm, type FilmDefinition } from "@csarkosh/engine/game/film/filmMode";
 import { EMPTY_GAME, walkRenderer, walkSide } from "../game.js";
 import { createCapeSide } from "../game/car/side.js";
 import { townPartsWith } from "../game/town/townParts.js";
 import { WORLD_WORKERS } from "../worldWorkers.js";
+import { TOWN_GEN } from "../sim/town/version.js";
 import { TITLE_LOOK, TITLE_WINDOWS } from "./titleLook.js";
 import { TITLE_SEED, TITLE_TOKEN, titlePath } from "./titlePath.js";
 
@@ -23,9 +25,12 @@ function hashOf(text: string): string {
   return h.toString(16).padStart(8, "0");
 }
 
-/** What the film's frames are lit and graded by, as a stable string: a retuned look or window colour refuses frames recorded under the old one. */
-export function titleLookDigest(look: unknown, windows: unknown): string {
-  return hashOf(JSON.stringify({ look, windows }));
+/** The engine the film is recorded with (its package's version). */
+export const ENGINE_VERSION: string = engine.version;
+
+/** What the film's frames are lit and graded by, as a stable string: a retuned look or window colour, a new town (`TOWN_GEN`) or a new engine refuses frames recorded under the old one. */
+export function titleLookDigest(look: unknown, windows: unknown, town: number = TOWN_GEN, engineVersion: string = ENGINE_VERSION): string {
+  return hashOf(JSON.stringify({ look, windows, town, engine: engineVersion }));
 }
 
 export const TITLE_FILM: FilmDefinition = {
