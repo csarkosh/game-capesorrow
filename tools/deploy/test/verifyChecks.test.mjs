@@ -11,7 +11,7 @@ const HTML = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Something Haunts Port Ashton</title>
+    <title>Something’s Haunting Port Ashton</title>
     <meta name="description" content="A detective, a stretch of the Washington coast, and reports nobody believed." />
     <link rel="icon" href="/portashton/favicon.svg" type="image/svg+xml" />
     <script>(function () { var s = 'src="/not/a/tag.js"'; })();</script>
@@ -45,7 +45,7 @@ describe('parseVerifyArgs', () => {
 
 describe('reading the page', () => {
   it('finds the title', () => {
-    expect(pageTitle(HTML)).toBe('Something Haunts Port Ashton');
+    expect(pageTitle(HTML)).toBe('Something’s Haunting Port Ashton');
     expect(pageTitle('<html></html>')).toBe(null);
   });
 

@@ -11,7 +11,7 @@ const code = (name: string): string => readFileSync(SRC + name, "utf8").replace(
 
 describe("the title page's words", () => {
   it("are the game's name, one sentence that turns at its end, and the lines that stand in Play's place", () => {
-    expect(words.TITLE).toBe("Something Haunts Port Ashton");
+    expect(words.TITLE).toBe("Something’s Haunting Port Ashton");
     expect(words.BLURB_LEAD + words.BLURB_TURN).toBe(
       "A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that some of them were true.",
     );

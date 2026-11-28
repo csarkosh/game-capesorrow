@@ -4,7 +4,7 @@
  */
 
 /** The game's name, as the page's heading and the browser's tab carry it. */
-export const TITLE = "Something Haunts Port Ashton";
+export const TITLE = "Something’s Haunting Port Ashton";
 
 /** The sentence under the title: its innocent opening, and the turn that ends it (styled to surface from the fog). */
 export const BLURB_LEAD = "A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that ";

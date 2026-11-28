@@ -20,7 +20,7 @@ function fakeHost() {
 describe("Port Ashton's identity", () => {
   it("is the game's name, the word for a session, a nameless player, its storage prefix and its desktop token", () => {
     // `storage` keeps the game's former name on purpose: saved settings are stored in the browser under it.
-    expect(PORTASHTON_IDENTITY).toEqual({ title: "Something Haunts Port Ashton", session: "case", player: "Detective", storage: "capesorrow", desktop: "PortAshton" });
+    expect(PORTASHTON_IDENTITY).toEqual({ title: "Something’s Haunting Port Ashton", session: "case", player: "Detective", storage: "capesorrow", desktop: "PortAshton" });
     expect(PORTASHTON_PAGE.identity).toBe(PORTASHTON_IDENTITY);
   });
 });

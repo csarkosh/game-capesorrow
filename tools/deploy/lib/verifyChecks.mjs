@@ -8,7 +8,7 @@ export const SITE_ROOT = 'https://games.csarko.sh/';
 export const GAMES_INDEX = 'https://csarko.sh/games';
 
 /** The title this game's page carries. */
-export const TITLE = 'Something Haunts Port Ashton';
+export const TITLE = 'Something’s Haunting Port Ashton';
 
 export const VERIFY_USAGE = 'Usage: npm run deploy:verify [-- --base <url>] [-- --sha <build tag>]';
 

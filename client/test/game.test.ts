@@ -103,7 +103,7 @@ describe("the empty game as the page's shell is handed it", () => {
   });
 
   it("leaves a visitor turned away to the engine's page, under its own name, over no still and with the credits the Credits screen shows", () => {
-    expect(PORTASHTON_PAGE.identity.title).toBe("Something Haunts Port Ashton");
+    expect(PORTASHTON_PAGE.identity.title).toBe("Something’s Haunting Port Ashton");
     expect(PORTASHTON_PAGE.away.still()).toBeNull();
     expect(PORTASHTON_PAGE.away.credits()).toEqual(creditsEntries());
     const page = code("page.ts");
@@ -113,7 +113,7 @@ describe("the empty game as the page's shell is handed it", () => {
     expect(page).not.toMatch(/empty-away|cannot draw the world/);
     // The page it is shown reads as that game's, and nothing of another's.
     const view = turnedAwayModel({ title: PORTASHTON_PAGE.identity.title, reason: "no-webgpu", short: null, desktop: false, device: "mac", host: "other", userAgent: "", renderer: null, latest: null });
-    expect([view.title, view.headline, view.browsers?.intro]).toEqual(["Something Haunts Port Ashton", "This browser cannot run Something Haunts Port Ashton.", "Something Haunts Port Ashton runs in:"]);
+    expect([view.title, view.headline, view.browsers?.intro]).toEqual(["Something’s Haunting Port Ashton", "This browser cannot run Something’s Haunting Port Ashton.", "Something’s Haunting Port Ashton runs in:"]);
     expect(JSON.stringify(view)).not.toMatch(/Day Hike|hike/i);
   });
 
