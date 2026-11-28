@@ -15,7 +15,7 @@
  * - **Counts.** `highwayStats()` gives what stands: cells, vertices, triangles and the bytes the GPU holds for them.
  */
 import { leanMesh } from "./leanMesh.js";
-import { packSurface } from "./surfacePack.js";
+import { SURFACE_PACKED_BYTES, packSurface } from "./surfacePack.js";
 import { addToScene, createMeshFromData, disposeMeshGpu, removeFromScene, setMeshVisible, type Mesh } from "@babylonjs/lite";
 import type { ViewFrustumPlane } from "@csarkosh/engine/game/lite/cameraPose";
 import type { RenderHost } from "@csarkosh/engine/game/lite/renderGame";
@@ -52,10 +52,10 @@ export function highwayLodFor(d: number, held: HighwayLod | null, near: number =
   return d < near + (held === 0 ? HYSTERESIS : 0) ? 0 : 1;
 }
 
-/** The bytes a cell's arrays take on the GPU: positions, normals, colours, UVs, the packed surface records (24 bytes a vertex) and the indices. */
+/** The bytes a cell's arrays take on the GPU: positions, normals, colours, UVs, the packed surface records (`SURFACE_PACKED_BYTES` a vertex) and the indices. */
 export function gpuBytes(a: MeshArrays): number {
   const vertices = a.positions.length / 3;
-  return vertices * (12 + 12 + 16 + 8 + 24) + a.indices.length * 4;
+  return vertices * (12 + 12 + 16 + 8 + SURFACE_PACKED_BYTES) + a.indices.length * 4;
 }
 
 function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {

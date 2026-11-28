@@ -38,10 +38,11 @@ export function leanMesh(mesh: Mesh): boolean {
 }
 
 /** The meshes still holding arrays: each frame `step` drops what the GPU has taken since, and forgets the meshes that are lean. */
-export function createLeaner(): { add(mesh: Mesh): void; step(): void; waiting(): number; clear(): void } {
+export function createLeaner(): { add(mesh: Mesh): void; remove(mesh: Mesh): void; step(): void; waiting(): number; clear(): void } {
   let fat: Mesh[] = [];
   return {
     add: (mesh) => void fat.push(mesh),
+    remove: (mesh) => void (fat = fat.filter((m) => m !== mesh)),
     step() {
       if (fat.length === 0) return;
       fat = fat.filter((mesh) => !leanMesh(mesh));
