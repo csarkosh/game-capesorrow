@@ -65,7 +65,7 @@ import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady } from "./townMaterial.js";
+import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, windowLightUniform, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady, type WindowLight } from "./townMaterial.js";
 import { fallenBy, knockMoves, newKnocked, stepKnocked } from "./knocked.js";
 import { MARKS_MOST, markMatrices, newStruck, rockOf, shoveMove, stepStruck, struckMoves, struckSolids } from "./struck.js";
 import { createDamageParts, type DamageParts } from "./damageParts.js";
@@ -169,7 +169,8 @@ function inView(planes: readonly ViewFrustumPlane[], m: Made): boolean {
   return true;
 }
 
-export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPartsApi> = (host: RenderHost) => {
+/** The town's parts, with what a film may ask of them; `townParts` (play) asks nothing. */
+export const townPartsWith = (opts: { windowLight?: WindowLight }): RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPartsApi> => (host: RenderHost) => {
   const base = noParts(host);
   const made: Made[] = [];
   // The meshes whose arrays the GPU has not yet all taken (`leanMesh.ts`).
@@ -400,6 +401,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       const orders = createDrawOrders(DRAW_ORDER.scenery);
       const low = host.tier === "low";
       ready = emptyTownReady();
+      ready.townWindowLight = windowLightUniform(opts.windowLight);
       ready.townHour[0] = shownHour;
       ready.townGlow[0] = litGainAt(shownHour);
       ready.townDay[0] = daylightAt(shownHour);
@@ -866,3 +868,5 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   };
   return { side, api: base.api };
 };
+
+export const townParts = townPartsWith({});

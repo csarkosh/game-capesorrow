@@ -78,6 +78,8 @@ import type { MaterialPlugin, Texture2DArray } from "@babylonjs/lite";
 import { uniformFields, writeUniforms, type UniformField } from "@csarkosh/engine/game/lite/pluginUniforms";
 import { FRAME_BLOCK } from "@csarkosh/engine/game/lite/frameBlock";
 import { NIGHT_BIAS } from "./meshBuilder.js";
+import { WINDOW_GLOW_MAX } from "./windowNight.js";
+import windowLightSource from "./shaders/townWindowLight.wgsl?raw";
 import { INTERIOR_LAYERS } from "./interiorLayers.js";
 import { PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY, layerIndex } from "./townLayers.js";
 import { EAVE_CODE, EAVE_REACH, EAVE_SHADE, FOOT_CODE, FOOT_REACH, FOOT_SHADE, FOOT_UNIT } from "./skyShade.js";
@@ -262,6 +264,16 @@ const WIRE_CODE = `if(tsLayer<0&&tsWearV.z<-0.5){let wr=-tsWearV.z*0.001;let wd=
  */
 export const SHUT_LIGHT: readonly [number, number, number] = [0.42, 0.45, 0.52];
 
+export const WINDOW_LIGHT_CODE = windowLightSource.replace(/\/\*[\s\S]*?\*\//g, "").replace("__WINDOW_GLOW_MAX__", f(WINDOW_GLOW_MAX)).replace(/\s*\n\s*/g, "").trim();
+
+/** What a film asks of the lit windows: their light's colour (linear rgb) and its gain; none in play (`townWindowLight` stays `(0,0,0,0)`, and the branch is off). */
+export type WindowLight = { colour: readonly [number, number, number]; gain: number };
+
+/** The uniform's four floats for a window light: its colour and gain, or all 0 for none. */
+export function windowLightUniform(w: WindowLight | undefined): [number, number, number, number] {
+  return w === undefined ? [0, 0, 0, 0] : [w.colour[0], w.colour[1], w.colour[2], w.gain];
+}
+
 /**
  * A room's hours (`hours.ts`): a layered vertex whose spare float 10 is over a half carries its unit's hours code. The glow is kept by how
  * open the unit is at the hour, and the rest of it is lit by the scene (`SHUT_LIGHT`) (`material.townHour`): the arithmetic of `openShare`, written from `hours.ts`'s own constants (the distance to the
@@ -280,6 +292,7 @@ export function hoursCodeFor(sign: boolean): string {
   `let nin=(nt>=non_t)&&(nt<noff_t);let nd=min(abs(nt-non_t),abs(nt-noff_t));`,
   `let nsh=clamp(0.5+select(-nd,nd,nin)/${f(2 * NIGHT_FADE_HOURS)},0.0,1.0)*select(0.0,1.0,noff_t>non_t);`,
   "let nown=townGlowC;townGlowC=nown*nsh;",
+  WINDOW_LIGHT_CODE,
   "let nbase=nown/max(tsSurf.w,1.0);",
   "let ndull=mix(nbase,vec3<f32>(dot(nbase,vec3<f32>(0.2126,0.7152,0.0722))*0.6),step(1.0,tsSurf.w));",
   "baseColor=baseColor+ndull*(1.0-nsh);",
@@ -507,10 +520,10 @@ export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Te
  * many of the lamp list's entries are used (0: none, which is the day); and the list itself, `lampP<i>` (a lamp's x, y, z and range) and `lampC<i>` (its colour and
  * strength), one vec4 each, since a uniform array is not a type the material's buffer takes. `markMaterialUboDirty` after changing any.
  */
-export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townLamps: number[]; townDoors: number[]; townKnocked: number[] } & Record<string, number[]>;
+export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townWindowLight: number[]; townLamps: number[]; townDoors: number[]; townKnocked: number[] } & Record<string, number[]>;
 
 export function emptyTownReady(): TownReady {
-  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townLamps: [0], townDoors: [0], townKnocked: [0] };
+  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townWindowLight: [0, 0, 0, 0], townLamps: [0], townDoors: [0], townKnocked: [0] };
   for (let i = 0; i < MAX_DOORS; i++) {
     r[`doorA${i}`] = [0, 0, 1, 0];
     r[`doorB${i}`] = [0, 1, 1, 0];

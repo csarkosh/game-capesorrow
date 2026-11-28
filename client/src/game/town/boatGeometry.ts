@@ -20,6 +20,9 @@ import { GLASS } from "./palette.js";
 import { nightCode } from "./hours.js";
 import type { Boat } from "../../sim/town/types.js";
 
+/** The glow of a lit cabin's glass (above `WINDOW_GLOW_MAX`, so a film's window light leaves it be). */
+export const BOAT_GLOW = 0.9;
+
 /** Hull colours, picked by a boat's colour index. */
 export const HULL_COLOURS: readonly Rgb[] = [
   [0.82, 0.83, 0.82],
@@ -157,7 +160,7 @@ export function boatGeometry(sink: (x: number, z: number) => MeshBuilder, b: Boa
     const wy1 = deckY + y1 * 0.85;
     const eps = 0.02;
     const lenH = x1 - x0;
-    const glass = (fn: () => void): void => (cabin === null ? fn() : m.withHours(cabin.code, () => m.withGlow(0.9, fn)));
+    const glass = (fn: () => void): void => (cabin === null ? fn() : m.withHours(cabin.code, () => m.withGlow(BOAT_GLOW, fn)));
     const pane = cabin === null ? GLASS : CABIN_LIGHT;
     for (const sgn of [-1, 1]) {
       const n = Math.max(1, Math.round(lenH / 1.1));

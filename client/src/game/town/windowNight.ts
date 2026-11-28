@@ -79,6 +79,9 @@ export function looseWindowCode(b: Building, k: number, state: WindowTreatment):
   return state === "lit" || hash01(b.id * 31 + k, 702) < share ? litCode(b.id, k) : NEVER_CODE;
 }
 
+/** The top of `windowLight`'s glow: a night-coded surface with a glow above 0 and at most this is a lit window (`shaders/townWindowLight.wgsl`); every lens and porch light glows more. */
+export const WINDOW_GLOW_MAX = 0.75;
+
 /** The colour and strength of a lit window's light: most a warm white, a few cooler, one now and then the blue of a television. */
 export function windowLight(id: number, k: number): { colour: Rgb; glow: number } {
   const r = hash01(id * 17 + k, 707);
