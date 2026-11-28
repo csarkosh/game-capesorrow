@@ -162,7 +162,8 @@ describe.each([["bar", 0], ["cafe", 1]] as const)("the light of the %s on the wo
     const ratio = (key: string): number => percentile(zones[key] as number[], 0.9) / Math.max(1e-6, percentile(zones[key] as number[], 0.1));
     console.log(`[light ${name}] ratios floor ${ratio("floor").toFixed(1)} left ${ratio("left").toFixed(1)} right ${ratio("right").toFixed(1)} back ${ratio("back").toFixed(1)}`);
     expect(ratio("floor"), `${name} floor`).toBeGreaterThanOrEqual(4);
-    for (const w of ["left", "right", "back"]) expect(ratio(w), `${name} ${w} wall`).toBeGreaterThanOrEqual(3);
+    // Walls are lit more evenly than they were (they hold a share of the floor's light, `Mood.fill`), so the cafe's are held to 2.5.
+    for (const w of ["left", "right", "back"]) expect(ratio(w), `${name} ${w} wall`).toBeGreaterThanOrEqual(name === "cafe" ? 2.5 : 3);
   });
 });
 
@@ -313,5 +314,54 @@ describe.each([["bar", 0], ["cafe", 1], ["lodging", 2], ["office", 3]] as const)
     console.log(`[wall steps ${name}] worst neighbour ratio ${worst.toFixed(2)} ${where}`);
     // The bar's corners are as they were (its light is as it is): held to 2.1.
     expect(worst, `${name}: ${where}`).toBeLessThanOrEqual(name === "bar" ? 2.1 : 1.6);
+  });
+
+  it("has no region of a wall, 1.5 m across, under 55 percent of the wall's median by day: no dark patch where no lamp reaches", () => {
+    const light = bakeLight(d, [{ s0: 0, s1: d.width, through: 0.5 }]);
+    const faces: { key: string; len: number; at: (u: number) => [number, number]; n: [number, number] }[] = [
+      { key: "left", len: d.depth - 0.3, at: (u) => [0.003, 0.15 + u], n: [1, 0] },
+      { key: "right", len: d.depth - 0.3, at: (u) => [d.width - 0.003, 0.15 + u], n: [-1, 0] },
+      { key: "back", len: d.width, at: (u) => [u, d.depth - 0.003], n: [0, -1] },
+      // The front wall is drawn from the field with no normal (`shade` calls `at`), as the street side's `frontWall` does.
+      { key: "front", len: d.width, at: (u) => [u, 0.15], n: [0, 0] },
+    ];
+    const cuts = [0, ...(d.cuts ?? []), d.height];
+    const worst: string[] = [];
+    for (const f of faces) {
+      const nu = Math.max(4, Math.floor(f.len / 0.5));
+      for (let band = 0; band + 1 < cuts.length; band++) {
+        // From a metre above the floor: the foot of a wall is darkened by what stands against it, by design (`contact`).
+        const y0 = (cuts[band] as number) + 1.0;
+        const y1 = (cuts[band + 1] as number) - 0.3;
+        const ny = Math.max(4, Math.floor((y1 - y0) / 0.5));
+        const grid: number[][] = [];
+        const all: number[] = [];
+        for (let j = 0; j <= ny; j++) {
+          const row: number[] = [];
+          for (let i = 0; i <= nu; i++) {
+            const [s, dd] = f.at((i * f.len) / nu);
+            const c = light.lit(s, dd, y0 + (j * (y1 - y0)) / ny, f.n[0], f.n[1], 0);
+            // Behind a tall thing (a cabinet, a shelf unit, a booth's back) a wall is dark by design (`contact`): such a sample is held to no more than the wall's own.
+            const behind = d.blocks.some((b) => b.y1 > 1.0 && Math.abs(s - b.s) < Math.abs(b.ax) * b.ha + Math.abs(b.ad) * b.hb + 0.6 && Math.abs(dd - b.d) < Math.abs(b.ad) * b.ha + Math.abs(b.ax) * b.hb + 0.6);
+            const v = behind ? Infinity : (c[0] + c[1] + c[2]) / 3;
+            row.push(v);
+            if (!behind) all.push(v);
+          }
+          grid.push(row);
+        }
+        // A face with nothing of itself to see (all of it behind something tall) has nothing to hold.
+        if (all.length < 8) continue;
+        all.sort((p, q) => p - q);
+        const median = all[Math.floor(all.length / 2)] as number;
+        // A block of 4 by 4 samples (1.5 m by 1.5 m at a sample every half metre) all under 55 percent of the median.
+        for (let j = 0; j + 3 <= ny; j++) for (let i = 0; i + 3 <= nu; i++) {
+          let dark = true;
+          for (let a = 0; a < 4 && dark; a++) for (let b = 0; b < 4; b++) if ((grid[j + a] as number[])[i + b]! >= 0.55 * median) { dark = false; break; }
+          if (dark) worst.push(`${f.key} band ${band} at u ${((i * f.len) / nu).toFixed(1)} y ${(y0 + (j * (y1 - y0)) / ny).toFixed(1)} (median ${median.toFixed(3)})`);
+        }
+      }
+    }
+    console.log(`[wall patches ${name}] ${worst.length} dark blocks ${worst.slice(0, 2).join("; ")}`);
+    expect(worst.slice(0, 3), `${name}: dark regions of a wall`).toEqual([]);
   });
 });

@@ -248,6 +248,9 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
   let ceilRef = 1;
   // The room at night: the lamps alone, at the power they were designed at, and a faint ambient so that it is never pitch black (a room with its lamps out is dark, not void).
   let ceilNightK = 1;
+  // A wall is lit by what the room gives back as well as by lamps and the panes: a share of the floor's mean light (`Mood.fill`), set once the floor is sampled. It keeps a pale wall evenly lit where no lamp reaches (the upper storeys of a tall hall, the wall a window is in, which gets nothing of its own window).
+  let wallFill = 0;
+  let wallFillNight = 0;
   const nightAmbient = Math.min(mood.ambientK, 0.03) * 0.5 + NIGHT_FLOOR;
   const scratchN: [number, number, number] = [0, 0, 0];
   const lit = (s: number, d: number, y: number, ns: number, nd: number, ny: number): Rgb => {
@@ -268,12 +271,15 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
     }
     const day = dayAt(s, d) * mood.day;
     const k = occlusion(s, d, y, ny) * contact(s, d, y);
-    scratch[0] = (out[0] * gain + mood.ambient[0] * mood.ambientK + SKY[0] * day) * k;
-    scratch[1] = (out[1] * gain + mood.ambient[1] * mood.ambientK + SKY[1] * day) * k;
-    scratch[2] = (out[2] * gain + mood.ambient[2] * mood.ambientK + SKY[2] * day) * k;
-    scratchN[0] = (out[0] * gain + mood.ambient[0] * nightAmbient) * k;
-    scratchN[1] = (out[1] * gain + mood.ambient[1] * nightAmbient) * k;
-    scratchN[2] = (out[2] * gain + mood.ambient[2] * nightAmbient) * k;
+    const wall = ny > -0.5 && ny < 0.5;
+    const fd = wall ? wallFill : 0;
+    const fn = wall ? wallFillNight : 0;
+    scratch[0] = (out[0] * gain + mood.ambient[0] * (mood.ambientK + fd) + SKY[0] * day) * k;
+    scratch[1] = (out[1] * gain + mood.ambient[1] * (mood.ambientK + fd) + SKY[1] * day) * k;
+    scratch[2] = (out[2] * gain + mood.ambient[2] * (mood.ambientK + fd) + SKY[2] * day) * k;
+    scratchN[0] = (out[0] * gain + mood.ambient[0] * (nightAmbient + fn)) * k;
+    scratchN[1] = (out[1] * gain + mood.ambient[1] * (nightAmbient + fn)) * k;
+    scratchN[2] = (out[2] * gain + mood.ambient[2] * (nightAmbient + fn)) * k;
     return scratch;
   };
   let mean = 0;
@@ -288,6 +294,10 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
   mean = n > 0 ? mean / n : 0;
   meanNight = n > 0 ? meanNight / n : 0;
   ceilNightK = mean > 1e-6 ? Math.min(1, meanNight / mean) : 1;
+  if (mood.bounce !== undefined) {
+    wallFill = (mood.fill ?? 0.5) * mean;
+    wallFillNight = wallFill * ceilNightK;
+  }
   if (mood.bounce !== undefined) {
     // The ceiling's own reference: the most light any lamp throws on it, over the room's ceiling on a grid of half a metre.
     let top = 1e-4;

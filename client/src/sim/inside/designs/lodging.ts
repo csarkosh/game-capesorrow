@@ -513,7 +513,7 @@ function layout(site: LodgingSite, strip: { slabs: Slab[]; surfaces: Surface[] }
     doorHead: min(2.05, H - 0.2),
     arrive: arrivalOf(W, site.doorS),
     shell: { front: wallFinish, left: wallFinish, right: wallFinish, back: wallFinish, floor: "marble_tile", ceiling: "painted" },
-    mood: { exposure: 2.1, ambient: [1, 0.95, 0.85], ambientK: 0.01, day: 0.75, bounce: 1.55 },
+    mood: { exposure: 2.1, ambient: [1, 0.95, 0.85], ambientK: 0.01, day: 0.75, bounce: 1.55, fill: 0.7 },
     ...(multi ? { cuts: [cm(F - 0.15)] } : {}),
     frontCurtains: !small,
     marks,

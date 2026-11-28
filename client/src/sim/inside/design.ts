@@ -99,6 +99,8 @@ export type Mood = {
   readonly exposure: number; readonly ambient: readonly [number, number, number]; readonly ambientK: number; readonly day: number;
   /** A pale ceiling gives back light: the light every ceiling face holds before its paint's own colour is laid over it (0.82 of it where no lamp's light falls, the whole of it under a fixture), so that an open ceiling is evenly pale, gently brighter round fixtures. None: the ceiling is lit as everything is. */
   readonly bounce?: number;
+  /** The share of the floor's mean light that a wall also holds (default 0.5 where there is a `bounce`): what the room gives back to a wall no lamp reaches. */
+  readonly fill?: number;
 };
 
 /** A window in the back or a side wall: `a0` to `a1` along the wall (`s` for the back, `d` for a side), `y0` to `y1` over the floor. */
