@@ -452,7 +452,9 @@ The designed top speeds (`TOP_SPEED` in `tuning.ts`) and grips (`GRIP`) are by s
 
 The speed is also held to a limit by place (`speedLimitAt`, `sim/car/limit.ts`): `TOWN_SPEED`, 10 m/s, where the town's
 cover holds the ground, rising smoothly to `FULL_SPEED`, 15 m/s, over the cover's fade past the town's last blocks
-(`COVER_FADE`, 160 m), and 15 m/s beyond. It follows the blocks and the quay and not the single outlying lots, so a lone
+(`COVER_FADE`, 160 m), and 15 m/s beyond. On the highway's bed (within `ROAD_BED_HALF`, 5.5 m, of its centre) it is
+15 m/s all the way through the town, easing down to the place's own over `HIGHWAY_SPEED_FADE`, 12 m, beside it, so a car
+that turns off into a street is slowed over a few metres. It follows the blocks and the quay and not the single outlying lots, so a lone
 building by the highway does not slow the car, and it is a pure function of the seed and the place, so the host's step
 and a joined machine's prediction agree. The streamed world does not keep up with an eye that travels faster than
 that; the table keeps the designed speeds for when the world is made ahead of travel, and raising `FULL_SPEED` is the
@@ -582,7 +584,7 @@ to stand, they stay seated.
 
 ### The wire
 
-`net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 3. A snapshot is a header (the message type, the tick,
+`net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 5. A snapshot is a header (the message type, the tick,
 the last input taken and the count of players, 10 bytes), the players (31 bytes each: the engine's id, place, velocity,
 look and grounded flag, then the ride: a car's id, a seat, a phase and its ticks, then the room: its id, a phase and its ticks, see "Walking into a building"), a count of cars and the cars (35
 bytes each, at these offsets: the id 0, the place 1 to 12, the heading as two 16-bit integers 13 to 16, the speed and the
@@ -685,7 +687,8 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
 
 ### The car's limits
 
-- The top speed is held to 10 m/s in the town and 15 m/s (`FULL_SPEED`) past it, by place (`speedLimitAt`), because the
+- The top speed is held to 10 m/s in the town's streets and 15 m/s (`FULL_SPEED`) on the highway and past the town, by
+  place (`speedLimitAt`), because the
   streamed world does not keep up with a faster eye; the designed speeds stay in the table for when it does.
 - The car that is simulated is rigid: on a curb it tilts and a wheel can hang in the air. The suspension is drawn
   only (the body leans and rides over wheels that stay where the rigid car has them), and the wheels do not travel in
@@ -763,7 +766,7 @@ in `GOING_IN` and `GOING_OUT`, never the click, so the screen is black before th
 ### On the wire
 
 Three bytes more for each player after the ride: the room's id, the phase and its ticks (`MOVER_BYTES` is 31, `WALK_PROTOCOL`
-3). A read refuses a phase outside the four and a room's id that is 0 unless the phase is `OUTSIDE`. The host's word
+5). A read refuses a phase outside the four and a room's id that is 0 unless the phase is `OUTSIDE`. The host's word
 corrects the local player's `inside` as it does the ride. `view` leaves out of the frame every other player who is not where
 the local player is (the room's id for `INSIDE` and `GOING_OUT`, else the street), since a player in a room is 60 m up and
 must not be drawn to someone in the street, nor the reverse. The console's `goin bar`, `goin cafe`, `goin lodging` and
