@@ -17,7 +17,7 @@
  *   position, so a wall can wear more at its foot than at its eave), and what kind: moss and grime, or rust. The shader
  *   breaks the amount into patches with world-space noise; it is a share of the surface, never a gradient.
  */
-import { TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
+import { townLayer, type LayerName } from "./townLayers.js";
 import type { Rgb, Vec3 } from "./meshBuilder.js";
 
 /**
@@ -99,14 +99,13 @@ function unit(a: Vec3): Vec3 {
 /** The tint a surface multiplies its texture by, given the polygon's own colour. */
 export function tintOf(surface: Surface, colour: Rgb): Rgb {
   if (surface.tint !== undefined) return surface.tint;
-  return TOWN_LAYERS[layerIndex(surface.layer)]?.paintable === true ? colour : [1, 1, 1];
+  return townLayer(surface.layer).paintable ? colour : [1, 1, 1];
 }
 
 export type FrameBasis = { readonly origin: Vec3; readonly u: Vec3; readonly v: Vec3; readonly su: number; readonly sv: number };
 
 export function basisOf(surface: Surface): FrameBasis {
-  const layer = TOWN_LAYERS[layerIndex(surface.layer)];
-  if (layer === undefined) throw new Error(`no texture layer "${surface.layer}"`);
+  const layer = townLayer(surface.layer);
   const scale = surface.scale ?? 1;
   return { origin: surface.frame.origin, u: unit(surface.frame.u), v: unit(surface.frame.v), su: scale / layer.tile[0], sv: scale / layer.tile[1] };
 }

@@ -8,6 +8,7 @@
  * "none" is no surface at all: a vertex with no layer is drawn as a flat vertex colour, as every town vertex was before.
  */
 import manifest from "../../../assets/textures/town.layers.json" with { type: "json" };
+import { INTERIOR_LAYERS } from "./interiorLayers.js";
 
 /** Every layer, in the order of the arrays: walls, then roofs, then the ground. A test holds this list to the manifest. */
 export const LAYER_NAMES = [
@@ -17,7 +18,21 @@ export const LAYER_NAMES = [
   "sidewalk", "asphalt", "asphalt_dark", "gravel", "mud", "moss", "rust",
 ] as const;
 
-export type LayerName = (typeof LAYER_NAMES)[number];
+export type TownLayerName = (typeof LAYER_NAMES)[number];
+
+/**
+ * The layers that only the rooms have (`interiorLayers.ts`: the interiors' own set, made by the same script and loaded when a player first walks
+ * into a building). A builder names one by a material (`materials.ts`: `i_marble` and the rest) and it is given an index from `INTERIOR_BASE` on, which
+ * is no town layer's, so that `insideLayers.ts` can tell what the rooms' geometry wants from what the town's arrays hold and lay each where it belongs.
+ */
+export const INTERIOR_ONLY_NAMES = ["marble_tile", "carpet", "oak", "dark_wood", "cloth", "glazed_tile", "cane", "paint"] as const;
+export type InteriorOnlyName = (typeof INTERIOR_ONLY_NAMES)[number];
+
+/** Every name a surface can have for its layer: the town's, and the rooms' own. */
+export type LayerName = TownLayerName | InteriorOnlyName;
+
+/** A rooms' own layer's index in the vertex data before `insideLayers.ts` retargets it: this plus its place in `INTERIOR_ONLY_NAMES`. No town layer reaches it. */
+export const INTERIOR_BASE = 64;
 
 /** A layer as the manifest lists it. */
 export type TownLayer = {
@@ -49,21 +64,25 @@ export const LAYER_SIZE: number = manifest.size;
 export const PAINT_GAIN: number = manifest.paintGain;
 
 /** The wear overlays: moss and grime, and rust (`Surface.wearKind`). */
-export const WEAR_OVERLAY = { moss: "moss", rust: "rust", peel: "planks_peeling", mud: "mud" } as const satisfies Record<string, LayerName>;
+export const WEAR_OVERLAY = { moss: "moss", rust: "rust", peel: "planks_peeling", mud: "mud" } as const satisfies Record<string, TownLayerName>;
 
 /** The vertex's layer for "none": no texture, the vertex colour as it is. */
 export const NO_LAYER = -1;
 
-const BY_NAME = new Map<string, TownLayer>(TOWN_LAYERS.map((layer) => [layer.name, layer]));
+const BY_NAME = new Map<string, TownLayer>([
+  ...TOWN_LAYERS.map((layer): [string, TownLayer] => [layer.name, layer]),
+  ...INTERIOR_LAYERS.filter((layer) => (INTERIOR_ONLY_NAMES as readonly string[]).includes(layer.name)).map((layer): [string, TownLayer] => [layer.name, layer as unknown as TownLayer]),
+]);
 
-/** The layer called `name`; throws for a name the manifest does not have. */
+/** The layer called `name`, the town's or one of the rooms' own; throws for a name neither manifest has. */
 export function townLayer(name: LayerName): TownLayer {
   const layer = BY_NAME.get(name);
   if (layer === undefined) throw new Error(`the town has no texture layer "${name}"`);
   return layer;
 }
 
-/** The layer's index in the arrays. */
+/** The layer's index in the town's arrays, or for a layer of the rooms' own, `INTERIOR_BASE` and its place (see `INTERIOR_BASE`). */
 export function layerIndex(name: LayerName): number {
-  return townLayer(name).index;
+  const layer = townLayer(name);
+  return (INTERIOR_ONLY_NAMES as readonly string[]).includes(name) ? INTERIOR_BASE + layer.index : layer.index;
 }

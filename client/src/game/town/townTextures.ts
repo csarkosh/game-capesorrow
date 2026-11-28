@@ -48,29 +48,56 @@ export function townImageUrl(file: string): string {
 /** At most this many images are in flight: a decoded image is a megabyte, and the browser decodes them on its own threads. */
 const IN_FLIGHT = 4;
 
+/** A set of layers to make arrays of: the files of each layer, and the sides the colour and the data arrays are made at (they may differ: the rooms' data is a quarter the size of its colour). */
+export type LayerFiles = {
+  /** What the warning says when the set does not load: "the town's textures", and what stays as it was. */
+  readonly what: string;
+  readonly layers: readonly { readonly index: number; readonly color: string; readonly data: string }[];
+  readonly colorSize: number;
+  readonly dataSize: number;
+};
+
+/** The town's set, at the size of a tier. */
+function townFiles(low: boolean): LayerFiles {
+  const size = townTextureSize(low);
+  return { what: "the town's textures did not load; the town stays flat colour:", layers: TOWN_LAYERS, colorSize: size, dataSize: size };
+}
+
 /**
  * Makes the arrays and begins loading their images. `signal` ends the fetches of a renderer that has gone. `landed` is
  * called once the arrays have been filled, with whether they were.
  */
 export function createTownTextures(engine: EngineContext, low: boolean, signal: AbortSignal, landed: (filled: boolean) => void): TownTextures {
-  const size = townTextureSize(low);
-  const layers = TOWN_LAYERS.length;
-  const color = createTexture2DArray(engine, size, size, layers, { mipMaps: true, srgb: true });
-  const data = createTexture2DArray(engine, size, size, layers, { mipMaps: true, srgb: false });
-  let left = TOWN_IMAGES;
-  const per = size * size * 4;
+  return createLayerTextures(engine, townFiles(low), signal, landed);
+}
+
+/**
+ * The same for any set of layers (`townFiles`; the rooms' set is `interiorTextures.ts`'s): two arrays, a layer each, filled in place by one upload
+ * when every image has been decoded (four at a time, by the engine's decoder, which fetches through the engine's own retries and takes a file
+ * asked for ahead). A set that cannot load settles false once, with a warning that says what stays as it was.
+ */
+export function createLayerTextures(engine: EngineContext, files: LayerFiles, signal: AbortSignal, landed: (filled: boolean) => void): TownTextures {
+  const { colorSize, dataSize } = files;
+  const layers = files.layers.length;
+  const color = createTexture2DArray(engine, colorSize, colorSize, layers, { mipMaps: true, srgb: true });
+  const data = createTexture2DArray(engine, dataSize, dataSize, layers, { mipMaps: true, srgb: false });
+  let left = layers * 2;
+  // Set once the load has settled: a worker still running after a failure goes on counting down, which is no business of whoever asks what is left.
+  let settled = false;
+  const colorPer = colorSize * colorSize * 4;
+  const dataPer = dataSize * dataSize * 4;
 
   async function load(): Promise<boolean> {
-    const colorBytes = new Uint8Array(per * layers);
-    const dataBytes = new Uint8Array(per * layers);
+    const colorBytes = new Uint8Array(colorPer * layers);
+    const dataBytes = new Uint8Array(dataPer * layers);
     const jobs: (() => Promise<void>)[] = [];
-    for (const layer of TOWN_LAYERS) {
+    for (const layer of files.layers) {
       jobs.push(async () => {
-        colorBytes.set(await decodeGroundLayer(townImageUrl(layer.color), size, signal), layer.index * per);
+        colorBytes.set(await decodeGroundLayer(townImageUrl(layer.color), colorSize, signal), layer.index * colorPer);
         left--;
       });
       jobs.push(async () => {
-        dataBytes.set(await decodeGroundLayer(townImageUrl(layer.data), size, signal), layer.index * per);
+        dataBytes.set(await decodeGroundLayer(townImageUrl(layer.data), dataSize, signal), layer.index * dataPer);
         left--;
       });
     }
@@ -87,17 +114,19 @@ export function createTownTextures(engine: EngineContext, low: boolean, signal: 
 
   const done = load().then(
     (filled) => {
+      settled = true;
       left = 0;
       landed(filled);
       return filled;
     },
     (error: unknown) => {
+      settled = true;
       left = 0;
       // A renderer let go mid-load is no fault; a missing or broken image leaves the town as flat colour, and says so once.
-      if (!signal.aborted) console.warn("the town's textures did not load; the town stays flat colour:", error);
+      if (!signal.aborted) console.warn(files.what, error);
       landed(false);
       return false;
     },
   );
-  return { color, data, done, pending: () => left };
+  return { color, data, done, pending: () => (settled ? 0 : left) };
 }

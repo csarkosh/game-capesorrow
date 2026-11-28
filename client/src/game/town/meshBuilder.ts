@@ -9,7 +9,7 @@
  * metres, and a wear. The colour is then the tint the texture is multiplied by. A polygon with no surface is exactly what it
  * was before surfaces existed: its vertices carry no layer (`NO_LAYER`) and the renderer draws them as flat colour.
  */
-import { NO_LAYER, TOWN_LAYERS, layerIndex, type LayerName } from "./townLayers.js";
+import { NO_LAYER, layerIndex, townLayer, type LayerName } from "./townLayers.js";
 import { WEAR_KIND_NUMBER, basisOf, tintOf, uvAt, type Cut, type Fx, type Surface, type WearKind } from "./townSurface.js";
 import { DOOR_ALPHA, KNOCK_ALPHA, paintAlpha } from "./paint.js";
 
@@ -62,8 +62,31 @@ export type Rgb = readonly [number, number, number];
  */
 export type MeshArrays = { positions: Float32Array; normals: Float32Array; colors: Float32Array; uvs: Float32Array; surface: Float32Array; indices: Uint32Array };
 
+/**
+ * The triangles of a room's mesh that are faces of a solid (`MeshBuilder.solid`) and have no back: ranges of triangle numbers, by the finished mesh's `indices` array.
+ * Every other triangle of a room has its back.
+ */
+const UNBACKED = new WeakMap<Uint32Array, readonly (readonly [number, number])[]>();
+
+/** Whether triangle `t` of a finished mesh is a face of a solid, which has no back. */
+export function isUnbacked(indices: Uint32Array, t: number): boolean {
+  const r = UNBACKED.get(indices);
+  if (r === undefined) return false;
+  for (const [a, b] of r) if (t >= a && t < b) return true;
+  return false;
+}
+
 /** Floats a vertex's `surface` holds. */
 export const SURFACE_FLOATS = 12;
+
+/**
+ * A room's colour at night, carried with its colour by day (`designLight.ts`: two bakes of one design, `townMaterial.ts`: the indoor material mixes them by how bright it is outside). The colour a corner is
+ * given (the array itself, by identity) may be tied to the ratio of its night colour to its day colour in red and in blue (the green is read between them): the builder lays those in the two floats of a textured
+ * corner a room does not use (the second wear's kind and the flat ground's rank), each as 2 + the ratio, so that a corner with none is told from one that has. Costs no byte a vertex.
+ */
+export const NIGHT_RATIOS = new WeakMap<object, readonly [number, number]>();
+/** Where the ratios stand in the surface floats, and what they are added to. */
+export const NIGHT_BIAS = 2;
 
 const ONE: Rgb = [1, 1, 1];
 
@@ -201,14 +224,20 @@ class Ints extends Run<Uint32Array> {
   }
 }
 
+/** How near two faces of a room that look the same way may lie before the later is stood off, and how far off: 3 mm is four steps of the depth buffer at 25 m. */
+const DECAL_GAP = 0.0032;
+const DECAL_STEP = 0.0035;
+
 export class MeshBuilder {
   /** Debugging: when set, each polygon records where in the builders it was made (`tags`: its first triangle's index, and the callers), for a script that hunts overlaps. Off in the game. */
   static trace = false;
+  /** How many frames of the call stack a traced tag keeps. */
+  static traceDepth = 4;
   /** With `trace` on, the tags of each finished mesh, by its arrays (the finder reads them to say where a pair came from). */
   static readonly traced = new WeakMap<object, [number, string][]>();
   readonly tags: [number, string][] = [];
   private tag(from: number): void {
-    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder") && !l.includes("/surface.ts")).slice(0, 4);
+    const lines = (new Error().stack ?? "").split("\n").slice(2).filter((l) => !l.includes("meshBuilder") && !l.includes("/surface.ts")).slice(0, MeshBuilder.traceDepth);
     this.tags.push([from, lines.map((l) => l.replace(/^\s*at\s+(?:async\s+)?(?:new\s+)?(\S+)\s+\(.*\/(game|test)\/town\//, "$1 ").replace(/^.*\/(game|test)\/town\//, "").replace(/\)$/, "")).join(" < ")]);
   }
   /**
@@ -236,6 +265,106 @@ export class MeshBuilder {
 
   /** The glow (`Fx.glow`) every polygon laid now takes when it names none: a lamp's lens or a lit sign is built by boxes and cylinders that cannot say it. Set by `withGlow`. */
   private glowBase = 0;
+
+  /**
+   * Runs `fn` with no backs laid: for the faces of a closed solid (a box, a frustum), whose inside is never seen and whose backs would only lie
+   * in the plane of whatever it stands on or against, a face the depth buffer cannot tell them from.
+   */
+  solid<T>(fn: () => T): T {
+    const before = this.backing;
+    this.backing = true;
+    this.solids++;
+    try {
+      return fn();
+    } finally {
+      this.backing = before;
+      this.solids--;
+    }
+  }
+
+  /** How many `solid` calls are running: their faces get no backs, but are stood off as any other. */
+  private solids = 0;
+  /** The triangles laid in a solid, as ranges. */
+  private readonly unbacked: [number, number][] = [];
+
+  private noteSolid(iFrom: number): void {
+    if (this.solids === 0) return;
+    const last = this.unbacked[this.unbacked.length - 1];
+    if (last !== undefined && last[1] === iFrom / 3) last[1] = this.idx.length / 3;
+    else this.unbacked.push([iFrom / 3, this.idx.length / 3]);
+  }
+
+  /**
+   * The faces laid so far in a room (`backs`), by the way they look (the normal to 0.02) and their distance along it: each with its box. A face
+   * laid within `DECAL_GAP` of one it overlaps stands out to `DECAL_STEP` from it, so two faces that look the same way are never nearer than the
+   * depth buffer can hold them apart (a picture's mount on its frame, a plate on a plate, a mark on the floor): the decals of a room are laid in
+   * the order they are painted, each over the one before.
+   */
+  private readonly stack = new Map<string, { n: readonly [number, number, number]; d: number; b: readonly number[]; look: string; solid: boolean }[]>();
+
+  /**
+   * Notes a face and (`move`) returns how far to move it along its normal so that it lies at least `DECAL_STEP` from every face it overlaps that
+   * looks the same way and lies within `DECAL_GAP` of it. Distances are taken at the face's own middle, from each face's own plane: a room stands
+   * a few hundred metres from the origin and turned, and a normal off by 0.005 there is a metre off. Overlap is of the faces' extents in the plane's
+   * own two axes (the same for every face of a key), so two faces that only share an edge are not stood apart.
+   */
+  private stacked(points: readonly Vec3[], nx: number, ny: number, nz: number, move: boolean, look = "", solid = false): number {
+    const kx = Math.round(nx * 50);
+    const ky = Math.round(ny * 50);
+    const kz = Math.round(nz * 50);
+    const key = `${kx},${ky},${kz}`;
+    const list = this.stack.get(key);
+    // The plane's axes, from the key's own normal: along it level (or `x` for a floor) and up it (or `z`).
+    const kl = Math.hypot(kx, ky, kz) || 1;
+    const kn: [number, number, number] = [kx / kl, ky / kl, kz / kl];
+    let ux: number;
+    let uy: number;
+    let uz: number;
+    if (Math.abs(kn[1]) > 0.9) [ux, uy, uz] = [1, 0, 0];
+    else {
+      const ul = Math.hypot(kn[2], kn[0]) || 1;
+      [ux, uy, uz] = [kn[2] / ul, 0, -kn[0] / ul];
+    }
+    const vx = kn[1] * uz - kn[2] * uy;
+    const vy = kn[2] * ux - kn[0] * uz;
+    const vz = kn[0] * uy - kn[1] * ux;
+    const b = [Infinity, -Infinity, Infinity, -Infinity];
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    for (const p of points) {
+      const u = p[0] * ux + p[1] * uy + p[2] * uz;
+      const v = p[0] * vx + p[1] * vy + p[2] * vz;
+      b[0] = Math.min(b[0] as number, u);
+      b[1] = Math.max(b[1] as number, u);
+      b[2] = Math.min(b[2] as number, v);
+      b[3] = Math.max(b[3] as number, v);
+      cx += p[0] / points.length;
+      cy += p[1] / points.length;
+      cz += p[2] / points.length;
+    }
+    let push = 0;
+    if (move && list !== undefined) {
+      for (let tries = 0; tries < 8; tries++) {
+        let need = 0;
+        let hit = false;
+        for (const e of list) {
+          const sd = e.n[0] * (cx + nx * push) + e.n[1] * (cy + ny * push) + e.n[2] * (cz + nz * push) - e.d;
+          if (Math.abs(sd) >= DECAL_GAP) continue;
+          if (Math.min(b[1] as number, e.b[1] as number) - Math.max(b[0] as number, e.b[0] as number) <= 0.002 || Math.min(b[3] as number, e.b[3] as number) - Math.max(b[2] as number, e.b[2] as number) <= 0.002) continue;
+          hit = true;
+          need = Math.max(need, DECAL_STEP - sd);
+        }
+        if (!hit) break;
+        push += need;
+      }
+    }
+    // (A shift along the normal moves a face in its plane's own axes by the normal's lean from the key's.)
+    const entry = { n: [nx, ny, nz] as const, d: nx * cx + ny * cy + nz * cz + push, b, look, solid };
+    if (list === undefined) this.stack.set(key, [entry]);
+    else list.push(entry);
+    return push;
+  }
 
   /** Runs `fn` with `glow` as the glow of every polygon it lays that names none of its own, and puts back the one before. */
   withGlow<T>(glow: number, fn: () => T): T {
@@ -302,6 +431,12 @@ export class MeshBuilder {
     this.col.repeat(vFrom * 4);
     this.uv.repeat(vFrom * 2);
     this.srf.repeat(vFrom * SURFACE_FLOATS);
+    // The back is a face of the room too: what is laid against it stands off it.
+    {
+      const pts: Vec3[] = [];
+      for (let i = vFrom; i < vEnd; i++) pts.push([this.pos.data[i * 3] as number, this.pos.data[i * 3 + 1] as number, this.pos.data[i * 3 + 2] as number]);
+      this.stacked(pts, this.nor.data[at * 3] as number, this.nor.data[at * 3 + 1] as number, this.nor.data[at * 3 + 2] as number, false);
+    }
     const shift = at - vFrom;
     for (let t = iFrom; t < iEnd; t += 3) {
       const a = this.idx.data[t] as number;
@@ -335,7 +470,8 @@ export class MeshBuilder {
    * `hint`. Corners are shared by the fan of triangles it is cut into. Returns nothing for a polygon with no area. Given a
    * `surface`, each corner also gets its UV from the surface's frame and its layer and wear.
    */
-  poly(points: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], given?: Surface | MatRef, fx?: Fx): void {
+  poly(pointsIn: readonly Vec3[], hint: Vec3, colour: Rgb | readonly Rgb[], given?: Surface | MatRef, fx?: Fx): void {
+    let points = pointsIn;
     const n = points.length;
     if (n < 3) return;
     let nx = 0;
@@ -360,6 +496,17 @@ export class MeshBuilder {
       nx = -nx;
       ny = -ny;
       nz = -nz;
+    }
+    // In a room: stood off from what lies there (`stacked`).
+    if (this.backs && !this.cutting) {
+      // (A back of its own, a twin, is only noted.)
+      const c0 = (typeof (colour as readonly unknown[])[0] === "number" ? colour : (colour as readonly Rgb[])[0]) as Rgb;
+      const matName = typeof given === "string" ? given : isMat(given) ? String((given as { mat: string }).mat) : "";
+      const look = matName === "" ? "" : `${matName}|${Math.round(c0[0] / 0.03)},${Math.round(c0[1] / 0.03)},${Math.round(c0[2] / 0.03)}`;
+      const push = this.stacked(points, nx, ny, nz, !this.backing || this.solids > 0, look, this.solids > 0);
+      if (push !== 0) {
+        points = points.map((q): Vec3 => [q[0] + nx * push, q[1] + ny * push, q[2] + nz * push]);
+      }
     }
     const base = this.vertices;
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
@@ -419,7 +566,8 @@ export class MeshBuilder {
         // room's hours where the corner is a room's (`withHours`): a foot's code is under a half and an hours' is 1 or more, so the material tells
         // them apart. The second is the flat ground's depth rank where it has one (`Fx.rank`), and the ground's material does not read it as a code.
         const sky = surface.shade?.at(p);
-        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), kind2, this.hoursCode > 0 ? this.hoursCode : (sky?.[0] ?? 0), fx?.rank ?? sky?.[1] ?? 0);
+        const night = NIGHT_RATIOS.get(colourHere);
+        this.srf.push12(layer, Math.min(1, Math.max(0, wear)), kind, glow, tint[0], tint[1], tint[2], clear, Math.min(1, Math.max(0, w2)), night === undefined ? kind2 : NIGHT_BIAS + night[0], this.hoursCode > 0 ? this.hoursCode : (sky?.[0] ?? 0), night === undefined ? fx?.rank ?? sky?.[1] ?? 0 : NIGHT_BIAS + night[1]);
       }
     }
     // The fan 0, i, i+1 turns right-handed in the corners' order, which is with the normal when the order was not flipped:
@@ -430,6 +578,7 @@ export class MeshBuilder {
       else this.idx.push3(base, base + i + 1, base + i);
     }
     // A back with no look of its own is of what the front is: its material, or its surface a shade darker.
+    this.noteSolid(iFrom);
     if (fx?.back !== undefined) this.twin(points, [-nx, -ny, -nz], colour, fx, given);
     else this.layBack(base, iFrom);
   }
@@ -529,7 +678,8 @@ export class MeshBuilder {
    * its lines at the fractions `us` and `vs` (each from 0 to 1, ascending), facing `hint`'s side. `colourAt(i, j, p)` is the colour at the
    * corner on line `i` of `us` and `j` of `vs` (the paint times the light there); a textured grid takes it as its tint.
    */
-  litGrid(origin: Vec3, du: Vec3, dv: Vec3, us: readonly number[], vs: readonly number[], hint: Vec3, colourAt: (i: number, j: number, p: Vec3) => Rgb, given?: Surface | MatRef, fx?: Fx): void {
+  litGrid(originIn: Vec3, du: Vec3, dv: Vec3, us: readonly number[], vs: readonly number[], hint: Vec3, colourAt: (i: number, j: number, p: Vec3) => Rgb, given?: Surface | MatRef, fx?: Fx): void {
+    let origin = originIn;
     const nu = us.length;
     const nv = vs.length;
     if (nu < 2 || nv < 2) return;
@@ -543,6 +693,11 @@ export class MeshBuilder {
     nx *= k;
     ny *= k;
     nz *= k;
+    if (this.backs) {
+      const o = origin;
+      const push = this.stacked([o, [o[0] + du[0], o[1] + du[1], o[2] + du[2]], [o[0] + du[0] + dv[0], o[1] + du[1] + dv[1], o[2] + du[2] + dv[2]], [o[0] + dv[0], o[1] + dv[1], o[2] + dv[2]]], nx, ny, nz, this.solids === 0);
+      if (push !== 0) origin = [o[0] + nx * push, o[1] + ny * push, o[2] + nz * push];
+    }
     const base = this.vertices;
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     // As `poly`: a grid given no surface takes its material's.
@@ -571,7 +726,8 @@ export class MeshBuilder {
           const [u, v] = uvAt(basis, p);
           this.uv.push2(u, v);
           const g = surface?.tint ?? ONE;
-          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, 0, this.hoursCode, 0);
+          const night = NIGHT_RATIOS.get(c);
+          this.srf.push12(layer, 0, 0, glow, c[0] * g[0], c[1] * g[1], c[2] * g[2], 0, 0, night === undefined ? 0 : NIGHT_BIAS + night[0], this.hoursCode, night === undefined ? 0 : NIGHT_BIAS + night[1]);
         }
       }
     }
@@ -586,6 +742,7 @@ export class MeshBuilder {
         else this.idx.push6(q0, q2, q1, q0, q3, q2);
       }
     }
+    this.noteSolid(iFrom);
     this.layBack(base, iFrom);
   }
 
@@ -745,7 +902,7 @@ export class MeshBuilder {
     const base = this.vertices;
     if (MeshBuilder.trace) this.tag(this.idx.length / 3);
     const layer = v.layer === undefined ? NO_LAYER : layerIndex(v.layer);
-    const tile = v.layer === undefined ? [1, 1] : (TOWN_LAYERS[layerIndex(v.layer)]?.tile ?? [1, 1]);
+    const tile = v.layer === undefined ? [1, 1] : townLayer(v.layer).tile;
     // Nothing opaque is a flat colour: a grid with no layer takes its material's (a wire and glass stay as they are).
     let auto: ReturnType<typeof matLook> | null = null;
     if (v.layer === undefined && v.wire === undefined && !((v.clear ?? 0) > 0)) {
@@ -831,6 +988,7 @@ export class MeshBuilder {
    */
   finish(): MeshArrays {
     const arrays: MeshArrays = { positions: this.pos.copy(), normals: this.nor.copy(), colors: this.col.copy(), uvs: this.uv.copy(), surface: this.srf.copy(), indices: this.idx.copy() };
+    UNBACKED.set(arrays.indices, this.unbacked.slice());
     if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [t, s]));
     return arrays;
   }
@@ -838,6 +996,7 @@ export class MeshBuilder {
   /** As `finish`, and the builder is left empty: its own storage is let go, so a town's builders do not stand beside their finished arrays. */
   take(): MeshArrays {
     const arrays: MeshArrays = { positions: this.pos.taken(), normals: this.nor.taken(), colors: this.col.taken(), uvs: this.uv.taken(), surface: this.srf.taken(), indices: this.idx.taken() };
+    UNBACKED.set(arrays.indices, this.unbacked.slice());
     if (MeshBuilder.trace) MeshBuilder.traced.set(arrays, this.tags.map(([t, s]): [number, string] => [t, s]));
     return arrays;
   }

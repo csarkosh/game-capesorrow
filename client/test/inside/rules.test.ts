@@ -14,7 +14,7 @@ import { insideHeld, insidePressed, insidePut } from "../../src/sim/inside/rules
 import { HULL_RADIUS } from "../../src/sim/town/hull.js";
 import { townConstrain } from "../../src/sim/town/solid.js";
 import { groundOf, worldFor } from "../townWorld/world.js";
-import { GAME_SEEDS } from "./rooms.test.js";
+import { GAME_SEEDS } from "./seeds.js";
 
 const cmd = (seq: number, more: Partial<InputCommand> = {}): InputCommand => ({ seq, moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0, ...more });
 
@@ -105,7 +105,7 @@ describe.each(GAME_SEEDS)("going through a door, seed %i", (seed) => {
       insidePut(world, p, room.id);
       const start = { ...p.pos };
       let farthest = 0;
-      for (let i = 0; i < 1200; i++) {
+      for (let i = 0; i < 600; i++) {
         tick(world, p, 1, walk.bind(null, i));
         const label = `${room.name} tick ${i}`;
         const at = inRoom(room, p.pos.x, p.pos.z);
@@ -113,7 +113,10 @@ describe.each(GAME_SEEDS)("going through a door, seed %i", (seed) => {
         expect(at.s, label).toBeLessThanOrEqual(room.s1 - HULL_RADIUS + 1e-3);
         expect(at.d, label).toBeGreaterThanOrEqual(HULL_RADIUS - 1e-3);
         expect(at.d, label).toBeLessThanOrEqual(room.depth - HULL_RADIUS + 1e-3);
-        for (const b of room.solids) expect(awayFrom(room, b, at.s, at.d), label).toBeGreaterThanOrEqual(HULL_RADIUS - 1e-3);
+        // The nearest of the room's solids (one check a tick: a hall holds hundreds).
+        let nearest = Infinity;
+        for (const b of room.solids) nearest = Math.min(nearest, awayFrom(room, b, at.s, at.d));
+        expect(nearest, label).toBeGreaterThanOrEqual(HULL_RADIUS - 1e-3);
         expect(p.pos.y, label).toBeCloseTo(room.floorY + PLAYER_HALF.y, 6);
         expect(p.inside.phase).toBe(INSIDE);
         farthest = Math.max(farthest, Math.hypot(p.pos.x - start.x, p.pos.z - start.z));

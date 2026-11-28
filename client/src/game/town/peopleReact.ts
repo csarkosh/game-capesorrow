@@ -73,6 +73,8 @@ export type Seen = {
   readonly walking: boolean; readonly seated: boolean;
   /** In a room, behind its walls: no car reaches them. */
   readonly sheltered: boolean;
+  /** One of a designed room's people (`PlacedPerson.room`): their places are made with the furniture, and walking into them is stopped by their block, so they are never shoved (they still say their word). */
+  readonly fixed?: boolean;
   /** The key of the one they stand or walk with, or -1. */
   readonly partner: number;
   readonly venue: Venue;
@@ -292,7 +294,7 @@ export function stepReact(set: ReactSet, people: readonly Seen[], cars: readonly
             const al = Math.hypot(ax, az) || 1;
             ax /= al;
             az /= al;
-            if (!p.seated) {
+            if (!p.seated && p.fixed !== true) {
               let tx = m.ox + ax * BUMP_BACK;
               let tz = m.oz + az * BUMP_BACK;
               const off = Math.hypot(tx, tz);

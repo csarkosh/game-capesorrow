@@ -73,7 +73,8 @@ describe("the town's texture manifest", () => {
       expect(Object.hasOwn(CAPE_ASSETS.textures, `textures/${l.color}`), l.color).toBe(true);
       expect(Object.hasOwn(CAPE_ASSETS.textures, `textures/${l.data}`), l.data).toBe(true);
     }
-    expect(Object.keys(CAPE_ASSETS.textures).length).toBe(TOWN_LAYERS.length * 2);
+    // The town's 44 files and the rooms' 24 (`interiorLayers.test.ts` holds those to their own manifest).
+    expect(Object.keys(CAPE_ASSETS.textures).length).toBe(TOWN_LAYERS.length * 2 + 24);
   });
 
   it("is credited: a section in CREDITS.md for each scanned layer, under the layer's credit id, and none for the generated one", () => {
