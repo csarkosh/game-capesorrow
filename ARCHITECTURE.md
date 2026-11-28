@@ -20,7 +20,7 @@ the coast with `PORTASHTON_PLACE`: see "The ground the game lays over the coast"
 
 - `game`: the game a session is of (`EMPTY_GAME`, `client/src/game.ts`). Its renderer is the engine's, made with the town's renderer part (`townParts`), its start is the town's (`townStart`), and its rules (`WALK_RULES`, `client/src/sim.ts`) are the engine's walking and the car's: `spawn` searches out from the town's start for the first place a hull stands free, `newPlayer` gives each player a ride, `held` and `move` are the car's (a player getting in or out is held, a seated player is moved by the car), `constrain` is the town's buildings and the cars as walls, and `hostStep` is the car's step on the host (see "The car"). The game's `actions` name the two buttons the car uses (interact and the lamp), its audio is the engine's with the car's voice added, and its half of a session (`createCapeSide`) adds the line at a car's door and the `carhome` command to the day's clock.
 - The game's `look` (`PORTASHTON_LOOK`, `client/src/look.ts`), carried by `game`: the part of the engine's look the game changes, named Harbour, a cold, clear, wet working port at midday under high cloud. The engine's own look is Day Hike's, a landscape in oils; a town is read by its edges, its lettering and its paint, so the paint filter and the softening of what is far are off, the frame is half again as bright, the grade's palette is the game's own (blue-black shadows, a middle left almost alone so that brick and paint keep their colour, a slightly warm white), and a session starts at midday under damp weather with more cloud than sun. The grade follows the day: a palette and an exposure at four heights of the sun (night, dusk, late afternoon, midday), each for a clear sky and for full cloud, which the engine mixes between at every hour. Over the picture lies a finish that is the same at every hour: fine film grain, a faintly darker edge to the frame, the light barely gathered into bands, and a thin grey line where one thing ends against another, found by the engine from the scene's depth and not from the picture, so a brick wall's mortar draws none. The line begins at a step of half a part in a hundred of the distance behind it and is full at two and a half, half the engine's own, so that a sill or a casing is drawn from across a street; paint on a wall lies flush under its depth rank and draws none. Far off the line thins (`lineNear`, `lineFar`, `lineFarBand`, `lineFarWeight`): within 40 m it is as said, and from there to 600 m, eased along the logarithm of the distance, a step must be up to twenty times deeper to draw and the line fades to half its strength, so that a far forest is tone with a quiet edge and a mountain keeps one light contour, where each crown and fold used to be outlined. The look also sets the ground under the grass (`sward`): the line darkens every blade, so the terrain inside the blades' reach is pulled all the way to a floor as dark as they are, and ground the blades have not reached yet does not show pale. The look also asks for the engine's deeper sand (`sand`, engine v0.2.25: the beach's sand and pebbles read without visible repetition, varied in colour at three scales, with tide lines by height, darker hollows, ripples near the water and a ragged, graded wet edge), and the place asks for what lies on the beach and for its shape (`PORTASHTON_PLACE.beach`: a wrack line of kelp, cobbles, small driftwood and dune grass; a storm ridge, cusps, bars and channels that hold pools, hummocks), and says which ground it paves (`pavedGround`, the highway's bed: the engine's patches of finer ground beside steep banks leave it out, or they drew the engine's painted road over the game's). The low tier has no grade and none of the chain's screen passes, so it takes the weather, the hour and the exposure and neither the palette nor the finish's grain, edge and bands; the line it does draw (engine v0.2.23: one pass after the scene, from the scene's depth, by the same measure and thresholds), coarser there because that tier draws fewer pixels and has no anti-aliasing over time to steady it.
-- `side`: the game's own of the page (`createPortAshtonPage`), which the shell calls at the page's own points: it shows the title page, repaints it, shows a panel by its address, and keeps the mode. Nothing plays before a session starts.
+- `side`: the game's own of the page (`createPortAshtonPage`), which the shell calls at the page's own points: it shows the title page, repaints it, shows a panel by its address, and keeps the mode. No world plays before a session starts; the title page loops the title film behind it (see "The title film").
 - `identity` (`client/src/identity.ts`): the game's name, its word for a session (`case`), what a nameless player is called (`Detective`), and the prefix of everything it keeps in the browser (`capesorrow`, the game's former name, kept on purpose because players' saved settings are stored under it).
 - `away`: what the page for a visitor whose browser cannot play shows of the game: no still, and the same credits the Credits screen shows.
 - `protocol`, `worldWorker`, `worldWorkers`, `statusLine`, `scene`, `probeState`: the session's wire version, the worker that makes its world (`world.worker.ts`, handed the town's start and the chunk cells its first spawn reads, `townSpawnCells`), how many of it the page runs (2: the first builds the terrain's rings and the rock faces for the session, the second looks up the cells of the ground's clutter, so that a drive does not wait on either), a line of status, the staged scenes (none), and the state the tier check measures the renderer on.
@@ -904,6 +904,37 @@ or loop and no downloads, join box or update banner, since there is no desktop a
   so the browser's Back closes it.
 - `credits.ts` merges the repository's `CREDITS.md` (no entry yet) with the engine's `ENGINE_CREDITS`, in the order of the
   ids, then the engine's display pass.
+
+## The title film
+
+The title page plays a 30 second loop of the town seen from the sea at dusk, recorded by the engine's film mode on a
+rented GPU machine and committed as `client/assets/video/title.mp4` with a still, `title.still.webp`. The game holds the
+settings that make it, and none of them changes play.
+
+- **The look and the windows are settings.** `client/src/film/titleLook.ts` is Port Ashton's look held at one hour a little
+  after sunset (the sun at -0.07), with one palette and no grades, a glow, and teal ridges that grow paler with distance.
+  `TITLE_WINDOWS` is the lit windows' light: red, and the only warm colour in the frame. The town draws it through
+  `townPartsWith({ windowLight, look })` (`client/src/game/town/townParts.ts`); `townParts`, which play uses, is
+  `townPartsWith({})`. The window light is a branch in `shaders/townWindowLight.wgsl`, gated on the gain in the
+  `townWindowLight` uniform, which is 0 in play, so play's shader does what it did. The same file multiplies every night
+  glow that is not a lit window (lamps, porch lights, harbour lights, boats) by `townOtherLight`, 1 in play and 0.25 in the
+  film. The glow gain, `litGainAt`, reads the look it is given.
+- **The path comes from the plan.** `client/src/film/titlePath.ts` finds the longest wet stretch of the quay, its seaward
+  normal and the downtown's centre, and places the camera's keys from them, so the path follows the town when the town
+  changes. `client/test/film/titlePath.test.ts` checks it on three seeds against the engine's speed and clearance limits.
+- **The hour is held.** The film's game has a side whose clock does not run (`walkSide(host, true)`), so every frame is
+  drawn at the look's hour; the day clock would otherwise push later hours into a sequential take.
+- **The page is in film mode only.** `client/title.html` is an input of the build only under `vite build --mode film`.
+  Nothing under `client/src/film/` is imported by `main.ts`, so production's bundle holds none of it. The deploy refuses
+  `--mode` without a preview channel and refuses the channel `live`, and `deploy:verify` checks that production's
+  `/portashton/title.html` is not the film's page.
+- **One command records it.** `npm run recording:take` publishes the film's channel, records the page and encodes the
+  frames. The film's digest covers the look, the windows, `TOWN_GEN` and the engine's version, so a new town or engine
+  refuses frames recorded under the old one.
+- **The loop behind the title page.** `createPortAshtonPage` (`client/src/page.ts`) makes the engine's title loop over the
+  still and the video (`client/src/game/titleAssets.ts` finds them by glob; with no files it adds nothing). The video is
+  fetched after the page has loaded, never on save-data, a slow connection or reduced motion, and it stops at Play and
+  when a visitor is turned away.
 
 ## Hosting
 

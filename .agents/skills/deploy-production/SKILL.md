@@ -58,6 +58,12 @@ whatever the tool decides.
 **3. A preview channel** (`npm run deploy:client -- --channel <name>`) releases the build to a Firebase Hosting preview
 channel instead of the live site. Check it with `npm run deploy:verify -- --base <the channel's URL for /portashton>`.
 
+**The title film's page** is a development page: `npm run recording:channel` (`deploy:client -- --channel film --mode film`) builds
+it with `vite build --mode film` and publishes it to the preview channel `film`, where the recording is made (`npm run
+recording:take`). `--mode` goes to a named preview channel only, a dry run included, and the channel `live`, which is Firebase
+Hosting's production channel, is refused for every deploy: production is `deploy:client` with no `--channel`. `deploy:verify`
+checks that production's `/portashton/title.html` is not the film's page.
+
 **4. Verify is not optional.** A client change can break production without any test failing: nothing in the suite loads
 a real bundle from a real host. `deploy:verify` prints a line a check and exits non-zero on any ✗: the page answers 200 as
 HTML with the title `Something Haunts Port Ashton`; every file it names under `/portashton/` answers 200 with a fitting content type (the
