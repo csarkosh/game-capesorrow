@@ -22,7 +22,7 @@ export function luggageCart(g: Geo, it: Item): void {
 /** A rack of brochures: a steel stand with three tiers of pocketed leaflets. */
 export function brochureRack(g: Geo, it: Item): void {
   const L = g.at(it.s, it.d, it.face);
-  L.box(-0.1, 0.1, -0.25, 0.25, 0.0, 1.5, "steel", { tint: [0.5, 0.5, 0.5] }, false);
+  L.box(-0.1, 0.1, -0.25, 0.25, 0.0, 1.5, "steel", { tint: [0.5, 0.5, 0.5] });
   for (let k = 0; k < 3; k++) {
     const y = 0.55 + k * 0.32;
     L.poly([[0.1, -0.25, y], [0.14, -0.25, y + 0.2], [0.14, 0.25, y + 0.2], [0.1, 0.25, y]], [1, 0, 1], "steel", { tint: [0.3, 0.3, 0.3] });

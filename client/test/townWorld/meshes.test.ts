@@ -6,3 +6,4 @@ import "./insideGeometry.suite.js";
 import "./roomGlass.suite.js";
 import "./hung.suite.js";
 import "./roomFaces.suite.js";
+import "./roomOpen.suite.js";

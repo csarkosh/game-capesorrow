@@ -112,7 +112,7 @@ export function designGeometry(out: MeshBuilder, r: DrawIn): void {
       part("floors and ceiling", () => slabs(g, d));
       part("outer walls", () => out.solid(() => shell(g, r, d)));
       part("windows", () => windows(g, d));
-      for (const w of d.walls) part("walls", () => out.solid(() => wall(g, w, d)));
+      for (const w of d.walls) part("walls", () => wall(g, w, d));
       for (const st of d.stairs) part("stairs", () => stair(g, st));
       for (const rl of d.rails) part("rails", () => rail(g, rl));
       for (const it of d.items) {
@@ -135,9 +135,11 @@ function slabs(g: Geo, d: Design): void {
   // The narrow pools of light (a downlight's, a flush light's: a beam of 20 or more) are what the floors and ceilings are finer under.
   const pools = d.lights.filter((l) => (l.beam ?? 0) >= 20);
   // A slab is a solid: its edge faces and undersides are laid, no backs (an edge's back would lie in the plane of the wall it stops at).
-  g.out.solid(() => {
-    for (const sl of d.slabs) slab(g, sl, d.name !== "bar", pools);
-  });
+  // (A slab with a thickness is a closed solid: top, underside and edges. One with none is a sheet and keeps its back.)
+  for (const sl of d.slabs) {
+    if (sl.thick > 0) g.out.solid(() => slab(g, sl, d.name !== "bar", pools));
+    else slab(g, sl, d.name !== "bar", pools);
+  }
 }
 
 function slab(g: Geo, sl: Slab, fine: boolean, pools: readonly { s: number; d: number; y: number }[]): void {
@@ -155,6 +157,7 @@ function slab(g: Geo, sl: Slab, fine: boolean, pools: readonly { s: number; d: n
   if (sl.kind === "floor" && (sl.mat === "dark_wood" || sl.mat === "oak")) {
     // Boards run the length of the room: the grid's rows are along `d`.
     g.grid([sl.s0, sl.d0, sl.y], [0, l, 0], [w, 0, 0], vs, us, up, sl.mat, tinted);
+    if (sl.thick > 0) g.grid([sl.s0, sl.d0, sl.y - sl.thick], [w, 0, 0], [0, l, 0], lines(w, 1.5), lines(l, 1.5), dn, sl.edge ?? sl.mat);
   } else if (sl.kind === "floor") {
     g.grid([sl.s0, sl.d0, sl.y], [w, 0, 0], [0, l, 0], us, vs, up, sl.mat, tinted);
     if (sl.thick > 0) {
@@ -327,7 +330,8 @@ function endsOn(w: Wall, s: number, dd: number, d: Design): boolean {
     if (!(ol > 0)) continue;
     const along = ((s - o.s0) * ox + (dd - o.d0) * od) / ol;
     const across = Math.abs(-(s - o.s0) * od + (dd - o.d0) * ox) / ol;
-    if (along >= -EDGE && along <= ol + EDGE && across <= o.thick / 2 + EDGE) return true;
+    // (The other wall must stand over the whole of this one's height: a header over a doorway is no end for a low wall.)
+    if (along >= -EDGE && along <= ol + EDGE && across <= o.thick / 2 + EDGE && o.y0 <= w.y0 + 0.02 && o.y1 >= w.y1 - 0.02) return true;
   }
   return false;
 }
@@ -389,10 +393,22 @@ function wall(g: Geo, w: Wall, design: Design): void {
   const h = w.y1 - w.y0;
   if (!endsOn(w, w.s0, w.d0, design)) L.poly([[f0, -t, w.y0], [f0, t, w.y0], [f0, t, w.y1], [f0, -t, w.y1]], [-1, 0, 0], w.mat);
   if (!endsOn(w, w.s1, w.d1, design)) L.poly([[f1, -t, w.y0], [f1, t, w.y0], [f1, t, w.y1], [f1, -t, w.y1]], [1, 0, 0], w.mat);
+  // The foot, where the wall stands over nothing (a header over a glazed front): its underside is seen from under it.
+  {
+    let at3 = f0;
+    const foot = (a0: number, a1: number): void => {
+      if (a1 - a0 > 0.01) g.out.solid(() => L.poly([[a0, -t, w.y0], [a1, -t, w.y0], [a1, t, w.y0], [a0, t, w.y0]], [0, 0, -1], w.mat));
+    };
+    for (const o of w.openings) {
+      foot(at3, f0 + o.a0);
+      at3 = f0 + o.a1;
+    }
+    foot(at3, f1);
+  }
   if (w.y1 < ceiling - 0.02 && h > 0) {
     let at2 = f0;
     const cap = (a0: number, a1: number, y: number): void => {
-      if (a1 - a0 > 0.01) L.poly([[a0, -t, y], [a1, -t, y], [a1, t, y], [a0, t, y]], [0, 0, 1], w.mat);
+      if (a1 - a0 > 0.01) g.out.solid(() => L.poly([[a0, -t, y], [a1, -t, y], [a1, t, y], [a0, t, y]], [0, 0, 1], w.mat));
     };
     for (const o of w.openings) {
       cap(at2, f0 + o.a0, w.y1);
@@ -449,25 +465,39 @@ function stair(g: Geo, st: Stair): void {
   const top = (k: number): number => rampAt(st, (k + 0.5) * step, run);
   // The face of a riser looks back down the flight, the way the climber comes.
   const back: P3 = [-fwd[0], -fwd[1], 0];
+  // The body of the flight stops at its stringers (3 cm in off its edges: `ai2`), so that no edge of it is open beside them.
+  const in0 = across0 + 0.03;
+  const in1 = across1 - 0.03;
   for (let k = 0; k < n; k++) {
     const t0 = k * step;
     const t1 = t0 + step;
     const y = top(k);
     // The riser stands at the tread's end nearer the foot of the flight, from the tread below it (the floor, for the first) up to this one.
     const below = ascending ? (k === 0 ? st.base : top(k - 1)) : k === n - 1 ? st.base : top(k + 1);
-    const at = ascending ? t0 : t1;
+    // (Set 5 mm in off the end of its step, so that the riser's back is not in the plane of the edge of a slab the flight meets.)
+    const at = ascending ? t0 + 0.005 : t1 - 0.005;
     // A flight is a solid (a riser, a tread, a stringer, the soffit): no backs, which would lie in the plane of the slab edge or the wall it stands against.
+    // The riser stands down to the soffit where that is lower than the tread under it, so that the flight is closed under its steps; it is a sheet seen from under the flight too, and keeps its back.
+    const foot = Math.max(st.base, Math.min(below, rampAt(st, at, run) - 0.12));
+    g.poly([P(at, in0, foot), P(at, in1, foot), P(at, in1, y), P(at, in0, y)], back, mat, { k: 0.8 });
     g.out.solid(() => {
-      g.poly([P(at, across0, below), P(at, across1, below), P(at, across1, y), P(at, across0, y)], back, mat, { k: 0.8 });
-      g.poly([P(t0, across0, y), P(t1, across0, y), P(t1, across1, y), P(t0, across1, y)], [0, 0, 1], mat);
+      g.poly([P(t0, in0, y), P(t1, in0, y), P(t1, in1, y), P(t0, in1, y)], [0, 0, 1], mat);
     });
   }
   // The stringers: a solid side to each edge of the flight, from the floor under it to the line of the ramp, and the soffit.
   for (const a of [across0, across1]) {
     const n0: P3 = a === across0 ? [-across[0], -across[1], 0] : [across[0], across[1], 0];
+    // The stringer is a sheet seen from both sides (from the flight and from beside it), set 3 cm in off the edge of the flight so that its back is not in the plane of a slab's edge or a wall it stands against.
+    const ai2 = a === across0 ? a + 0.03 : a - 0.03;
     if (st.glass === true) {
       // A thin stringer along the flight's edge, and glass over it to the handrail.
-      g.out.solid(() => g.poly([P(0, a, Math.max(st.base, st.y0 - 0.22)), P(run, a, Math.max(st.base, st.y1 - 0.22)), P(run, a, st.y1 + 0.02), P(0, a, st.y0 + 0.02)], n0, mat, { k: 0.75 }));
+      // A thin stringer along the flight's edge, stepped to the treads (a straight line would leave the steps' ends open above it).
+      for (let k = 0; k < n; k++) {
+        const ta = k * step;
+        const tb = ta + step;
+        const lowA = Math.max(st.base, Math.min(rampAt(st, ta, run), rampAt(st, tb, run)) - 0.22);
+        g.poly([P(ta, ai2, lowA), P(tb, ai2, lowA), P(tb, ai2, top(k) + 0.02), P(ta, ai2, top(k) + 0.02)], n0, mat, { k: 0.75 });
+      }
       const panes = Math.max(2, Math.round(run / 1.2));
       const ai = a === across0 ? a + 0.04 : a - 0.04;
       for (let i = 0; i < panes; i++) {
@@ -478,9 +508,9 @@ function stair(g: Geo, st: Stair): void {
       }
       continue;
     }
-    g.out.solid(() => g.poly([P(0, a, st.base), P(run, a, st.base), P(run, a, st.y1 + 0.02), P(0, a, st.y0 + 0.02)], n0, mat, { k: 0.75 }));
+    for (let k = 0; k < n; k++) g.poly([P(k * step, ai2, st.base), P((k + 1) * step, ai2, st.base), P((k + 1) * step, ai2, top(k) + 0.02), P(k * step, ai2, top(k) + 0.02)], n0, mat, { k: 0.75 });
   }
-  g.out.solid(() => g.poly([P(0, across0, st.y0 - 0.12), P(run, across0, st.y1 - 0.12), P(run, across1, st.y1 - 0.12), P(0, across1, st.y0 - 0.12)], [0, 0, -1], mat, { k: 0.7 }));
+  g.out.solid(() => g.poly([P(0, in0, st.y0 - 0.12), P(run, in0, st.y1 - 0.12), P(run, in1, st.y1 - 0.12), P(0, in1, st.y0 - 0.12)], [0, 0, -1], mat, { k: 0.7 }));
   // The handrails: a round timber on posts, 0.9 m over the ramp.
   for (const side of st.rails) {
     const a = side === "lo" ? across0 + 0.05 : across1 - 0.05;

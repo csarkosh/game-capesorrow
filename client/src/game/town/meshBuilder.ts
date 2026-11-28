@@ -300,7 +300,7 @@ export class MeshBuilder {
    * depth buffer can hold them apart (a picture's mount on its frame, a plate on a plate, a mark on the floor): the decals of a room are laid in
    * the order they are painted, each over the one before.
    */
-  private readonly stack = new Map<string, { n: readonly [number, number, number]; d: number; b: readonly number[] }[]>();
+  private readonly stack = new Map<string, { n: readonly [number, number, number]; d: number; b: readonly number[]; look: string; solid: boolean }[]>();
 
   /**
    * Notes a face and (`move`) returns how far to move it along its normal so that it lies at least `DECAL_STEP` from every face it overlaps that
@@ -308,7 +308,7 @@ export class MeshBuilder {
    * a few hundred metres from the origin and turned, and a normal off by 0.005 there is a metre off. Overlap is of the faces' extents in the plane's
    * own two axes (the same for every face of a key), so two faces that only share an edge are not stood apart.
    */
-  private stacked(points: readonly Vec3[], nx: number, ny: number, nz: number, move: boolean): number {
+  private stacked(points: readonly Vec3[], nx: number, ny: number, nz: number, move: boolean, look = "", solid = false): number {
     const kx = Math.round(nx * 50);
     const ky = Math.round(ny * 50);
     const kz = Math.round(nz * 50);
@@ -360,7 +360,7 @@ export class MeshBuilder {
       }
     }
     // (A shift along the normal moves a face in its plane's own axes by the normal's lean from the key's.)
-    const entry = { n: [nx, ny, nz] as const, d: nx * cx + ny * cy + nz * cz + push, b };
+    const entry = { n: [nx, ny, nz] as const, d: nx * cx + ny * cy + nz * cz + push, b, look, solid };
     if (list === undefined) this.stack.set(key, [entry]);
     else list.push(entry);
     return push;
@@ -500,7 +500,10 @@ export class MeshBuilder {
     // In a room: stood off from what lies there (`stacked`).
     if (this.backs && !this.cutting) {
       // (A back of its own, a twin, is only noted.)
-      const push = this.stacked(points, nx, ny, nz, !this.backing || this.solids > 0);
+      const c0 = (typeof (colour as readonly unknown[])[0] === "number" ? colour : (colour as readonly Rgb[])[0]) as Rgb;
+      const matName = typeof given === "string" ? given : isMat(given) ? String((given as { mat: string }).mat) : "";
+      const look = matName === "" ? "" : `${matName}|${Math.round(c0[0] / 0.03)},${Math.round(c0[1] / 0.03)},${Math.round(c0[2] / 0.03)}`;
+      const push = this.stacked(points, nx, ny, nz, !this.backing || this.solids > 0, look, this.solids > 0);
       if (push !== 0) {
         points = points.map((q): Vec3 => [q[0] + nx * push, q[1] + ny * push, q[2] + nz * push]);
       }

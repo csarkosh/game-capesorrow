@@ -102,12 +102,14 @@ describe("a design with a stair and a gallery drawn", () => {
     const levels: number[] = [];
     for (let i = 0; i < n; i++) {
       const [x, y, z] = pos(a, i);
-      // A tread's corners are on the flight's two edges (the posts and rails stand a little in from them).
-      if (a.normals[i * 3 + 1]! < 0.99 || (Math.abs(x - 7) > 1e-4 && Math.abs(x - 9) > 1e-4) || z < STAIR_FROM + 0.01 || z > STAIR_TO - 0.01) continue;
+      // A tread's corners are on the flight's two stringers, 3 cm in off its edges (the posts and rails stand a little further in).
+      if (a.normals[i * 3 + 1]! < 0.99 || (Math.abs(x - 7.03) > 1e-4 && Math.abs(x - 8.97) > 1e-4) || z < STAIR_FROM + 0.01 || z > STAIR_TO - 0.01) continue;
       const h = y - 100;
       // The floor under the flight is the floor's, not a tread.
       // Nor the gallery's floor and rail at the flight's head, which stand on its edge.
       if (h < 0.05 || h > GALLERY - 0.05) continue;
+      // Nor the top of a post, which stands a hand's breadth in from a stringer and 0.9 m over the ramp.
+      if (h - (GALLERY * (z - STAIR_FROM)) / (STAIR_TO - STAIR_FROM) > 0.5) continue;
       if (!levels.some((l) => Math.abs(l - h) < 1e-4)) levels.push(h);
       const ramp = (GALLERY * (z - STAIR_FROM)) / (STAIR_TO - STAIR_FROM);
       expect(Math.abs(h - ramp), `a tread at ${z} is ${h}, the ramp ${ramp}`).toBeLessThanOrEqual(RISER / 2 + 0.03);

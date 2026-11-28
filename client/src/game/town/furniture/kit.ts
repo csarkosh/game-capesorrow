@@ -186,13 +186,17 @@ export class Local {
 
   /** A box between `f0` and `f1` forward, `r0` and `r1` to the right and `y0` and `y1` up: its four sides and its top, and its underside when it is held off the floor. */
   box(f0: number, f1: number, r0: number, r1: number, y0: number, y1: number, mat: string, look?: Look, sides = true, top = true): void {
+    // The corners in order (a box asked for from its larger end would have its sides facing in).
+    if (f0 > f1) [f0, f1] = [f1, f0];
+    if (r0 > r1) [r0, r1] = [r1, r0];
+    if (y0 > y1) [y0, y1] = [y1, y0];
     // A box is a solid (a leg, a plate, a cabinet): its inside is not seen, and its faces' backs would lie in the planes of what it stands on or against.
     this.g.out.solid(() => this.boxFaces(f0, f1, r0, r1, y0, y1, mat, look, sides, top));
   }
 
   private boxFaces(f0: number, f1: number, r0: number, r1: number, y0: number, y1: number, mat: string, look: Look | undefined, sides: boolean, topIn: boolean): void {
     // A top at the ceiling is over the slab's face: not drawn (it would be stood off the ceiling's own back).
-    const top = topIn && y1 < this.g.ceiling - 0.002;
+    const top = (topIn || sides) && y1 < this.g.ceiling - 0.002;
     if (sides) {
       this.poly([[f1, r0, y0], [f1, r1, y0], [f1, r1, y1], [f1, r0, y1]], [1, 0, 0], mat, look);
       this.poly([[f0, r0, y0], [f0, r1, y0], [f0, r1, y1], [f0, r0, y1]], [-1, 0, 0], mat, look);

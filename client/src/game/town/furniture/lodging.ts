@@ -108,7 +108,7 @@ export function shelfWall(g: Geo, it: Item): void {
   const len = it.p[0] ?? 2;
   const h = len / 2;
   const frame = { tint: [0.8, 0.8, 0.8] as Rgb };
-  L.box(-0.22, -0.2, -h, h, 0, 2.2, "dark_wood", { tint: [0.35, 0.35, 0.35] }, false);
+  L.box(-0.22, -0.2, -h, h, 0, 2.2, "dark_wood", { tint: [0.35, 0.35, 0.35] });
   const cols = Math.max(2, Math.round(len / 0.8));
   for (let i = 0; i <= cols; i++) {
     const r = -h + (i * len) / cols;
