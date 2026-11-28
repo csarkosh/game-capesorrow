@@ -120,6 +120,8 @@ export const PORTASHTON_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRendere
   statusLine: createStatusLine,
   /** The worker that makes a session's world: the entry is the game's, since a worker is named by a path. */
   worldWorker: () => new Worker(new URL("./world.worker.ts", import.meta.url), { type: "module" }),
+  /** Two world workers, both made from `worldWorker`: the second looks up the ground clutter's cells, the first builds the terrain's rings and the rock faces. */
+  worldWorkers: 2,
   /** No scene is staged yet: a scene's address draws nothing. */
   scene: () => ({ dispose: () => undefined }),
   /** What the tier check draws as it measures the renderer: the yard with nobody in it. */
