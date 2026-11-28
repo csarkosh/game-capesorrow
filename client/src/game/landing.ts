@@ -185,7 +185,7 @@ export const LANDING_STYLE = `
      and close under Play (or the wait). The secondary buttons stand apart below it. */
   .landing .waiting { margin-top: 1.25rem; }
   .landing .developing { margin-top: -0.35rem; font-size: 0.75rem; }
-  .landing .developing + button.secondary { margin-top: 1.5rem; }
+  .landing .developing + button.secondary { margin-top: 0.75rem; }
   /* Phone widths: the title, copy and buttons scale to a 400 px screen with 16 px gutters and
      nothing wider than the viewport. */
   @media (max-width: 480px) {

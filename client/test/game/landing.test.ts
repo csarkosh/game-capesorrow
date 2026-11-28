@@ -75,7 +75,7 @@ describe("the title page's in-development line", () => {
     expect(line).toBeGreaterThan(play);
     expect(settings).toBeGreaterThan(line);
     expect(rule(LANDING_STYLE, ".landing .developing")).toContain("font-size: 0.75rem");
-    expect(rule(LANDING_STYLE, ".landing .developing + button.secondary")).toContain("margin-top: 1.5rem");
+    expect(rule(LANDING_STYLE, ".landing .developing + button.secondary")).toContain("margin-top: 0.75rem");
   });
 });
 
