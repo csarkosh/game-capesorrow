@@ -25,7 +25,7 @@ type Sink = (x: number, z: number) => MeshBuilder;
 /** `shade` is the see-through layer the dark under the vehicle is laid in (`vehicleShade.ts`): the town's own on the full tier, none for the code-built stand-in of a model. */
 export type VehicleSinks = { readonly solid: Sink; readonly glass: Sink; readonly flat?: Sink; readonly shade?: Sink };
 
-type Opts = {
+export type Opts = {
   readonly sx: number;
   readonly sw: number;
   readonly xOff: number;
@@ -85,6 +85,85 @@ function stationsOf(sh: Shape, o: Opts, r: number): { x: number; st: Station; cr
   return out;
 }
 
+/** Where a body's glass is, from its stations alone: for each row's interval and pair of columns, whether the skin leaves it out as glass or as the bed's opening, and the rows each window is drawn over. */
+export type GlassLayout = {
+  readonly xs: readonly number[];
+  readonly ncol: number;
+  readonly idOf: (j: number) => number;
+  readonly glassQuad: (i: number, j: number) => boolean;
+  readonly opening: (i: number, j: number) => boolean;
+  /** Per window of the shape (the side windows, then the screens) that is drawn: its first and last rows, the row its cells were read at, and the coarse cells (first and last column) it is drawn in. */
+  readonly windows: readonly { readonly i0: number; readonly i1: number; readonly mi: number; readonly cells: readonly (readonly [number, number])[] }[];
+};
+
+export function glassLayout(sh: Shape, o: Opts): GlassLayout {
+  const cols = o.detail === "low" ? COLS_LOW : COLS_FULL;
+  const xs = stationsOf(sh, o, sh.r).map((e) => e.x);
+  const nc = cols.length;
+  const ncol = nc * 2 - 1;
+  const mid = nc - 1;
+  // The column id (1 to 7) of point j of a row, and which side it is on.
+  const idOf = (j: number): number => cols[j <= mid ? j : ncol - 1 - j] as number;
+  const interval = (i: number): { x: number; side: boolean; screen: boolean } => {
+    const x = ((xs[i] as number) + (xs[i + 1] as number)) / 2;
+    return { x, side: sh.side.some(([a, b]) => x > a * o.sx && x < b * o.sx), screen: sh.screens.some(([a, b]) => x > a * o.sx && x < b * o.sx) };
+  };
+  const glassQuad = (i: number, j: number): boolean => {
+    const a = idOf(j);
+    const b = idOf(j + 1);
+    const { side, screen } = interval(i);
+    // A pair of columns on one side between the belt and the roof's edge is side glass; any pair from the belt to the crown is screen glass.
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    if (screen && lo >= 3) return true;
+    if (side && lo >= 3 && hi <= 5) return true;
+    return false;
+  };
+  const bedX0 = sh.bed === undefined ? 0 : sh.bed.x0 * o.sx;
+  const bedX1 = sh.bed === undefined ? 0 : sh.bed.x1 * o.sx;
+  const opening = (i: number, j: number): boolean => {
+    const x = ((xs[i] as number) + (xs[i + 1] as number)) / 2;
+    if (sh.bed === undefined || !(x >= bedX0 - 1e-6 && x <= bedX1 + 1e-6)) return false;
+    return Math.min(idOf(j), idOf(j + 1)) >= 5;
+  };
+  // The coarse columns: belt, roof's edge, crown, roof's edge, belt.
+  const coarse: number[] = [];
+  for (let j = 0; j < ncol; j++) if (idOf(j) === 3 || idOf(j) === 5 || idOf(j) === 7) coarse.push(j);
+  const windows: { i0: number; i1: number; mi: number; cells: [number, number][] }[] = [];
+  for (const [a, b] of [...sh.side, ...sh.screens]) {
+    // The window's rows: the stations at its ends (within 3 cm of them), widened to take in every interval the skin leaves out for it (the middle of the
+    // interval inside the window, as `glassQuad` reads it). The low tier lofts through the shape's own stations only, which may be none of them.
+    let i0 = -1;
+    let i1 = -1;
+    for (let i = 0; i < xs.length; i++) {
+      const x = xs[i] as number;
+      if (i0 < 0 && x >= a * o.sx - 0.03) i0 = i;
+      if (x <= b * o.sx + 0.03) i1 = i;
+    }
+    if (i0 < 0 || i1 <= i0) {
+      i0 = -1;
+      i1 = -1;
+    }
+    for (let i = 0; i < xs.length - 1; i++) {
+      const x = ((xs[i] as number) + (xs[i + 1] as number)) / 2;
+      if (x > a * o.sx && x < b * o.sx) {
+        i0 = i0 < 0 ? i : Math.min(i0, i);
+        i1 = Math.max(i1, i + 1);
+      }
+    }
+    if (i0 < 0) continue;
+    const mi = Math.min(xs.length - 2, Math.floor((i0 + i1) / 2));
+    const cells: [number, number][] = [];
+    for (let k = 0; k < coarse.length - 1; k++) {
+      const j0 = coarse[k] as number;
+      const j1 = coarse[k + 1] as number;
+      if (glassQuad(mi, j0) && glassQuad(mi, j1 - 1)) cells.push([j0, j1]);
+    }
+    windows.push({ i0, i1, mi, cells });
+  }
+  return { xs, ncol, idOf, glassQuad, opening, windows };
+}
+
 /** The loft of a body: returns nothing, draws into `m` (the body and its dark cabin) and `gl` (the glass). */
 function loft(m: MeshBuilder, gl: MeshBuilder, pl: Place, sh: Shape, o: Opts): void {
   const low = o.detail === "low";
@@ -130,31 +209,7 @@ function loft(m: MeshBuilder, gl: MeshBuilder, pl: Place, sh: Shape, o: Opts): v
     rowsPts.push(row);
     meta.push({ x: e.x, belt: st[2], top: st[1], sill });
   }
-  const nc = cols.length;
-  const ncol = nc * 2 - 1;
-  const mid = nc - 1;
-  // The column id (1 to 7) of point j of a row, and which side it is on.
-  const idOf = (j: number): number => cols[j <= mid ? j : ncol - 1 - j] as number;
-  const interval = (i: number): { x: number; side: boolean; screen: boolean } => {
-    const x = ((meta[i] as { x: number }).x + (meta[i + 1] as { x: number }).x) / 2;
-    return { x, side: sh.side.some(([a, b]) => x > a * o.sx && x < b * o.sx), screen: sh.screens.some(([a, b]) => x > a * o.sx && x < b * o.sx) };
-  };
-  const glassQuad = (i: number, j: number): boolean => {
-    const a = idOf(j);
-    const b = idOf(j + 1);
-    const { side, screen } = interval(i);
-    // A pair of columns on one side between the belt and the roof's edge is side glass; any pair from the belt to the crown is screen glass.
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    if (screen && lo >= 3) return true;
-    if (side && lo >= 3 && hi <= 5) return true;
-    return false;
-  };
-  const opening = (i: number, j: number): boolean => {
-    const x = (((meta[i] as { x: number }).x + (meta[i + 1] as { x: number }).x) / 2);
-    if (!inBed(x)) return false;
-    return Math.min(idOf(j), idOf(j + 1)) >= 5;
-  };
+  const { ncol, idOf, glassQuad, opening, windows } = glassLayout(sh, o);
   // The painted loft, in segments that share normals only within a segment (a crease starts a new one).
   const breaks: number[] = [0];
   sts.forEach((e, i) => {
@@ -214,25 +269,9 @@ function loft(m: MeshBuilder, gl: MeshBuilder, pl: Place, sh: Shape, o: Opts): v
   }
   // The glass over a dark cabin, a window at a time: for each window (a range of the shape), its first and last rows and the coarse cells between them (columns belt, roof's
   // edge, crown, roof's edge, belt): the glass a quad per cell, the dark sheet inside it the same quad drawn inward.
-  const coarse: number[] = [];
-  for (let j = 0; j < ncol; j++) if (idOf(j) === 3 || idOf(j) === 5 || idOf(j) === 7) coarse.push(j);
-  for (const [a, b] of [...sh.side, ...sh.screens]) {
-    const xa = a * o.sx;
-    const xb = b * o.sx;
-    let i0 = -1;
-    let i1 = -1;
-    for (let i = 0; i < sts.length; i++) {
-      const x = (meta[i] as { x: number }).x;
-      if (i0 < 0 && x >= xa - 0.03) i0 = i;
-      if (x <= xb + 0.03) i1 = i;
-    }
-    if (i0 < 0 || i1 <= i0) continue;
-    const mi = Math.min(sts.length - 2, Math.floor((i0 + i1) / 2));
+  for (const { i0, i1, mi, cells } of windows) {
     const ctr = P(pl, L((meta[mi] as { x: number }).x), (meta[mi] as { belt: number }).belt - 0.1, 0);
-    for (let k = 0; k < coarse.length - 1; k++) {
-      const j0 = coarse[k] as number;
-      const j1 = coarse[k + 1] as number;
-      if (!glassQuad(mi, j0) || !glassQuad(mi, j1 - 1)) continue;
+    for (const [j0, j1] of cells) {
       const pa = (rowsPts[i0] as Vec3[])[j0] as Vec3;
       const pb = (rowsPts[i0] as Vec3[])[j1] as Vec3;
       const pc = (rowsPts[i1] as Vec3[])[j1] as Vec3;
@@ -461,6 +500,19 @@ const CAB: Shape = {
   creases: [], side: [[0.2, 1.2]], screens: [[1.28, 1.45]], doors: [0.2, 1.25], mirror: 1.35, seats: [0.75],
 };
 
+/** The shape a vehicle's body is lofted from and the options it is lofted with (not a camper's, which has its own). */
+export function bodyOf(v: Vehicle, detail: Detail, paint: Rgb): { sh: Shape; o: Opts } {
+  const wk = v.kind === "work truck";
+  const derelict = v.state === "derelict";
+  const base = wk ? CAB : SHAPES[v.kind as "sedan" | "suv" | "van" | "pickup"];
+  const sx = wk ? 1 : v.length / base.L;
+  const sw = v.width / base.W;
+  const xOff = wk ? v.length - CAB.L : 0;
+  const sh: Shape = wk ? { ...CAB, axles: [CAB.L - 0.95], r: 0.45 } : base;
+  const o: Opts = { sx, sw, xOff, len: v.length, paint, age: derelict ? Math.max(v.age, 0.85) : v.age, idle: v.idle, detail, flat: derelict, wheels: v.state !== "project", seed: v.seed, sy: 1 };
+  return { sh, o };
+}
+
 export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, detail: Detail, paintOver?: Rgb): void {
   // The low tier draws three vehicles in five (the rest are left out by their number).
   if (detail === "low" && (v.id % 5 === 0 || v.id % 5 === 3)) return;
@@ -503,12 +555,7 @@ export function vehicleGeometry(g: TownGround, sinks: VehicleSinks, v: Vehicle, 
       withMat("painted", () => camperGeometry(m, gl, pl, v, detail));
       return;
     }
-    const base = wk ? CAB : SHAPES[v.kind as "sedan" | "suv" | "van" | "pickup"];
-    const sx = wk ? 1 : v.length / base.L;
-    const sw = v.width / base.W;
-    const xOff = wk ? v.length - CAB.L : 0;
-    const sh: Shape = wk ? { ...CAB, axles: [CAB.L - 0.95], r: 0.45 } : base;
-    const o: Opts = { sx, sw, xOff, len: v.length, paint, age: derelict ? Math.max(v.age, 0.85) : v.age, idle: v.idle, detail, flat: derelict, wheels: !project, seed: v.seed, sy: 1 };
+    const { sh, o } = bodyOf(v, detail, paint);
     const { wAt, beltAt } = profileAt(sh, o);
     const T0 = m.vertices;
     withMat("painted", () => loft(m, gl, pl, sh, o));
