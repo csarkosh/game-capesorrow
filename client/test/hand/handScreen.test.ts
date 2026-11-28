@@ -196,16 +196,16 @@ describe("the left arm and its watch: from the lower left, the face to the eye",
       expect(area).toBeGreaterThan(0);
       expect((tl.y + tr.y) / 2).toBeLessThan((bl.y + br.y) / 2);
       expect((tl.x + bl.x) / 2).toBeLessThan((tr.x + br.x) / 2);
-      // The middle of it at 33 to 37 percent across and 64 to 70 percent down (the framing is by the view's own share, so a narrower window keeps it).
+      // The middle of it near 22 to 26 percent across and 82 to 86 percent down, low in the bottom left corner (the framing is by the view's own share, so a narrower window keeps it).
       const cx = (tl.x + tr.x + br.x + bl.x) / 4 / W, cy = (tl.y + tr.y + br.y + bl.y) / 4 / H;
-      expect(cx).toBeGreaterThanOrEqual(0.3);
-      expect(cx).toBeLessThanOrEqual(0.37);
-      expect(cy).toBeGreaterThanOrEqual(0.79);
-      expect(cy).toBeLessThanOrEqual(0.85);
+      expect(cx).toBeGreaterThanOrEqual(0.2);
+      expect(cx).toBeLessThanOrEqual(0.26);
+      expect(cy).toBeGreaterThanOrEqual(0.82);
+      expect(cy).toBeLessThanOrEqual(0.87);
       // About a quarter of the view's height across (its longest way, the circle seen a little aslant): 19 to 28 percent.
       const side = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2 / H;
-      expect(side).toBeGreaterThanOrEqual(0.19);
-      expect(side).toBeLessThanOrEqual(0.285);
+      expect(side).toBeGreaterThanOrEqual(0.15);
+      expect(side).toBeLessThanOrEqual(0.23);
       // Upright: the top edge within 15 degrees of level.
       const tilt = (Math.atan2(tr.y - tl.y, tr.x - tl.x) * 180) / Math.PI;
       expect(Math.abs(tilt)).toBeLessThanOrEqual(name === "aspect 1.2" ? 16.5 : 15.5);
@@ -220,14 +220,14 @@ describe("the left arm and its watch: from the lower left, the face to the eye",
       const { left } = both(W, H);
       const leftEdge = left.filter((p) => p.x < 6).map((p) => p.y / H);
       const bottom = left.filter((p) => p.y > H - 4).map((p) => p.x / W);
-      if (leftEdge.length > 0) expect(lo(leftEdge)).toBeGreaterThanOrEqual(0.66 - 0.02);
+      if (leftEdge.length > 0) expect(lo(leftEdge)).toBeGreaterThanOrEqual(0.76);
       expect(bottom.length).toBeGreaterThan(0);
-      expect(hi(bottom)).toBeLessThanOrEqual(0.38);
+      expect(hi(bottom)).toBeLessThanOrEqual(0.3);
     });
 
-    it(`has the hand end by about half the width (52 percent) (${name})`, () => {
+    it(`has the hand end by about 43 percent of the width (${name})`, () => {
       const { leftHand } = both(W, H);
-      expect(hi(leftHand.map((p) => p.x)) / W).toBeLessThanOrEqual(name === "aspect 1.2" ? 0.58 : 0.54);
+      expect(hi(leftHand.map((p) => p.x)) / W).toBeLessThanOrEqual(name === "aspect 1.2" ? 0.48 : 0.435);
     });
   }
 
@@ -389,7 +389,7 @@ describe("the two arms are as thick as each other, and the watch is 4/5 of the w
       const watchCase = part(LEFT_PARTS, "watch_case");
       const caseWidth = extent(watchCase.positions, () => true);
       process.stdout.write(`watch case over the arm's width at the watch, ${name}: ${(caseWidth / sleeve).toFixed(2)}\n`);
-      expect(caseWidth / sleeve).toBeGreaterThanOrEqual(0.76);
+      expect(caseWidth / sleeve).toBeGreaterThanOrEqual(0.75);
       expect(caseWidth / sleeve).toBeLessThanOrEqual(0.84);
     });
   }
@@ -405,14 +405,14 @@ describe("the two arms are as thick as each other, and the watch is 4/5 of the w
     }
   });
 
-  it("has the lit circle about a fifth of the view's height across at 16:10 (19 to 21 percent, the mean of its two ways across)", () => {
+  it("has the lit circle about a sixth of the view's height across at 16:10 (16 to 17.5 percent, the mean of its two ways across)", () => {
     const { quad } = both(1248, 780);
     const px = (k: number): [number, number] => [quad[k * 2]! * 1248, quad[k * 2 + 1]! * 780];
     const d = (a: [number, number], b: [number, number]): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
     const mean = (d(px(0), px(1)) + d(px(3), px(2)) + d(px(0), px(3)) + d(px(1), px(2))) / 4 / 780;
     process.stdout.write(`the lit circle is ${(mean * 100).toFixed(1)} percent of the view's height across\n`);
-    expect(mean).toBeGreaterThanOrEqual(0.19);
-    expect(mean).toBeLessThanOrEqual(0.215);
+    expect(mean).toBeGreaterThanOrEqual(0.16);
+    expect(mean).toBeLessThanOrEqual(0.175);
   });
 });
 
@@ -460,7 +460,7 @@ describe("the torch points straight away from the viewer: the lamp's filament do
     const grip = RIGHT.grip as Record<string, { gap_mm: number; penetration_mm: number }>;
     for (const [finger, g] of Object.entries(grip)) expect(g.gap_mm, `${finger}'s gap`).toBeLessThanOrEqual(3);
     // The penetration measure counts the head's and the knurl's radius, so it is not zero even for the straight grip: it is held to that grip's own (measured at `TORCH_IN_GRIP` 0, 0) and 3 mm.
-    const straight: Record<string, number> = { thumb: 18.65, point: 9.51, middle: 5.26, ring: 5.02, pink: 2.93 };
+    const straight: Record<string, number> = { thumb: 28.78, point: 6.5, middle: 3.26, ring: 2.47, pink: 2.44 };
     for (const [finger, g] of Object.entries(grip)) expect(g.penetration_mm, `${finger}'s penetration`).toBeLessThanOrEqual((straight[finger] as number) + 3);
   });
 

@@ -63,7 +63,7 @@ export const AIM_DROP = 1.5;
  */
 export const DRAWN_YAW = 0, DRAWN_PITCH = 0;
 /** The turn of the torch about its own axis at the hold, radians: the hand holds it from the right and below, the fingers wrapping from underneath and the back of the hand on the barrel's right side, so that the eye sees the barrel's top and left side past it; the forearm runs back from it toward the bottom right corner. */
-export const HOLD_ROLL = -1;
+export const HOLD_ROLL = -0.75;
 /** The lens's place at the hold for a view of this aspect (width over height), in the camera's frame: so that the torch's head stands at `HOLD_SCREEN` whatever the window's shape. */
 export function holdFor(aspect: number): { x: number; y: number; z: number } {
   const a = Math.min(ASPECT_MAX, Math.max(ASPECT_MIN, aspect));

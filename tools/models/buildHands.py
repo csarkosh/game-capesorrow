@@ -67,6 +67,10 @@ DATA_SIZE = 512
 # Sizes, metres. The arms' file is in centimetres, near enough (a forearm there is 24 long).
 ARMS_UNIT = 0.01
 TORCH_LENGTH = 0.24
+# How much thicker than the catalogue's torch the barrel is made (its radius only, the head and bezel in proportion; the length is `TORCH_LENGTH`): a heavy duty torch, which the fingers wrap and hide behind.
+TORCH_GIRTH = 1.5
+# How much of the barrel's added radius the axis is moved out from the knuckles by (1 keeps the knuckles as far from the barrel's surface as they were).
+ABOVE_FOLLOW = 1.0
 WATCH_CASE = 0.045
 # The watch is sized from the wrist: its case is WATCH_FIT times the width of the arm under it (the silhouette across the forearm at the watch: the sleeve's end or the glove's
 # cuff), `big` times a 45 mm case (about life size on this arm), and the strap's width and thickness follow it; the strap's path round the sleeve is the sleeve's own. The case stands
@@ -218,11 +222,11 @@ class Arms:
 # Every angle in radians and every length in the arms' own unit (about a centimetre). Set by eye against the owner's reference.
 
 GRIP = dict(
-    barrel_radius=2.0,  # the torch's grip, in the arms' unit (its knurled barrel is 1.99 at 24 cm)
+    barrel_radius=2.0 * TORCH_GIRTH,  # the torch's grip, in the arms' unit (its knurled barrel is 1.99 at 24 cm)
     finger_half=0.95,  # half a finger's thickness: a finger's middle line lies this far outside the barrel
     along=-2.0,  # where the barrel's axis lies from the knuckle line toward the wrist (negative is toward the wrist), and
-    above=5.0,  # how far out of the hand's back-to-front middle (the knuckles' level) along the palm's normal: the palm's face is 3.5 to 4.8 out
-    hold_z=-3.7,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
+    above=5.0 + 2.0 * (TORCH_GIRTH - 1.0) * ABOVE_FOLLOW,  # how far out of the hand's back-to-front middle (the knuckles' level) along the palm's normal: the palm's face is 3.5 to 4.8 out
+    hold_z=-3.9,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
     cock=1.55,  # the wrist's turn toward the little finger (ulnar deviation)
     roll=0.0,  # the turn of the whole hand and torch about the torch's axis, to the frame's +y (see right_hand)
     thumb_angle=0.35,  # where the thumb lies round the barrel: 0 is straight out from the palm over the top, positive toward the fingers
@@ -546,7 +550,7 @@ def right_hand(arms, torch_path):
     def lay(q, normals=False):
         if normals:
             return q @ basis.T
-        loc = np.stack([q[:, 0] * scale, q[:, 1] * scale, (q[:, 2] - GRIP["hold_z"]) * scale], axis=1)
+        loc = np.stack([q[:, 0] * scale * TORCH_GIRTH, q[:, 1] * scale * TORCH_GIRTH, (q[:, 2] - GRIP["hold_z"]) * scale], axis=1)
         return centre + loc @ basis.T
 
     t_pos = lay(body["pos"])
