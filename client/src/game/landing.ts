@@ -1,5 +1,9 @@
 /** The title page, in Day Hike's visual language: the same dark ground, type and button slabs. */
-const STYLE = `
+/** The title's colour: cream, warm against the cold cast of the controls. */
+export const TITLE_CREAM = "#ede4cc";
+
+/** The page's stylesheet, exported so a test can read it without a DOM. */
+export const LANDING_STYLE = `
   .landing {
     /* The positioning context for the panels below; they carry the layout and the scrolling,
        because each panel is the box that holds the content a short viewport has to scroll. */
@@ -85,7 +89,8 @@ const STYLE = `
     box-shadow: var(--btn-rim), 0 0 6px var(--btn-bloom);
   }
   .landing h1 {
-    margin: 0 0 0.25rem; font-size: 2rem; font-weight: 600;
+    margin: 0 0 0.25rem; font-size: clamp(2.6rem, 9vw, 6rem); font-weight: 600;
+    line-height: 1.05; color: #ede4cc; overflow-wrap: anywhere;
     letter-spacing: 0.12em; text-transform: uppercase;
   }
   .landing p {
@@ -95,24 +100,6 @@ const STYLE = `
     color: rgba(255, 255, 255, 0.62);
     /* Display copy: balance the rag rather than filling line one greedily. */
     text-wrap: balance;
-  }
-  /* The turn in the sentence. Lifted above the innocent opening it interrupts, but by cast rather
-     than by weight: a cold tint, letters drawn slightly apart, and a pale bloom that reads as
-     mist-light caught on the words. The second, dark shadow is the legibility floor. */
-  .landing .dread {
-    color: #dbe2e2; font-weight: 500; letter-spacing: 0.05em;
-    /* An explicit angle rather than plain italic: a true mono italic lands near 14 degrees, which
-       reads as quotation. A quarter of that is felt before it is seen. */
-    font-style: oblique 4deg;
-    text-shadow:
-      0 0 14px rgba(198, 222, 222, 0.55),
-      0 2px 8px rgba(0, 0, 0, 0.85);
-    animation: dread-breathe 7s ease-in-out infinite;
-  }
-  /* Slow and shallow: the phrase should seem to surface and recede in the fog, never to blink. */
-  @keyframes dread-breathe {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 1; }
   }
   /* The primary button: filled with the subtitle's colour, held below its alpha, so the slab does
      not outshout the title. The label takes the page's ground colour to stay legible on it, and
@@ -137,7 +124,7 @@ const STYLE = `
   }
   .landing button:hover:not(:disabled) {
     background-color: var(--btn-solid-lit); border-color: var(--btn-solid-lit);
-    /* Mist-light caught on the slab: the same bloom the dread line carries, at the same tint. */
+    /* Mist-light caught on the slab: a pale bloom. */
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 22px var(--btn-bloom);
     transform: translateY(-1px);
   }
@@ -159,13 +146,12 @@ const STYLE = `
   /* Sits below the button rules on purpose: a media query carries no extra specificity, so these
      overrides win on source order alone. */
   @media (prefers-reduced-motion: reduce) {
-    .landing .dread { animation: none; }
     .landing .panel { transition: none; }
     /* Colour still moves under the pointer; the slab no longer does. */
     .landing button:hover:not(:disabled), .landing button:active:not(:disabled) { transform: none; }
   }
   /* A follower's wait, in Play's place, and the line that says the game is in development, above
-     Play. Quiet, as the blurb is. The line takes Play's space above it and Play sits close under. */
+     Play. Quiet. The line takes Play's space above it and Play sits close under. */
   .landing .waiting, .landing .developing { margin-top: 1.25rem; }
   .landing .developing + button, .landing .developing + .waiting { margin-top: 0.5rem; }
   /* Phone widths: the title, copy and buttons scale to a 400 px screen with 16 px gutters and
@@ -175,7 +161,7 @@ const STYLE = `
        publishes its height; leaving that much room keeps every panel's last control (Back, the
        last credit) above it however big the party. */
     .landing .panel { padding: 1rem 1rem calc(var(--roster-height, 0px) + 1.5rem + 1.0625rem + 0.5rem); gap: 0.6rem; }
-    .landing h1 { font-size: 1.4rem; letter-spacing: 0.1em; }
+    .landing h1 { font-size: clamp(2rem, 11vw, 3rem); letter-spacing: 0.1em; }
     .landing p { font-size: 0.85rem; max-width: 100%; }
     .landing button { width: 100%; max-width: 20rem; margin-top: 0.75rem; }
     .landing button.secondary { width: auto; }
@@ -187,7 +173,7 @@ import { openerOf, renderSettings, type Opener } from "@csarkosh/engine/game/set
 import type { TierChoice } from "@csarkosh/engine/game/tierChoice";
 import { creditsEntries } from "./credits.js";
 import { landingPanelFocus, type LandingPanel, type LandingView } from "./landingModel.js";
-import { BLURB_LEAD, BLURB_TURN, TITLE } from "./words.js";
+import { TITLE } from "./words.js";
 
 export type { LandingPanel } from "./landingModel.js";
 
@@ -205,7 +191,7 @@ export type LandingHandle = {
  *
  * Paints a `LandingView` and repaints on `setView`: the page changes while it is showing (Play
  * becomes Loading…, a lobby makes a follower). Everything below the title is rebuilt each time; the
- * title and the blurb are not, so they never flicker.
+ * title is not, so they never flicker.
  */
 export function renderLanding(
   container: HTMLElement,
@@ -223,7 +209,7 @@ export function renderLanding(
 ): LandingHandle {
   // Appends rather than clearing: the shell owns the container.
   const style = document.createElement("style");
-  style.textContent = STYLE;
+  style.textContent = LANDING_STYLE;
 
   const root = document.createElement("div");
   root.className = "landing";
@@ -231,20 +217,12 @@ export function renderLanding(
   const title = document.createElement("h1");
   title.textContent = TITLE;
 
-  // Two nodes rather than innerHTML, keeping this file's no-markup rule: the sentence turns at its
-  // end, and the turn is styled to surface.
-  const blurb = document.createElement("p");
-  const dread = document.createElement("span");
-  dread.className = "dread";
-  dread.textContent = BLURB_TURN;
-  blurb.append(BLURB_LEAD, dread);
-
   const dynamic = document.createElement("div");
   dynamic.style.display = "contents";
 
   const home = document.createElement("div");
   home.className = "panel home";
-  home.append(title, blurb, dynamic);
+  home.append(title, dynamic);
 
   // Built once, up front: the entries come from a build-time import, so there is nothing to wait
   // for, and having the panel already in the DOM is what lets the class toggle animate rather

@@ -10,14 +10,9 @@ const INDEX = readFileSync(fileURLToPath(new URL("../../index.html", import.meta
 const code = (name: string): string => readFileSync(SRC + name, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the title page's words", () => {
-  it("are the game's name, one sentence that turns at its end, and the lines that stand in Play's place", () => {
+  it("are the game's name, and the lines that stand in Play's place", () => {
     expect(words.TITLE).toBe("Something Haunts Port Ashton");
-    expect(words.BLURB_LEAD + words.BLURB_TURN).toBe(
-      "A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that some of them were true.",
-    );
-    // The lead runs on into the turn with a space between, and the turn ends the sentence.
-    expect(words.BLURB_LEAD.endsWith("that ")).toBe(true);
-    expect(words.BLURB_TURN).toBe("some of them were true.");
+    expect(Object.keys(words).filter((name) => name.startsWith("BLURB_"))).toEqual([]);
     expect(words.IN_DEVELOPMENT).toBe("In development.");
     expect([words.PLAY, words.LOADING, words.WAITING_FOR_HOST]).toEqual(["Play", "Loading…", "Waiting for the host…"]);
   });
@@ -29,7 +24,7 @@ describe("the title page's words", () => {
   });
 
   it("are spelled in the words module alone: no other module of the title page carries one as a literal", () => {
-    const spoken = [words.BLURB_LEAD, words.BLURB_TURN, words.IN_DEVELOPMENT, words.PLAY, words.LOADING, words.WAITING_FOR_HOST, words.SETTINGS, words.CREDITS];
+    const spoken = [words.IN_DEVELOPMENT, words.PLAY, words.LOADING, words.WAITING_FOR_HOST, words.SETTINGS, words.CREDITS];
     for (const name of ["game/landing.ts", "game/landingModel.ts", "page.ts"]) {
       const text = code(name);
       for (const word of spoken) expect(text, `${name}: ${word}`).not.toContain(`"${word}"`);

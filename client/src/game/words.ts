@@ -6,10 +6,6 @@
 /** The game's name, as the page's heading and the browser's tab carry it. */
 export const TITLE = "Something Haunts Port Ashton";
 
-/** The sentence under the title: its innocent opening, and the turn that ends it (styled to surface from the fog). */
-export const BLURB_LEAD = "A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that ";
-export const BLURB_TURN = "some of them were true.";
-
 /** Above Play while the game is in development: a quiet line, on every build. */
 export const IN_DEVELOPMENT = "In development.";
 
