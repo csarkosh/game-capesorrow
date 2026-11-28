@@ -61,7 +61,8 @@ describe("the people who walk", () => {
         if (h >= 1 && h <= 5) expect(n, `${h.toFixed(1)}`).toBeLessThanOrEqual(1);
       }
       expect(most).toBeLessThanOrEqual(Math.max(1, Math.ceil(8 * k + 0.5)));
-      // A town the size of the one the table was set on has a few walking at noon and at five, and one to four at eight and at eight at night.
+      // A town the size of the one the table was set on has a few walking at noon and at five, and at eight and at eight at night up to three parties, most of
+      // them two together: six at the most.
       if (k >= 0.8) {
         for (const h of [12, 17]) {
           // The mean over the hour about it, not the one instant (a street has its quiet minutes); and no more than eight at any.
@@ -70,7 +71,7 @@ describe("the people who walk", () => {
           expect(sum / 11, `${h}:00 mean`).toBeGreaterThanOrEqual(h === 17 ? 1 : 2);
           expect(walking(h).length, `${h}:00`).toBeLessThanOrEqual(8);
         }
-        for (const h of [8, 20]) expect(walking(h).length, `${h}:00`).toBeLessThanOrEqual(4);
+        for (const h of [8, 20]) expect(walking(h).length, `${h}:00`).toBeLessThanOrEqual(6);
         expect(walking(8).length + walking(20).length).toBeGreaterThanOrEqual(1);
       }
     });
