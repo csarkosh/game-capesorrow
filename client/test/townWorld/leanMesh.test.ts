@@ -52,4 +52,17 @@ describe("letting go of a mesh's arrays", () => {
     expect(leaner.waiting()).toBe(0);
     expect(b.pluginVertexData).toBeUndefined();
   });
+
+  it("forgets a mesh it is told to let go of, so a released mesh is not waited for", () => {
+    const leaner = createLeaner();
+    const a = fake(true);
+    const b = fake(true);
+    leaner.add(a as unknown as Mesh);
+    leaner.add(b as unknown as Mesh);
+    leaner.remove(a as unknown as Mesh);
+    expect(leaner.waiting()).toBe(1);
+    leaner.step();
+    expect(a._cpuPositions).not.toBeNull();
+    expect(b._cpuPositions).toBeNull();
+  });
 });

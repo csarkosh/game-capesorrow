@@ -55,21 +55,35 @@ export type TownBatch = {
   readonly model?: string;
 };
 
+/** Most points the ground's height table holds. The build asks for about 720 thousand readings of 375 thousand different points, almost every repeat close behind the first (the corners of tiles that meet, a slab's two readings): a table emptied each time it holds this many costs the build 0.6 percent more readings than one that never forgets. After the build the walkers, the cars and the camera ask for new points every frame, and a table that kept them all would grow without end. */
+export const HEIGHT_MEMO_CAP = 32768;
+
+/**
+ * A height of the ground remembered by the point read to the millimetre, up to `cap` points; when the table is full it is emptied. The height is a pure
+ * function of the point, so what is forgotten is read again and is the same number.
+ */
+export function heightMemo(read: (x: number, z: number) => number, cap: number = HEIGHT_MEMO_CAP): { at: (x: number, z: number) => number; size: () => number } {
+  const memo = new Map<number, number>();
+  return {
+    at(x, z) {
+      const key = Math.round(x * 1000) * 4000003 + Math.round(z * 1000);
+      let h = memo.get(key);
+      if (h === undefined) {
+        h = read(x, z);
+        if (memo.size >= cap) memo.clear();
+        memo.set(key, h);
+      }
+      return h;
+    },
+    size: () => memo.size,
+  };
+}
+
 /** The ground the town stands on for a world seed: the plan, its anchor, the engine's elevation field plus the streets' trough filled (the ground the player stands on, where no rock layer lies: the town has none) and the highway's line. */
 export function townGround(worldSeed: number): TownGround {
   const plan = planFor(worldSeed);
   const { anchor } = siteFor(worldSeed);
-  // The same point is asked for again and again (the corners of tiles that meet, a slab's two readings): a point read to the millimetre is read once.
-  const memo = new Map<number, number>();
-  const heightAt = (x: number, z: number): number => {
-    const key = Math.round(x * 1000) * 4000003 + Math.round(z * 1000);
-    let h = memo.get(key);
-    if (h === undefined) {
-      h = elevationSampleAt(worldSeed, x, z).h + streetLiftD(worldSeed, x, z).v;
-      memo.set(key, h);
-    }
-    return h;
-  };
+  const heightAt = heightMemo((x, z) => elevationSampleAt(worldSeed, x, z).h + streetLiftD(worldSeed, x, z).v).at;
   const base = { seed: worldSeed, plan, anchor, heightAt, roadX: (z: number) => roadCenterX(worldSeed, z) };
   return { ...base, deckAt: (x, z) => deckTopAt(worldSeed, x, z) ?? -Infinity, rails: townDecks(worldSeed).rails };
 }

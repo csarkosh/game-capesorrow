@@ -124,10 +124,23 @@ const LAMP_EYE_STEP = 0.25;
 /** The lamps the low tier is lit by (a loop of twelve in each fragment, not twenty-four). */
 const LOW_LAMPS = 12;
 
-/** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 /** How long a slice of the walkers' making runs before the frame is given back (milliseconds). */
 const WALK_SLICE_MS = 4;
 
+/** Takes out of `list`, in place and keeping its order, each stand-in whose model `ready` says is made, and hands it to `drop` once. A stand-in of a model that is not ready (its file still loading, or failed) stays. */
+export function retireStandIns<T extends { model?: string }>(list: T[], ready: (model: string) => boolean, drop: (m: T) => void): void {
+  let kept = -1;
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i] as T;
+    if (m.model !== undefined && ready(m.model)) {
+      if (kept < 0) kept = i;
+      drop(m);
+    } else if (kept >= 0) list[kept++] = m;
+  }
+  if (kept >= 0) list.length = kept;
+}
+
+/** The bounding sphere of a batch's positions: the middle of its box and half the box's diagonal. */
 export function boundsOf(positions: Float32Array): { x: number; y: number; z: number; radius: number } {
   const lo = [Infinity, Infinity, Infinity];
   const hi = [-Infinity, -Infinity, -Infinity];
@@ -727,11 +740,20 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       highway?.seen(planes);
       vehicles?.seen(planes);
       car?.seen(planes);
+      // A stand-in car goes for good the moment its model's meshes are made: out of the scene, its buffers let go, out of this list.
+      if (vehicles !== null) {
+        const models = vehicles;
+        retireStandIns(made, (model) => models.ready(model), (m) => {
+          if (m.layer === "solid") hardCover?.remove(m.mesh);
+          if (standing !== null) removeFromScene(standing, m.mesh);
+          leaner.remove(m.mesh);
+          disposeMeshGpu(m.mesh);
+          host.uploads.dropped();
+        });
+      }
       leaner.step();
       for (const m of made) {
         let want = inView(planes, m);
-        // A stand-in car goes the moment its model's meshes are made.
-        if (m.model !== undefined && vehicles?.ready(m.model) === true) want = false;
         // The standing layer is cover for the rain: shown to the map's pass while it reaches into the map's square.
         if (!want && m.layer === "solid" && cover !== null && Math.abs(m.x - cover.x) <= cover.half + m.radius && Math.abs(m.z - cover.z) <= cover.half + m.radius) want = true;
         // The town is below the floor of the room the player is in: it is not drawn, nor shown to the rain's map.
