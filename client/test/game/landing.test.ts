@@ -45,10 +45,15 @@ describe("the title page's title", () => {
 });
 
 describe("the title page's controls", () => {
-  it("are drawn in the title's cream, not the old cold cast", () => {
-    expect(LANDING_STYLE).toContain("--btn-solid: rgba(241, 233, 212, 0.48)");
+  it("are slabs of solid cream with dark labels, Play and the secondary buttons alike", () => {
+    expect(TITLE_CREAM).toBe("#ede4cc");
+    expect(LANDING_STYLE).toContain("--btn-solid: rgb(237, 228, 204)");
     expect(LANDING_STYLE).not.toMatch(/198, 222, 222|214, 234, 234|#eaf1f1/);
-    expect(rule(LANDING_STYLE, ".landing button.secondary")).toContain(`color: ${TITLE_CREAM}`);
+    const button = rule(LANDING_STYLE, ".landing button");
+    expect(button).toContain("background-color: var(--btn-solid)");
+    expect(button).toContain("color: #0c0f11");
+    // The secondary buttons are only smaller: no fill, edge or colour of their own.
+    expect(rule(LANDING_STYLE, ".landing button.secondary")).not.toMatch(/background|border|color/);
   });
 });
 

@@ -27,10 +27,10 @@ export const LANDING_STYLE = `
     --btn-edge-lit: rgba(241, 233, 212, 0.58);
     --btn-rim: inset 0 1px 0 rgba(245, 238, 221, 0.30);
     --btn-bloom: rgba(237, 228, 204, 0.24);
-    /* The filled variant, for the one control that outranks the page. */
-    --btn-solid: rgba(241, 233, 212, 0.48);
-    --btn-solid-lit: rgba(248, 243, 229, 0.68);
-    --btn-solid-hit: rgba(251, 248, 238, 0.86);
+    /* The filled slab every button is: the title's cream itself, lighter under the pointer and the press. */
+    --btn-solid: rgb(237, 228, 204);
+    --btn-solid-lit: rgb(246, 239, 221);
+    --btn-solid-hit: rgb(251, 247, 236);
   }
   /* The film and its still cover the page behind the title, centred and cropped, never stretched.
      The still fades out (class gone) once the film can play through. */
@@ -82,20 +82,9 @@ export const LANDING_STYLE = `
   /* The list is a tab stop (the engine's credits screen sets tabIndex) so it can be scrolled from
      the keyboard; that stop has to be visible when it is reached. */
   .landing ul.credits:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 4px; }
-  /* Secondary: hollow rather than filled, so Play keeps the only solid shape on the screen. */
+  /* Secondary: the same cream slab as Play, smaller, so Play still leads by its size. */
   .landing button.secondary {
-    margin-top: 0.25rem; padding: 0.4rem 1.25rem; font-size: 0.85rem; color: ${TITLE_CREAM};
-    background-image: var(--btn-sheen); background-color: var(--btn-fill);
-    border-color: var(--btn-edge);
-    box-shadow: var(--btn-rim), 0 0 0 rgba(237, 228, 204, 0);
-  }
-  .landing button.secondary:hover:not(:disabled) {
-    background-color: var(--btn-fill-lit); border-color: var(--btn-edge-lit);
-    box-shadow: var(--btn-rim), 0 0 14px var(--btn-bloom);
-  }
-  .landing button.secondary:active:not(:disabled) {
-    background-color: var(--btn-fill-hit); border-color: var(--btn-edge-lit);
-    box-shadow: var(--btn-rim), 0 0 6px var(--btn-bloom);
+    margin-top: 0.25rem; padding: 0.4rem 1.25rem; font-size: 0.85rem;
   }
   /* The title in two parts: the lead small on one line, and the name under it, drawn tall. The
      name is stretched with a transform, which leaves its layout box as it was, so its margins give
@@ -159,7 +148,7 @@ export const LANDING_STYLE = `
   .landing button:focus-visible { outline: 2px solid var(--btn-edge-lit); outline-offset: 3px; }
   .landing button:disabled {
     cursor: default; color: rgba(12, 15, 17, 0.7);
-    background-color: rgba(241, 233, 212, 0.28); border-color: rgba(241, 233, 212, 0.28);
+    background-color: rgba(237, 228, 204, 0.45); border-color: rgba(237, 228, 204, 0.45);
     box-shadow: none; transform: none;
   }
   /* Sits below the button rules on purpose: a media query carries no extra specificity, so these
