@@ -223,7 +223,7 @@ GRIP = dict(
     along=-2.0,  # where the barrel's axis lies from the knuckle line toward the wrist (negative is toward the wrist), and
     above=5.0,  # how far out of the hand's back-to-front middle (the knuckles' level) along the palm's normal: the palm's face is 3.5 to 4.8 out
     hold_z=-1.6,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
-    cock=1.25,  # the wrist's turn toward the little finger (ulnar deviation)
+    cock=1.7,  # the wrist's turn toward the little finger (ulnar deviation)
     roll=0.0,  # the turn of the whole hand and torch about the torch's axis, to the frame's +y (see right_hand)
     thumb_angle=0.35,  # where the thumb lies round the barrel: 0 is straight out from the palm over the top, positive toward the fingers
     thumb_reach=1.35,  # how far outside the barrel the thumb's middle line lies
@@ -237,7 +237,7 @@ RELAXED = dict(
 FOREARM_CUT_LEFT = 6.0
 SLEEVE_RUN_LEFT = (1.5, 3.0)
 SLEEVE_RUN = (1.5, 3.0)  # the sleeve's end is carried on by rings this far (the arms' unit) along the forearm's own line, as one closed tube
-FOREARM_CUT = 10.0  # the right sleeve is cut this far from the elbow's place along the forearm (the wrist is at 24): the forearm comes at the eye, and past about 7 cm behind the wrist it is at the near plane
+FOREARM_CUT = 8.0  # the right sleeve is cut this far from the elbow's place along the forearm (the wrist is at 24): the forearm comes at the eye, and past about 7 cm behind the wrist it is at the near plane
 
 
 def swing(u, v):

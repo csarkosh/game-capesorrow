@@ -104,26 +104,43 @@ describe("the right arm's framing: from the player, large, in the lower right", 
       // The back of the hand faces up (and a little right) in the view, as the reference's does.
       expect(rb[4]! / handScaleFor()).toBeGreaterThan(0.5);
       // Placement: the head near 52 to 62 percent across and 52 to 64 down; the fist near 74 to 82 across and 74 to 84 down; nothing above 46 percent down or left of 46 across.
-      expect(head.x).toBeGreaterThanOrEqual(50);
-      expect(head.x).toBeLessThanOrEqual(65);
+      // With the torch pointing into the scene its head stands near 54 to 62 percent across and 54 to 64 down (its left kept clear of the left hand by 4 percent), and the fist near 64 to 72 across and 70 to 84 down.
+      expect(head.x).toBeGreaterThanOrEqual(54);
+      expect(head.x).toBeLessThanOrEqual(64);
       expect(head.y).toBeGreaterThanOrEqual(name === "aspect 1.2" ? 50 : 52);
       expect(head.y).toBeLessThanOrEqual(66);
-      expect(fist.x).toBeGreaterThanOrEqual(72);
+      expect(fist.x).toBeGreaterThanOrEqual(62);
       expect(fist.x).toBeLessThanOrEqual(84);
-      expect(fist.y).toBeGreaterThanOrEqual(72);
+      expect(fist.y).toBeGreaterThanOrEqual(68);
       expect(fist.y).toBeLessThanOrEqual(86);
+      // The torch is foreshortened: the head's width on the screen under 0.8 of the tail's.
+      const torchPart = part(RIGHT_PARTS, "torch");
+      const across = (zLo: number, zHi: number): number => {
+        const dirx = t2[0] - h2[0], diry = t2[1] - h2[1], dl = Math.hypot(dirx, diry);
+        const v: number[] = [];
+        for (let i = 0; i < torchPart.positions.length; i += 3) {
+          const z = torchPart.positions[i + 2] as number;
+          if (z < zLo || z > zHi) continue;
+          const q = pixel(rp, rb, [torchPart.positions[i] as number, torchPart.positions[i + 1] as number, z], W, H);
+          if (q !== null) v.push((-q[0] * diry + q[1] * dirx) / dl);
+        }
+        return hi(v) - lo(v);
+      };
+      const ratio = across(-0.035, 0.01) / across(-0.245, -0.205);
+      process.stdout.write(`${name}: the head's width over the tail's on the screen ${ratio.toFixed(2)}\n`);
+      expect(ratio).toBeLessThan(0.8);
       expect(head.x).toBeLessThan(fist.x);
       expect(head.y).toBeLessThan(fist.y);
       expect(tail.x).toBeGreaterThan(head.x);
       expect(tail.y).toBeGreaterThan(head.y);
       expect(lo(right.map((p) => p.x)) / W).toBeGreaterThanOrEqual(0.46 - 0.01);
       expect(lo(right.map((p) => p.y)) / H).toBeGreaterThanOrEqual(0.46 - 0.01);
-      // Size: the torch 34 to 42 percent of the width long at 16:10 (a little less on the wider windows, whose width is more than their height says), the fist about 28 to 34 percent of the height tall.
+      // Size: the torch foreshortened, about 22 to 40 percent of the width long at 16:10 (it comes out near 38: the arm is as thick as the left, which sets the scale), the fist about 24 to 34 percent of the height tall.
       const len = (Math.hypot((tail.x - head.x) * W, (tail.y - head.y) * H) / 100 / W) * 100;
       if (name.startsWith("16:10")) {
-        expect(len).toBeGreaterThanOrEqual(34);
-        expect(len).toBeLessThanOrEqual(44);
-      } else expect(len).toBeGreaterThanOrEqual(28);
+        expect(len).toBeGreaterThanOrEqual(22);
+        expect(len).toBeLessThanOrEqual(40);
+      } else expect(len).toBeGreaterThanOrEqual(18);
       const gripY: number[] = [];
       for (let i = 0; i < arm.positions.length; i += 3) {
         const z = arm.positions[i + 2] as number;
@@ -134,7 +151,7 @@ describe("the right arm's framing: from the player, large, in the lower right", 
       }
       const fistHeight = (hi(gripY) - lo(gripY)) / H;
       process.stdout.write(`${name}: head ${head.x.toFixed(0)}/${head.y.toFixed(0)}, fist ${fist.x.toFixed(0)}/${fist.y.toFixed(0)} (percent across/down), torch ${len.toFixed(0)} percent of the width, fist ${(fistHeight * 100).toFixed(0)} percent of the height\n`);
-      expect(fistHeight, `${name}: fist ${(fistHeight * 100).toFixed(1)} percent of the height`).toBeGreaterThanOrEqual(0.25);
+      expect(fistHeight, `${name}: fist ${(fistHeight * 100).toFixed(1)} percent of the height`).toBeGreaterThanOrEqual(0.22);
       expect(fistHeight).toBeLessThanOrEqual(0.36);
       // The forearm leaves through the right edge, its upper edge at about 71 percent down as the reference's (72), and/or the bottom edge right of 88 percent across.
       const bottom = right.filter((p) => p.y > H - 4).map((p) => p.x / W);

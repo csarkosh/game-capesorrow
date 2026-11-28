@@ -1,6 +1,6 @@
 {
   "about": "Written by tools/models/buildHands.py: do not edit. The first person arms: metres, right handed glTF (the game's loader mirrors x on a model's root). Where each work came from is in CREDITS.md, under the ids named here.",
-  "total_bytes": 2414140,
+  "total_bytes": 2416044,
   "total_gpu_bytes": 4734976,
   "total_gpu_bytes_shared": 4216147,
   "files": {
@@ -12,14 +12,14 @@
         "hand.torch"
       ],
       "frame": "origin at the middle of the torch's lens; +z the way the torch points (its tail is at -z); +y up as held (the roll the game's hold, handPose.ts, is worked out for); +x completes the right handed frame",
-      "bytes": 1561720,
-      "sha256": "99e8ee520164a84b02de4a13c03ff633ab1e36ed45bfdb61448791dd93028ad6",
-      "triangles": 14786,
-      "vertices": 14272,
+      "bytes": 1563624,
+      "sha256": "737558731446f619183f1e8e5a1715e654eb47bb3311c08861348ea5b46346a7",
+      "triangles": 14847,
+      "vertices": 14304,
       "parts": {
         "arm": {
-          "triangles": 3270,
-          "vertices": 1943
+          "triangles": 3331,
+          "vertices": 1975
         },
         "torch": {
           "triangles": 11296,
@@ -120,14 +120,14 @@
       "torch_radius": 0.02,
       "forearm_cut": {
         "centre": [
-          0.1238,
-          0.0478,
-          -0.2773
+          0.0597,
+          0.0476,
+          -0.3051
         ],
         "direction": [
-          0.3328,
+          -0.1105,
           -0.0095,
-          -0.943
+          -0.9938
         ],
         "runs_on": 0.03,
         "wrist": [
@@ -136,9 +136,9 @@
           -0.1459
         ],
         "toward_elbow": [
-          0.3397,
+          -0.1032,
           -0.0133,
-          -0.9405
+          -0.9946
         ]
       },
       "preview": {
@@ -149,13 +149,13 @@
             -0.1459
           ],
           "target": [
-            -0.0,
+            0.0,
             0.0,
             -0.1459
           ],
           "up": [
             -1.0,
-            0.0,
+            -0.0,
             0.0
           ]
         }

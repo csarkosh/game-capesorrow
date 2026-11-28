@@ -127,11 +127,13 @@ describe("the hold", () => {
     expect(pose.mx).toBeCloseTo(Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH), 2);
     expect(pose.my).toBeCloseTo(-Math.sin(DRAWN_PITCH), 2);
     expect(Math.hypot(pose.mx, pose.my, pose.mz)).toBeCloseTo(1, 6);
-    // The torch is drawn as the owner's reference shows it (`handScreen.test.ts` measures the angle on the screen): up and to the left, seen along its side (mostly across the view, a little
-    // away), and the beam, which goes through the view's middle and down to the street, may differ from it.
-    expect(pose.mx).toBeLessThan(-0.6);
-    expect(pose.my).toBeGreaterThan(0.3);
-    expect(Math.abs(pose.mz)).toBeLessThan(0.4);
+    // The torch is drawn pointing into the scene and across the view toward the upper left, as the owner's reference holds it (`handScreen.test.ts` measures the angle on the screen): its
+    // forward part (the camera's z) is 0.6 to 0.75 of its length, the rest going left and a little up; the beam, which goes through the view's middle and down to the street, agrees more closely.
+    expect(pose.mz).toBeGreaterThanOrEqual(0.6);
+    expect(pose.mz).toBeLessThanOrEqual(0.75);
+    expect(pose.mx).toBeLessThan(-0.4);
+    expect(pose.my).toBeGreaterThan(0.2);
+    expect(pose.mx * pose.ax + pose.my * pose.ay + pose.mz * pose.az).toBeGreaterThan(Math.cos((50 * Math.PI) / 180));
     // Lowered, the drawn axis is not the beam's either way round and nothing is lit: only the pair at the hold matters, and both are unit vectors.
     expect(Math.hypot(pose.ax, pose.ay, pose.az)).toBeCloseTo(1, 6);
   });
