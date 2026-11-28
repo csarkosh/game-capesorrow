@@ -56,10 +56,11 @@ describe("the rooms' designs, walked on the heavy seeds", () => {
 
 describe.each([["bar", 0], ["cafe", 1]] as const)("the %s on the world the game opens on is full", (name, index) => {
   const d = insideRooms(1175766972)[index]!.design;
-  it("leaves under 55 percent of its floor for a hull to stand on, and every part of it is reached", () => {
+  it("leaves under 42 percent (the bar) or 55 (the cafe) of its floor for a hull to stand on, and every part of it is reached", () => {
     const share = (walkableOf(d) * CELL * CELL) / (d.width * d.depth);
     console.log(`[full] ${name}: a hull can stand on ${(share * 100).toFixed(0)} percent of the floor, ${d.items.length} items, ${d.decor.length} hangings`);
-    expect(share, `${name}: floor share`).toBeLessThan(0.55);
+    // The bar is full of tables and people at night: a hull can stand on about 35 to 40 percent of its floor; the cafe's is under 55.
+    expect(share, `${name}: floor share`).toBeLessThan(name === "bar" ? 0.42 : 0.55);
     const reach = floodOf(d);
     expect(reach.states.length / walkableOf(d), `${name}: the fill reaches the floor`).toBeGreaterThan(0.9);
   });

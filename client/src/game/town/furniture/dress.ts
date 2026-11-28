@@ -265,3 +265,28 @@ export function tabletop(g: Geo, it: Item): void {
     }
   }
 }
+
+const BALLS: readonly Rgb[] = [[1.4, 0.2, 0.1], [0.1, 0.2, 1.2], [1.3, 1.1, 0.1], [0.1, 0.9, 0.2], [0.6, 0.1, 0.5], [0.05, 0.05, 0.05]];
+
+/** A pool table: a green cloth top at 0.85 m in a timber frame with rails and six dark pockets, on four turned legs, with a triangle of coloured balls racked at one end and a white one. It lies 1.2 m across its facing and 2.3 m along it. */
+export function poolTable(g: Geo, it: Item): void {
+  const L = g.at(it.s, it.d, it.face);
+  const a = 0.6;
+  const b = 1.15;
+  L.box(-a, a, -b, b, 0.74, 0.85, "dark_wood", { tint: [0.8, 0.75, 0.7] });
+  L.box(-a + 0.12, a - 0.12, -b + 0.12, b - 0.12, 0.85, 0.86, "cloth", { tint: [0.1, 0.9, 0.35] });
+  // The rails round the cloth.
+  L.box(-a, a, -b, -b + 0.12, 0.85, 0.92, "dark_wood", { tint: [0.9, 0.8, 0.7] });
+  L.box(-a, a, b - 0.12, b, 0.85, 0.92, "dark_wood", { tint: [0.9, 0.8, 0.7] });
+  L.box(-a, -a + 0.12, -b + 0.12, b - 0.12, 0.85, 0.92, "dark_wood", { tint: [0.9, 0.8, 0.7] });
+  L.box(a - 0.12, a, -b + 0.12, b - 0.12, 0.85, 0.92, "dark_wood", { tint: [0.9, 0.8, 0.7] });
+  for (const f of [-a + 0.07, a - 0.07]) for (const r of [-b + 0.07, 0, b - 0.07]) L.frustum(f, r, 0.855, 0.865, 0.05, 0.05, 6, "steel", { tint: [0.08, 0.08, 0.08] }, false, true);
+  for (const f of [-a + 0.1, a - 0.1]) for (const r of [-b + 0.1, b - 0.1]) L.box(f - 0.07, f + 0.07, r - 0.07, r + 0.07, 0, 0.74, "dark_wood", { tint: [0.7, 0.65, 0.6] }, true, false);
+  // The rack: a triangle of balls at the far end, and the cue ball near.
+  let n = 0;
+  for (let row = 0; row < 4; row++) for (let k = 0; k <= row; k++) {
+    const c = BALLS[n++ % BALLS.length] as Rgb;
+    L.frustum(-0.1 + k * 0.057 - row * 0.0285 + 0.0, b - 0.45 - row * 0.05, 0.86, 0.92, 0.028, 0.02, 6, "painted", { tint: c }, false, true);
+  }
+  L.frustum(0.05, -b + 0.6, 0.86, 0.92, 0.028, 0.02, 6, "painted", { tint: [1.5, 1.5, 1.45] }, false, true);
+}

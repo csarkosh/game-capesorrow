@@ -184,7 +184,7 @@ function outerWall(g: Geo, d: Design, face: Face): void {
   for (const b of bandsOf(f, d.height)) {
     const h = b.y1 - b.y0;
     if (h < 0.01) continue;
-    const vs = lines(h, h > 1 ? 0.9 : 1);
+    const vs = lines(h, h > 1 ? (d.mood.bounce !== undefined ? 0.6 : 0.9) : 1);
     const tint = (): Rgb => b.tint;
     // Where the wall runs: its origin, the way along it, its length and which way it faces.
     const run = face === "back" ? { o: [0, D, b.y0] as P3, u: [1, 0, 0] as P3, len: W, hint: [0, -1, 0] as P3 } : face === "left" ? { o: [0, FRONT_WALL, b.y0] as P3, u: [0, 1, 0] as P3, len: D - FRONT_WALL, hint: [1, 0, 0] as P3 } : { o: [W, FRONT_WALL, b.y0] as P3, u: [0, 1, 0] as P3, len: D - FRONT_WALL, hint: [-1, 0, 0] as P3 };
@@ -219,7 +219,7 @@ function outerWall(g: Geo, d: Design, face: Face): void {
       const piece = (a0: number, a1: number): void => {
         if (a1 - a0 < 0.02) return;
         const rel = a0 - aStart;
-        g.grid([run.o[0] + run.u[0] * rel, run.o[1] + run.u[1] * rel, ya], [run.u[0] * (a1 - a0), run.u[1] * (a1 - a0), 0], [0, 0, yb - ya], lines(a1 - a0, CELL), lines(yb - ya, h > 1 ? 0.9 : 1), run.hint, b.mat, tint);
+        g.grid([run.o[0] + run.u[0] * rel, run.o[1] + run.u[1] * rel, ya], [run.u[0] * (a1 - a0), run.u[1] * (a1 - a0), 0], [0, 0, yb - ya], lines(a1 - a0, CELL), lines(yb - ya, h > 1 ? (d.mood.bounce !== undefined ? 0.6 : 0.9) : 1), run.hint, b.mat, tint);
       };
       for (const w of blocked) {
         piece(at, Math.min(w.a0, aStart + run.len));
@@ -262,7 +262,7 @@ function shell(g: Geo, r: DrawIn, d: Design): void {
   }
   const c: Ctx = {
     out: g.out, xf: g.xf, floorY: g.floorY, seed: r.seed, lit: true, vacant: false, detail: r.detail, trade: null, field: g.light, ceiling: d.height, s0: 0, s1: d.width, d1: d.depth,
-    era: front.era, glassIn: 0, glass: g.out.marked, n: 0, chairs: [], type: "bar", paint: materialOf(d.shell.front.mat).albedo, base: materialOf(d.shell.front.skirt ?? d.shell.front.mat).albedo,
+    era: front.era, glassIn: 0, glass: g.out.marked, designed: d.name !== "bar", n: 0, chairs: [], type: "bar", paint: materialOf(d.shell.front.mat).albedo, base: materialOf(d.shell.front.skirt ?? d.shell.front.mat).albedo,
     door: { s: d.doorS, w: d.doorWidth }, feet: [], style: styleOf(r.seed, null, front.era, 1960, 0), whole: true,
   };
   frontWall(c, { door: { s: d.doorS, width: d.doorWidth, head: front.doorHead }, openings: front.openings }, frontBands(d.shell.front, d.height));

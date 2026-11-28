@@ -18,6 +18,8 @@ export const ITEM_FOOT: Readonly<Record<string, (p: readonly number[]) => Foot |
   /** A round stool: seat at 0.76 m. */
   stool: () => ({ ha: 0.2, hb: 0.2, h: 0.76 }),
   /** A high-top table, round, top at 1.05 m: p0 its radius. */
+  /** A pool table, 1.2 m across its facing and 2.3 m long, its top at 0.85 m. */
+  pool_table: () => ({ ha: 0.6, hb: 1.15, h: 0.85 }),
   high_table: (p) => ({ ha: p[0] ?? 0.36, hb: p[0] ?? 0.36, h: 1.05 }),
   /** A low round table, top at 0.74 m: p0 its radius. */
   low_table: (p) => ({ ha: p[0] ?? 0.42, hb: p[0] ?? 0.42, h: 0.74 }),

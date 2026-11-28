@@ -38,6 +38,8 @@ export type Ctx = {
   readonly ceiling: number;
   /** Where the panes of this room's glass are laid (`roomGlass.ts`: the marked panes' own layer, read through out of focus), or none where the room has no layer for them and its panes are the opaque sheets of old. */
   readonly glass?: MeshBuilder | null;
+  /** A designed room (`designGeometry.ts`) drawn behind its own front: its wall is drawn at the paint's own tone (the street's rooms keep a third of it back, `0.66`) and in lit cells of 0.75 by 0.5 m, so that no strip of the wall's grid shows in its light. */
+  readonly designed?: boolean;
   readonly s0: number;
   readonly s1: number;
   /** The back wall's `d`. */

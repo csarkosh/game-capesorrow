@@ -198,12 +198,14 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
   const gain = peak > 1e-4 ? mood.exposure / peak : 1;
   const out: [number, number, number] = [0, 0, 0];
   const scratch: [number, number, number] = [0, 0, 0];
-  const dayAt = (s: number, d: number): number => {
+  const dayAt = (s: number, d: number, wide = false): number => {
     let day = 0;
     for (const o of panes) {
       if (o.through <= 0) continue;
       const away = s < o.s0 ? o.s0 - s : s > o.s1 ? s - o.s1 : 0;
-      const lateral = Math.max(0, 1 - away / (1.2 + d * 0.2));
+      // A pane's light spreads wide and soft in a room that gives light back (the whole room is its bounce): a bell several metres across with no edge, not a tent a metre and a bit wide.
+      const spread = 4 + d * 0.4;
+      const lateral = mood.bounce !== undefined && wide ? 1 / (1 + (away * away) / (spread * spread)) : Math.max(0, 1 - away / (1.2 + d * 0.2));
       // The day falls off with depth: half of it by 2.4 m in, a quarter by 5 m.
       day += (o.through * lateral) / (1 + (d * d) / (2.4 * 2.4));
     }
@@ -269,7 +271,7 @@ export function bakeLight(design: Design, panes: readonly DayPane[]): BakedLight
       scratchN[2] = vn * mood.ambient[2];
       return scratch;
     }
-    const day = dayAt(s, d) * mood.day;
+    const day = dayAt(s, d, ny > -0.5 && ny < 0.5) * mood.day;
     const k = occlusion(s, d, y, ny) * contact(s, d, y);
     const wall = ny > -0.5 && ny < 0.5;
     const fd = wall ? wallFill : 0;

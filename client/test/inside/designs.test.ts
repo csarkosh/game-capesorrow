@@ -6,3 +6,4 @@ import "./bar.suite.js";
 import "./hall.suite.js";
 import "./lodging.suite.js";
 import "./spots.suite.js";
+import "./seats.suite.js";

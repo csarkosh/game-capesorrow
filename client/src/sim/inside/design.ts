@@ -31,6 +31,11 @@ const SLICE = 0.25;
 /** How thick the guard along a flight's handrail is. */
 const GUARD = 0.06;
 
+/** How far in front of the centre the seat of each deep seat ends (its front edge, in the item's frame), for the people who sit on it: the sofa's, the armchair's and the bench's seat as their builders draw them. */
+export const SEAT_FRONT: Readonly<Record<string, number>> = { sofa: 0.45, armchair: 0.4, window_bench: 0.25 };
+/** How far behind the front edge of a deep seat a sitter's hips are: the clips put the knees 0.4 m forward of the hips. */
+export const SEAT_BEHIND = 0.1;
+
 /** A place in the room's frame. */
 export type Spot = { readonly s: number; readonly d: number };
 
@@ -414,7 +419,38 @@ export class DesignBuilder {
     return true;
   }
 
+  /**
+   * Sets each person who sits on a deep seat (a sofa, an armchair, a bench) so that the sitting clip has its leg room: the clips are made for a chair, with the hips over the seat at its height and the knees 0.4 m forward
+   * of them and the shins below, so the hips go 0.1 m behind the seat's FRONT edge, facing out of the seat, and the lower legs are in the open air before it (`SEAT_FRONT`). A person on a chair, a stool or in a booth stays where the room put them.
+   */
+  private seatPeople(): void {
+    for (let i = 0; i < this.people.length; i++) {
+      const p = this.people[i] as DesignPerson;
+      if (p.sits === null) continue;
+      let best: { it: Item; f: number; r: number; hb: number; score: number } | null = null;
+      for (const it of this.items) {
+        const front = SEAT_FRONT[it.kind];
+        if (front === undefined || (p.y ?? 0) !== (it.y ?? 0)) continue;
+        const foot = this.footOf(it.kind, it.p);
+        if (foot === null) continue;
+        const dx = p.s - it.s;
+        const dd = p.d - it.d;
+        const f = dx * it.face.s + dd * it.face.d;
+        const r = -dx * it.face.d + dd * it.face.s;
+        if (abs(f) > foot.ha + 0.3 || abs(r) > foot.hb + 0.1) continue;
+        const score = abs(f) + abs(r);
+        if (best === null || score < best.score) best = { it, f, r, hb: foot.hb, score };
+      }
+      if (best === null) continue;
+      const it = best.it;
+      const front = SEAT_FRONT[it.kind] as number;
+      const r = max(-best.hb + 0.3, min(best.hb - 0.3, best.r));
+      this.people[i] = { ...p, s: cm(it.s + it.face.s * (front - SEAT_BEHIND) - it.face.d * r), d: cm(it.d + it.face.d * (front - SEAT_BEHIND) + it.face.s * r), face: it.face };
+    }
+  }
+
   build(o: Omit<Design, "surfaces" | "blocks" | "walls" | "slabs" | "stairs" | "rails" | "items" | "decor" | "lights" | "people" | "windows" | "width" | "depth" | "height">): Design {
+    this.seatPeople();
     return {
       ...o, width: this.width, depth: this.depth, height: this.height,
       surfaces: this.surfaces, blocks: this.blocks, walls: this.walls, slabs: this.slabs, stairs: this.stairs, rails: this.rails, items: this.items, decor: this.decor, lights: this.lights, people: this.people, windows: this.windows,

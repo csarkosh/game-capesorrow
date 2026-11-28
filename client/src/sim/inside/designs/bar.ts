@@ -139,7 +139,8 @@ export function barDesign(site: BarSite): Design {
   const stoolsHigh: Spot[] = [];
   const highTables: number[] = [];
   if (highTops) {
-    for (let k = 0, dh = 2.4; dh <= D - 2.3 && k < 4; k++, dh += 1.75) {
+    // A row along the brick wall the whole length, a table every 1.6 m.
+    for (let k = 0, dh = 2.4; dh <= D - 1.9; k++, dh += 1.6) {
       if (!b.item("high_table", cm(W - 0.62), cm(dh), TOWARD_LEFT, [0.36], { gap: 0.05 })) continue;
       highTables.push(cm(dh));
       for (const dd of [-0.34, 0.34]) {
@@ -153,12 +154,16 @@ export function barDesign(site: BarSite): Design {
   const sR = highTops ? W - 1.6 : W - 0.5;
   const lane = sR - sL;
 
+  // ---- a pool table in the back third where the room is 9 m wide or more, with a way round it.
+  if (W >= 9 && D >= 11) b.item("pool_table", cm(sL + lane * 0.5), cm(D * 0.74), TOWARD_RIGHT, [], { gap: 0.9 });
+
   // ---- lower round tables with chairs toward the back: against the right wall's side of the way, so that the way beside them stays wide; one or two across.
   const tables: Spot[] = [];
   const chairs: { s: number; d: number; face: Spot }[] = [];
   if (lane >= 2.6) {
     const across = lane >= 4.8 ? [sL + lane * 0.3, sR - 0.9] : [sR - 0.9];
-    for (let r = 0, dt = max(D * 0.5, d0 + 1.5); dt <= D - 2.3 && r < 3; r++, dt += 2.8) {
+    // A row down the middle of the floor the whole length, a table every 2.2 m, where the way left beside it is 1.2 m (its own chairs keep clear of the bar's side).
+    for (let r = 0, dt = max(2.7, d0 + 1.2); dt <= D - 2.3 && r < (lane >= 4.8 ? 4 : 7); r++, dt += lane >= 4.8 ? 2.8 : 2.2) {
       for (let k = 0; k < across.length; k++) {
         const s = cm(across[k] as number);
         const d = cm(dt + (roll(30 + r * 3 + k) - 0.5) * 0.3);
@@ -166,6 +171,8 @@ export function barDesign(site: BarSite): Design {
         tables.push({ s, d });
         const sides: Spot[] = [TOWARD_BACK, TOWARD_FRONT];
         if (lane >= 3.8 && k === across.length - 1) sides.push(TOWARD_RIGHT);
+        // A third chair on the side toward the bar where 1.2 m of way is left beyond it.
+        if (s - sL >= 2.1) sides.push(TOWARD_LEFT);
         for (let j = 0; j < sides.length; j++) {
           const f = sides[j] as Spot;
           const out = 0.66 + roll(40 + r * 7 + k * 3 + j) * 0.1;
@@ -289,11 +296,11 @@ export function barDesign(site: BarSite): Design {
     b.decorate({ kind: "bunting", s: bw.s, d: bw.d, y: min(3.5, H - 0.5), face: bw.face, w: cm(D - 2.4), h: 0.3 });
   }
 
-  // ---- the people: a bartender behind the bar, three on the stools, one or two at the tables.
+  // ---- the people: the bar is busy at night, eight to twelve in a room 7 by 14 m: a bartender behind the bar, four or so on its stools, some at the low tables, two or three at the high-tops, one on the banquette.
   if (hasBar) b.person({ s: cm(BACK_D + AISLE / 2), d: cm(d0 + L * 0.45), face: TOWARD_RIGHT, activity: "wipe", role: "staff", sits: null, family: "chair" });
-  const taken = stools.length >= 4 ? 3 : stools.length >= 2 ? 2 : stools.length;
+  const taken = min(4, max(1, round(stools.length * 0.35)));
   const used: number[] = [];
-  for (let k = 0; k < stools.length * 2 && used.length < taken; k++) {
+  for (let k = 0; k < stools.length * 3 && used.length < min(taken, stools.length); k++) {
     const i = floor(roll(50 + k) * stools.length);
     if (!used.includes(i)) used.push(i);
   }
@@ -301,17 +308,24 @@ export function barDesign(site: BarSite): Design {
     const st = stools[i] as Spot;
     b.person({ s: st.s, d: st.d, face: TOWARD_LEFT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
   }
-  if (chairs.length > 0) {
-    const c = chairs[floor(roll(60) * chairs.length)] as (typeof chairs)[number];
-    b.person({ s: c.s, d: c.d, face: c.face, activity: "sit_table", role: "customer", sits: 0.46, family: "chair" });
+  // The low tables: two to a table where it has the chairs, about every other table.
+  let atTables = 0;
+  for (let i = 0; i < chairs.length && atTables < 5; i++) {
+    if (roll(100 + i) >= 0.42) continue;
+    const c = chairs[i] as (typeof chairs)[number];
+    b.person({ s: c.s, d: c.d, face: c.face, activity: i % 2 === 0 ? "sit_table" : "sit_rest", role: "customer", sits: 0.46, family: "chair" });
+    atTables++;
   }
   if (seated.length > 0 && roll(61) < 0.8) {
     const c = seated[floor(roll(62) * seated.length)] as (typeof seated)[number];
     b.person({ s: c.s, d: c.d, face: c.face, activity: "sit_rest", role: "customer", sits: 0.46, family: "chair" });
   }
-  if (stoolsHigh.length > 0 && roll(63) < 0.8) {
-    const st = stoolsHigh[floor(roll(64) * stoolsHigh.length)] as Spot;
+  let atHigh = 0;
+  for (let i = 0; i < stoolsHigh.length && atHigh < 3; i++) {
+    if (roll(120 + i) >= 0.4) continue;
+    const st = stoolsHigh[i] as Spot;
     b.person({ s: st.s, d: st.d, face: TOWARD_RIGHT, activity: "sit_stool", role: "customer", sits: 0.76, family: "stool" });
+    atHigh++;
   }
 
   return b.build({

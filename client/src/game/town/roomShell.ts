@@ -265,9 +265,9 @@ export function frontWall(c: Ctx, r: Pick<RoomIn, "door" | "openings">, bands: r
   // ---- the wall: each band cut into strips at the holes' heights, and each strip into the stretches between the holes that cross it
   const piece = (a0: number, a1: number, y0: number, y1: number, b: Band, k: number): void => {
     if (a1 - a0 < 0.03 || y1 - y0 < 0.02) return;
-    const cstep = b.kind === "base" ? 3 : b.kind === "wain" || b.kind === "stripe" ? 1.6 : full ? 1.25 : 5;
+    const cstep = b.kind === "base" ? 3 : b.kind === "wain" || b.kind === "stripe" ? 1.6 : c.designed === true ? 0.75 : full ? 1.25 : 5;
     const us = lines(a0, a1, cstep, [], 43);
-    const rows = b.kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (full ? 0.95 : 3.6))) : 1;
+    const rows = b.kind === "wall" ? Math.max(1, Math.round((y1 - y0) / (c.designed === true ? 0.5 : full ? 0.95 : 3.6))) : 1;
     const vs: number[] = [];
     for (let q = 0; q <= rows; q++) vs.push(y0 + ((y1 - y0) * q) / rows);
     const origin = P(a0, y0, 0);
@@ -276,7 +276,7 @@ export function frontWall(c: Ctx, r: Pick<RoomIn, "door" | "openings">, bands: r
       const y = vs[j] as number;
       let mod = 1 + noise(i * 3 + k, j, 3) * 0.12;
       if (y < 0.5) mod *= 0.9;
-      return shade(c, scaled(b.f.paint, mod * 0.66), us[i] as number, d0, y, 0);
+      return shade(c, scaled(b.f.paint, mod * (c.designed === true ? 1 : 0.66)), us[i] as number, d0, y, 0);
     }, layerSurface(b.f, origin, along, [0, 1, 0]), { glow: 1 }));
   };
   let k = 6;

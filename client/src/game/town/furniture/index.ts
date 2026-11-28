@@ -9,7 +9,7 @@ import { art } from "./art.js";
 import { certificate, coastMap, coatStand, concreteJoints, deskSet, filingCabinet, pinBoard, glassBall, glazing, lampGrid, mural } from "./hall.js";
 import { brochureRack, coffeeStation, downlight, floorLamp, longTable, luggageCart, planter, sideTable, slatScreen, sprinkler, vent } from "./lobby.js";
 import { cornice, curtainPair, firePlan, kettleTray, lightSwitch, luggageRack, smokeDetector, wasteBin, armchair, barrier, clock, extinguisher, plant, battenCeiling, bed, bedside, carpetInset, closetFront, desk, doorLeaf, dresser, dustSheet, footstool, forestPicture, heater, iceMachine, litLetters, litPane, ovalTable, paintCans, pendantLamp, pouffe, receptionDesk, shellChair, shelfWall, slatWall, sofa, stepLadder } from "./lodging.js";
-import { beam, bunting, ceilingFan, chalkboard, coatHooks, crateStack, dartboard, jukebox, kegStack, mirror, neonSign, newspaperRack, pastryCase, sideboard, tabletop, wallShelf, windowBench } from "./dress.js";
+import { beam, bunting, ceilingFan, chalkboard, coatHooks, crateStack, dartboard, jukebox, kegStack, mirror, neonSign, newspaperRack, pastryCase, poolTable, sideboard, tabletop, wallShelf, windowBench } from "./dress.js";
 import { board, bulbString, guitar, poster, sign, television } from "./hung.js";
 import type { Geo } from "./kit.js";
 import { banquette, chair, highTable, lowTable, squareTable, stool } from "./seating.js";
@@ -76,6 +76,7 @@ export const ITEMS: Readonly<Record<string, (g: Geo, it: Item) => void>> = {
   planter,
   floor_lamp: floorLamp,
   luggage_rack: luggageRack,
+  pool_table: poolTable,
   waste_bin: wasteBin,
   kettle_tray: kettleTray,
   smoke_detector: smokeDetector,
