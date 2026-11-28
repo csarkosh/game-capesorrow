@@ -12,7 +12,7 @@ import { EMPTY_GAME, WALK_MODES, WALK_SIDE } from "../src/game.js";
 import { carSound } from "../src/game/car/carSound.js";
 import { creditsEntries } from "../src/game/credits.js";
 import { WALK } from "../src/net.js";
-import { CAPE_PAGE, createCapePage } from "../src/page.js";
+import { PORTASHTON_PAGE, createPortAshtonPage } from "../src/page.js";
 import type { WalkState, Walker } from "../src/sim.js";
 import { newRide } from "../src/sim/car/rules.js";
 import { INTERACT_BIT, LAMP_BIT } from "../src/sim/car/tuning.js";
@@ -34,6 +34,7 @@ describe("the empty game as the page that runs a session is handed it", () => {
     expect([level.id, level.brushes.length, level.playerSpawns.length]).toEqual(["empty-yard", 1, 1]);
     expect(EMPTY_GAME.modes).toBe(WALK_MODES);
     expect(isMode(WALK_MODES, WALK_MODES.initial)).toBe(true);
+    // "capesorrow" is the game's former name, kept on purpose: players' saved settings are stored in the browser under it.
     expect(WALK_MODES.key.startsWith("capesorrow.")).toBe(true);
     expect(EMPTY_GAME.actions).toEqual({ interact: INTERACT_BIT, lamp: LAMP_BIT });
     expect(EMPTY_GAME.startOf(7)).toEqual(townStart(7));
@@ -78,19 +79,20 @@ describe("the game's half of a session pushes the day's hour", () => {
 
 describe("the empty game as the page's shell is handed it", () => {
   it("holds the game, its own of the page, and the version its two ends must share", () => {
-    expect(CAPE_PAGE.game).toBe(EMPTY_GAME);
-    expect(CAPE_PAGE.side).toBe(createCapePage);
-    expect(CAPE_PAGE.protocol).toBe(WALK.protocolVersion);
+    expect(PORTASHTON_PAGE.game).toBe(EMPTY_GAME);
+    expect(PORTASHTON_PAGE.side).toBe(createPortAshtonPage);
+    expect(PORTASHTON_PAGE.protocol).toBe(WALK.protocolVersion);
     // The name is the shell's to keep; the game says only where, and what a made one starts with.
-    expect({ key: `${CAPE_PAGE.identity.storage}.playerName`, prefix: CAPE_PAGE.identity.player }).toEqual({ key: "capesorrow.playerName", prefix: "Detective" });
+    // (the storage prefix keeps the former name "capesorrow" on purpose: saved settings are stored under it)
+    expect({ key: `${PORTASHTON_PAGE.identity.storage}.playerName`, prefix: PORTASHTON_PAGE.identity.player }).toEqual({ key: "capesorrow.playerName", prefix: "Detective" });
     expect(code("page.ts")).not.toMatch(/sanitiseName|loadName|rename/);
     // The tier check measures the engine's renderer on the yard with nobody in it.
     const forest = createForest(20261121);
-    const empty = CAPE_PAGE.probeState(parseLevel(EMPTY_GAME.level), 20261121, forest);
+    const empty = PORTASHTON_PAGE.probeState(parseLevel(EMPTY_GAME.level), 20261121, forest);
     expect([empty.tick, empty.players.size, empty.rngSeed]).toEqual([0, 0, 20261121]);
     expect(code("page.ts")).not.toMatch(/pageProbe|Promise\.resolve\(null\)/);
     // No scene is staged: a scene's address is answered with nothing to let go.
-    expect(typeof CAPE_PAGE.scene({ canvas: undefined as never, container: undefined as never, tier: "low" }, { t: null, step: null }, "intro").dispose).toBe("function");
+    expect(typeof PORTASHTON_PAGE.scene({ canvas: undefined as never, container: undefined as never, tier: "low" }, { t: null, step: null }, "intro").dispose).toBe("function");
   });
 
   it("plays nothing before a session and carries nothing into it", () => {
@@ -101,23 +103,23 @@ describe("the empty game as the page's shell is handed it", () => {
   });
 
   it("leaves a visitor turned away to the engine's page, under its own name, over no still and with the credits the Credits screen shows", () => {
-    expect(CAPE_PAGE.identity.title).toBe("Cape Sorrow");
-    expect(CAPE_PAGE.away.still()).toBeNull();
-    expect(CAPE_PAGE.away.credits()).toEqual(creditsEntries());
+    expect(PORTASHTON_PAGE.identity.title).toBe("Something Haunts Port Ashton");
+    expect(PORTASHTON_PAGE.away.still()).toBeNull();
+    expect(PORTASHTON_PAGE.away.credits()).toEqual(creditsEntries());
     const page = code("page.ts");
     expect(page).toContain("    turnedAway() {\n      landing = null;\n    },");
     expect(page).not.toMatch(/\bh\.(renderToken|running|game|paused|roster|shownPage|mute|veil|signals)\b/);
     expect(page).not.toContain("replaceChildren");
     expect(page).not.toMatch(/empty-away|cannot draw the world/);
     // The page it is shown reads as that game's, and nothing of another's.
-    const view = turnedAwayModel({ title: CAPE_PAGE.identity.title, reason: "no-webgpu", short: null, desktop: false, device: "mac", host: "other", userAgent: "", renderer: null, latest: null });
-    expect([view.title, view.headline, view.browsers?.intro]).toEqual(["Cape Sorrow", "This browser cannot run Cape Sorrow.", "Cape Sorrow runs in:"]);
+    const view = turnedAwayModel({ title: PORTASHTON_PAGE.identity.title, reason: "no-webgpu", short: null, desktop: false, device: "mac", host: "other", userAgent: "", renderer: null, latest: null });
+    expect([view.title, view.headline, view.browsers?.intro]).toEqual(["Something Haunts Port Ashton", "This browser cannot run Something Haunts Port Ashton.", "Something Haunts Port Ashton runs in:"]);
     expect(JSON.stringify(view)).not.toMatch(/Day Hike|hike/i);
   });
 
   it("is started by an entry that registers the shipped files and the terrain first", () => {
     expect(code("main.ts").trim()).toBe(
-      ['import "./assets.js";', 'import "./terrain.js";', 'import { startShell } from "@csarkosh/engine/shell";', 'import { CAPE_PAGE } from "./page.js";', "", "startShell(CAPE_PAGE);"].join("\n"),
+      ['import "./assets.js";', 'import "./terrain.js";', 'import { startShell } from "@csarkosh/engine/shell";', 'import { PORTASHTON_PAGE } from "./page.js";', "", "startShell(PORTASHTON_PAGE);"].join("\n"),
     );
     // The worker registers the terrain for itself, before it serves the world's work.
     expect(code("world.worker.ts").trim().startsWith('import "./terrain.js";')).toBe(true);

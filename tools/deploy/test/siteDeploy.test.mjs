@@ -7,15 +7,15 @@ const root = (relative) => fileURLToPath(new URL(`../../../${relative}`, import.
 
 describe('the engine site tool', () => {
   it("is called as the engine's interface says, in its order", () => {
-    expect(siteDeployArgs({ project: 'fps-csarko', site: 'fps-csarko', path: '/capesorrow', tag: 'abc1234', channel: null, dryRun: false })).toEqual([
-      '--project', 'fps-csarko', '--site', 'fps-csarko', '--path', '/capesorrow', '--dir', 'client/dist', '--rules', 'tools/deploy/site.rules.json',
-      '--message', 'capesorrow abc1234',
+    expect(siteDeployArgs({ project: 'fps-csarko', site: 'fps-csarko', path: '/portashton', tag: 'abc1234', channel: null, dryRun: false })).toEqual([
+      '--project', 'fps-csarko', '--site', 'fps-csarko', '--path', '/portashton', '--dir', 'client/dist', '--rules', 'tools/deploy/site.rules.json',
+      '--message', 'portashton abc1234',
     ]);
   });
 
   it('adds the channel and the dry run where asked, before the message', () => {
-    const args = siteDeployArgs({ project: 'p', site: 's', path: '/capesorrow', tag: 'abc1234-dirty', channel: 'try-it', dryRun: true });
-    expect(args.slice(-5)).toEqual(['--channel', 'try-it', '--dry-run', '--message', 'capesorrow abc1234-dirty']);
+    const args = siteDeployArgs({ project: 'p', site: 's', path: '/portashton', tag: 'abc1234-dirty', channel: 'try-it', dryRun: true });
+    expect(args.slice(-5)).toEqual(['--channel', 'try-it', '--dry-run', '--message', 'portashton abc1234-dirty']);
   });
 
   it('is at the place in the engine package the interface names, and says which release has it where it is missing', () => {
@@ -46,7 +46,7 @@ describe('deployRefusal', () => {
 });
 
 describe('checkProduction', () => {
-  const good = { gcp_project_id: 'fps-csarko', hosting_site_id: 'fps-csarko', site_url: 'https://games.csarko.sh/capesorrow' };
+  const good = { gcp_project_id: 'fps-csarko', hosting_site_id: 'fps-csarko', site_url: 'https://games.csarko.sh/portashton' };
   it('accepts the file as it is, with or without a signaling address', () => {
     expect(checkProduction(good)).toEqual({ ok: true, production: good });
     expect(checkProduction({ ...good, signaling_url: 'https://signal.example.invalid' }).ok).toBe(true);
@@ -57,7 +57,7 @@ describe('checkProduction', () => {
     expect(checkProduction({ ...good, hosting_site_id: '' })).toEqual({ ok: false, error: 'has no `hosting_site_id`' });
     expect(checkProduction({ ...good, site_url: 'nope' }).ok).toBe(false);
     expect(checkProduction({ ...good, site_url: 'https://games.csarko.sh/' }).ok).toBe(false);
-    expect(checkProduction({ ...good, site_url: 'http://games.csarko.sh/capesorrow' }).ok).toBe(false);
+    expect(checkProduction({ ...good, site_url: 'http://games.csarko.sh/portashton' }).ok).toBe(false);
     expect(checkProduction({ ...good, signaling_url: 'ws://x' }).ok).toBe(false);
   });
 });

@@ -57,7 +57,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 SIZE = 512
-DEFAULT_SOURCES = "/Volumes/CyrusExtSSD/dayhike-lab/capesorrow-textures"
+DEFAULT_SOURCES = "/Volumes/CyrusExtSSD/dayhike-lab/capesorrow-textures"  # keeps the game's former name on purpose: the sources are stored in a folder of that name
 DEFAULT_OUT = os.path.join(ROOT, "client", "assets", "textures")
 MANIFEST = "town.layers.json"
 INTERIOR_MANIFEST = "interior.layers.json"

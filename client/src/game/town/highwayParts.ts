@@ -208,6 +208,6 @@ export function createHighwayStream(host: RenderHost, draw: RailDraw, seed: numb
     },
   };
   // What stands of the highway, for the page's console and a look at the counts in development.
-  (globalThis as { __capeHighway?: HighwayStream }).__capeHighway = api;
+  (globalThis as { __portAshtonHighway?: HighwayStream }).__portAshtonHighway = api;
   return api;
 }

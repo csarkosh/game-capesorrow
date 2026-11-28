@@ -1,4 +1,4 @@
-<h1 align="center">Cape Sorrow</h1>
+<h1 align="center">Something Haunts Port Ashton</h1>
 
 <p align="center"><em>A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that some of them were true.</em></p>
 
@@ -7,7 +7,7 @@ generated coastal Washington. It is part PNW life and detective sim, part supern
 
 **In development.** So far the game is a title page, a generated port town to walk through and one car to drive; there is
 no case to investigate yet. It is played in the browser at
-[games.csarko.sh/capesorrow](https://games.csarko.sh/capesorrow), where the page says as much above Play until there is something to
+[games.csarko.sh/portashton](https://games.csarko.sh/portashton), where the page says as much above Play until there is something to
 play.
 
 ## Running it

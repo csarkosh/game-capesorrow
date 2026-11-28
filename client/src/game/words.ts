@@ -1,10 +1,10 @@
 /**
- * Every word the title page says that is Cape Sorrow's own, in one place, so a line is changed
+ * Every word the title page says that is Port Ashton's own, in one place, so a line is changed
  * here and nowhere else. (The engine's screens, Settings and Credits, say their own.)
  */
 
 /** The game's name, as the page's heading and the browser's tab carry it. */
-export const TITLE = "Cape Sorrow";
+export const TITLE = "Something Haunts Port Ashton";
 
 /** The sentence under the title: its innocent opening, and the turn that ends it (styled to surface from the fog). */
 export const BLURB_LEAD = "A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that ";

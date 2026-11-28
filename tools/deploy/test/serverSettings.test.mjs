@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Cape Sorrow's server is the engine's (`@csarkosh/engine-server`), run from its release. What is
+// Port Ashton's server is the engine's (`@csarkosh/engine-server`), run from its release. What is
 // the game's is its settings file, `server/game.json`, and the image that runs the package; this
 // holds each to its value, and to what the installed package expects of it. No server is deployed yet.
 import { parseGameSettings } from '../../../node_modules/@csarkosh/engine-server/dist/gameSettings.js';
@@ -12,8 +12,9 @@ const SETTINGS_PATH = path('server/game.json');
 const SETTINGS_TEXT = readFileSync(SETTINGS_PATH, 'utf8');
 const DOCKERFILE = readFileSync(path('server/Dockerfile'), 'utf8');
 
-describe("Cape Sorrow's server settings (server/game.json)", () => {
+describe("Port Ashton's server settings (server/game.json)", () => {
   it('holds the app, dataset, bucket and the two origins in order', () => {
+    // The app, dataset and bucket keep the game's former name (capesorrow) on purpose: the data and the GCP resources are stored under it.
     expect(JSON.parse(SETTINGS_TEXT)).toEqual({
       app: 'game-capesorrow',
       telemetryDataset: 'capesorrow_telemetry',

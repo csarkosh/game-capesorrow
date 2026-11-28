@@ -20,7 +20,7 @@ const MODELS = import.meta.glob("../assets/models/*.glb", { query: "?url", impor
 const ASSETS = "../assets/";
 
 /** The game's own shipped files, by the name the engine's lookups ask for ("textures/<file>"), on a null prototype so no inherited name answers. */
-export const CAPE_ASSETS: AssetAddresses = (() => {
+export const PORTASHTON_ASSETS: AssetAddresses = (() => {
   const textures: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const [key, url] of Object.entries(TEXTURES)) {
     if (!key.startsWith(ASSETS)) throw new Error(`import.meta.glob returned an unexpected key "${key}"; expected it to start with "${ASSETS}".`);
@@ -34,4 +34,4 @@ export const CAPE_ASSETS: AssetAddresses = (() => {
   return { models, textures, audio: Object.create(null) as Record<string, string>, catalog: {} };
 })();
 
-registerAssets(mergeAssets(ENGINE_ASSETS, CAPE_ASSETS));
+registerAssets(mergeAssets(ENGINE_ASSETS, PORTASHTON_ASSETS));

@@ -1,7 +1,7 @@
 /**
  * The town's overlay answers at once beyond its reach (`townReachOf`), and every answer is what it was to the bit. Today's hooks are
  * kept whole as the `…Full` functions, which ask every stage at every point: they are the oracle. Each hook the engine is handed
- * (`CAPE_PLACE`) is compared with its oracle, field by field with `Object.is`, along the highway for 3 km beyond the town either way,
+ * (`PORTASHTON_PLACE`) is compared with its oracle, field by field with `Object.is`, along the highway for 3 km beyond the town either way,
  * on a dense grid across each side of the reach, at random points across the coast and at random points inside the town. Then, for
  * points outside the reach, each stage's own "nothing here" is checked directly, so the reach is shown to hold every stage's.
  */
@@ -16,7 +16,7 @@ import { ROAD_KEEP_HALF, ROAD_KEEP_RAMP, clearAt, townClutterStandsFull, townFea
 import { COVER_FADE, COVER_HOLD, coverD } from "../../src/sim/town/cover.js";
 import { QUAY_BANK } from "../../src/sim/town/fill.js";
 import { segDist } from "../../src/sim/town/geom.js";
-import { CAPE_PLACE, shapeDFull } from "../../src/sim/town/place.js";
+import { PORTASHTON_PLACE, shapeDFull } from "../../src/sim/town/place.js";
 import { planFor } from "../../src/sim/town/planFor.js";
 import { railFeatureMask } from "../../src/sim/town/railClearing.js";
 import { RAIL_GROUND, railGroundInto } from "../../src/sim/town/railGround.js";
@@ -130,10 +130,10 @@ function sameTriple(a: { v: number; dx: number; dz: number }, b: { v: number; dx
 /** Every hook the engine is handed against its oracle at each point: the names of those that differ, with the first few points. */
 function compare(seed: number, pts: readonly Pt[]): { bad: string[]; out: number; in: number; said: { keep: number; shape: number; mask: number; stands: number; strip: number } } {
   const { reach, ax } = reachOf(seed);
-  const keep = CAPE_PLACE.cliffKeepD as NonNullable<typeof CAPE_PLACE.cliffKeepD>;
-  const mask = CAPE_PLACE.featureMask as NonNullable<typeof CAPE_PLACE.featureMask>;
-  const stands = CAPE_PLACE.clutterStands as NonNullable<typeof CAPE_PLACE.clutterStands>;
-  const strip = (CAPE_PLACE.shoreStrip as NonNullable<typeof CAPE_PLACE.shoreStrip>).at;
+  const keep = PORTASHTON_PLACE.cliffKeepD as NonNullable<typeof PORTASHTON_PLACE.cliffKeepD>;
+  const mask = PORTASHTON_PLACE.featureMask as NonNullable<typeof PORTASHTON_PLACE.featureMask>;
+  const stands = PORTASHTON_PLACE.clutterStands as NonNullable<typeof PORTASHTON_PLACE.clutterStands>;
+  const strip = (PORTASHTON_PLACE.shoreStrip as NonNullable<typeof PORTASHTON_PLACE.shoreStrip>).at;
   const bad: string[] = [];
   let nOut = 0;
   let nIn = 0;
@@ -154,7 +154,7 @@ function compare(seed: number, pts: readonly Pt[]): { bad: string[]; out: number
     // A base of its own for each call, so that "the same object" is a question of each path alone.
     const baseA = { ...p.base };
     const baseB = { ...p.base };
-    const sa = CAPE_PLACE.shapeD(seed, p.x, p.z, p.u, p.uDz, baseA);
+    const sa = PORTASHTON_PLACE.shapeD(seed, p.x, p.z, p.u, p.uDz, baseA);
     const sb = shapeDFull(seed, p.x, p.z, p.u, p.uDz, baseB);
     if (Object.is(sa, baseA) !== Object.is(sb, baseB) || !Object.is(sa.h, sb.h) || !Object.is(sa.dx, sb.dx) || !Object.is(sa.dz, sb.dz)) miss("shapeD", p);
     if (sb !== baseB) said.shape++;

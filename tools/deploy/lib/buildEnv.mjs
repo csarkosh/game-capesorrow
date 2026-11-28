@@ -2,12 +2,12 @@
 // the site (invites are built on it), the commit it is of and, once the game has a server, the
 // address of its signaling. Pure: `preconditions.mjs` reads the files and git, this decides.
 
-/** Vite's `base` for a site URL: its path with a trailing slash (`https://games.csarko.sh/capesorrow` is `/capesorrow/`). */
+/** Vite's `base` for a site URL: its path with a trailing slash (`https://games.csarko.sh/portashton` is `/portashton/`). */
 export function baseOf(siteUrl) {
   return `${new URL(siteUrl).pathname.replace(/\/+$/, '')}/`;
 }
 
-/** The path the game owns on the shared site, without a trailing slash (`/capesorrow`). */
+/** The path the game owns on the shared site, without a trailing slash (`/portashton`). */
 export function sitePathOf(siteUrl) {
   return new URL(siteUrl).pathname.replace(/\/+$/, '');
 }
@@ -40,7 +40,7 @@ export function signalingWsUrl(signalingUrl) {
 export function productionEnv(production, tag) {
   /** @type {Record<string, string>} */
   const env = {
-    CAPESORROW_BASE: baseOf(production.site_url),
+    PORTASHTON_BASE: baseOf(production.site_url),
     VITE_WEB_BASE: production.site_url,
     VITE_BUILD_SHA: tag,
   };

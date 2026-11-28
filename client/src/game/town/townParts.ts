@@ -1,5 +1,5 @@
 /**
- * Cape Sorrow's side of a renderer (`renderGame.ts`): the engine's own with no parts of a game's (`noParts`: its look, its
+ * Port Ashton's side of a renderer (`renderGame.ts`): the engine's own with no parts of a game's (`noParts`: its look, its
  * api, every point at rest) and, joined to the scene once it is registered, the town.
  *
  * - **The geometry is the pure builders'** (`townGeometry.ts`): batches of arrays by cell of 128 m, one for what lies
@@ -103,7 +103,7 @@ export const LETTERING_OVER_GLASS = SEE_THROUGH_ORDER.glass + 1;
 const NO_CARS: readonly Car[] = [];
 const NO_POSES: readonly CarPose[] = [];
 
-/** What a measuring tool may read of the town's people (`globalThis.__capePeople`, while the town's part lives). */
+/** What a measuring tool may read of the town's people (`globalThis.__portAshtonPeople`, while the town's part lives). */
 export type PeopleDebug = {
   /** Everyone drawn at the last frame, where their schedule has them. */
   seen(): Seen[];
@@ -194,7 +194,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let vehicles: VehicleParts | null = null;
   // The car the players drive (`../car/carParts.ts`): made with the town, loaded once it stands, posed from the state's cars each frame.
   let car: CarParts | null = null;
-  // The state the last frame was handed, for the console's reading of the car (`__capeCar`).
+  // The state the last frame was handed, for the console's reading of the car (`__portAshtonCar`).
   const held: NonNullable<ReturnType<CarDebugSource["state"]>> = { cars: NO_CARS, localId: 0, players: new Map() };
   let holding = false;
   // The chase camera (`../car/chaseCamera.ts`): its state, the eye it eases from, the shot it answers, and what the console reads. The chase is new
@@ -212,7 +212,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
   let cineOn = false;
   const cinePose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
   let chasing = false;
-  // The one lamp as the last frame wrote it, for the console's reading (`__capeCar.lamp()`).
+  // The one lamp as the last frame wrote it, for the console's reading (`__portAshtonCar.lamp()`).
   const lampSeen: LampSeen = { on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, angle: 0, range: 0, intensity: 0, r: 0, g: 0, b: 0 };
   let lampWritten = false;
   // How far into the seat the camera is shown: the ride's own value followed at a bounded rate, so a refused leave eases back out.
@@ -488,9 +488,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
 
       car = createCarParts({ engine, scene, tier: host.tier, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       damage = createDamageParts({ engine, scene, air, ahead });
-      (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
+      (globalThis as { __portAshtonCar?: CarDebug }).__portAshtonCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
       // What a measuring tool may read of the people: who is drawn (where their schedule has them), what is being said, and how far a person is moved off their schedule. Copies.
-      (globalThis as { __capePeople?: PeopleDebug }).__capePeople = {
+      (globalThis as { __portAshtonPeople?: PeopleDebug }).__portAshtonPeople = {
         seen: () => seen.map((p) => ({ ...p })),
         said: () => react.said.map((q) => ({ ...q })),
         moved(key) {
@@ -842,8 +842,8 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       drawnGround = null;
       held.cars = NO_CARS;
       held.players = new Map();
-      delete (globalThis as { __capeCar?: CarDebug }).__capeCar;
-      delete (globalThis as { __capePeople?: PeopleDebug }).__capePeople;
+      delete (globalThis as { __portAshtonCar?: CarDebug }).__portAshtonCar;
+      delete (globalThis as { __portAshtonPeople?: PeopleDebug }).__portAshtonPeople;
       people?.dispose();
       people = null;
       inside?.dispose();

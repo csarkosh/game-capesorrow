@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { creditsModel } from "@csarkosh/engine/game/credits";
 import { LAYER_NAMES, LAYER_SIZE, PAINT_GAIN, TOWN_LAYERS, WEAR_OVERLAY } from "../../src/game/town/townLayers.js";
-import { CAPE_ASSETS } from "../../src/assets.js";
+import { PORTASHTON_ASSETS } from "../../src/assets.js";
 
 const TEXTURES = fileURLToPath(new URL("../../assets/textures/", import.meta.url));
 const OWN_CREDITS = creditsModel(readFileSync(fileURLToPath(new URL("../../../CREDITS.md", import.meta.url)), "utf8"));
@@ -70,11 +70,11 @@ describe("the town's texture manifest", () => {
 
   it("is registered with the engine by the names the layers' files give", () => {
     for (const l of TOWN_LAYERS) {
-      expect(Object.hasOwn(CAPE_ASSETS.textures, `textures/${l.color}`), l.color).toBe(true);
-      expect(Object.hasOwn(CAPE_ASSETS.textures, `textures/${l.data}`), l.data).toBe(true);
+      expect(Object.hasOwn(PORTASHTON_ASSETS.textures, `textures/${l.color}`), l.color).toBe(true);
+      expect(Object.hasOwn(PORTASHTON_ASSETS.textures, `textures/${l.data}`), l.data).toBe(true);
     }
     // The town's 44 files and the rooms' 24 (`interiorLayers.test.ts` holds those to their own manifest).
-    expect(Object.keys(CAPE_ASSETS.textures).length).toBe(TOWN_LAYERS.length * 2 + 24);
+    expect(Object.keys(PORTASHTON_ASSETS.textures).length).toBe(TOWN_LAYERS.length * 2 + 24);
   });
 
   it("is credited: a section in CREDITS.md for each scanned layer, under the layer's credit id, and none for the generated one", () => {

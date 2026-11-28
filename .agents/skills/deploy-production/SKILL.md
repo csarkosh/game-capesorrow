@@ -1,15 +1,15 @@
 ---
 name: deploy-production
-description: Use when shipping game-capesorrow to production — "deploy", "deploy to prod", "push it live", "ship this to production", "release", or verifying that what is live matches main. Covers the client on the shared Firebase Hosting site; there is no server to deploy yet.
+description: Use when shipping game-portashton to production — "deploy", "deploy to prod", "push it live", "ship this to production", "release", or verifying that what is live matches main. Covers the client on the shared Firebase Hosting site; there is no server to deploy yet.
 ---
 
 # Deploying to production
 
-The game is live at **https://games.csarko.sh/capesorrow**. One thing ships there, and one does not:
+The game is live at **https://games.csarko.sh/portashton**. One thing ships there, and one does not:
 
 | Piece | Where | What ships it |
 | --- | --- | --- |
-| Client (`client/dist`) | Firebase Hosting site `fps-csarko`, at the path `/capesorrow/`: a free CDN, on the site Day Hike shares | `npm run deploy:client` |
+| Client (`client/dist`) | Firebase Hosting site `fps-csarko`, at the path `/portashton/`: a free CDN, on the site Day Hike shares | `npm run deploy:client` |
 | Server (`server/`: the engine's server, `@csarkosh/engine-server`, from the release `server/package.json` names) | **Not deployed.** There is no Cloud Run service, no infrastructure of this game's own, and no `_infra/` | nothing yet |
 
 Until there is a server, the client is built with no signaling address and is played alone: the public page shows
@@ -23,13 +23,13 @@ mistake and production.**
 
 `games.csarko.sh` is one Firebase Hosting site that holds more than one game. Day Hike's repository owns the site, the
 domain and its root (its `_infra/`, and the 301 from `games.csarko.sh/` to `csarko.sh/games`); this repository owns only
-`/capesorrow/` and its rules, `tools/deploy/site.rules.json`.
+`/portashton/` and its rules, `tools/deploy/site.rules.json`.
 
 A Firebase Hosting release is the whole site at once, so a naive deploy of one game would replace the other's. The
 deploy therefore never runs `firebase deploy` itself. It runs the engine's shared-site tool,
 `node_modules/@csarkosh/engine/tools/site/deploy.mjs` (engine release v0.2.3 or later; the deploy says so and stops, before
 building, where the installed engine does not have it). The tool reads the live site, merges this game's files and rules
-under `/capesorrow/` into it, skips source maps and dotfiles, and **refuses to release if any other game's file would
+under `/portashton/` into it, skips source maps and dotfiles, and **refuses to release if any other game's file would
 change**. That refusal is the guard: if it fires, stop and say so; never work around it.
 
 Never use the Firebase console or the `firebase` CLI to change the site by hand for this game.
@@ -47,29 +47,29 @@ npm run deploy:verify                 # 4. prove it from outside
 Every step earns its place:
 
 **1. Commit first.** The build is tagged with the current commit (`VITE_BUILD_SHA`, which the engine's telemetry rows
-and the bundle carry), and the release message is `capesorrow <tag>`, so a release traces back to a source state. A dirty
+and the bundle carry), and the release message is `portashton <tag>`, so a release traces back to a source state. A dirty
 tree tags `<sha>-dirty`, which is how an untested local change announces itself; the deploy refuses one unless it is going
 to a preview channel (`--channel <name>`) or is a dry run. Never deploy a dirty tree to production: commit.
 
 **2. The dry run is free.** It builds and runs the tool with its `--dry-run`, which releases nothing, so what the merge
-would change under `/capesorrow/` is read before anything is live. Read it: a change to another game's path is a mistake,
+would change under `/portashton/` is read before anything is live. Read it: a change to another game's path is a mistake,
 whatever the tool decides.
 
 **3. A preview channel** (`npm run deploy:client -- --channel <name>`) releases the build to a Firebase Hosting preview
-channel instead of the live site. Check it with `npm run deploy:verify -- --base <the channel's URL for /capesorrow>`.
+channel instead of the live site. Check it with `npm run deploy:verify -- --base <the channel's URL for /portashton>`.
 
 **4. Verify is not optional.** A client change can break production without any test failing: nothing in the suite loads
 a real bundle from a real host. `deploy:verify` prints a line a check and exits non-zero on any ✗: the page answers 200 as
-HTML with the title `Cape Sorrow`; every file it names under `/capesorrow/` answers 200 with a fitting content type (the
+HTML with the title `Something Haunts Port Ashton`; every file it names under `/portashton/` answers 200 with a fitting content type (the
 entry script is JavaScript, not the page again); a hashed file under `assets/` is immutable and the page itself `no-cache`;
-`/capesorrow/settings` answers the same page; the bundle names the build; and **Day Hike is untouched** (`/dayhike/`
+`/portashton/settings` answers the same page; the bundle names the build; and **Day Hike is untouched** (`/dayhike/`
 answers 200 as `Day Hike`, and the site's root still 301s to `https://csarko.sh/games`). `-- --sha <tag>` demands the
 exact build.
 
 ## What the scripts need
 
 Three values describing production, from `tools/deploy/production.json` (committed, all public): the project
-(`fps-csarko`), the hosting site (`fps-csarko`) and the site URL (`https://games.csarko.sh/capesorrow`). There is no
+(`fps-csarko`), the hosting site (`fps-csarko`) and the site URL (`https://games.csarko.sh/portashton`). There is no
 Terraform here to ask. You still need, locally:
 
 - **`gcloud` authenticated**, with the active project set to `fps-csarko`. The script refuses to run when the active
