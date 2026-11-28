@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@csarkosh/engine": "https://github.com/csarkosh/engine/releases/download/v0.2.40/csarkosh-engine-0.2.40.tgz"
+    "@csarkosh/engine": "https://github.com/csarkosh/engine/releases/download/v0.2.42/csarkosh-engine-0.2.42.tgz"
   },
   "devDependencies": {
     "@types/node": "26.1.1",
