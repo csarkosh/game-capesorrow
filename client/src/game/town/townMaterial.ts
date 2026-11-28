@@ -264,14 +264,25 @@ const WIRE_CODE = `if(tsLayer<0&&tsWearV.z<-0.5){let wr=-tsWearV.z*0.001;let wd=
  */
 export const SHUT_LIGHT: readonly [number, number, number] = [0.42, 0.45, 0.52];
 
+/** The film's window light as WGSL (`shaders/townWindowLight.wgsl`, comments stripped, its glow limit filled in), spliced into the night branch of `hoursCodeFor`; off (and not run) while `townWindowLight.w` is 0, which is play. */
 export const WINDOW_LIGHT_CODE = windowLightSource.replace(/\/\*[\s\S]*?\*\//g, "").replace("__WINDOW_GLOW_MAX__", f(WINDOW_GLOW_MAX)).replace(/\s*\n\s*/g, "").trim();
 
 /** What a film asks of the lit windows: their light's colour (linear rgb) and its gain; none in play (`townWindowLight` stays `(0,0,0,0)`, and the branch is off). */
-export type WindowLight = { colour: readonly [number, number, number]; gain: number };
+export type WindowLight = {
+  colour: readonly [number, number, number];
+  gain: number;
+  /** What every night glow that is not a lit window (a lens, a porch light, a harbour lamp, a boat's cabin, the light a lamp throws) is multiplied by; 1 when absent. */
+  others?: number;
+};
 
 /** The uniform's four floats for a window light: its colour and gain, or all 0 for none. */
 export function windowLightUniform(w: WindowLight | undefined): [number, number, number, number] {
   return w === undefined ? [0, 0, 0, 0] : [w.colour[0], w.colour[1], w.colour[2], w.gain];
+}
+
+/** The uniform's four floats for the other night lights' gain: 1 (every glow as it is) when a film asks for nothing. */
+export function otherLightUniform(w: WindowLight | undefined): [number, number, number, number] {
+  return [w?.others ?? 1, 0, 0, 0];
 }
 
 /**
@@ -520,10 +531,10 @@ export type TownTextureSet = { readonly color: Texture2DArray; readonly data: Te
  * many of the lamp list's entries are used (0: none, which is the day); and the list itself, `lampP<i>` (a lamp's x, y, z and range) and `lampC<i>` (its colour and
  * strength), one vec4 each, since a uniform array is not a type the material's buffer takes. `markMaterialUboDirty` after changing any.
  */
-export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townWindowLight: number[]; townLamps: number[]; townDoors: number[]; townKnocked: number[] } & Record<string, number[]>;
+export type TownReady = { townReady: number[]; townHour: number[]; townGlow: number[]; townDay: number[]; townWindowLight: number[]; townOtherLight: number[]; townLamps: number[]; townDoors: number[]; townKnocked: number[] } & Record<string, number[]>;
 
 export function emptyTownReady(): TownReady {
-  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townWindowLight: [0, 0, 0, 0], townLamps: [0], townDoors: [0], townKnocked: [0] };
+  const r: TownReady = { townReady: [0], townHour: [12], townGlow: [1], townDay: [1], townWindowLight: [0, 0, 0, 0], townOtherLight: [1, 0, 0, 0], townLamps: [0], townDoors: [0], townKnocked: [0] };
   for (let i = 0; i < MAX_DOORS; i++) {
     r[`doorA${i}`] = [0, 0, 1, 0];
     r[`doorB${i}`] = [0, 1, 1, 0];
@@ -541,15 +552,15 @@ export function emptyTownReady(): TownReady {
   return r;
 }
 
-/** Copies a lamp list into the uniforms. */
-export function writeLamps(ready: TownReady, list: LampList): void {
+/** Copies a lamp list into the uniforms, each lamp's strength times `gain` (the film's gain for the light a lamp throws; 1 in play). */
+export function writeLamps(ready: TownReady, list: LampList, gain = 1): void {
   ready.townLamps[0] = list.count;
   for (let i = 0; i < list.count; i++) {
     const p = ready[`lampP${i}`] as number[];
     const c = ready[`lampC${i}`] as number[];
     for (let k = 0; k < 4; k++) {
       p[k] = list.pos[i * 4 + k] as number;
-      c[k] = list.col[i * 4 + k] as number;
+      c[k] = (list.col[i * 4 + k] as number) * (k === 3 ? gain : 1);
     }
   }
 }

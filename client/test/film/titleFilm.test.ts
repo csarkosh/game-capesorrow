@@ -68,7 +68,7 @@ describe("the film's hour", () => {
     const state = { tick: 0, players: new Map([[1, { inside: undefined }]]) };
     for (let t = 0; t < ticks; t++) {
       state.tick = t;
-      side.beforeSync(undefined as never, state as never, 1);
+      side.beforeSync(undefined as never, state as never, 1, 1 / 60);
     }
     return pushed;
   }

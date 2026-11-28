@@ -47,7 +47,7 @@ export const TITLE_GAME: typeof EMPTY_GAME = {
   ...EMPTY_GAME,
   look: TITLE_LOOK,
   side: (host) => createCapeSide(host, walkSide(host, true)),
-  renderer: walkRenderer(townPartsWith({ windowLight: TITLE_WINDOWS })),
+  renderer: walkRenderer(townPartsWith({ windowLight: TITLE_WINDOWS, look: TITLE_LOOK })),
 };
 
 /** Starts the film on the page's canvas; the engine sets `window.engineFilm`. */

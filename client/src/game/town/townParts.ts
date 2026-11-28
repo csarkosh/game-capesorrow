@@ -65,7 +65,7 @@ import { heldBy, tradeAt } from "./handHeld.js";
 import { alongAt, walkCapacity, walkerJob, walkerWorld, type Walker } from "./walkers.js";
 import { doorsFor, hiddenByDoor, movingDoors, type DoorBook } from "./openDoors.js";
 import { standInGeometry } from "./props/vehicleStandIn.js";
-import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, windowLightUniform, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady, type WindowLight } from "./townMaterial.js";
+import { INTERIOR_SET, MAX_DOORS, RANK_UNITS, emptyTownReady, knockMatrix, otherLightUniform, windowLightUniform, townSurfacePlugin, writeDoors, writeKnocked, writeLamps, type KnockMove, type TownReady, type WindowLight } from "./townMaterial.js";
 import { fallenBy, knockMoves, newKnocked, stepKnocked } from "./knocked.js";
 import { MARKS_MOST, markMatrices, newStruck, rockOf, shoveMove, stepStruck, struckMoves, struckSolids } from "./struck.js";
 import { createDamageParts, type DamageParts } from "./damageParts.js";
@@ -74,7 +74,8 @@ import type { Vehicle } from "../../sim/town/types.js";
 import { knockablesFor } from "../../sim/town/knockables.js";
 import { MAX_LAMPS, emptyLampList, fillLamps, type Lamp } from "./lampLight.js";
 import { lampSites } from "./props/lamps.js";
-import { daylightAt, litGainAt } from "../../look.js";
+import type { GameLook } from "@csarkosh/engine/game/gameLook";
+import { PORTASHTON_LOOK, daylightAt, litGainAt } from "../../look.js";
 import { createTownTextures, type TownTextures } from "./townTextures.js";
 import { createPackedMesh, packedBytes } from "./vertexPack.js";
 
@@ -169,8 +170,11 @@ function inView(planes: readonly ViewFrustumPlane[], m: Made): boolean {
   return true;
 }
 
-/** The town's parts, with what a film may ask of them; `townParts` (play) asks nothing. */
-export const townPartsWith = (opts: { windowLight?: WindowLight }): RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPartsApi> => (host: RenderHost) => {
+/** The town's parts, with what a film may ask of them: its windows' light, and the look its glows' gain reads (play's by default); `townParts` (play) asks nothing. */
+export const townPartsWith = (opts: { windowLight?: WindowLight; look?: Partial<GameLook> }): RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPartsApi> => (host: RenderHost) => {
+  const look = opts.look ?? PORTASHTON_LOOK;
+  // What the lamps' thrown light and the people's lamps are scaled by, with the film's dimming of the other night lights (1 in play).
+  const otherGain = opts.windowLight?.others ?? 1;
   const base = noParts(host);
   const made: Made[] = [];
   // The meshes whose arrays the GPU has not yet all taken (`leanMesh.ts`).
@@ -355,7 +359,7 @@ export const townPartsWith = (opts: { windowLight?: WindowLight }): RenderGame<R
           shownHour = hour;
           if (ready !== null) {
             ready.townHour[0] = hour;
-            ready.townGlow[0] = litGainAt(hour);
+            ready.townGlow[0] = litGainAt(hour, look);
             ready.townDay[0] = daylightAt(hour);
             for (const m of textured) markMaterialUboDirty(m);
           }
@@ -370,8 +374,8 @@ export const townPartsWith = (opts: { windowLight?: WindowLight }): RenderGame<R
             fillLamps(lamps, x, y, z, hour, lampList, lampMax);
             if (lampList.count > 0 || lampsLit) {
               lampsLit = lampList.count > 0;
-              writeLamps(ready, lampList);
-              people?.setLamps(lampList, litGainAt(hour));
+              writeLamps(ready, lampList, otherGain);
+              people?.setLamps(lampList, litGainAt(hour, look) * otherGain);
               for (const m of textured) markMaterialUboDirty(m);
             }
           }
@@ -402,8 +406,9 @@ export const townPartsWith = (opts: { windowLight?: WindowLight }): RenderGame<R
       const low = host.tier === "low";
       ready = emptyTownReady();
       ready.townWindowLight = windowLightUniform(opts.windowLight);
+      ready.townOtherLight = otherLightUniform(opts.windowLight);
       ready.townHour[0] = shownHour;
-      ready.townGlow[0] = litGainAt(shownHour);
+      ready.townGlow[0] = litGainAt(shownHour, look);
       ready.townDay[0] = daylightAt(shownHour);
       const readied = ready;
       try {

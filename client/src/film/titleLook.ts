@@ -10,11 +10,14 @@ import { sunPositionAt } from "@csarkosh/engine/game/sky";
 import type { WindowLight } from "../game/town/townMaterial.js";
 import { PORTASHTON_LOOK } from "../look.js";
 
-/** About 0.15 h after the sun's own set: the hour where the sun's height crosses 0 (evening), plus 0.15. */
+/** The sun's height the film is held at: a little under the horizon (the spec asks -0.05 to -0.1), the sky's teal dusk. */
+const SUN_HEIGHT = -0.07;
+
+/** The first evening hour (found a minute at a time from noon, as the sun's own set is) where the sun's height has fallen to `SUN_HEIGHT`. */
 function hourAfterSunset(): number {
   let h = 12;
-  while (h < 24 && sunPositionAt(h).y > 0) h += 1 / 60;
-  return h + 0.15;
+  while (h < 24 && sunPositionAt(h).y > SUN_HEIGHT) h += 1 / 60;
+  return h;
 }
 
 const WEATHER: WeatherParams = { cloudCover: 0.85, mist: 0.35, rain: 0, wetness: 0.8, dread: 0 };
@@ -29,8 +32,14 @@ const PALETTE: PaintPalette = {
   lift: { r: 0.003, g: 0.004, b: 0.005 },
 };
 
-/** The halo's strength is an absolute grade gain (the engine's own halation is 0.04). */
-const GLOW: LookGlow = { threshold: 0.8, strength: 0.12, radius: 2, mist: 1 };
+/**
+ * The halo's strength is an absolute grade gain (the engine's own halation is 0.04). The threshold is the exposed linear luminance a
+ * pixel must pass to glow. Saturated red has a luminance of only about 0.23 to 0.26 (the green and blue weights are what carry
+ * luminance), so a red window's 0.43 to 0.92 (its glow 0.35 to 0.75, times the window gain 3, the town's 1.06 and the exposure 1.5)
+ * barely crossed 0.8; at 0.35 most of them cross it. The other night lights are dimmed (`TITLE_WINDOWS.others`) so that they do not.
+ * Starting values, tuned by eye.
+ */
+const GLOW: LookGlow = { threshold: 0.35, strength: 0.12, radius: 2, mist: 1 };
 
 export const TITLE_LOOK: GameLook = gameLook({
   ...PORTASHTON_LOOK,
@@ -41,5 +50,5 @@ export const TITLE_LOOK: GameLook = gameLook({
   glow: GLOW,
 });
 
-/** The windows' light in the film: red, the one warm colour. */
-export const TITLE_WINDOWS: WindowLight = { colour: [1, 0.06, 0.04], gain: 3 };
+/** The windows' light in the film: red, the one warm colour. Every other night light (a lamp's lens and its thrown light, a porch, a harbour lamp, a boat's cabin) is at a quarter, so the red windows are the glow that shows. */
+export const TITLE_WINDOWS: WindowLight = { colour: [1, 0.06, 0.04], gain: 3, others: 0.25 };
