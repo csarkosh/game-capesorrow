@@ -123,7 +123,7 @@ describe("the HUD's lamp hint, as Day Hike's is", () => {
 describe("the HUD's map button", () => {
   const frame = (over: Partial<MapFrame> = {}): MapFrame => ({ seed: 1, x: 0, z: 0, heading: 0, driving: false, place: 0, hour: 12, engaged: true, touch: false, rtt: null, ...over });
 
-  it("stands under the lamp's hint with the same gap as the Pause button is under the mute, with a map icon and an M key cap", () => {
+  it("stands under the lamp's hint with the same gap as the Pause button is under the mute, with a map icon and a G key cap", () => {
     const { container, hud } = made({ onPause: () => undefined });
     const css = (container.children[0] as StandInElement).textContent;
     // The button at 14 px from the bottom, 36 px tall; the lamp's hint 10 px above it.
@@ -131,7 +131,8 @@ describe("the HUD's map button", () => {
     expect(14 + 36 + 10).toBe(60);
     const btn = container.querySelector("button.mapbtn") as StandInElement;
     expect(btn.getAttribute("aria-label")).toBe(MAP_BUTTON_LABEL);
-    expect(btn.querySelector("span.key")?.textContent).toBe("M");
+    expect(btn.querySelector("span.key")?.textContent).toBe("G");
+    expect(btn.getAttribute("aria-keyshortcuts")).toBe("G");
     expect(btn.querySelector("svg")?.querySelectorAll("path")).toHaveLength(3);
     // The lamp's hint comes before it, so that it is above it in the column.
     const root = container.children[1] as StandInElement;

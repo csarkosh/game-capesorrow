@@ -149,9 +149,10 @@ function makeControls(hooks: { onPause(): void }): { lamp: HTMLElement; lampKey:
   mapBtn.type = "button";
   mapBtn.className = "mapbtn";
   mapBtn.setAttribute("aria-label", MAP_BUTTON_LABEL);
+  mapBtn.setAttribute("aria-keyshortcuts", "G");
   const mapKey = document.createElement("span");
   mapKey.className = "key";
-  mapKey.textContent = "M";
+  mapKey.textContent = "G";
   mapBtn.append(mapIcon(), mapKey);
   mapBtn.addEventListener("click", () => toggleWatch());
   return { lamp, lampKey, pause, pauseKey, mapBtn };
