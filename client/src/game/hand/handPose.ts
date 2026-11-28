@@ -29,20 +29,20 @@ export const LOWER_SECONDS = 0.2;
 export const FOV = 1.4;
 export const ASPECT_MIN = 1, ASPECT_MAX = 2.2;
 /** How far ahead of the eye the lens is at the hold (metres), and where it stands on the screen there, as shares of the view's width (from the left) and height (from the top). */
-export const HOLD_DEPTH = 0.55;
+export const HOLD_DEPTH = 0.73;
 /**
  * The torch and the hand are drawn this many times life size, about the lens: larger than life on purpose, as a first person view model is, so that the arm fills the
  * corner of the view as a held thing does to the one who holds it, and reads at a glance. It is the mesh's own scale: the beam, the lens's place and the hold are not scaled.
  */
-export const HAND_SCALE = 1.48;
+export const HAND_SCALE = 1.45;
 /**
- * The scale for a view of this aspect: `HAND_SCALE` at 16:10 and wider, and in proportion to the width below it, so that on a narrow window (the arm's size in metres being fixed, its share of the
- * width grows as the width shrinks) the torch does not come to cover the middle of the view: it is the same share of the width at any shape.
+ * The scale for a view of this aspect: `HAND_SCALE` at any shape, so that the forearm is as thick on the screen (a share of the view's height) as the left arm's, which is also drawn at one
+ * scale (`watchPose.ts`), on a narrow window as on a wide one. (The torch points into the scene and is foreshortened, so it does not come to cover the middle of the view.)
  */
-export function handScaleFor(aspect: number): number {
-  return HAND_SCALE * Math.min(1, Math.max(ASPECT_MIN, aspect) / 1.6);
+export function handScaleFor(): number {
+  return HAND_SCALE;
 }
-export const HOLD_SCREEN = { x: 0.58, y: 0.48 } as const;
+export const HOLD_SCREEN = { x: 0.6, y: 0.6 } as const;
 /**
  * How the torch is tilted at the hold, radians: turned toward the left of the view and pitched down, as a person holds a torch up before them and points it at the
  * ground ahead. The tilt shows the barrel along its side (pointed straight ahead it is seen end on) and sends the beam's middle to the ground about 7 m ahead, so
@@ -50,13 +50,19 @@ export const HOLD_SCREEN = { x: 0.58, y: 0.48 } as const;
  */
 export const AIM_DISTANCE = 8;
 /**
+ * How far below the view's middle the beam is aimed at `AIM_DISTANCE`, metres. Aimed dead level a torch lights nothing near: held at eye height its middle never
+ * meets the ground, and the street ahead stayed dark. Dropped by this much its middle meets level ground about `AIM_DISTANCE` ahead of a standing player (the eye
+ * is about 1.6 m up), so the pool runs from a few metres out, while a face in the middle of the view two metres off is still well inside the cone. Set by eye.
+ */
+export const AIM_DROP = 1.5;
+/**
  * How the torch is DRAWN at the hold, radians, which is not the beam's axis: turned toward the middle of the view and a little up. A torch below and to the right
  * of the eye that points exactly where the beam goes is seen from behind, its tail cap hiding the rest; drawn turned in like this its barrel is seen along its
  * side, the head the farthest and widest part, as a held torch looks to the one who holds it. The beam keeps `aimAngles` (through the middle of the view `AIM_DISTANCE` ahead) from the lens. Set by eye.
  */
-export const DRAWN_YAW = -0.87, DRAWN_PITCH = -1.07;
+export const DRAWN_YAW = -0.53, DRAWN_PITCH = -0.31;
 /** The turn of the torch about its own axis at the hold, radians: the hand holds it from the right and below, the forearm rising from the bottom edge of the view. */
-export const HOLD_ROLL = 3.46;
+export const HOLD_ROLL = 1.44;
 /** The lens's place at the hold for a view of this aspect (width over height), in the camera's frame: so that the torch's head stands at `HOLD_SCREEN` whatever the window's shape. */
 export function holdFor(aspect: number): { x: number; y: number; z: number } {
   const a = Math.min(ASPECT_MAX, Math.max(ASPECT_MIN, aspect));
@@ -166,11 +172,12 @@ export function handHidden(ridePhase: number, insidePhase: number, roomUndrawn: 
 
 /**
  * The beam's axis at the hold for a view of this aspect, as a yaw and a pitch (radians, as the camera's: pitch down is positive): from the lens, which is below and to the right of the
- * eye, through the middle of the view `AIM_DISTANCE` metres ahead, so that the light goes where the player looks.
+ * eye, through the point `AIM_DROP` below the middle of the view `AIM_DISTANCE` metres ahead, so that the light goes where the player looks and falls on the
+ * ground ahead of them.
  */
 export function aimAngles(aspect: number): { yaw: number; pitch: number } {
   const h = holdFor(aspect);
-  const dx = -h.x, dy = -h.y, dz = AIM_DISTANCE - h.z;
+  const dx = -h.x, dy = -AIM_DROP - h.y, dz = AIM_DISTANCE - h.z;
   return { yaw: Math.atan2(dx, dz), pitch: Math.asin(-dy / Math.hypot(dx, dy, dz)) };
 }
 

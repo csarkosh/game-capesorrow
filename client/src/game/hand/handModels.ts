@@ -37,8 +37,8 @@ export type HandFileFacts = {
   readonly axis?: readonly number[];
   readonly torch_length?: number;
   readonly torch_radius?: number;
-  readonly watch?: { readonly screen_diameter: number; readonly screen_plate_diameter: number; readonly screen_corners: readonly (readonly number[])[]; readonly case_diameter: number; readonly watch_big: number };
-  readonly forearm_cut: { readonly centre: readonly number[]; readonly direction: readonly number[]; readonly runs_on: number };
+  readonly watch?: { readonly screen_diameter: number; readonly screen_plate_diameter: number; readonly screen_corners: readonly (readonly number[])[]; readonly case_diameter: number; readonly watch_big: number; readonly wrist_width: number };
+  readonly forearm_cut: { readonly centre: readonly number[]; readonly direction: readonly number[]; readonly runs_on: number; readonly wrist: readonly number[]; readonly toward_elbow: readonly number[] };
 };
 export type HandsManifest = { readonly total_bytes: number; readonly total_gpu_bytes_shared: number; readonly files: Readonly<Record<string, HandFileFacts>> };
 

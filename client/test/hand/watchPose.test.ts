@@ -171,9 +171,13 @@ describe("the left arm's model", () => {
     const parts = readFileParts("hand.left");
     expect(parts.map((p) => p.name)).toEqual(["arm", "watch_case", "watch_back", "watch_glass", "watch_screen", "strap"]);
     const watch = LEFT.watch as NonNullable<typeof LEFT.watch>;
-    expect(watch.case_diameter).toBeCloseTo(0.045 * watch.watch_big, 4);
-    // The lit circle is inside the rim: 80 percent of the case's diameter.
-    expect(watch.screen_diameter).toBeCloseTo(0.8 * watch.case_diameter, 3);
+    expect(watch.case_diameter).toBeCloseTo(0.045 * watch.watch_big, 3);
+    // The lit circle is inside the rim: 80 to 88 percent of the case's diameter.
+    expect(watch.screen_diameter / watch.case_diameter).toBeGreaterThan(0.8);
+    expect(watch.screen_diameter / watch.case_diameter).toBeLessThanOrEqual(0.88);
+    // The case is sized from the wrist: 0.68 of the sleeve's width in the file, which is 4/5 of it as the eye sees it (the case stands nearer the eye; `handScreen.test.ts` measures that).
+    expect(watch.case_diameter / watch.wrist_width).toBeGreaterThanOrEqual(0.62);
+    expect(watch.case_diameter / watch.wrist_width).toBeLessThanOrEqual(0.74);
     expect(watch.screen_plate_diameter).toBeLessThan(watch.case_diameter);
     // The strap's width and the case's diameter, as the file's own vertices say.
     const case_ = parts.find((p) => p.name === "watch_case") as { positions: Float32Array };

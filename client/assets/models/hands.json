@@ -1,6 +1,6 @@
 {
   "about": "Written by tools/models/buildHands.py: do not edit. The first person arms: metres, right handed glTF (the game's loader mirrors x on a model's root). Where each work came from is in CREDITS.md, under the ids named here.",
-  "total_bytes": 2430164,
+  "total_bytes": 2428852,
   "total_gpu_bytes": 4734976,
   "total_gpu_bytes_shared": 4216147,
   "files": {
@@ -13,7 +13,7 @@
       ],
       "frame": "origin at the middle of the torch's lens; +z the way the torch points (its tail is at -z); +y up as held (the roll the game's hold, handPose.ts, is worked out for); +x completes the right handed frame",
       "bytes": 1576432,
-      "sha256": "c07dae5e8021d62aba351223eb7b1ef7c5f302992c439ac0e36749b66a9d985b",
+      "sha256": "fe368576902a4a794e4b83de1fa9c47549bdec3a5272a48215ce5cfb05e4646f",
       "triangles": 15262,
       "vertices": 14519,
       "parts": {
@@ -120,16 +120,26 @@
       "torch_radius": 0.02,
       "forearm_cut": {
         "centre": [
-          0.2613,
+          0.1319,
           0.0463,
-          -0.3685
+          -0.4303
         ],
         "direction": [
-          0.6359,
+          0.1881,
           -0.0095,
-          -0.7717
+          -0.9821
         ],
-        "runs_on": 0.45
+        "runs_on": 0.06,
+        "wrist": [
+          0.0756,
+          0.05,
+          -0.1459
+        ],
+        "toward_elbow": [
+          0.1953,
+          -0.0133,
+          -0.9807
+        ]
       },
       "preview": {
         "palm": {
@@ -140,7 +150,7 @@
           ],
           "target": [
             0.0,
-            -0.0,
+            0.0,
             -0.1459
           ],
           "up": [
@@ -159,14 +169,14 @@
         "hand.watch"
       ],
       "frame": "origin at the middle of the watch's screen; +z out of the screen toward the reader; +y toward twelve o'clock; +x completes the right handed frame",
-      "bytes": 853732,
-      "sha256": "57b8a25cfdfed5e71506706892cd2d946539d44cb926cb7bc18df8eef4bd576e",
-      "triangles": 11224,
-      "vertices": 8050,
+      "bytes": 852420,
+      "sha256": "232ce174a20137ad3fe6454ad46013da87dfade7c3398b143e4d7789486c5f67",
+      "triangles": 11180,
+      "vertices": 8028,
       "parts": {
         "arm": {
-          "triangles": 3423,
-          "vertices": 2022
+          "triangles": 3379,
+          "vertices": 2000
         },
         "watch_case": {
           "triangles": 5878,
@@ -242,47 +252,58 @@
       "gpu_bytes": 1589248,
       "gpu_bytes_with_mips": 2118996,
       "watch": {
-        "screen_diameter": 0.072,
-        "screen_plate_diameter": 0.08439,
+        "screen_diameter": 0.04954,
+        "screen_plate_diameter": 0.05278,
         "screen_corners": [
           [
-            -0.036,
-            0.036,
+            -0.02477,
+            0.02477,
             0.0
           ],
           [
-            0.036,
-            0.036,
+            0.02477,
+            0.02477,
             0.0
           ],
           [
-            0.036,
-            -0.036,
+            0.02477,
+            -0.02477,
             0.0
           ],
           [
-            -0.036,
-            -0.036,
+            -0.02477,
+            -0.02477,
             0.0
           ]
         ],
         "screen_corner_order": "top left, top right, bottom right, bottom left, as the wearer reads the face",
-        "case_diameter": 0.09,
+        "case_diameter": 0.0563,
         "case_diameter_life": 0.045,
-        "watch_big": 2.0
+        "watch_big": 1.2509,
+        "wrist_width": 0.0828
       },
       "forearm_cut": {
         "centre": [
-          -0.17,
-          -0.0037,
-          -0.0509
+          -0.15,
+          -0.0036,
+          -0.0405
         ],
         "direction": [
           -1.0,
           0.0,
           -0.0
         ],
-        "runs_on": 0.03
+        "runs_on": 0.03,
+        "wrist": [
+          0.0299,
+          -0.0018,
+          -0.0396
+        ],
+        "toward_elbow": [
+          -1.0,
+          -0.0073,
+          -0.0038
+        ]
       },
       "preview": {
         "palm": {

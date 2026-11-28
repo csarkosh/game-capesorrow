@@ -68,12 +68,15 @@ DATA_SIZE = 512
 ARMS_UNIT = 0.01
 TORCH_LENGTH = 0.24
 WATCH_CASE = 0.045
-# The watch is drawn this many times larger than the arm it is on, as a first person view model is, so that the map on its screen can be read: the case is
-# WATCH_CASE times this, and the strap's width and thickness likewise; the strap's path round the sleeve is the sleeve's own. 1.0 is life size.
-WATCH_BIG = 2.0
+# The watch is sized from the wrist: its case is WATCH_FIT times the width of the arm under it (the silhouette across the forearm at the watch: the sleeve's end or the glove's
+# cuff), `big` times a 45 mm case (about life size on this arm), and the strap's width and thickness follow it; the strap's path round the sleeve is the sleeve's own. The case stands
+# on the sleeve, nearer the eye than the sleeve's widest points, so at the hold it is seen about 18 percent larger than it is against them: 0.68 here is 0.8 of the wrist as the eye
+# sees it (`client/test/hand/handScreen.test.ts` measures that on the screen, 0.76 to 0.84). The build checks the share in the file is between WATCH_FIT_RANGE.
+WATCH_FIT = 0.68
+WATCH_FIT_RANGE = (0.62, 0.74)
 # The lit circle the page draws the map on is this share of the case's diameter: inside the rim, so that the dark rim shows all round it. (The black plate under the glass,
 # which the source has, reaches 92 percent of the case: that is the screen mesh, and it is not the lit part.)
-LIT_SHARE = 0.8
+LIT_SHARE = 0.88
 
 RIGHT_FRAME = "origin at the middle of the torch's lens; +z the way the torch points (its tail is at -z); +y up as held (the roll the game's hold, handPose.ts, is worked out for); +x completes the right handed frame"
 LEFT_FRAME = "origin at the middle of the watch's screen; +z out of the screen toward the reader; +y toward twelve o'clock; +x completes the right handed frame"
@@ -220,7 +223,7 @@ GRIP = dict(
     along=-2.0,  # where the barrel's axis lies from the knuckle line toward the wrist (negative is toward the wrist), and
     above=5.0,  # how far out of the hand's back-to-front middle (the knuckles' level) along the palm's normal: the palm's face is 3.5 to 4.8 out
     hold_z=-1.6,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
-    cock=0.9,  # the wrist's turn toward the little finger (ulnar deviation)
+    cock=1.4,  # the wrist's turn toward the little finger (ulnar deviation)
     roll=0.0,  # the turn of the whole hand and torch about the torch's axis, to the frame's +y (see right_hand)
     thumb_angle=0.35,  # where the thumb lies round the barrel: 0 is straight out from the palm over the top, positive toward the fingers
     thumb_reach=1.35,  # how far outside the barrel the thumb's middle line lies
@@ -230,10 +233,10 @@ RELAXED = dict(
     thumb=(0.25, 0.2, 0.1),
     watch_at=21.0,  # the watch's middle along the forearm from the elbow (the unit), over the sleeve's narrow end
 )
-# The left sleeve comes toward the eye (the arm is held across the front of the body): past 4 cm along the forearm it is behind the near plane, so it is cut there and capped at once.
-FOREARM_CUT_LEFT = 4.0
+# The left sleeve comes toward the eye (the arm is held across the front of the body): past 6 cm along the forearm it is at the near plane, so it is cut there and capped at once.
+FOREARM_CUT_LEFT = 6.0
 SLEEVE_RUN_LEFT = (1.5, 3.0)
-SLEEVE_RUN = (10.0, 25.0, 45.0)  # the sleeve's end is carried on by rings this far (the arms' unit) along the forearm's own line, as one closed tube
+SLEEVE_RUN = (2.0, 4.0, 6.0)  # the sleeve's end is carried on by rings this far (the arms' unit) along the forearm's own line, as one closed tube
 FOREARM_CUT = -5.0  # the sleeve is cut this far behind the elbow's place, along the forearm: where the model's own sleeve is whole (past it the file has only scraps of the shoulder)
 
 
@@ -516,7 +519,7 @@ def right_hand(arms, torch_path):
         axis=[0.0, 0.0, 1.0],
         torch_length=round(float(np.ptp(torch["pos"][:, 2])), 4),
         torch_radius=round(float(GRIP["barrel_radius"] * ARMS_UNIT), 4),
-        forearm_cut=dict(centre=[round(float(x), 4) for x in to_file(cut[None, :])[0]], direction=[round(float(x), 4) for x in dir_file(unit(up_arm)[None, :])[0]], runs_on=SLEEVE_RUN[-1] * ARMS_UNIT),
+        forearm_cut=dict(centre=[round(float(x), 4) for x in to_file(cut[None, :])[0]], direction=[round(float(x), 4) for x in dir_file(unit(up_arm)[None, :])[0]], runs_on=SLEEVE_RUN[-1] * ARMS_UNIT, wrist=[round(float(x), 4) for x in to_file(arms.posed_place(pose["wrist"])[None, :])[0]], toward_elbow=[round(float(x), 4) for x in dir_file(unit(elbow - arms.posed_place(pose["wrist"]))[None, :])[0]]),
         palm=dict(eye=[round(float(x), 4) for x in (dir_file(pose["n"][None, :])[0] * 0.5 + to_file(centre[None, :])[0])], target=[round(float(x), 4) for x in to_file(centre[None, :])[0]], up=[round(float(x), 4) for x in dir_file(pose["f"][None, :])[0]]),
     )
     return [arm, torch, glass_part], info
@@ -724,9 +727,13 @@ def left_hand(arms, watch_path):
     cn = crown["pos"].mean(axis=0) - case_body["pos"].mean(axis=0)
     xn = unit(cn - zn * (cn @ zn))
     yn = np.cross(zn, xn)
-    scale = WATCH_CASE / float(case_body["pos"][:, 0].max() - case_body["pos"][:, 0].min()) if False else None
     diam = float(np.ptp((case_body["pos"] - centre_n) @ xn))
-    scale = WATCH_CASE * WATCH_BIG / diam
+    # The watch's size: from the width of the arm where it sits.
+    x0 = RELAXED["watch_at"] * ARMS_UNIT
+    wrist_w = float(np.ptp(q[np.abs(q[:, 0] - x0) < 0.013, 1]))
+    big = WATCH_FIT * wrist_w / WATCH_CASE
+    assert WATCH_FIT_RANGE[0] <= WATCH_CASE * big / wrist_w <= WATCH_FIT_RANGE[1]
+    scale = WATCH_CASE * big / diam
     wm = np.stack([xn, yn, zn], axis=1)
 
     def w_pos(v):
@@ -737,14 +744,13 @@ def left_hand(arms, watch_path):
 
     back_z = float(w_pos(bottom["pos"])[:, 2].min())
     # Where the watch sits on the sleeve: x = 0 is `watch_at` from the elbow; the slab round it gives the sleeve's cross-section.
-    x0 = RELAXED["watch_at"] * ARMS_UNIT
-    sw, st = STRAP["width"] * WATCH_BIG, STRAP["thick"] * WATCH_BIG
+    sw, st = STRAP["width"] * big, STRAP["thick"] * big
     slab = np.abs(q[:, 0] - x0) < sw / 2 + 0.002
     ys, zs = q[slab, 1], q[slab, 2]
     centre_yz = np.array([(ys.max() + ys.min()) / 2, (zs.max() + zs.min()) / 2])
     prof = ring_profile(np.stack([ys, zs], axis=1), centre_yz)
     # The case rests a little above the sleeve's top at its middle, toward the highest of the sleeve under its footprint (the cuff flares toward the hand).
-    foot = (np.abs(q[:, 0] - x0) < WATCH_CASE * WATCH_BIG / 2) & (np.abs(q[:, 1] - centre_yz[0]) < WATCH_CASE * WATCH_BIG / 2) & (q[:, 2] > centre_yz[1])
+    foot = (np.abs(q[:, 0] - x0) < WATCH_CASE * big / 2) & (np.abs(q[:, 1] - centre_yz[0]) < WATCH_CASE * big / 2) & (q[:, 2] > centre_yz[1])
     top_ring = float(centre_yz[1] + prof(0.0))
     top_z = top_ring + 0.4 * (float(q[foot, 2].max()) - top_ring)
     shift = np.array([-x0, -centre_yz[0], back_z - STRAP["gap"] - top_z])
@@ -761,10 +767,10 @@ def left_hand(arms, watch_path):
         screen["nrm"] = -screen["nrm"]
         screen["tri"] = screen["tri"][:, [0, 2, 1]]
     plate = float(np.max(np.hypot(screen["pos"][:, 0], screen["pos"][:, 1])))
-    radius = LIT_SHARE * WATCH_CASE * WATCH_BIG / 2
+    radius = LIT_SHARE * WATCH_CASE * big / 2
     # The strap: two bands from the case's lugs round the sleeve, one over the other underneath, with a keeper.
     y_lug = float(np.ptp(case["pos"][:, 1]) / 2) - 0.0025
-    z_lug = back_z + STRAP["lug_below"] * WATCH_BIG
+    z_lug = back_z + STRAP["lug_below"] * big
     pieces = []
     paths = []
     for side, end, lift in ((1, math.pi + 0.45, None), (-1, -math.pi - 0.45, math.pi - 0.7)):
@@ -776,7 +782,7 @@ def left_hand(arms, watch_path):
     tang = unit(np.array([0.0, *(path[k + 1] - path[k - 1])]))
     out_n = np.array([0.0, *nm_[k]])
     ctr = np.array([0.0, *path[k]]) + out_n * st * 1.1
-    pieces.append(box(ctr, np.array([[1.0, 0, 0], out_n, tang]), [sw / 2 + 0.002, st * 1.25, 0.003 * WATCH_BIG]))
+    pieces.append(box(ctr, np.array([[1.0, 0, 0], out_n, tang]), [sw / 2 + 0.002, st * 1.25, 0.003 * big]))
     strap = merge(pieces)
     # Every triangle wound to face the way its vertices' normals do (a shader that lights a double sided surface by which way it faces turns the normal of a face wound the other way).
     t = strap["tri"]
@@ -789,10 +795,11 @@ def left_hand(arms, watch_path):
         screen_diameter=round(2 * r_screen, 5),
         screen_plate_diameter=round(2 * plate, 5),
         screen_corners=[[-r_screen, r_screen, 0.0], [r_screen, r_screen, 0.0], [r_screen, -r_screen, 0.0], [-r_screen, -r_screen, 0.0]],
-        case_diameter=round(WATCH_CASE * WATCH_BIG, 4),
+        case_diameter=round(WATCH_CASE * big, 4),
         case_diameter_life=round(WATCH_CASE, 4),
-        watch_big=WATCH_BIG,
-        forearm_cut=dict(centre=[round(float(x), 4) for x in (np.array([FOREARM_CUT_LEFT * ARMS_UNIT, 0.0, 0.0]) + shift)], direction=[round(float(x), 4) for x in (unit(up_arm) @ m3)], runs_on=SLEEVE_RUN_LEFT[-1] * ARMS_UNIT),
+        watch_big=round(big, 4),
+        wrist_width=round(wrist_w, 4),
+        forearm_cut=dict(centre=[round(float(x), 4) for x in (np.array([FOREARM_CUT_LEFT * ARMS_UNIT, 0.0, 0.0]) + shift)], direction=[round(float(x), 4) for x in (unit(up_arm) @ m3)], runs_on=SLEEVE_RUN_LEFT[-1] * ARMS_UNIT, wrist=[round(float(x), 4) for x in ((arms.pos_of(arms.joint("L", "wrist")) - elbow) @ m3 * ARMS_UNIT + shift)], toward_elbow=[round(float(x), 4) for x in (unit(elbow - arms.pos_of(arms.joint("L", "wrist"))) @ m3)]),
         thumb_side=round(thumb_side, 3),
         palm=dict(eye=[0.11, 0.0, -0.45], target=[0.11, 0.0, -0.04], up=[0.0, 1.0, 0.0]),
         watch_scale=scale,
@@ -1044,7 +1051,7 @@ def build_all(sources):
     entries["hand.left.glb"] = entry_of(
         "hand.left.glb", parts, counts, images, data, ["hand.arms", "hand.watch"], LEFT_FRAME,
         dict(
-            watch=dict(screen_diameter=info["screen_diameter"], screen_plate_diameter=info["screen_plate_diameter"], screen_corners=r5(info["screen_corners"]), screen_corner_order="top left, top right, bottom right, bottom left, as the wearer reads the face", case_diameter=info["case_diameter"], case_diameter_life=info["case_diameter_life"], watch_big=info["watch_big"]),
+            watch=dict(screen_diameter=info["screen_diameter"], screen_plate_diameter=info["screen_plate_diameter"], screen_corners=r5(info["screen_corners"]), screen_corner_order="top left, top right, bottom right, bottom left, as the wearer reads the face", case_diameter=info["case_diameter"], case_diameter_life=info["case_diameter_life"], watch_big=info["watch_big"], wrist_width=info["wrist_width"]),
             forearm_cut=info["forearm_cut"],
             preview=dict(palm=info["palm"]),
         ),

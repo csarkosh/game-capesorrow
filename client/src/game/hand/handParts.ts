@@ -148,7 +148,7 @@ export function createHandParts(host: HandHost, made: readonly ArmPart[]): HandP
       lensWorld(f.eye.x, f.eye.y, f.eye.z, f.axes, pose, place);
       torchBasis(f.axes, pose, basis);
       basisQuaternion(basis, quat);
-      const size = handScaleFor(f.aspect);
+      const size = handScaleFor();
       for (const mesh of [...body, ...lens]) {
         mesh.position.set(place.x, place.y, place.z);
         if (mesh.scaling.x !== size) mesh.scaling.set(size, size, size);

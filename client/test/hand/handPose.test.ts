@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
 import {
-  DRAWN_PITCH, DRAWN_YAW, FOV, HOLD, HOLD_DEPTH, HOLD_SCREEN, AIM_DISTANCE, LOWER_SECONDS, aimAngles, clearAhead, holdFor, loweredFor, MAX_LAG, NEAREST, RAISE_SECONDS, basisQuaternion, handHidden, holdAxis, lensWorld, newHandPose, newHandState, stepHand, torchBasis,
+  DRAWN_PITCH, DRAWN_YAW, FOV, HOLD, HOLD_DEPTH, HOLD_SCREEN, AIM_DISTANCE, AIM_DROP, LOWER_SECONDS, aimAngles, clearAhead, holdFor, loweredFor, MAX_LAG, NEAREST, RAISE_SECONDS, basisQuaternion, handHidden, holdAxis, lensWorld, newHandPose, newHandState, stepHand, torchBasis,
   type HandInput,
 } from "../../src/game/hand/handPose.js";
 
@@ -58,7 +58,7 @@ describe("the hand's rise and fall", () => {
 });
 
 describe("the hold", () => {
-  it("stands the torch's head where the screen says, whatever the window's shape: 54 percent across and 50 percent down", () => {
+  it("stands the torch's head where the screen says, whatever the window's shape: at `HOLD_SCREEN`", () => {
     for (const aspect of [1.25, 1.6, 16 / 9, 2.1]) {
       const state = newHandState();
       const pose = newHandPose();
@@ -70,20 +70,28 @@ describe("the hold", () => {
       expect(down).toBeCloseTo(HOLD_SCREEN.y, 1);
     }
     expect(holdFor(1.6).z).toBeCloseTo(HOLD_DEPTH, 6);
-    expect(HOLD_DEPTH).toBeCloseTo(0.55, 6);
+    // The lens is at least 0.4 m from the eye.
+    expect(HOLD_DEPTH).toBeGreaterThanOrEqual(0.4);
   });
 
-  it("aims the beam through the middle of the view AIM_DISTANCE ahead: from the lens, below and to the right of the eye, a little up and to the left", () => {
+  it("aims the beam across the middle of the view and AIM_DROP below it, AIM_DISTANCE ahead: so it lights the ground ahead and a face in the view's middle", () => {
     for (const aspect of [1.2, 1.6, 2.2]) {
       const [ax, ay, az] = holdAxis(aspect);
       const h = holdFor(aspect);
-      // The lens stands right of the eye, so the beam leans left; it is a little below the view's middle or above it, by the hold.
+      // The lens stands right of the eye, so the beam leans left.
       expect(ax).toBeLessThan(0);
-      expect(Math.sign(ay)).toBe(Math.sign(-h.y) || 1);
-      // Followed to the plane AIM_DISTANCE ahead of the eye, it is at the view's middle.
+      // Followed to the plane AIM_DISTANCE ahead of the eye, it is at the view's middle across and AIM_DROP below it.
       const t = (AIM_DISTANCE - h.z) / az;
       expect(h.x + ax * t).toBeCloseTo(0, 6);
-      expect(h.y + ay * t).toBeCloseTo(0, 6);
+      expect(h.y + ay * t).toBeCloseTo(-AIM_DROP, 6);
+      // From an eye 1.6 m up and looking level, the beam's middle meets the ground between 5 and 12 m ahead.
+      const down = (1.6 + h.y) / -ay;
+      expect(h.z + az * down).toBeGreaterThan(5);
+      expect(h.z + az * down).toBeLessThan(12);
+      // A face in the middle of the view 2 m off is within 20 degrees of the beam's axis (the cone's half angle is 28.6).
+      const fx = -h.x, fy = -h.y, fz = 2 - h.z;
+      const cos = (fx * ax + fy * ay + fz * az) / Math.hypot(fx, fy, fz);
+      expect((Math.acos(cos) * 180) / Math.PI).toBeLessThan(20);
     }
   });
 
@@ -115,13 +123,17 @@ describe("the hold", () => {
     expect(pose.ax).toBeCloseTo(Math.sin(aim.yaw) * Math.cos(aim.pitch), 6);
     expect(pose.ay).toBeCloseTo(-Math.sin(aim.pitch), 6);
     expect(pose.az).toBeCloseTo(Math.cos(aim.yaw) * Math.cos(aim.pitch), 6);
-    // The drawn axis is `DRAWN_YAW` and `DRAWN_PITCH`: turned left of the beam's and up where the beam goes down.
+    // The drawn axis is `DRAWN_YAW` and `DRAWN_PITCH`: into the scene, a little left and up.
     expect(pose.mx).toBeCloseTo(Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH), 2);
     expect(pose.my).toBeCloseTo(-Math.sin(DRAWN_PITCH), 2);
     expect(Math.hypot(pose.mx, pose.my, pose.mz)).toBeCloseTo(1, 6);
-    expect(pose.mx).toBeLessThan(pose.ax);
-    expect(pose.my).toBeGreaterThan(0);
-    expect(pose.ay).toBeLessThan(0);
+    // The torch is drawn pointing into the scene: mostly forward (0.8 of its length or more), turned left 20 to 35 degrees, pitched up by no more than 20, and within 40 degrees of where the beam goes.
+    expect(pose.mz).toBeGreaterThanOrEqual(0.8);
+    const turn = (Math.atan2(pose.mx, pose.mz) * 180) / Math.PI;
+    expect(turn).toBeLessThanOrEqual(-20);
+    expect(turn).toBeGreaterThanOrEqual(-35);
+    expect((Math.asin(pose.my) * 180) / Math.PI).toBeLessThanOrEqual(20);
+    expect(pose.mx * pose.ax + pose.my * pose.ay + pose.mz * pose.az).toBeGreaterThan(Math.cos((45 * Math.PI) / 180));
     // Lowered, the drawn axis is not the beam's either way round and nothing is lit: only the pair at the hold matters, and both are unit vectors.
     expect(Math.hypot(pose.ax, pose.ay, pose.az)).toBeCloseTo(1, 6);
   });
