@@ -74,8 +74,10 @@ export const LOOK_LIGHT = 0.16, LOOK_WARM = 0.06, LOOK_WIDE = 0.06;
 
 /** A region's mean colour in a model's picture, sRGB 0 to 1. */
 type Region = { readonly mean: readonly number[] };
+/** The regions a picture has, by name: a body with a head of its own has all five, a body that wears a head has no hair, and a head has skin and hair. */
+export type LookRegions = { readonly shoes?: Region; readonly bottoms?: Region; readonly top?: Region; readonly skin?: Region; readonly hair?: Region };
 type LookEntry = {
-  readonly regions: { readonly shoes: Region; readonly bottoms: Region; readonly top: Region; readonly skin: Region; readonly hair: Region };
+  readonly regions: LookRegions;
   readonly age?: string;
   readonly hair?: string;
 };
@@ -124,12 +126,21 @@ const luminance = (c: readonly number[]): number => 0.2126 * linear(c[0] ?? 0) +
 /** The least a region's mean luminance is taken to be (dark hair is about 0.01, and may be made fair): a region the picture has all but black is not multiplied without end. */
 export const MEAN_LEAST = 0.004;
 
+/** The least a skin's mean is taken to be in a channel, linear, where one skin is matched to another. */
+export const SKIN_LEAST = 0.01;
+/** A region the picture does not have: its mean is white, so nothing of it is ever multiplied up. */
+const NO_REGION: readonly number[] = [1, 1, 1];
+
 /**
- * Writes a body's look at `index` of `out`: each region's colour, linear, with the skin's tone beside them, and one over each region's mean
- * luminance in the model's picture.
+ * Writes a look at `index` of `out` for a picture with these regions: each region's colour, linear, with the skin's tone beside them, and one
+ * over each region's mean luminance in the picture. `skinOf` is the skin the picture's own is to be drawn as (a body that wears a head has its
+ * hands the head's skin: the tone is multiplied by the one mean over the other, channel by channel); left out, the skin is the picture's own.
  */
-export function writeLook(out: Float32Array, index: number, look: Look, regions: LookEntry["regions"]): void {
+export function writeLook(out: Float32Array, index: number, look: Look, regions: LookRegions, skinOf?: readonly number[]): void {
   const at = index * LOOK_FLOATS;
+  const own = regions.skin?.mean;
+  const tone = (c: 0 | 1 | 2): number =>
+    skinOf === undefined || own === undefined ? look.skin[c] : (look.skin[c] * linear(skinOf[c] ?? 0)) / Math.max(SKIN_LEAST, linear(own[c] ?? 0));
   const put = (slot: number, colour: Rgb, mean: readonly number[], extra: number): void => {
     out[at + slot * 4] = linear(colour[0]);
     out[at + slot * 4 + 1] = linear(colour[1]);
@@ -137,10 +148,10 @@ export function writeLook(out: Float32Array, index: number, look: Look, regions:
     out[at + slot * 4 + 3] = extra;
     out[at + 16 + slot] = 1 / Math.max(MEAN_LEAST, luminance(mean));
   };
-  put(0, look.top, regions.top.mean, look.skin[0]);
-  put(1, look.bottoms, regions.bottoms.mean, look.skin[1]);
-  put(2, look.shoes, regions.shoes.mean, look.skin[2]);
-  put(3, look.hair, regions.hair.mean, 1);
+  put(0, look.top, regions.top?.mean ?? NO_REGION, tone(0));
+  put(1, look.bottoms, regions.bottoms?.mean ?? NO_REGION, tone(1));
+  put(2, look.shoes, regions.shoes?.mean ?? NO_REGION, tone(2));
+  put(3, look.hair, regions.hair?.mean ?? NO_REGION, 1);
 }
 
 /** Makes a body written at `index` of `matrices` broader or narrower: its own x and z axes (across and through it), not its height. */
