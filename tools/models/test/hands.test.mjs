@@ -98,8 +98,12 @@ describe('tools/models/buildHands.py', () => {
 
   it('gives the game its numbers: the lens and the barrel, the screen\'s corners, and the cut ends', () => {
     const right = manifest.files['hand.right.glb'];
-    expect(right.lens).toEqual([0, 0, 0]);
-    expect(right.axis).toEqual([0, 0, 1]);
+    // The torch is turned in the grip about the point under the middle finger: its lens is off the file's origin and its axis off +z, a unit vector with a forward part of at least 0.7 in the file.
+    expect(right.lens).toHaveLength(3);
+    expect(Math.hypot(...right.axis)).toBeCloseTo(1, 4);
+    expect(right.axis[2]).toBeGreaterThan(0.7);
+    expect(right.torch_in_grip).toEqual({ yaw: -30, pitch: 10 });
+    for (const g of Object.values(right.grip)) expect(g.gap_mm).toBeLessThanOrEqual(3);
     expect(right.torch_length).toBeCloseTo(0.24, 3);
     expect(right.forearm_cut.centre).toHaveLength(3);
     const watch = manifest.files['hand.left.glb'].watch;

@@ -223,11 +223,20 @@ GRIP = dict(
     along=-2.0,  # where the barrel's axis lies from the knuckle line toward the wrist (negative is toward the wrist), and
     above=5.0,  # how far out of the hand's back-to-front middle (the knuckles' level) along the palm's normal: the palm's face is 3.5 to 4.8 out
     hold_z=-1.6,  # the torch's own z (the source's unit) that lies at the middle of the knuckles: how far down the barrel the fist is
-    cock=1.7,  # the wrist's turn toward the little finger (ulnar deviation)
+    cock=1.25,  # the wrist's turn toward the little finger (ulnar deviation)
     roll=0.0,  # the turn of the whole hand and torch about the torch's axis, to the frame's +y (see right_hand)
     thumb_angle=0.35,  # where the thumb lies round the barrel: 0 is straight out from the palm over the top, positive toward the fingers
     thumb_reach=1.35,  # how far outside the barrel the thumb's middle line lies
 )
+# The torch is turned in the grip, about the point of its axis under the middle finger, so that its head end points further away into the scene than the hand's own
+# knuckle line takes it. `yaw` turns the head toward the file's -x (as the loader stands the file, toward the view's right-hand side as seen along the torch: the head swings away
+# from the forearm), `pitch` toward the back of the hand (+y); both in degrees, in the right file's frame (z along the barrel as it lay in the grip, y out of the back of the hand). The
+# arm is as it was: only the torch moves, and the fingers are curled again, as little as needed, round the turned barrel. The lens and the axis it ends with are in `hands.json`.
+# How far (radians) a finger's joints may be curled again from where they lay round the straight barrel, and what a radian of change costs against the distance to the turned barrel.
+RECURL_WINDOW = 0.6
+RECURL_COST = 0.2
+THUMB_FOLLOW = 0.5
+TORCH_IN_GRIP = dict(yaw=-30.0, pitch=10.0)
 RELAXED = dict(
     curl=dict(point=(0.75, 0.95, 0.5), middle=(0.8, 1.0, 0.55), ring=(0.85, 1.0, 0.55), pink=(0.9, 1.05, 0.55)),
     thumb=(0.25, 0.2, 0.1),
@@ -237,7 +246,7 @@ RELAXED = dict(
 FOREARM_CUT_LEFT = 6.0
 SLEEVE_RUN_LEFT = (1.5, 3.0)
 SLEEVE_RUN = (1.5, 3.0)  # the sleeve's end is carried on by rings this far (the arms' unit) along the forearm's own line, as one closed tube
-FOREARM_CUT = 8.0  # the right sleeve is cut this far from the elbow's place along the forearm (the wrist is at 24): the forearm comes at the eye, and past about 7 cm behind the wrist it is at the near plane
+FOREARM_CUT = 10.0  # the right sleeve is cut this far from the elbow's place along the forearm (the wrist is at 24): the forearm comes at the eye, and past about 7 cm behind the wrist it is at the near plane
 
 
 def swing(u, v):
@@ -274,11 +283,15 @@ def hand_frame(arms, side):
     return dict(wrist=w, knuckles=k, f=f, a=a, n=n, curl_sign=curl_sign)
 
 
-def fit_finger(p1, p2, p3, tip, axis, sign, centre, radius, preset=None):
+def fit_finger(p1, p2, p3, tip, axis, sign, centre, radius, cyl=None, near=None, window=0.0):
     """The three curl angles that lay a finger's middle line round a barrel: its joints and the points along its bones are brought to `radius` from the
-    barrel's axis (through `centre`, along `axis`), a grid search over the angles with a light preference for less curl."""
+    barrel's axis (through `centre`, along `cyl`, which is `axis` where the barrel lies square to the fingers' hinge), a grid search over the angles with a light preference for less curl."""
+    cyl = axis if cyl is None else cyl
     best = (1e18, (0, 0, 0))
     grids = (np.arange(0.1, 1.75, 0.05), np.arange(0.2, 2.0, 0.05), np.arange(0.0, 1.5, 0.05))
+    if near is not None:
+        # Curled again as little as needed: only angles within `window` of the ones that fit the straight barrel (`near`) are tried, and the change is paid for.
+        grids = tuple(g[np.abs(g - n_) <= window] for g, n_ in zip(grids, near))
     b1, b2, b3 = p2 - p1, p3 - p2, tip - p3
     for t1 in grids[0]:
         r1 = hinge(axis, sign * t1)
@@ -293,9 +306,11 @@ def fit_finger(p1, p2, p3, tip, axis, sign, centre, radius, preset=None):
                 for u, v in ((q2, q3), (q3, qt)):
                     for s in (0.0, 0.5, 1.0):
                         d = u + (v - u) * s - centre
-                        d = d - axis * (d @ axis)
+                        d = d - cyl * (d @ cyl)
                         cost += (np.linalg.norm(d) - radius) ** 2
                 cost += 0.002 * (t1 + t2 + t3)
+                if near is not None:
+                    cost += RECURL_COST * ((t1 - near[0]) ** 2 + (t2 - near[1]) ** 2 + (t3 - near[2]) ** 2)
                 if cost < best[0]:
                     best = (cost, (float(t1), float(t2), float(t3)))
     return best[1]
@@ -334,11 +349,19 @@ def right_pose(arms):
     k_c = np.mean([arms.posed_place(arms.joint("R", nm + "1")) for nm in ("point", "middle", "ring", "pink")], axis=0)
     centre = k_c + f_c * g["along"] + n_c * g["above"]
     radius = g["barrel_radius"] + g["finger_half"]
+    # The torch turned in the grip: about the point of its axis under the middle finger (`TORCH_IN_GRIP`), in the file's frame (z = a_c, y = out of the back of the hand = -n_c, x = y cross z).
+    y_c = -n_c
+    x_c = np.cross(y_c, a_c)
+    ty, tp = math.radians(TORCH_IN_GRIP["yaw"]), math.radians(TORCH_IN_GRIP["pitch"])
+    a_t = unit(a_c * math.cos(tp) * math.cos(ty) + x_c * math.cos(tp) * math.sin(ty) + y_c * math.sin(tp))
+    middle = arms.posed_place(arms.joint("R", "middle1"))
+    pivot = centre + a_c * float((middle - centre) @ a_c)
     for nm in ("point", "middle", "ring", "pink"):
         j1, j2, j3 = finger_chain(arms, "R", nm)
         p1, p2, p3 = arms.posed_place(j1), arms.posed_place(j2), arms.posed_place(j3)
         tip = arms.posed_tip("R", nm)
-        angles = fit_finger(p1, p2, p3, tip, a_c, sign, centre, radius)
+        straight = fit_finger(p1, p2, p3, tip, a_c, sign, centre, radius)
+        angles = fit_finger(p1, p2, p3, tip, a_c, sign, pivot, radius, a_t, straight, RECURL_WINDOW)
         for j, t in zip((j1, j2, j3), angles):
             turns[j] = hinge(a_c, sign * t)
     # The thumb lies along the barrel, its tip toward the head: three points on a line parallel to the axis at the thumb's angle round it.
@@ -347,22 +370,27 @@ def right_pose(arms):
     p1, p2, p3 = (arms.posed_place(j) for j in (t1, t2, t3))
     tip = arms.posed_tip("R", "thumb")
     ang = g["thumb_angle"]
-    out = n_c * math.cos(ang) + f_c * math.sin(ang)
-    line0 = centre + out * (g["barrel_radius"] + g["thumb_reach"])
     l1, l2, l3 = np.linalg.norm(p2 - p1), np.linalg.norm(p3 - p2), np.linalg.norm(tip - p3)
-    # p2 on the line at the distance l1 from p1 (the one farther toward the head).
-    d = line0 - p1
-    d_along = d @ a_c
-    d_perp2 = d @ d - d_along ** 2
-    disc = l1 ** 2 - d_perp2
-    s2 = -d_along + (math.sqrt(disc) if disc > 0 else 0.0)
-    q2 = line0 + a_c * s2
-    targets = [q2, q2 + a_c * l2, q2 + a_c * (l2 + l3)]
+
+    def thumb_targets(axis, at):
+        out = n_c * math.cos(ang) + f_c * math.sin(ang)
+        out = unit(out - axis * (out @ axis))
+        line0 = at + out * (g["barrel_radius"] + g["thumb_reach"])
+        # p2 on the line at the distance l1 from p1 (the one farther toward the head).
+        d = line0 - p1
+        d_along = d @ axis
+        disc = l1 ** 2 - (d @ d - d_along ** 2)
+        s2 = -d_along + (math.sqrt(disc) if disc > 0 else 0.0)
+        q2 = line0 + axis * s2
+        return np.array([q2, q2 + axis * l2, q2 + axis * (l2 + l3)])
+
+    # The thumb follows the turned barrel part of the way (`THUMB_FOLLOW`), so that it still lies along the top of it and has not moved far from where it was.
+    targets = list(thumb_targets(a_c, centre) * (1 - THUMB_FOLLOW) + thumb_targets(a_t, pivot) * THUMB_FOLLOW)
     for j in (t1, t2, t3):
         turns.pop(j, None)
     arms.pose(turns)
     aim_chain(arms, turns, "R", "thumb", targets)
-    return dict(turns=turns, axis=a_c, centre=centre, f=f_c, n=n_c, wrist=wrist)
+    return dict(turns=turns, axis=a_c, turned=a_t, pivot=pivot, centre=centre, f=f_c, n=n_c, wrist=wrist)
 
 
 # ---- the torch and the watch (the source's own parts, in their own units) ---------------------------------------------------------
@@ -456,6 +484,37 @@ def ring_base(base, k, n):
     return base + k * n
 
 
+def grip_report(arms, pos, dom, torch_pos, axis, pivot):
+    """How the fingers sit on the turned barrel, in millimetres: for each finger (and the thumb), how far its nearest vertex is from the barrel's surface (the gap: a finger that floats
+    off the barrel has a large one), and how far its deepest vertex is inside the barrel (the penetration: a finger through it). Both from the skinned vertices of the fingers and the
+    torch's vertices, in the arms' unit (a centimetre), so a tenth of a millimetre is a hundredth of a unit."""
+    out = {}
+    rel_t = torch_pos - pivot
+    t_axial = rel_t @ axis
+    t_radial = np.linalg.norm(rel_t - np.outer(t_axial, axis), axis=1)
+    order = np.argsort(t_axial)
+    for name in ("thumb", "point", "middle", "ring", "pink"):
+        ids = [i for i, n in enumerate(arms.names) if n.startswith("R_%s" % name)]
+        v = pos[np.isin(dom, ids)]
+        # only the vertices near the barrel: within 6 cm of the pivot
+        v = v[np.linalg.norm(v - pivot, axis=1) < 7.0]
+        if len(v) == 0:
+            out[name] = dict(gap_mm=None, penetration_mm=None)
+            continue
+        gap = np.min(np.linalg.norm(v[:, None, :] - torch_pos[None, ::6, :], axis=2), axis=1).min()
+        rel = v - pivot
+        ax_ = rel @ axis
+        rad = np.linalg.norm(rel - np.outer(ax_, axis), axis=1)
+        # the barrel's radius at each vertex's place along it: the torch's own at the nearest axial position
+        idx = np.clip(np.searchsorted(t_axial[order], ax_), 0, len(order) - 1)
+        near = t_radial[order][np.clip(idx, 0, len(order) - 1)]
+        # a window of torch vertices round that axial position gives the radius there (the largest, the knurl's crest)
+        r_here = np.array([t_radial[np.abs(t_axial - z) < 0.15].max() if (np.abs(t_axial - z) < 0.15).any() else 0.0 for z in ax_])
+        pen = float(np.max(r_here - rad)) if len(rad) else 0.0
+        out[name] = dict(gap_mm=round(float(gap) * 10 - 0.0, 2), penetration_mm=round(max(pen, 0.0) * 10, 2))
+    return out
+
+
 def right_hand(arms, torch_path):
     """The right forearm and hand gripping the torch, as parts in the file's frame (metres), and what the game needs of it."""
     pose = right_pose(arms)
@@ -492,9 +551,18 @@ def right_hand(arms, torch_path):
 
     t_pos = lay(body["pos"])
     t_nrm = lay(body["nrm"], True)
-    lens_hand = centre + a_c * ((lens_z - GRIP["hold_z"]) * scale)
+    lens_straight = centre + a_c * ((lens_z - GRIP["hold_z"]) * scale)
+    lens_hand = lens_straight
     g_items = merge(glass)
     g_pos, g_nrm = lay(g_items["pos"]), lay(g_items["nrm"], True)
+    # The torch turned in the grip about the point of its axis under the middle finger (`TORCH_IN_GRIP`): the file's frame stays where it was, with its origin at the lens as it lay straight.
+    turn = swing(a_c, pose["turned"])
+    pivot = pose["pivot"]
+    t_pos = pivot + (t_pos - pivot) @ turn.T
+    g_pos = pivot + (g_pos - pivot) @ turn.T
+    t_nrm, g_nrm = t_nrm @ turn.T, g_nrm @ turn.T
+    lens_turned = pivot + turn @ (lens_straight - pivot)
+    report = grip_report(arms, pos, dom, t_pos, pose["turned"], pivot)
     # The file's frame: origin at the lens's middle, +z along the barrel toward the head, +y from the barrel's axis out through the back of the hand (the fist is
     # on the +y side of the torch, the forearm rising from behind it), +x completing the right handed frame.
     yf = unit(-pose["n"])
@@ -505,7 +573,7 @@ def right_hand(arms, torch_path):
     m3 = m3 @ np.array([[c, -sn, 0], [sn, c, 0], [0, 0, 1]]).T
 
     def to_file(q):
-        return (q - lens_hand) @ m3 * ARMS_UNIT
+        return (q - lens_straight) @ m3 * ARMS_UNIT
 
     def dir_file(q):
         return q @ m3
@@ -515,9 +583,11 @@ def right_hand(arms, torch_path):
     glass_part = dict(name="torch_glass", material="torch_glass", pos=to_file(g_pos), nrm=dir_file(g_nrm), uv=g_items["uv"], tri=g_items["tri"])
     cut = (elbow + ax * FOREARM_CUT)
     info = dict(
-        lens=[0.0, 0.0, 0.0],
-        axis=[0.0, 0.0, 1.0],
-        torch_length=round(float(np.ptp(torch["pos"][:, 2])), 4),
+        lens=[round(float(x), 5) for x in to_file(lens_turned[None, :])[0]],
+        axis=[round(float(x), 5) for x in dir_file(pose["turned"][None, :])[0]],
+        torch_in_grip=dict(TORCH_IN_GRIP),
+        grip=report,
+        torch_length=round(TORCH_LENGTH, 4),
         torch_radius=round(float(GRIP["barrel_radius"] * ARMS_UNIT), 4),
         forearm_cut=dict(centre=[round(float(x), 4) for x in to_file(cut[None, :])[0]], direction=[round(float(x), 4) for x in dir_file(unit(up_arm)[None, :])[0]], runs_on=SLEEVE_RUN[-1] * ARMS_UNIT, wrist=[round(float(x), 4) for x in to_file(arms.posed_place(pose["wrist"])[None, :])[0]], toward_elbow=[round(float(x), 4) for x in dir_file(unit(elbow - arms.posed_place(pose["wrist"]))[None, :])[0]]),
         palm=dict(eye=[round(float(x), 4) for x in (dir_file(pose["n"][None, :])[0] * 0.5 + to_file(centre[None, :])[0])], target=[round(float(x), 4) for x in to_file(centre[None, :])[0]], up=[round(float(x), 4) for x in dir_file(pose["f"][None, :])[0]]),
@@ -1030,7 +1100,7 @@ def build_all(sources):
     files["hand.right.glb"] = data
     entries["hand.right.glb"] = entry_of(
         "hand.right.glb", parts, counts, images, data, ["hand.arms", "hand.torch"], RIGHT_FRAME,
-        dict(lens=info["lens"], axis=info["axis"], torch_length=info["torch_length"], torch_radius=info["torch_radius"], forearm_cut=info["forearm_cut"], preview=dict(palm=info["palm"])),
+        dict(lens=info["lens"], axis=info["axis"], torch_in_grip=info["torch_in_grip"], grip=info["grip"], torch_length=info["torch_length"], torch_radius=info["torch_radius"], forearm_cut=info["forearm_cut"], preview=dict(palm=info["palm"])),
     )
     # the left hand
     arms = Arms(arms_path)

@@ -37,6 +37,8 @@ export type HandFileFacts = {
   readonly axis?: readonly number[];
   readonly torch_length?: number;
   readonly torch_radius?: number;
+  readonly torch_in_grip?: { readonly yaw: number; readonly pitch: number };
+  readonly grip?: Readonly<Record<string, { readonly gap_mm: number | null; readonly penetration_mm: number | null }>>;
   readonly watch?: { readonly screen_diameter: number; readonly screen_plate_diameter: number; readonly screen_corners: readonly (readonly number[])[]; readonly case_diameter: number; readonly watch_big: number; readonly wrist_width: number };
   readonly forearm_cut: { readonly centre: readonly number[]; readonly direction: readonly number[]; readonly runs_on: number; readonly wrist: readonly number[]; readonly toward_elbow: readonly number[] };
 };

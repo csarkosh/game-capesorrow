@@ -104,43 +104,26 @@ describe("the right arm's framing: from the player, large, in the lower right", 
       // The back of the hand faces up (and a little right) in the view, as the reference's does.
       expect(rb[4]! / handScaleFor()).toBeGreaterThan(0.5);
       // Placement: the head near 52 to 62 percent across and 52 to 64 down; the fist near 74 to 82 across and 74 to 84 down; nothing above 46 percent down or left of 46 across.
-      // With the torch pointing into the scene its head stands near 54 to 62 percent across and 54 to 64 down (its left kept clear of the left hand by 4 percent), and the fist near 64 to 72 across and 70 to 84 down.
-      expect(head.x).toBeGreaterThanOrEqual(54);
-      expect(head.x).toBeLessThanOrEqual(64);
+      expect(head.x).toBeGreaterThanOrEqual(50);
+      expect(head.x).toBeLessThanOrEqual(65);
       expect(head.y).toBeGreaterThanOrEqual(name === "aspect 1.2" ? 50 : 52);
       expect(head.y).toBeLessThanOrEqual(66);
-      expect(fist.x).toBeGreaterThanOrEqual(62);
+      expect(fist.x).toBeGreaterThanOrEqual(72);
       expect(fist.x).toBeLessThanOrEqual(84);
-      expect(fist.y).toBeGreaterThanOrEqual(68);
+      expect(fist.y).toBeGreaterThanOrEqual(72);
       expect(fist.y).toBeLessThanOrEqual(86);
-      // The torch is foreshortened: the head's width on the screen under 0.8 of the tail's.
-      const torchPart = part(RIGHT_PARTS, "torch");
-      const across = (zLo: number, zHi: number): number => {
-        const dirx = t2[0] - h2[0], diry = t2[1] - h2[1], dl = Math.hypot(dirx, diry);
-        const v: number[] = [];
-        for (let i = 0; i < torchPart.positions.length; i += 3) {
-          const z = torchPart.positions[i + 2] as number;
-          if (z < zLo || z > zHi) continue;
-          const q = pixel(rp, rb, [torchPart.positions[i] as number, torchPart.positions[i + 1] as number, z], W, H);
-          if (q !== null) v.push((-q[0] * diry + q[1] * dirx) / dl);
-        }
-        return hi(v) - lo(v);
-      };
-      const ratio = across(-0.035, 0.01) / across(-0.245, -0.205);
-      process.stdout.write(`${name}: the head's width over the tail's on the screen ${ratio.toFixed(2)}\n`);
-      expect(ratio).toBeLessThan(0.8);
       expect(head.x).toBeLessThan(fist.x);
       expect(head.y).toBeLessThan(fist.y);
       expect(tail.x).toBeGreaterThan(head.x);
       expect(tail.y).toBeGreaterThan(head.y);
       expect(lo(right.map((p) => p.x)) / W).toBeGreaterThanOrEqual(0.46 - 0.01);
       expect(lo(right.map((p) => p.y)) / H).toBeGreaterThanOrEqual(0.46 - 0.01);
-      // Size: the torch foreshortened, about 22 to 40 percent of the width long at 16:10 (it comes out near 38: the arm is as thick as the left, which sets the scale), the fist about 24 to 34 percent of the height tall.
+      // Size: the torch 34 to 42 percent of the width long at 16:10 (a little less on the wider windows, whose width is more than their height says), the fist about 28 to 34 percent of the height tall.
       const len = (Math.hypot((tail.x - head.x) * W, (tail.y - head.y) * H) / 100 / W) * 100;
       if (name.startsWith("16:10")) {
-        expect(len).toBeGreaterThanOrEqual(22);
-        expect(len).toBeLessThanOrEqual(40);
-      } else expect(len).toBeGreaterThanOrEqual(18);
+        expect(len).toBeGreaterThanOrEqual(34);
+        expect(len).toBeLessThanOrEqual(44);
+      } else expect(len).toBeGreaterThanOrEqual(28);
       const gripY: number[] = [];
       for (let i = 0; i < arm.positions.length; i += 3) {
         const z = arm.positions[i + 2] as number;
@@ -151,7 +134,7 @@ describe("the right arm's framing: from the player, large, in the lower right", 
       }
       const fistHeight = (hi(gripY) - lo(gripY)) / H;
       process.stdout.write(`${name}: head ${head.x.toFixed(0)}/${head.y.toFixed(0)}, fist ${fist.x.toFixed(0)}/${fist.y.toFixed(0)} (percent across/down), torch ${len.toFixed(0)} percent of the width, fist ${(fistHeight * 100).toFixed(0)} percent of the height\n`);
-      expect(fistHeight, `${name}: fist ${(fistHeight * 100).toFixed(1)} percent of the height`).toBeGreaterThanOrEqual(0.22);
+      expect(fistHeight, `${name}: fist ${(fistHeight * 100).toFixed(1)} percent of the height`).toBeGreaterThanOrEqual(0.25);
       expect(fistHeight).toBeLessThanOrEqual(0.36);
       // The forearm leaves through the right edge, its upper edge at about 71 percent down as the reference's (72), and/or the bottom edge right of 88 percent across.
       const bottom = right.filter((p) => p.y > H - 4).map((p) => p.x / W);
@@ -415,5 +398,80 @@ describe("the two arms are as thick as each other, and the watch is 4/5 of the w
     process.stdout.write(`the lit circle is ${(mean * 100).toFixed(1)} percent of the view's height across\n`);
     expect(mean).toBeGreaterThanOrEqual(0.19);
     expect(mean).toBeLessThanOrEqual(0.215);
+  });
+});
+
+describe("the torch turned in the grip: its head points away into the scene, the arm as it was", () => {
+  // The lens and the axis it ends with, in the file's frame (`hands.json`: the torch is turned in the hand about the point under the middle finger, `TORCH_IN_GRIP`), as the loader stands it.
+  const lens = [-(RIGHT.lens as number[])[0]!, (RIGHT.lens as number[])[1]!, (RIGHT.lens as number[])[2]!];
+  const axis = [-(RIGHT.axis as number[])[0]!, (RIGHT.axis as number[])[1]!, (RIGHT.axis as number[])[2]!];
+  const torchPart = part(RIGHT_PARTS, "torch");
+  const length = RIGHT.torch_length as number;
+
+  for (const [name, W, H] of [["16:10", 1248, 780], ["16:9", 1280, 720], ["aspect 1.2", 949, 780]] as const) {
+    it(`has the drawn axis's forward part at least 0.55, its head up and left of the fist and the barrel foreshortened (${name})`, () => {
+      const { rp, rb } = both(W, H);
+      const scale = handScaleFor();
+      // Forward: the camera's z of the axis (the basis is scaled).
+      const fwd = (rb[2]! * axis[0]! + rb[5]! * axis[1]! + rb[8]! * axis[2]!) / scale;
+      process.stdout.write(`${name}: the torch's axis has a forward part of ${fwd.toFixed(2)}\n`);
+      expect(fwd).toBeGreaterThanOrEqual(0.55);
+      const head = pixel(rp, rb, lens, W, H) as [number, number];
+      const tail = pixel(rp, rb, [lens[0]! - axis[0]! * length, lens[1]! - axis[1]! * length, lens[2]! - axis[2]! * length], W, H) as [number, number];
+      // Up and left on the screen, 25 to 50 degrees above horizontal.
+      const angle = (Math.atan2(tail[1] - head[1], tail[0] - head[0]) * 180) / Math.PI;
+      process.stdout.write(`${name}: the torch is ${angle.toFixed(1)} degrees above horizontal, ${((Math.hypot(tail[0] - head[0], tail[1] - head[1]) / W) * 100).toFixed(0)} percent of the width long\n`);
+      expect(angle).toBeGreaterThanOrEqual(25);
+      expect(angle).toBeLessThanOrEqual(50);
+      // The head is up and to the left of the fist.
+      const arm = part(RIGHT_PARTS, "arm");
+      const grip: number[][] = [];
+      for (let i = 0; i < arm.positions.length; i += 3) {
+        const z = arm.positions[i + 2] as number;
+        if (z < -0.04 && z > -0.16 && Math.hypot(arm.positions[i] as number, arm.positions[i + 1] as number) < 0.05) grip.push([arm.positions[i] as number, arm.positions[i + 1] as number, z]);
+      }
+      const mid = [0, 1, 2].map((k) => grip.reduce((n, g) => n + g[k]!, 0) / grip.length);
+      const fist = pixel(rp, rb, mid, W, H) as [number, number];
+      expect(head[0]).toBeLessThan(fist[0]);
+      expect(head[1]).toBeLessThan(fist[1]);
+      // Foreshortened: the head's width on the screen under 0.8 of the tail's.
+      const dirx = tail[0] - head[0], diry = tail[1] - head[1], dl = Math.hypot(dirx, diry);
+      const across = (alongLo: number, alongHi: number): number => {
+        const v: number[] = [];
+        for (let i = 0; i < torchPart.positions.length; i += 3) {
+          const px = torchPart.positions[i] as number, py = torchPart.positions[i + 1] as number, pz = torchPart.positions[i + 2] as number;
+          const along = (px - lens[0]!) * axis[0]! + (py - lens[1]!) * axis[1]! + (pz - lens[2]!) * axis[2]!;
+          if (along < alongLo || along > alongHi) continue;
+          const q = pixel(rp, rb, [px, py, pz], W, H);
+          if (q !== null) v.push((-q[0] * diry + q[1] * dirx) / dl);
+        }
+        return hi(v) - lo(v);
+      };
+      const ratio = across(-0.035, 0.01) / across(-length - 0.01, -length + 0.035);
+      process.stdout.write(`${name}: the head's width over the tail's on the screen ${ratio.toFixed(2)}\n`);
+      expect(ratio).toBeLessThan(0.8);
+    });
+  }
+
+  it("keeps the fingers on the turned barrel: none through it by more than the straight grip's own, none floating off it by more than 3 mm", () => {
+    const grip = RIGHT.grip as Record<string, { gap_mm: number; penetration_mm: number }>;
+    for (const [finger, g] of Object.entries(grip)) expect(g.gap_mm, `${finger}'s gap`).toBeLessThanOrEqual(3);
+    // The penetration measure counts the head's and the knurl's radius, so it is not zero even for the straight grip: it is held to that grip's own (measured at `TORCH_IN_GRIP` 0, 0) and 3 mm.
+    const straight: Record<string, number> = { thumb: 18.65, point: 9.51, middle: 5.26, ring: 5.02, pink: 2.93 };
+    for (const [finger, g] of Object.entries(grip)) expect(g.penetration_mm, `${finger}'s penetration`).toBeLessThanOrEqual((straight[finger] as number) + 3);
+  });
+
+  it("has the lens at the head: the file's lens is on the axis, a torch's length from the tail's end", () => {
+    expect(Math.hypot(axis[0]!, axis[1]!, axis[2]!)).toBeCloseTo(1, 4);
+    // The torch's vertices run from the lens back along the axis by the torch's length (and the bezel a few millimetres past it).
+    let lowest = Infinity, highest = -Infinity;
+    for (let i = 0; i < torchPart.positions.length; i += 3) {
+      const along = ((torchPart.positions[i] as number) - lens[0]!) * axis[0]! + ((torchPart.positions[i + 1] as number) - lens[1]!) * axis[1]! + ((torchPart.positions[i + 2] as number) - lens[2]!) * axis[2]!;
+      lowest = Math.min(lowest, along);
+      highest = Math.max(highest, along);
+    }
+    expect(-lowest).toBeGreaterThan(length - 0.01);
+    expect(-lowest).toBeLessThan(length + 0.01);
+    expect(highest).toBeLessThan(0.012);
   });
 });

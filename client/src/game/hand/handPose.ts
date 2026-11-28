@@ -22,6 +22,7 @@
  *   if the lamp is still on when they are over.
  */
 import type { CameraAxes } from "@csarkosh/engine/game/lite/cameraPose";
+import { RIGHT } from "./handModels.js";
 
 export const RAISE_SECONDS = 0.25;
 export const LOWER_SECONDS = 0.2;
@@ -29,12 +30,12 @@ export const LOWER_SECONDS = 0.2;
 export const FOV = 1.4;
 export const ASPECT_MIN = 1, ASPECT_MAX = 2.2;
 /** How far ahead of the eye the lens is at the hold (metres), and where it stands on the screen there, as shares of the view's width (from the left) and height (from the top). */
-export const HOLD_DEPTH = 0.71;
+export const HOLD_DEPTH = 0.4;
 /**
  * The torch and the hand are drawn this many times life size, about the lens: larger than life on purpose, as a first person view model is, so that the arm fills the
  * corner of the view as a held thing does to the one who holds it, and reads at a glance. It is the mesh's own scale: the beam, the lens's place and the hold are not scaled.
  */
-export const HAND_SCALE = 1.82;
+export const HAND_SCALE = 1.65;
 /**
  * The scale for a view of this aspect: `HAND_SCALE` at any shape, so that the forearm is as thick on the screen (a share of the view's height) as the left arm's, which is also drawn at one
  * scale (`watchPose.ts`), on a narrow window as on a wide one. (The torch points into the scene and is foreshortened, so it does not come to cover the middle of the view.)
@@ -42,7 +43,7 @@ export const HAND_SCALE = 1.82;
 export function handScaleFor(): number {
   return HAND_SCALE;
 }
-export const HOLD_SCREEN = { x: 0.59, y: 0.62 } as const;
+export const HOLD_SCREEN = { x: 0.61, y: 0.63 } as const;
 /**
  * How the torch is tilted at the hold, radians: turned toward the left of the view and pitched down, as a person holds a torch up before them and points it at the
  * ground ahead. The tilt shows the barrel along its side (pointed straight ahead it is seen end on) and sends the beam's middle to the ground about 7 m ahead, so
@@ -60,9 +61,9 @@ export const AIM_DROP = 1.5;
  * of the eye that points exactly where the beam goes is seen from behind, its tail cap hiding the rest; drawn turned in like this its barrel is seen along its
  * side, the head the farthest and widest part, as a held torch looks to the one who holds it. The beam keeps `aimAngles` (through the middle of the view `AIM_DISTANCE` ahead) from the lens. Set by eye.
  */
-export const DRAWN_YAW = -0.65, DRAWN_PITCH = -0.39;
+export const DRAWN_YAW = -1.46, DRAWN_PITCH = -0.63;
 /** The turn of the torch about its own axis at the hold, radians: the hand holds it from the right and below, the forearm rising from the bottom edge of the view. */
-export const HOLD_ROLL = 5.8;
+export const HOLD_ROLL = 5.98;
 /** The lens's place at the hold for a view of this aspect (width over height), in the camera's frame: so that the torch's head stands at `HOLD_SCREEN` whatever the window's shape. */
 export function holdFor(aspect: number): { x: number; y: number; z: number } {
   const a = Math.min(ASPECT_MAX, Math.max(ASPECT_MIN, aspect));
@@ -176,9 +177,24 @@ export function handHidden(ridePhase: number, insidePhase: number, roomUndrawn: 
  * ground ahead of them.
  */
 export function aimAngles(aspect: number): { yaw: number; pitch: number } {
-  const h = holdFor(aspect);
+  const h = holdLens(aspect);
   const dx = -h.x, dy = -AIM_DROP - h.y, dz = AIM_DISTANCE - h.z;
   return { yaw: Math.atan2(dx, dz), pitch: Math.asin(-dy / Math.hypot(dx, dy, dz)) };
+}
+
+/**
+ * Where the lens is at the hold for a view of this aspect, in the camera's frame: the hold (`holdFor`, where the file's origin is put) and the file's own lens from it
+ * (`lensOffset`): the torch is turned in the hand (`TORCH_IN_GRIP` in the build), so its lens is not at the origin.
+ */
+export function holdLens(aspect: number): { x: number; y: number; z: number } {
+  const h = holdFor(aspect);
+  const hold = newHandPose();
+  hold.mx = Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH);
+  hold.my = -Math.sin(DRAWN_PITCH);
+  hold.mz = Math.cos(DRAWN_YAW) * Math.cos(DRAWN_PITCH);
+  hold.roll = HOLD_ROLL;
+  const o = lensOffset(REST, hold);
+  return { x: h.x + (o[0] as number), y: h.y + (o[1] as number), z: h.z + (o[2] as number) };
 }
 
 /** The axis of the beam at the hold, in the camera's frame (a unit vector). */
@@ -266,14 +282,42 @@ export function stepHand(s: HandState, i: HandInput, out: HandPose): HandPose {
   return out;
 }
 
+/** The camera's own axes, for working in its frame. */
+const REST = { rx: 1, ry: 0, rz: 0, ux: 0, uy: 1, uz: 0, fx: 0, fy: 0, fz: 1 } as CameraAxes;
+
+/**
+ * Where the torch's lens is from the file's origin (where the hand is placed), in the camera's frame: the lens in the file's own frame (`hands.json`: the torch is turned in the hand, so
+ * the lens is not at the origin), as the loader stands it (x mirrored), turned by the torch's basis and drawn `HAND_SCALE` times life size. The nine numbers of the basis are the pose's own.
+ */
+export function lensOffset(a: CameraAxes, p: HandPose, out: number[] = [0, 0, 0]): number[] {
+  const b = new Float64Array(9);
+  torchBasis(a, p, b, HAND_SCALE);
+  const l = RIGHT.lens ?? [0, 0, 0];
+  const lx = -(l[0] as number), ly = l[1] as number, lz = l[2] as number;
+  out[0] = (b[0] as number) * lx + (b[3] as number) * ly + (b[6] as number) * lz;
+  out[1] = (b[1] as number) * lx + (b[4] as number) * ly + (b[7] as number) * lz;
+  out[2] = (b[2] as number) * lx + (b[5] as number) * ly + (b[8] as number) * lz;
+  return out;
+}
+
+/** Where the file's origin (the hand's place: the torch as it would lie straight) is in the world, for an eye at (`ex`, `ey`, `ez`) with the camera's axes `a`. */
+export function originWorld(ex: number, ey: number, ez: number, a: CameraAxes, p: HandPose, out: { x: number; y: number; z: number }): void {
+  out.x = ex + a.rx * p.x + a.ux * p.y + a.fx * p.z;
+  out.y = ey + a.ry * p.x + a.uy * p.y + a.fy * p.z;
+  out.z = ez + a.rz * p.x + a.uz * p.y + a.fz * p.z;
+}
+
 /**
  * The lens's place in the world and the way the beam points, for an eye at (`ex`, `ey`, `ez`) with the camera's axes `a`: written to `out`
  * (`x, y, z` the lens, `dx, dy, dz` the unit axis).
  */
 export function lensWorld(ex: number, ey: number, ez: number, a: CameraAxes, p: HandPose, out: { x: number; y: number; z: number; dx: number; dy: number; dz: number }): void {
-  out.x = ex + a.rx * p.x + a.ux * p.y + a.fx * p.z;
-  out.y = ey + a.ry * p.x + a.uy * p.y + a.fy * p.z;
-  out.z = ez + a.rz * p.x + a.uz * p.y + a.fz * p.z;
+  const o = lensOffset(REST, p);
+  const o0 = o[0] as number, o1 = o[1] as number, o2 = o[2] as number;
+  const ox = a.rx * o0 + a.ux * o1 + a.fx * o2, oy = a.ry * o0 + a.uy * o1 + a.fy * o2, oz = a.rz * o0 + a.uz * o1 + a.fz * o2;
+  out.x = ex + a.rx * p.x + a.ux * p.y + a.fx * p.z + ox;
+  out.y = ey + a.ry * p.x + a.uy * p.y + a.fy * p.z + oy;
+  out.z = ez + a.rz * p.x + a.uz * p.y + a.fz * p.z + oz;
   out.dx = a.rx * p.ax + a.ux * p.ay + a.fx * p.az;
   out.dy = a.ry * p.ax + a.uy * p.ay + a.fy * p.az;
   out.dz = a.rz * p.ax + a.uz * p.ay + a.fz * p.az;

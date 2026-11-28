@@ -19,7 +19,7 @@ import type { TownReady } from "../town/townMaterial.js";
 import { TORCH_COLOUR } from "./handLight.js";
 import { lightTorch, newTorchState } from "./handLight.js";
 import { RIGHT_FILE, disposeArm, loadArm, type ArmHost, type ArmPart } from "./handModels.js";
-import { handScaleFor, basisQuaternion, clearAhead, handHidden, lensWorld, newHandPose, newHandState, stepHand, torchBasis, type HandPose } from "./handPose.js";
+import { handScaleFor, basisQuaternion, clearAhead, handHidden, lensWorld, newHandPose, newHandState, originWorld, stepHand, torchBasis, type HandPose } from "./handPose.js";
 import { HAND_SWITCH, handWanted, torchLit } from "./handSwitch.js";
 
 export { TORCH_ANGLE, TORCH_COLOUR, TORCH_GAIN, TORCH_RANGE } from "./handLight.js";
@@ -92,6 +92,7 @@ export function createHandParts(host: HandHost, made: readonly ArmPart[]): HandP
   const pose = newHandPose();
   const torch: TorchSeen = { lit: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1 };
   const place = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1 };
+  const origin = { x: 0, y: 0, z: 0 };
   const basis = new Float64Array(9);
   const quat = [0, 0, 0, 1];
   const torchState = newTorchState();
@@ -146,11 +147,12 @@ export function createHandParts(host: HandHost, made: readonly ArmPart[]): HandP
         return;
       }
       lensWorld(f.eye.x, f.eye.y, f.eye.z, f.axes, pose, place);
+      originWorld(f.eye.x, f.eye.y, f.eye.z, f.axes, pose, origin);
       torchBasis(f.axes, pose, basis);
       basisQuaternion(basis, quat);
       const size = handScaleFor();
       for (const mesh of [...body, ...lens]) {
-        mesh.position.set(place.x, place.y, place.z);
+        mesh.position.set(origin.x, origin.y, origin.z);
         if (mesh.scaling.x !== size) mesh.scaling.set(size, size, size);
         mesh.rotationQuaternion.x = quat[0] as number;
         mesh.rotationQuaternion.y = quat[1] as number;

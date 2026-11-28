@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
 import {
-  DRAWN_PITCH, DRAWN_YAW, FOV, HOLD, HOLD_DEPTH, HOLD_SCREEN, AIM_DISTANCE, AIM_DROP, LOWER_SECONDS, aimAngles, clearAhead, holdFor, loweredFor, MAX_LAG, NEAREST, RAISE_SECONDS, basisQuaternion, handHidden, holdAxis, lensWorld, newHandPose, newHandState, stepHand, torchBasis,
+  DRAWN_PITCH, DRAWN_YAW, FOV, HOLD, HOLD_DEPTH, HOLD_SCREEN, AIM_DISTANCE, AIM_DROP, LOWER_SECONDS, aimAngles, clearAhead, holdFor, holdLens, loweredFor, MAX_LAG, NEAREST, RAISE_SECONDS, basisQuaternion, handHidden, holdAxis, lensWorld, newHandPose, newHandState, stepHand, torchBasis,
   type HandInput,
 } from "../../src/game/hand/handPose.js";
 
@@ -77,7 +77,7 @@ describe("the hold", () => {
   it("aims the beam across the middle of the view and AIM_DROP below it, AIM_DISTANCE ahead: so it lights the ground ahead and a face in the view's middle", () => {
     for (const aspect of [1.2, 1.6, 2.2]) {
       const [ax, ay, az] = holdAxis(aspect);
-      const h = holdFor(aspect);
+      const h = holdLens(aspect);
       // The lens stands right of the eye, so the beam leans left.
       expect(ax).toBeLessThan(0);
       // Followed to the plane AIM_DISTANCE ahead of the eye, it is at the view's middle across and AIM_DROP below it.
@@ -105,7 +105,7 @@ describe("the hold", () => {
     lensWorld(eye.x, eye.y, eye.z, axes, pose, lens);
     const rel = [lens.x - eye.x, lens.y - eye.y, lens.z - eye.z];
     const along = (v: number[], x: number, y: number, z: number): number => v[0]! * x + v[1]! * y + v[2]! * z;
-    const hold = holdFor(1.6);
+    const hold = holdLens(1.6);
     expect(along(rel, axes.rx, axes.ry, axes.rz)).toBeCloseTo(hold.x, 2);
     expect(along(rel, axes.ux, axes.uy, axes.uz)).toBeCloseTo(hold.y, 1);
     expect(along(rel, axes.fx, axes.fy, axes.fz)).toBeCloseTo(hold.z, 2);
@@ -127,13 +127,11 @@ describe("the hold", () => {
     expect(pose.mx).toBeCloseTo(Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH), 2);
     expect(pose.my).toBeCloseTo(-Math.sin(DRAWN_PITCH), 2);
     expect(Math.hypot(pose.mx, pose.my, pose.mz)).toBeCloseTo(1, 6);
-    // The torch is drawn pointing into the scene and across the view toward the upper left, as the owner's reference holds it (`handScreen.test.ts` measures the angle on the screen): its
-    // forward part (the camera's z) is 0.6 to 0.75 of its length, the rest going left and a little up; the beam, which goes through the view's middle and down to the street, agrees more closely.
-    expect(pose.mz).toBeGreaterThanOrEqual(0.6);
-    expect(pose.mz).toBeLessThanOrEqual(0.75);
-    expect(pose.mx).toBeLessThan(-0.4);
-    expect(pose.my).toBeGreaterThan(0.2);
-    expect(pose.mx * pose.ax + pose.my * pose.ay + pose.mz * pose.az).toBeGreaterThan(Math.cos((50 * Math.PI) / 180));
+    // The torch is drawn as the owner's reference shows it (`handScreen.test.ts` measures the angle on the screen): up and to the left, seen along its side (mostly across the view, a little
+    // away), and the beam, which goes through the view's middle and down to the street, may differ from it.
+    expect(pose.mx).toBeLessThan(-0.6);
+    expect(pose.my).toBeGreaterThan(0.3);
+    expect(Math.abs(pose.mz)).toBeLessThan(0.4);
     // Lowered, the drawn axis is not the beam's either way round and nothing is lit: only the pair at the hold matters, and both are unit vectors.
     expect(Math.hypot(pose.ax, pose.ay, pose.az)).toBeCloseTo(1, 6);
   });
