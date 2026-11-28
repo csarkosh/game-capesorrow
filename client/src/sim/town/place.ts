@@ -1,5 +1,5 @@
 /**
- * Cape Sorrow's place: what the game lays over the engine's coast. Importing `coast.ts` registers the
+ * Port Ashton's place: what the game lays over the engine's coast. Importing `coast.ts` registers the
  * coast with it as the terrain `olympic`, on every thread that builds a world.
  *
  * It is the town's made ground (`ground.ts`: the fill the town stands on at the cove, following the plan and keeping
@@ -61,7 +61,7 @@ export function shapeDFull(seed: number, x: number, z: number, u: number, uDz: n
   return changed ? { h, dx, dz } : base;
 }
 
-export const CAPE_PLACE: CoastOverlay = {
+export const PORTASHTON_PLACE: CoastOverlay = {
   tunables: {
     ...GROUND_TUNABLES,
     ...TOWN_BLEND_TUNABLES,

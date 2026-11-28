@@ -8,7 +8,7 @@ export const SITE_ROOT = 'https://games.csarko.sh/';
 export const GAMES_INDEX = 'https://csarko.sh/games';
 
 /** The title this game's page carries. */
-export const TITLE = 'Cape Sorrow';
+export const TITLE = 'Something Haunts Port Ashton';
 
 export const VERIFY_USAGE = 'Usage: npm run deploy:verify [-- --base <url>] [-- --sha <build tag>]';
 
@@ -71,7 +71,7 @@ function attributes(html, tagNames, name) {
  *
  * @param {string} html
  * @param {string} pageUrl the address the page was fetched from, ending in `/`
- * @param {string} basePath the game's path on the site, with a trailing slash (`/capesorrow/`)
+ * @param {string} basePath the game's path on the site, with a trailing slash (`/portashton/`)
  */
 export function referencedUrls(html, pageUrl, basePath) {
   const page = new URL(pageUrl);

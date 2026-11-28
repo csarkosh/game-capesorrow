@@ -74,7 +74,7 @@ describe("nothing grows on the railroad", () => {
 
 describe("the railroad's clearing and the town's, together", () => {
   it("shuts the corridor inside the town to trees and cover, and leaves the town's yards and paving as the town made them outside it", async () => {
-    const { CAPE_PLACE } = await import("../../src/sim/town/place.js");
+    const { PORTASHTON_PLACE } = await import("../../src/sim/town/place.js");
     const { townFeatureMask } = await import("../../src/sim/town/clearing.js");
     const { planFor } = await import("../../src/sim/town/planFor.js");
     const { siteFor } = await import("../../src/sim/town/siteFor.js");
@@ -89,7 +89,7 @@ describe("the railroad's clearing and the town's, together", () => {
       for (let z = -500; z <= 500; z += 12) {
         const rc = railCenterX(seed, a.z + z);
         for (const off of [-4, -2, 0, 2, 4, RAIL_TREE_SHUT - 0.5]) {
-          const m = CAPE_PLACE.featureMask?.(seed, rc + off, a.z + z, 3) as { tree: number; clutter: number };
+          const m = PORTASHTON_PLACE.featureMask?.(seed, rc + off, a.z + z, 3) as { tree: number; clutter: number };
           expect(m.tree, `seed ${seed} z ${z} off ${off}`).toBe(0);
           shut++;
         }
@@ -102,7 +102,7 @@ describe("the railroad's clearing and the town's, together", () => {
         const z = a.z + c.z;
         if (Math.abs(x - railCenterX(seed, z)) < RAIL_CLEAR_REACH + 1) continue;
         yards++;
-        const merged = CAPE_PLACE.featureMask?.(seed, x, z, 3);
+        const merged = PORTASHTON_PLACE.featureMask?.(seed, x, z, 3);
         const town = townFeatureMask(seed, x, z);
         expect(merged).toEqual(town);
         if (town.clutter > 0.5) yardsKept++;

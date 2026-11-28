@@ -1,5 +1,5 @@
 /**
- * What a measuring tool may read of the car and the local player's ride (`globalThis.__capeCar`, set by `townParts.ts` while the town's
+ * What a measuring tool may read of the car and the local player's ride (`globalThis.__portAshtonCar`, set by `townParts.ts` while the town's
  * part lives): every answer is a copy, so nothing a tool does reaches a record the game moves.
  */
 import { doorPlace } from "../../sim/car/seats.js";

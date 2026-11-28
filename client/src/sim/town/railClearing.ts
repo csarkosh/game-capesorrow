@@ -12,13 +12,14 @@
  * - **Loose rock and driftwood** (the mask's `loose`): a rock's cell is 9 m and it stands up to 3.2 m off its centre across the line,
  *   so it takes the trees' own distances.
  *
- * The line's x at a z is a call into the coast; the engine asks along a row of one z, so the last answer is kept.
+ * The line's x at a z is a call into the coast; the engine asks along a row of one z, so the highway's centre at the last z is kept (`roadCentre.ts`).
  *
  * Simulation code: `+ - * /`, `floor`, `abs`, `min`, `max`, `sqrt` only.
  */
 import type { FeatureMask } from "@csarkosh/engine/sim/features";
 import { smootherstepD } from "./fill.js";
-import { RAIL_CORRIDOR_HALF, railCenterX } from "./rail.js";
+import { RAIL_CORRIDOR_HALF, RAIL_OFFSET } from "./rail.js";
+import { roadCentreX } from "./roadCentre.js";
 
 /** The farthest a tree stands from its cell's centre across the line, metres (the engine's jitter span over two, of a 10 m cell). */
 export const RAIL_TREE_JITTER = 3.5;
@@ -38,18 +39,9 @@ export const RAIL_CLEARING_TUNABLES: Readonly<Record<string, number>> = {
   RAIL_CLUTTER_RAMP,
 };
 
-let lastSeed = NaN;
-let lastZ = NaN;
-let lastX = 0;
-
-/** The line's centre x at a z, the last asked kept. */
+/** The line's centre x at a z: `railCenterX`, with the highway's centre at the last z asked kept (`roadCentre.ts`). */
 function lineX(seed: number, z: number): number {
-  if (seed !== lastSeed || z !== lastZ) {
-    lastX = railCenterX(seed, z);
-    lastSeed = seed;
-    lastZ = z;
-  }
-  return lastX;
+  return roadCentreX(seed, z) - RAIL_OFFSET;
 }
 
 /** The feature mask `mask` (the town's) with the railroad's corridor shut in it: `mask` itself where the point is clear of the line. */

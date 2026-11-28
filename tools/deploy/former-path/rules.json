@@ -1,0 +1,6 @@
+{
+  "redirects": [
+    { "source": "/capesorrow", "destination": "/portashton/", "type": 301 },
+    { "source": "/capesorrow/**", "destination": "/portashton/", "type": 301 }
+  ]
+}

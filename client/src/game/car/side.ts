@@ -111,13 +111,13 @@ export function knockLoudness(speed: number): number {
   return Math.min(1, 0.2 + Math.max(speed, 0) / 30);
 }
 
-/** The line the door shows now, for a measuring tool (`__capeCar.prompt()`). */
+/** The line the door shows now, for a measuring tool (`__portAshtonCar.prompt()`). */
 let shown: string | null = null;
 export function promptShown(): string | null {
   return shown;
 }
 
-/** What the car's voice was last fed, for a measuring tool (`__capeCar.sound()`): the note, the two levels, the surface and the distance. */
+/** What the car's voice was last fed, for a measuring tool (`__portAshtonCar.sound()`): the note, the two levels, the surface and the distance. */
 export type VoiceSeen = { hz: number; engine: number; tyres: number; surface: number; distance: number };
 const voice: VoiceSeen = { hz: 0, engine: 0, tyres: 0, surface: 0, distance: 0 };
 let voiceOn = false;

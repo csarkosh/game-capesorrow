@@ -1,7 +1,7 @@
 /**
- * Cape Sorrow as the page's shell is handed it (`pageGame.ts`): its definition on a page, and its
+ * Port Ashton as the page's shell is handed it (`pageGame.ts`): its definition on a page, and its
  * own of the page. Until the game has a world of its own, what Play starts is the engine's empty
- * game (a walkable yard); the page around it is Cape Sorrow's: a title page with Play, Settings
+ * game (a walkable yard); the page around it is Port Ashton's: a title page with Play, Settings
  * and Credits, and nothing played before a session starts.
  */
 import { isMode, createModeKeeper } from "@csarkosh/engine/game/modeList";
@@ -15,12 +15,12 @@ import { creditsEntries } from "./game/credits.js";
 import { renderLanding, type LandingHandle, type LandingPanel } from "./game/landing.js";
 import { landingModel, type LandingInput } from "./game/landingModel.js";
 import { createStatusLine, type WalkHud } from "./hud.js";
-import { CAPE_IDENTITY } from "./identity.js";
+import { PORTASHTON_IDENTITY } from "./identity.js";
 import { WALK_PROTOCOL } from "./net.js";
 import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./sim.js";
 
-/** Cape Sorrow's own of the page: made once by the shell, called at the page's own points. */
-export function createCapePage(h: PageHost): PageSide {
+/** Port Ashton's own of the page: made once by the shell, called at the page's own points. */
+export function createPortAshtonPage(h: PageHost): PageSide {
   let landing: LandingHandle | null = null;
   // The mode (`WALK_MODES`), kept the same way as the graphics choice.
   const modeChoice = createModeKeeper(WALK_MODES, pageStorage);
@@ -110,16 +110,18 @@ export function createCapePage(h: PageHost): PageSide {
   };
 }
 
-export const CAPE_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud, WalkHost, WalkClient> = {
+export const PORTASHTON_PAGE: PageGame<WalkWorld, WalkState, Walker, WalkRenderer, AmbientAudio & CarSoundApi, WalkHud, WalkHost, WalkClient> = {
   game: EMPTY_GAME,
-  side: createCapePage,
-  identity: CAPE_IDENTITY,
+  side: createPortAshtonPage,
+  identity: PORTASHTON_IDENTITY,
   /** The page for those turned away stands on no still (the title page has none), and credits the same works the Credits screen does. */
   away: { still: () => null, credits: creditsEntries },
   protocol: WALK_PROTOCOL,
   statusLine: createStatusLine,
   /** The worker that makes a session's world: the entry is the game's, since a worker is named by a path. */
   worldWorker: () => new Worker(new URL("./world.worker.ts", import.meta.url), { type: "module" }),
+  /** Two world workers, both made from `worldWorker`: the second looks up the ground clutter's cells, the first builds the terrain's rings and the rock faces. */
+  worldWorkers: 2,
   /** No scene is staged yet: a scene's address draws nothing. */
   scene: () => ({ dispose: () => undefined }),
   /** What the tier check draws as it measures the renderer: the yard with nobody in it. */

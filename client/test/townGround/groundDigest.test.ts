@@ -38,7 +38,7 @@ import { streetChannelD, streetLiftD, streetLowerD, withStreets } from "../../sr
  * strip now also covers the town's unclaimed made ground and the highway's corridor, and the mask adds weeds and no trees there.
  * No other key moved: the ground's heights, the town's own mask and strip, and the cover are the same arithmetic.
  *
- * And the engine's own ground under the place: with the beach's shape asked for (`CAPE_PLACE.beach`, engine v0.2.25: the storm
+ * And the engine's own ground under the place: with the beach's shape asked for (`PORTASHTON_PLACE.beach`, engine v0.2.25: the storm
  * ridge, cusps, bars and hummocks), the coast's heights on the beach moved on purpose, so the `world`, `walked` and `hooks` keys of
  * all three worlds were taken again; with `beach: { shape: 0 }` every key stood as it was, and the `town` and `windows` keys (the
  * made ground's own arithmetic) did not move.

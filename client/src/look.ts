@@ -1,5 +1,5 @@
 /**
- * Cape Sorrow's look, as the engine is handed it (`game.ts`): **Harbour**, a cold, clear, wet working port at midday under high cloud.
+ * Port Ashton's look, as the engine is handed it (`game.ts`): **Harbour**, a cold, clear, wet working port at midday under high cloud.
  *
  * The engine's own look is Day Hike's, a landscape in oils: every frame smeared into strokes, the distance softened, the palette pulling
  * shadows to umber and taking colour out. A town is read by its edges, its lettering and its paint, so here the strokes and the far
@@ -108,7 +108,7 @@ const FINISH: LookFinish = { grain: 0.028, edge: 0.14, line: 0.6, lineColour: [0
  */
 const SWARD: LookSward = { floor: [0.031, 0.041, 0.013], pull: 1 };
 
-export const CAPE_LOOK: Partial<GameLook> = {
+export const PORTASHTON_LOOK: Partial<GameLook> = {
   paint: 0,
   farSoft: 0,
   exposure: 1.5,
@@ -135,7 +135,7 @@ export const CAPE_LOOK: Partial<GameLook> = {
  */
 export const LIT_GAIN = 0.86;
 export function litGainAt(hour: number): number {
-  const grade = lookGradeAt(gameLook(CAPE_LOOK), hour, DAMP.cloudCover);
+  const grade = lookGradeAt(gameLook(PORTASHTON_LOOK), hour, DAMP.cloudCover);
   return grade === null ? 1 : Math.max(1, LIT_GAIN / grade.exposure);
 }
 

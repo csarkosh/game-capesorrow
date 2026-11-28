@@ -189,7 +189,7 @@ jobs:
       - run: npm ci
       - name: build the client with the production base
         env:
-          CAPESORROW_BASE: /capesorrow/
+          PORTASHTON_BASE: /portashton/
         run: npm run build
 
   # The one status to require and to read: it fails unless every job above succeeded. `always()`

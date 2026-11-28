@@ -2,7 +2,7 @@
 // Build the client and publish it to its path on the shared site.
 //
 // The shared site (games.csarko.sh, Firebase Hosting site `fps-csarko`) is Day Hike's repository's:
-// it owns the site, the domain and its root. This game owns only `/capesorrow/` and its rules
+// it owns the site, the domain and its root. This game owns only `/portashton/` and its rules
 // (`site.rules.json`), and ships them with the engine's `tools/site/deploy.mjs`, which merges this
 // game's files and rules into the live site, skips source maps and dotfiles, leaves every other
 // game's files alone, and refuses to release if any other game's file would change. So neither
