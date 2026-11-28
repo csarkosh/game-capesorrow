@@ -28,7 +28,7 @@ describe('client/assets/models/people.json', () => {
   it('lists the clips every file carries, which the game plays by name', () => {
     expect(manifest.clips).toEqual([
       'idle', 'browse', 'till', 'phone', 'talk', 'drink', 'wipe', 'fold', 'sit_table', 'sit_eat', 'sit_type', 'sit_stool',
-      'wait', 'arms', 'listen', 'look', 'call', 'cup', 'lean', 'sit_rest', 'sit_phone', 'walk',
+      'wait', 'arms', 'listen', 'look', 'call', 'cup', 'lean', 'sit_rest', 'sit_phone', 'walk', 'dive',
     ]);
   });
 
@@ -43,13 +43,40 @@ describe('client/assets/models/people.json', () => {
       // Every file carries the manifest's clips and no other.
       expect([...names].sort(), p.file).toEqual([...manifest.clips].sort());
       // The clips are stored two and a half times too fast (the game plays them at two fifths of the rate), so that the table the game
-      // bakes them into, sixty rows to a second of a file's clip, stays under the 3,300 rows it had with twelve clips.
+      // bakes them into, sixty rows to a second of a file's clip, stays small: 3,300 rows with the walk, and 3,400 with the dive, which
+      // like the walk is held at its own speed (two seconds, 121 rows). A row is now half the size it was when 3,300 was set.
       const seconds = json.animations.map((a) => Math.max(...a.samplers.map((sampler) => json.accessors[sampler.input].max[0])));
-      expect(seconds.reduce((rows, s) => rows + Math.round(s * 60) + 1, 0), p.file).toBeLessThanOrEqual(3300);
+      expect(seconds.reduce((rows, s) => rows + Math.round(s * 60) + 1, 0), p.file).toBeLessThanOrEqual(3400);
       // Three primitives: the body, and the cup and the phone skinned to the right hand.
       expect(json.meshes[0].primitives.length, p.file).toBe(3);
       expect(json.materials.map((m) => m.name).filter((n) => n.startsWith('prop.')).sort(), p.file).toEqual(['prop.cup', 'prop.phone']);
     }
+  });
+
+  it('says how far a diving body goes at each thirtieth of a second of the dive, the same for all five: out and never back, still at the start and for the stand at the end', () => {
+    const first = manifest.people[0].dive;
+    for (const p of manifest.people) {
+      expect(p.dive, p.id).toEqual(first);
+    }
+    expect(first.stored).toBe(1);
+    expect(first.seconds).toBeGreaterThan(1.5);
+    expect(first.seconds).toBeLessThan(2.5);
+    const travel = first.travel_m;
+    // One distance for each thirtieth of a second, the clip's first moment and its last included.
+    expect(travel.length).toBe(Math.round(first.seconds * 30) + 1);
+    expect(travel[0]).toBe(0);
+    let fastest = 0;
+    for (let i = 1; i < travel.length; i++) {
+      expect(travel[i], `at ${i}`).toBeGreaterThanOrEqual(travel[i - 1]);
+      fastest = Math.max(fastest, (travel[i] - travel[i - 1]) * 30);
+    }
+    const total = travel[travel.length - 1];
+    // A dive and a roll: two to three metres, at a sprint's speed at most; hardly moving in the first tenth, and still for the last half second.
+    expect(total).toBeGreaterThan(2);
+    expect(total).toBeLessThan(3.2);
+    expect(fastest).toBeLessThan(5);
+    expect(travel[3]).toBeLessThan(0.05);
+    expect(travel[travel.length - 16]).toBe(total);
   });
 
   it('says it is written by hand, and names no source in its text', () => {

@@ -42,6 +42,7 @@ import { alongAt, pathSpeed, type Walker } from "./walkers.js";
 import type { LampList } from "./lampLight.js";
 import { emptyPeopleLamps, peopleLampPlugin, writePeopleLamps } from "./peopleLight.js";
 import { personShade, type PeopleShade, type ShadePlace } from "./peopleShade.js";
+import { diveStored } from "./dive.js";
 import { WALK_VENUE, type Nudge, type Seen } from "./peopleReact.js";
 import type { Venue } from "../peopleWords.js";
 
@@ -160,6 +161,9 @@ type Batch = {
   wplaces: (PersonWorld | null)[];
   /** For each person, whether their body was written moved off its schedule at the last step (so it is written back when the move is over). */
   nudged: Uint8Array;
+  /** For each person and for each walker, whether their body is playing the `dive` clip (so their own clip is written back when the dive is over). */
+  diving: Uint8Array;
+  wdiving: Uint8Array;
   /** For each walker: where in the clip they were (clip seconds) at the clock's run `wat`, the clip rate written, and the 5 percent step of their ground speed it was made for. */
   wphase: Float64Array;
   wat: Float64Array;
@@ -215,7 +219,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     const people = placed.filter((p) => p.person.model === id && !(host.low && !p.outdoor && p.person.seat !== null));
     if (people.length > 0 || walk.cap > 0) {
       batches.set(id, {
-        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [], wplaces: [], nudged: new Uint8Array(people.length),
+        id, people, model: null, shown: [], on: new Uint8Array(people.length), decided: new Uint8Array(people.length), walkers: [], walking: [], wplaces: [], nudged: new Uint8Array(people.length), diving: new Uint8Array(people.length), wdiving: new Uint8Array(0),
         wphase: new Float64Array(0), wat: new Float64Array(0), wrate: new Float64Array(0), wbin: new Float64Array(0), things: [],
       });
     }
@@ -224,7 +228,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
   const keyOf = new Map<PlacedPerson, number>();
   for (const [i, p] of placed.entries()) keyOf.set(p, i);
   let nudge: ((key: number, yaw: number, out: Nudge) => boolean) | null = null;
-  const moved: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+  const moved: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
   /** A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for. */
   const seatLift = (person: Body, sitting: boolean): number => (person.seat === null || !sitting ? 0 : person.seat.top - (person.seat.family === "stool" ? STOOL_CLIP_SEAT : CHAIR_CLIP_SEAT));
   const loads = new AbortController();
@@ -348,6 +352,23 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     writeClipParams(model.clipParams, k, clip, at, rate, host.clock.seconds, true);
   }
 
+  /**
+   * Writes a stander's own clip's floats. A fold of the clock writes every body's floats again. Where in the clip a body is now is worked out from
+   * the clock's whole run, so a body that was already shown goes on from where it was when the set changes, and does not start again.
+   */
+  function writeOwnClip(model: SkinnedModel, k: number, person: PlacedPerson["person"], clip: BakedClip): void {
+    model.clipParams[k * 8] = -1;
+    const run = runNow();
+    writeClipParams(model.clipParams, k, clip, ((person.offset + run * person.rate) * CLIP_STORED) % clip.seconds, person.rate * CLIP_STORED, host.clock.seconds, true);
+  }
+
+  /** Writes the `dive` clip's floats for a body `seconds` into its dive: played once from there, at the speed the file stores it. */
+  function writeDive(batch: Batch, model: SkinnedModel, k: number, clip: BakedClip, seconds: number): void {
+    const stored = diveStored(batch.id);
+    model.clipParams[k * 8] = -1;
+    writeClipParams(model.clipParams, k, clip, Math.min(seconds * stored, clip.seconds), stored, host.clock.seconds, false);
+  }
+
   function step(dt: number): void {
     if (disposed) return;
     since += dt;
@@ -374,6 +395,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           batch.wat = new Float64Array(batch.walkers.length).fill(-1);
           batch.wrate = new Float64Array(batch.walkers.length);
           batch.wbin = new Float64Array(batch.walkers.length).fill(-1);
+          batch.wdiving = new Uint8Array(batch.walkers.length);
         }
       }
     }
@@ -442,12 +464,11 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           const y = at.y + seatLift(person, clip !== idle);
           writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
           batch.nudged[i] = 0;
-          // A fold of the clock writes every body's floats again. Where in the clip a body is now is worked out from the clock's whole run, so a
-          // body that was already shown goes on from where it was when the set changes, and does not start again.
-          model.clipParams[k * 8] = -1;
-          const run = runNow();
-          writeClipParams(model.clipParams, k, clip, ((person.offset + run * person.rate) * CLIP_STORED) % clip.seconds, person.rate * CLIP_STORED, host.clock.seconds, true);
+          // (One in the middle of a dive is given their own clip here with everyone, and the dive again below, from where in it they are.)
+          batch.diving[i] = 0;
+          writeOwnClip(model, k, person, clip);
         }
+        batch.wdiving.fill(0);
         // The walkers follow the standers: their clip floats are written once, with a rate that makes the feet keep to the ground (speed = stride x size x rate).
         const spec = walkSpec(batch.id);
         const walkClip = model.clips.get("walk");
@@ -476,7 +497,14 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
       // A stander who is moved off their schedule (`setNudge`: made to jump, knocked back, turned to the player) is written every frame they are, and
       // once more, back where they stand, when it is over; what they hold goes with them.
       let restood = false;
+      let reclipped = changed;
+      const diveClip = model.clips.get("dive");
+      if (diveClip === undefined && nudge !== null && !missing.has(`${batch.id}:dive`) && (batch.shown.length > 0 || wnext.length > 0)) {
+        missing.add(`${batch.id}:dive`);
+        console.warn(`the person model ${batch.id} has no dive clip; its people slide out of a car's way as they stand`);
+      }
       if (nudge !== null || batch.nudged.some((v) => v === 1)) {
+        let shadeMoved = false;
         for (const [k, i] of batch.shown.entries()) {
           const { person, at } = batch.people[i] as PlacedPerson;
           const off = nudge !== null && nudge(keyOf.get(batch.people[i] as PlacedPerson) as number, at.yaw, moved);
@@ -486,26 +514,53 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
           else writeBodyMatrix(model.matrices, k, at.x, y, at.z, at.yaw, person.scale);
           batch.nudged[i] = off ? 1 : 0;
           restood = true;
+          shadeMoved = true;
+          // The dive's clip from the frame the dive begins, and their own again the frame it is over.
+          const diving = off && moved.dive >= 0 && diveClip !== undefined;
+          if (diving !== (batch.diving[i] === 1)) {
+            if (diving) writeDive(batch, model, k, diveClip, moved.dive);
+            else writeOwnClip(model, k, person, model.clips.get(person.activity) ?? idle);
+            batch.diving[i] = diving ? 1 : 0;
+            reclipped = true;
+          }
+          // What they hold goes with them, but not through a dive: the cup or the phone is not drawn until they are on their feet.
           for (const thing of batch.things) {
             if ((batch.people[i] as PlacedPerson).held !== thing.kind) continue;
-            thing.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), k * 16);
+            if (diving) thing.matrices.fill(0, k * 16, k * 16 + 16);
+            else thing.matrices.set(model.matrices.subarray(k * 16, k * 16 + 16), k * 16);
             flushThinInstances(thing.part.mesh, k, 1);
           }
+        }
+        // The dark under each goes where the body went (a dive is metres from where they stood): read back from the matrices just written.
+        if (shadeMoved) {
+          host.shade?.write(batch.id, batch.shown.map((i, k) => {
+            const placedHere = batch.people[i] as PlacedPerson;
+            if (batch.nudged[i] === 0) return personShade(placedHere);
+            return personShade({ at: { x: model.matrices[k * 16 + 12] as number, y: placedHere.at.y, z: model.matrices[k * 16 + 14] as number, yaw: placedHere.at.yaw }, person: placedHere.person });
+          }));
         }
       }
       // The walkers' matrices, every frame they are shown; and a walker whose ground speed has moved by a twentieth (a pair's outer one in a bend) has
       // their clip's rate written again, from where in the clip they are, so that their feet keep to the ground.
-      let reclipped = changed;
       const walkClip2 = model.clips.get("walk") ?? idle;
       const spec2 = walkSpec(batch.id);
       for (const [q, i] of wnext.entries()) {
         const w = batch.walkers[i] as Walker;
         const at = places[q] as PersonWorld;
-        if (nudge !== null && nudge(WALKER_KEY + w.id, at.yaw, moved)) writeNudged(model.matrices, batch.shown.length + q, at.x, at.y, at.z, at.yaw, w.scale, moved);
-        else writeBodyMatrix(model.matrices, batch.shown.length + q, at.x, at.y, at.z, at.yaw, w.scale);
-        walkShade.push(personShade({ at, person: { seat: null, scale: w.scale } }));
-        if (!changed && Math.abs(Math.round(pathSpeed(w, alongAt(w, now)) * 20) / 20 - (batch.wbin[i] as number)) > 1e-6) {
-          writeWalker(batch, model, i, batch.shown.length + q, walkClip2, spec2, now);
+        const slot = batch.shown.length + q;
+        const off = nudge !== null && nudge(WALKER_KEY + w.id, at.yaw, moved);
+        if (off) writeNudged(model.matrices, slot, at.x, at.y, at.z, at.yaw, w.scale, moved);
+        else writeBodyMatrix(model.matrices, slot, at.x, at.y, at.z, at.yaw, w.scale);
+        walkShade.push(personShade({ at: off ? { x: at.x + moved.dx, y: at.y, z: at.z + moved.dz, yaw: at.yaw } : at, person: { seat: null, scale: w.scale } }));
+        // A walker who dives plays the dive, and walks again from where in their stride they were when it is over.
+        const diving = off && moved.dive >= 0 && diveClip !== undefined;
+        if (diving !== (batch.wdiving[i] === 1)) {
+          if (diving) writeDive(batch, model, slot, diveClip, moved.dive);
+          else writeWalker(batch, model, i, slot, walkClip2, spec2, now);
+          batch.wdiving[i] = diving ? 1 : 0;
+          reclipped = true;
+        } else if (!diving && !changed && Math.abs(Math.round(pathSpeed(w, alongAt(w, now)) * 20) / 20 - (batch.wbin[i] as number)) > 1e-6) {
+          writeWalker(batch, model, i, slot, walkClip2, spec2, now);
           reclipped = true;
         }
       }

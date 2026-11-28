@@ -5,8 +5,10 @@
  * has them and back, a turn of the body, and what they say.
  *
  * - **A car.** A person who is in the way a moving car is going (inside the strip its body will sweep, less than `LEAP_LEAD` seconds ahead of its
- *   nose, or already under it) jumps out of it: sideways to the nearer side of the strip that is clear of a wall, a hop, in `LEAP_SECONDS`, then
- *   turns on the driver and says something mean (`MEAN`). They stay out of the road while a car is near and then walk back.
+ *   nose, or already under it) throws themselves out of it, sideways, to the nearer side of the strip that is clear: a dive, a roll and back to
+ *   their feet (the models' `dive` clip, as far as the file says the body goes: `DiveSpec`), then they turn on the driver and say something mean
+ *   (`MEAN`). Where there is no room to dive (a wall, a parked car) they hop aside in `LEAP_SECONDS` instead. They stay out of the road while a
+ *   car is near and then walk back.
  * - **The player on foot.** A person the player walks into is knocked back a step along the player's way, leaning away, and is annoyed
  *   (`BUMPED`). Walked into again, they are pushed further, to `SHOVE_MOST` in all; then they go back. One who is seated is not moved.
  * - **A greeting.** A person the player on foot comes within `GREET_NEAR` of, face to face or in passing, greets the detective by the hour
@@ -14,8 +16,10 @@
  * - **Talk.** Two who stand or walk together, with the player within `CHAT_NEAR`, say a line now and then, in turn, of the kind of place they
  *   are at (`CHATTER`).
  *
- * No clip is made for any of this (the models carry none of a jump or a stumble): the body is moved, hopped, leaned and turned as it plays the
- * clip it was playing. Pure arithmetic over records; nothing is thrown or left not a number whatever `dt` is.
+ * But for the dive, no clip is made for any of this: the body is moved, hopped, leaned and turned as it plays the clip it was playing. The dive
+ * is a clip that stays over the model's own origin; this moves the body along the ground under it, by the distances the file gives for each
+ * moment of the clip, so that its feet and hands keep to the ground. Pure arithmetic over records; nothing is thrown or left not a number
+ * whatever `dt` is.
  */
 import { CAR_LENGTH, CAR_WIDTH } from "../../sim/car/tuning.js";
 import { BUMPED, CHATTER, MEAN, greetingsAt, type Venue } from "../peopleWords.js";
@@ -64,6 +68,24 @@ export const CHAT_NEAR = 8, CHAT_GAP: readonly [number, number] = [4.5, 9];
 export const SAY_LEAST = 2.2, SAY_PER_LETTER = 0.045, SAID_MOST = 4;
 /** How long a turn toward someone takes to come and to go (s), and how long a greeter stays turned (s). */
 const TURN_EASE = 0.3, GREET_TURN = 1.6;
+/** A dive: the thirtieths of a second its distances are given at, how long the body takes to turn the way it dives (s, the clip's crouch), and how long one who has got up takes to turn on the driver (s). */
+export const DIVE_RATE = 30, DIVE_TURN = 0.16, FACE_SECONDS = 0.45;
+/** How far clear of the car's strip a dive must end (m), how long one who walks stays where a dive left them (s), and how fast anyone walks back from far off (m/s). */
+export const DIVE_CLEAR = 0.3, WALKER_STAY = 0.6, HOME_SPEED = 1.6;
+
+/** The dive the models' files hold: how long the clip is (s), and how far along its way the body has gone at each `1 / DIVE_RATE` of a second (m, never less than the one before). */
+export type DiveSpec = { readonly seconds: number; readonly travel: readonly number[] };
+
+/** How far a diving body has gone `t` seconds into its dive (m): between the file's distances, and the last of them from the clip's end on. */
+export function diveTravel(spec: DiveSpec, t: number): number {
+  const n = spec.travel.length;
+  if (n === 0 || !(t > 0)) return n > 0 ? (spec.travel[0] as number) : 0;
+  const f = t * DIVE_RATE;
+  const i = Math.floor(f);
+  if (i >= n - 1) return spec.travel[n - 1] as number;
+  const a = spec.travel[i] as number;
+  return a + ((spec.travel[i + 1] as number) - a) * (f - i);
+}
 
 /** A person as the frame draws them, before any move of this file's: where and which way, their size, and what this needs to know of them. */
 export type Seen = {
@@ -86,7 +108,11 @@ export type ReactCar = { readonly x: number; readonly z: number; readonly hx: nu
 export type ReactPlayer = { readonly x: number; readonly y: number; readonly z: number; readonly vx: number; readonly vz: number; readonly onFoot: boolean };
 
 /** What a body is moved by this frame: a shift, a lift, a turn added to its yaw, and a lean of `lean` radians toward the unit direction (`lx`, `lz`). */
-export type Nudge = { dx: number; dy: number; dz: number; yaw: number; lx: number; lz: number; lean: number };
+export type Nudge = {
+  dx: number; dy: number; dz: number; yaw: number; lx: number; lz: number; lean: number;
+  /** Seconds into the dive the body is, or -1 for one who is not diving: whoever draws the body plays the `dive` clip from there. */
+  dive: number;
+};
 
 /** A line being said: by whom, the words, where their head is, and how long it has been shown of how long. */
 export type Said = { key: number; text: string; x: number; y: number; z: number; age: number; life: number; kind: "mean" | "bumped" | "greeting" | "chatter" };
@@ -99,16 +125,22 @@ type Mind = {
   stay: number; home: boolean;
   /** The yaw they are turned to (absolute) and for how much longer; how far into the turn they are. */
   turnTo: number; turnLeft: number; turned: number;
+  /** The yaw a turn comes from, and how far (0 to 1) it has come from there to `turnTo`: 1 where the turn is from their schedule's own. */
+  turnFrom: number; blend: number;
+  /** A dive: seconds into it (-1 for none), where in the world it began, the way it goes and that way as a yaw; and the car it is from, where it was and how it moved. */
+  dive: number; wx: number; wz: number; dvx: number; dvz: number; dyaw: number; cx: number; cz: number; cvx: number; cvz: number;
   /** When (the set's clock, seconds) they last jumped, were bumped, greeted and talked; and how many lines they have said. */
   leapt: number; bumped: number; greeted: number; talked: number; lines: number;
   /** The frame they were last seen. */
   stamp: number;
 };
 
-export type ReactSet = { readonly minds: Map<number, Mind>; readonly said: Said[]; clock: number; stamp: number; lastGreeting: number };
+export type ReactSet = { readonly minds: Map<number, Mind>; readonly said: Said[]; clock: number; stamp: number; lastGreeting: number; readonly dive: DiveSpec | null };
 
-export function newReact(): ReactSet {
-  return { minds: new Map(), said: [], clock: 0, stamp: 0, lastGreeting: -1e9 };
+/** `dive`: the dive the models hold (`dive.ts` reads it from their manifest), or null where they hold none: then a person hops out of a car's way. */
+export function newReact(dive: DiveSpec | null = null): ReactSet {
+  const sound = dive !== null && dive.seconds > 0 && dive.travel.length >= 2 && dive.travel.every((v) => Number.isFinite(v)) ? dive : null;
+  return { minds: new Map(), said: [], clock: 0, stamp: 0, lastGreeting: -1e9, dive: sound };
 }
 
 /** A number from 0 to 1 for two counts: the same for the same counts. */
@@ -127,7 +159,7 @@ const smooth = (t: number): number => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 
 function mindOf(set: ReactSet, key: number): Mind {
   let m = set.minds.get(key);
   if (m === undefined) {
-    m = { ox: 0, oz: 0, fx: 0, fz: 0, tx: 0, tz: 0, t: 0, dur: 0, hop: 0, lean: 0, lx: 1, lz: 0, stay: 0, home: false, turnTo: 0, turnLeft: 0, turned: 0, leapt: -1e9, bumped: -1e9, greeted: -1e9, talked: -1e9, lines: 0, stamp: set.stamp };
+    m = { ox: 0, oz: 0, fx: 0, fz: 0, tx: 0, tz: 0, t: 0, dur: 0, hop: 0, lean: 0, lx: 1, lz: 0, stay: 0, home: false, turnTo: 0, turnLeft: 0, turned: 0, turnFrom: 0, blend: 1, dive: -1, wx: 0, wz: 0, dvx: 0, dvz: 1, dyaw: 0, cx: 0, cz: 0, cvx: 0, cvz: 0, leapt: -1e9, bumped: -1e9, greeted: -1e9, talked: -1e9, lines: 0, stamp: set.stamp };
     set.minds.set(key, m);
   }
   return m;
@@ -190,8 +222,29 @@ export function stepReact(set: ReactSet, people: readonly Seen[], cars: readonly
   for (const p of people) {
     const m = set.minds.get(p.key);
     if (m === undefined) continue;
+    const unseen = m.stamp < set.stamp - 1;
     m.stamp = set.stamp;
-    if (m.dur > 0) {
+    if (m.blend < 1) m.blend = Math.min(1, m.blend + step / FACE_SECONDS);
+    if (m.dive >= 0 && set.dive !== null) {
+      // One who dived out of sight is on their feet when they are seen again.
+      m.dive = unseen ? set.dive.seconds : m.dive + step;
+      // Along the ground by what the clip's moment says, from where in the world they dived: whatever their schedule does meanwhile (one who
+      // walks goes on along their path), the dive is where it was.
+      const d = diveTravel(set.dive, m.dive);
+      m.ox = m.wx + m.dvx * d - p.x;
+      m.oz = m.wz + m.dvz * d - p.z;
+      if (m.dive >= set.dive.seconds) {
+        // On their feet: they turn from the way they dived to the driver, where the car has got to.
+        const since = set.dive.seconds;
+        m.dive = -1;
+        m.stay = p.walking ? WALKER_STAY : LEAP_STAY;
+        m.turnFrom = m.dyaw;
+        m.blend = 0;
+        m.turnTo = Math.atan2(m.cx + m.cvx * since - (p.x + m.ox), m.cz + m.cvz * since - (p.z + m.oz));
+        m.turnLeft = m.stay;
+        m.turned = 1;
+      }
+    } else if (m.dur > 0) {
       m.t += step;
       const s = smooth(m.t / m.dur);
       m.ox = m.fx + (m.tx - m.fx) * s;
@@ -207,7 +260,8 @@ export function stepReact(set: ReactSet, people: readonly Seen[], cars: readonly
     } else if (m.ox !== 0 || m.oz !== 0) {
       m.stay -= step;
       if (m.stay <= 0) {
-        move(m, 0, 0, HOME_SECONDS, 0, 0, 1, 0, 0);
+        // (From as far as a dive leaves them, at a walk and not in one stride.)
+        move(m, 0, 0, Math.max(HOME_SECONDS, Math.hypot(m.ox, m.oz) / HOME_SPEED), 0, 0, 1, 0, 0);
         m.home = true;
       }
     }
@@ -252,13 +306,47 @@ export function stepReact(set: ReactSet, people: readonly Seen[], cars: readonly
       // Behind its tail, or further ahead than it will be in a moment: no threat yet.
       if (along < -nose - BODY || along - nose > v * LEAP_LEAD + 0.4) continue;
       const m = mindOf(set, p.key);
-      // Already jumping clear of this strip.
+      // Already diving, or jumping clear of this strip.
+      if (m.dive >= 0) continue;
       if (m.dur > 0 && !m.home && m.hop > 0) continue;
       // To the side they are already on, unless a wall is there and the other side is open.
       let side = across >= 0 ? 1 : -1;
       if (across === 0) side = chance(p.key, 5) < 0.5 ? 1 : -1;
       const far = (s: number): number => s * (reach + LEAP_CLEAR) - across;
       const lands = (s: number): boolean => !blocked(px + nx * far(s), pz + nz * far(s));
+      // A dive, where a side has room for the whole of it: it ends clear of the strip, and the ground is open at each third of the way and a
+      // body's width past its end.
+      const spec = set.dive;
+      if (spec !== null) {
+        const total = spec.travel[spec.travel.length - 1] as number;
+        const room = (s: number): boolean => {
+          if (!(Math.abs(across + s * total) >= reach + DIVE_CLEAR)) return false;
+          for (const share of [1 / 3, 2 / 3, 1]) if (blocked(px + nx * s * total * share, pz + nz * s * total * share)) return false;
+          return !blocked(px + nx * s * (total + BODY), pz + nz * s * (total + BODY));
+        };
+        const to = room(side) ? side : room(-side) ? -side : 0;
+        if (to !== 0) {
+          m.dive = 0;
+          m.wx = px;
+          m.wz = pz;
+          m.dvx = nx * to;
+          m.dvz = nz * to;
+          m.dyaw = Math.atan2(m.dvx, m.dvz);
+          m.cx = c.x;
+          m.cz = c.z;
+          m.cvx = dx * v;
+          m.cvz = dz * v;
+          m.dur = 0;
+          m.hop = 0;
+          m.lean = 0;
+          m.home = false;
+          m.stay = LEAP_STAY;
+          m.turnLeft = 0;
+          if (now - m.leapt > 3.5) say(set, p, lineOf(MEAN, p.key, m.lines++), "mean");
+          m.leapt = now;
+          continue;
+        }
+      }
       if (!lands(side) && lands(-side)) side = -side;
       const by = far(side);
       move(m, m.ox + nx * by, m.oz + nz * by, LEAP_SECONDS, LEAP_HOP, LEAP_LEAN, nx * side, nz * side, LEAP_STAY);
@@ -276,6 +364,8 @@ export function stepReact(set: ReactSet, people: readonly Seen[], cars: readonly
     const speed = Math.hypot(player.vx, player.vz);
     for (const p of people) {
       const m0 = set.minds.get(p.key);
+      // (One in the middle of a dive is not walked into or greeted.)
+      if (m0 !== undefined && m0.dive >= 0) continue;
       const px = p.x + (m0?.ox ?? 0);
       const pz = p.z + (m0?.oz ?? 0);
       const rx = px - player.x;
@@ -349,7 +439,7 @@ export function stepReact(set: ReactSet, people: readonly Seen[], cars: readonly
       const b = mindOf(set, q.key);
       const last = Math.max(a.talked, b.talked);
       // Nobody chats while they are jumping, knocked back or greeting.
-      if (a.dur > 0 || b.dur > 0 || now - Math.max(a.leapt, b.leapt, a.bumped, b.bumped) < 4 || now - Math.max(a.greeted, b.greeted) < 2.5) continue;
+      if (a.dur > 0 || b.dur > 0 || a.dive >= 0 || b.dive >= 0 || now - Math.max(a.leapt, b.leapt, a.bumped, b.bumped) < 4 || now - Math.max(a.greeted, b.greeted) < 2.5) continue;
       const turns = a.lines + b.lines;
       const gap = CHAT_GAP[0] + (CHAT_GAP[1] - CHAT_GAP[0]) * chance(p.key, turns + 17);
       // The first line comes a moment after the player is in earshot, not the instant they are.
@@ -395,7 +485,7 @@ export function nudgeOf(set: ReactSet, key: number, yaw: number, out: Nudge): bo
   const m = set.minds.get(key);
   if (m === undefined) return false;
   const moving = m.dur > 0;
-  if (!moving && m.ox === 0 && m.oz === 0 && m.turned === 0) return false;
+  if (!moving && m.ox === 0 && m.oz === 0 && m.turned === 0 && m.dive < 0) return false;
   const s = moving ? Math.min(1, Math.max(0, m.t / m.dur)) : 0;
   out.dx = m.ox;
   out.dz = m.oz;
@@ -404,7 +494,14 @@ export function nudgeOf(set: ReactSet, key: number, yaw: number, out: Nudge): bo
   out.lean = moving ? m.lean * Math.sin(Math.PI * s) : 0;
   out.lx = m.lx;
   out.lz = m.lz;
-  out.yaw = wrap(m.turnTo - yaw) * smooth(m.turned);
+  out.dive = m.dive;
+  if (m.dive >= 0) {
+    // The way they dive, come to from the way they stood while the clip crouches.
+    out.yaw = wrap(m.dyaw - yaw) * smooth(m.dive / DIVE_TURN);
+    return true;
+  }
+  const to = m.blend < 1 ? m.turnFrom + wrap(m.turnTo - m.turnFrom) * smooth(m.blend) : m.turnTo;
+  out.yaw = wrap(to - yaw) * smooth(m.turned);
   return true;
 }
 

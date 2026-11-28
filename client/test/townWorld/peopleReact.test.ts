@@ -3,8 +3,9 @@ import { restAxes, cameraAxes } from "@csarkosh/engine/game/lite/cameraPose";
 import { BUMPED, CHATTER, MEAN, greetingsAt, type Venue } from "../../src/game/peopleWords.js";
 import { writeNudged } from "../../src/game/town/peopleParts.js";
 import {
-  BUMP_BACK, BUMP_STAY, CHAT_NEAR, GREET_AGAIN, HOME_SECONDS, LEAP_CLEAR, LEAP_HOP, LEAP_SECONDS, LEAP_STAY, SAID_MOST, SHOVE_MOST, BODY,
-  chance, newReact, nudgeOf, pairUp, stepReact, venueOfReason, venueOfTrade, WALK_VENUE, type Nudge, type ReactCar, type ReactPlayer, type Seen,
+  BUMP_BACK, BUMP_STAY, CHAT_NEAR, DIVE_CLEAR, DIVE_RATE, DIVE_TURN, FACE_SECONDS, GREET_AGAIN, HOME_SECONDS, HOME_SPEED, LEAP_CLEAR, LEAP_HOP, LEAP_SECONDS, LEAP_STAY, SAID_MOST,
+  SHOVE_MOST, BODY, WALKER_STAY, chance, diveTravel, newReact, nudgeOf, pairUp, stepReact, venueOfReason, venueOfTrade, WALK_VENUE, type DiveSpec, type Nudge, type ReactCar, type ReactPlayer,
+  type Seen,
 } from "../../src/game/town/peopleReact.js";
 import { HEAR_FAR, captionsOf, type Caption } from "../../src/game/town/speech.js";
 import { CAR_WIDTH } from "../../src/sim/car/tuning.js";
@@ -15,7 +16,7 @@ const person = (key: number, x: number, z: number, over: Partial<Seen> = {}): Se
 /** A car heading +z at (x, z). */
 const car = (x: number, z: number, speed: number, slip = 0): ReactCar => ({ x, z, hx: 0, hz: 1, speed, slip });
 const walker = (x: number, z: number, vx = 0, vz = 0): ReactPlayer => ({ x, y: 0, z, vx, vz, onFoot: true });
-const nudge = (): Nudge => ({ dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 });
+const nudge = (): Nudge => ({ dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 });
 /** A key whose greeting chance is under `under` (they greet) or not. */
 const keyWith = (greets: boolean, under: number): number => {
   for (let k = 1; k < 500; k++) if ((chance(k, 11) < under) === greets) return k;
@@ -356,17 +357,158 @@ describe("what is said", () => {
   });
 });
 
+/** A dive of 2 s that goes 2.6 m: still for the first fifth of a second, at its fastest in the middle, still again for the last 0.6 s. */
+const SPEC: DiveSpec = (() => {
+  const travel: number[] = [];
+  for (let i = 0; i <= 2 * DIVE_RATE; i++) {
+    const t = i / DIVE_RATE;
+    const u = Math.min(1, Math.max(0, (t - 0.2) / 1.2));
+    travel.push(Math.round(2.6 * u * u * (3 - 2 * u) * 1000) / 1000);
+  }
+  return { seconds: 2, travel };
+})();
+
+describe("a person who dives out of a car's way", () => {
+  it("goes as far along the ground as the clip's moment says, between the file's distances and no further than its last", () => {
+    expect(diveTravel(SPEC, 0)).toBe(0);
+    expect(diveTravel(SPEC, -1)).toBe(0);
+    expect(diveTravel(SPEC, 0.8)).toBeCloseTo(1.3, 2);
+    expect(diveTravel(SPEC, 2)).toBe(2.6);
+    expect(diveTravel(SPEC, 99)).toBe(2.6);
+    // Between two of the file's distances, in proportion.
+    const a = SPEC.travel[20] as number;
+    const b = SPEC.travel[21] as number;
+    expect(diveTravel(SPEC, 20.5 / DIVE_RATE)).toBeCloseTo((a + b) / 2, 9);
+    expect(diveTravel({ seconds: 1, travel: [] }, 0.5)).toBe(0);
+    // A manifest with no dive, or a broken one, is no dive: people hop.
+    expect(newReact(null).dive).toBeNull();
+    expect(newReact({ seconds: 0, travel: [0, 1] }).dive).toBeNull();
+    expect(newReact({ seconds: 2, travel: [0, Number.NaN] }).dive).toBeNull();
+    expect(newReact(SPEC).dive).toBe(SPEC);
+  });
+
+  it("dives sideways to the nearer side, the whole of the dive's length, turned the way they go, with no hop or lean of the old jump, and ends clear of the strip", () => {
+    const set = newReact(SPEC);
+    const p = person(1, 0.4, 5);
+    const n = nudge();
+    stepReact(set, [p], [car(0, 0, 8)], null, DT, 12, open);
+    expect(set.said.length).toBe(1);
+    expect(MEAN).toContain(set.said[0]!.text);
+    expect(nudgeOf(set, 1, 0, n)).toBe(true);
+    expect(n.dive).toBe(0);
+    let last = 0;
+    for (let t = DT; t < SPEC.seconds - DT / 2; t += DT) {
+      stepReact(set, [p], [], null, DT, 12, open);
+      expect(nudgeOf(set, 1, 0, n)).toBe(true);
+      // The clip's own moment, and the body where the file says it is at that moment: to the right (+x), never back.
+      expect(n.dive).toBeCloseTo(t, 6);
+      expect(n.dx).toBeCloseTo(diveTravel(SPEC, t), 6);
+      expect(n.dx).toBeGreaterThanOrEqual(last - 1e-9);
+      expect(n.dz).toBeCloseTo(0, 9);
+      expect(n.dy).toBe(0);
+      expect(n.lean).toBe(0);
+      last = n.dx;
+      // Turned the way they dive (+x is a yaw of a quarter turn) once the crouch is over.
+      if (t >= DIVE_TURN) expect(n.yaw).toBeCloseTo(Math.PI / 2, 6);
+    }
+    // Over (a frame or two on, as the sums of sixtieths fall): on their feet 2.6 m aside, clear of the strip, no longer in the clip.
+    for (let k = 0; k < 2; k++) stepReact(set, [p], [], null, DT, 12, open);
+    expect(nudgeOf(set, 1, 0, n)).toBe(true);
+    expect(n.dive).toBe(-1);
+    expect(n.dx).toBeCloseTo(2.6, 6);
+    expect(0.4 + n.dx).toBeGreaterThanOrEqual(CAR_WIDTH / 2 + BODY + DIVE_CLEAR);
+    // They turn from the way they dived to the driver, who has gone on up the road (+z), and not in a snap.
+    expect(n.yaw).toBeCloseTo(Math.PI / 2, 1);
+    for (let t = 0; t < FACE_SECONDS + 0.05; t += DT) stepReact(set, [p], [], null, DT, 12, open);
+    nudgeOf(set, 1, 0, n);
+    const carNow = { x: 0, z: 8 * SPEC.seconds };
+    expect(n.yaw).toBeCloseTo(Math.atan2(carNow.x - 3, carNow.z - 5), 2);
+    // They stay there a while, then walk back at a walk: not before the stay is over, and home in the end.
+    for (let t = 0; t < LEAP_STAY - FACE_SECONDS - 0.2; t += DT) stepReact(set, [p], [], null, DT, 12, open);
+    nudgeOf(set, 1, 0, n);
+    expect(n.dx).toBeCloseTo(2.6, 6);
+    const walk = Math.max(HOME_SECONDS, 2.6 / HOME_SPEED);
+    for (let t = 0; t < 0.3 + walk / 2; t += DT) stepReact(set, [p], [], null, DT, 12, open);
+    nudgeOf(set, 1, 0, n);
+    expect(n.dx).toBeGreaterThan(0.6);
+    expect(n.dx).toBeLessThan(2.0);
+    for (let t = 0; t < walk + 1; t += DT) stepReact(set, [p], [], null, DT, 12, open);
+    expect(nudgeOf(set, 1, 0, n)).toBe(false);
+  });
+
+  it("dives to the other side where the nearer has no room for the whole dive, and hops as before where neither has", () => {
+    // A wall 1.5 m to the right: no room there for 2.6 m, so to the left, across the car's line and clear of it.
+    const wallRight = (x: number): boolean => x > 1.9;
+    const set = newReact(SPEC);
+    const p = person(1, 0.4, 5);
+    const n = nudge();
+    stepReact(set, [p], [car(0, 0, 8)], null, DT, 12, wallRight);
+    for (let t = 0; t < SPEC.seconds + 0.1; t += DT) stepReact(set, [p], [], null, DT, 12, wallRight);
+    nudgeOf(set, 1, 0, n);
+    expect(n.dx).toBeCloseTo(-2.6, 6);
+    // Walls both sides (an alley 1.6 m either way): the hop of old, to where it lands.
+    const alley = (x: number): boolean => Math.abs(x) > 2.0;
+    const set2 = newReact(SPEC);
+    stepReact(set2, [p], [car(0, 0, 8)], null, DT, 12, alley);
+    expect(nudgeOf(set2, 1, 0, n)).toBe(true);
+    expect(n.dive).toBe(-1);
+    let highest = 0;
+    for (let t = 0; t < LEAP_SECONDS + 0.05; t += DT) {
+      stepReact(set2, [p], [], null, DT, 12, alley);
+      nudgeOf(set2, 1, 0, n);
+      highest = Math.max(highest, n.dy);
+    }
+    expect(highest).toBeGreaterThan(LEAP_HOP * 0.9);
+    expect(0.4 + n.dx).toBeCloseTo(CAR_WIDTH / 2 + BODY + LEAP_CLEAR, 6);
+  });
+
+  it("is not made to dive again, walked into or greeted in the middle of it, and one who walks dives where they were and catches their path up after", () => {
+    const set = newReact(SPEC);
+    const n = nudge();
+    // A walker going +z at 1.4 m/s: their schedule moves on under the dive.
+    const at = (t: number): Seen => person(7, 0.4, 5 + 1.4 * t, { walking: true });
+    stepReact(set, [at(0)], [car(0, 0, 8)], null, DT, 12, open);
+    let t = 0;
+    for (; t < 1; t += DT) {
+      // A second car, and the player walking into them: nothing begins again.
+      stepReact(set, [at(t)], [car(0.2, 5 + 1.4 * t - 4, 8)], walker(0.4 + diveTravel(SPEC, t), 5 - 0.3, 0, 1.4), DT, 12, open);
+      nudgeOf(set, 7, 0, n);
+      expect(n.dive).toBeGreaterThan(0);
+    }
+    expect(set.said.filter((q) => q.kind === "mean").length).toBe(1);
+    expect(set.said.filter((q) => q.kind === "bumped").length).toBe(0);
+    // In the world they are where the dive began plus its travel, not carried along their path.
+    nudgeOf(set, 7, 0, n);
+    const world = { x: at(t - DT).x + n.dx, z: at(t - DT).z + n.dz };
+    expect(world.x).toBeCloseTo(0.4 + diveTravel(SPEC, n.dive), 4);
+    expect(world.z).toBeCloseTo(5, 4);
+    for (; t < SPEC.seconds + WALKER_STAY + 0.1; t += DT) stepReact(set, [at(t)], [], null, DT, 12, open);
+    // Up, and after a moment walking back to their place on the path; there in the end.
+    for (let more = 0; more < 6; more += DT, t += DT) stepReact(set, [at(t)], [], null, DT, 12, open);
+    expect(nudgeOf(set, 7, 0, n)).toBe(false);
+    // One who was diving when they went out of sight is on their feet when seen again.
+    const set3 = newReact(SPEC);
+    const p = person(3, 0.4, 5);
+    stepReact(set3, [p], [car(0, 0, 8)], null, DT, 12, open);
+    for (let k = 0; k < 10; k++) stepReact(set3, [], [], null, DT, 12, open);
+    stepReact(set3, [p], [], null, DT, 12, open);
+    nudgeOf(set3, 3, 0, n);
+    expect(n.dive).toBe(-1);
+    expect(n.dx).toBeCloseTo(2.6, 6);
+  });
+});
+
 describe("a body that is nudged", () => {
   it("is moved, lifted and turned, and leaned about its feet toward the way of the lean", () => {
     const out = new Float32Array(32);
-    const n: Nudge = { dx: 1, dy: 0.2, dz: -2, yaw: 0.5, lx: 1, lz: 0, lean: 0 };
+    const n: Nudge = { dx: 1, dy: 0.2, dz: -2, yaw: 0.5, lx: 1, lz: 0, lean: 0, dive: -1 };
     writeNudged(out, 1, 10, 3, 20, 0.25, 1.1, n);
     // The feet, and a body turned by both yaws, at its size.
     expect([out[28], out[29], out[30]]).toEqual([11, Math.fround(3.2), 18]);
     expect(out[16 + 5]).toBeCloseTo(1.1, 6);
     expect(Math.atan2(out[16 + 8] as number, out[16 + 10] as number)).toBeCloseTo(0.75, 6);
     // Leaned 0.3 rad toward +x: the body's up tips toward +x, its feet stay, its axes keep their lengths.
-    writeNudged(out, 0, 0, 0, 0, 0, 1, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0.3 });
+    writeNudged(out, 0, 0, 0, 0, 0, 1, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0.3, dive: -1 });
     expect(out[4]).toBeCloseTo(Math.sin(0.3), 6);
     expect(out[5]).toBeCloseTo(Math.cos(0.3), 6);
     expect(out[6]).toBeCloseTo(0, 6);

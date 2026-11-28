@@ -56,6 +56,7 @@ import { createPeopleShade } from "./peopleShade.js";
 import { createInsideParts, hidesTown, insidePeople, whereOf, type InsideParts } from "./insideParts.js";
 import type { Inside } from "../../sim/inside/rooms.js";
 import { createPeopleParts, type PeopleParts, type PlacedPerson } from "./peopleParts.js";
+import { DIVE } from "./dive.js";
 import { newReact, nudgeOf, pairUp, stepReact, venueOfReason, venueOfTrade, type ReactPlayer, type Seen } from "./peopleReact.js";
 import { captionsOf, showCaptions, type Caption } from "./speech.js";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
@@ -299,7 +300,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     for (const m of textured) markMaterialUboDirty(m);
   };
   // How the people answer the player (`peopleReact.ts`): who is drawn, the local player, what each says, and the view the captions are placed on.
-  const react = newReact();
+  const react = newReact(DIVE);
   const seen: Seen[] = [];
   const captions: Caption[] = [];
   const speechAxes = restAxes();
@@ -493,7 +494,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         seen: () => seen.map((p) => ({ ...p })),
         said: () => react.said.map((q) => ({ ...q })),
         moved(key) {
-          const n = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+          const n = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
           return nudgeOf(react, key, 0, n) ? n : null;
         },
         provoke(key, what) {
@@ -506,7 +507,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           // (One in a room is taken to be in the open for it: there is no other way to look at a jump up close.)
           if (what === "car") stepReact(react, seen.map((q) => (q.key === key ? { ...q, sheltered: false } : q)), [{ x: p.x + bx * 5 + bz * 0.3, z: p.z + bz * 5 - bx * 0.3, hx: -bx, hz: -bz, speed: 9, slip: 0 }], null, 0, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
           else stepReact(react, seen, NO_POSES, { x: p.x + bx * 0.45, y: p.y, z: p.z + bz * 0.45, vx: -bx * 1.4, vz: -bz * 1.4, onFoot: true }, 0, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
-          return react.said.length > before || nudgeOf(react, key, 0, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 });
+          return react.said.length > before || nudgeOf(react, key, 0, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 });
         },
       };
       const plan = ground.plan;
