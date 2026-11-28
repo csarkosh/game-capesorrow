@@ -65,6 +65,20 @@ describe("the title page's controls", () => {
   });
 });
 
+describe("the title page's in-development line", () => {
+  it("stands small under Play, and Settings stands apart below it", () => {
+    // In the page's order: Play (or the wait), then the line, then Settings and Credits.
+    const play = SOURCE.indexOf('button.id = "create"');
+    const line = SOURCE.indexOf('developing.className = "developing"');
+    const settings = SOURCE.indexOf('settingsButton.className = "secondary settings"');
+    expect(play).toBeGreaterThan(0);
+    expect(line).toBeGreaterThan(play);
+    expect(settings).toBeGreaterThan(line);
+    expect(rule(LANDING_STYLE, ".landing .developing")).toContain("font-size: 0.75rem");
+    expect(rule(LANDING_STYLE, ".landing .developing + button.secondary")).toContain("margin-top: 1.5rem");
+  });
+});
+
 describe("the title page's content", () => {
   it("sets the h1 to the title's two parts, with a space between, and carries no blurb", () => {
     expect(SOURCE).toContain("lead.textContent = TITLE_LEAD");
