@@ -452,14 +452,9 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         textured.push(m);
         return m;
       };
-      // The lettering's atlas (`signAtlas.ts`): empty until it is painted, as the layers' arrays are until they land.
+      // The lettering's atlas (`signAtlas.ts`): planned while the town is built, made at the height its rows reach once every sign is placed, and painted then.
       const atlas = new SignAtlas(low ? 2048 : 4096, low ? 1024 : 2048, low ? 36 : 56);
       let atlasTexture: ReturnType<typeof createTexture2DArray> | null = null;
-      try {
-        atlasTexture = wearsTextures ? createTexture2DArray(engine, atlas.width, atlas.height, 1, { mipMaps: true, srgb: true }) : null;
-      } catch (error) {
-        console.warn("the town's lettering atlas could not be made; its signs are not drawn:", error);
-      }
       const signMaterial = (tex: NonNullable<typeof atlasTexture>): PbrMaterialProps => {
         const m = createPbrMaterial({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.7, alphaBlend: true, usePhysicalLightFalloff: true });
         m.plugins = [baseColourPlugin(), townSurfacePlugin(textures as NonNullable<typeof textures>, readied, low, tex), air()];
@@ -473,7 +468,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         if (textures !== null) textured.push(m);
         return m;
       };
-      const seeThrough = wearsTextures ? { glass: glassMaterial(), through: throughMaterial(), sign: atlasTexture === null ? null : signMaterial(atlasTexture), shade: low ? null : shadeMaterial() } : null;
+      const seeThrough = wearsTextures ? { glass: glassMaterial(), through: throughMaterial(), sign: null as PbrMaterialProps | null, shade: low ? null : shadeMaterial() } : null;
       // The railroad's own materials (its draw order is its own, after the town's), reading the same texture layers and wear.
       const materials = { flat: material(true, wearsTextures), solid: material(false, wearsTextures) };
       worldSeed = forest.seed;
@@ -569,20 +564,34 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         setTimeout(slice, 0);
       }
 
+      // The paint surface and its pixels are this function's alone: they are let go when it returns.
+      function* paintAtlas(texture: NonNullable<typeof atlasTexture>): Slices {
+        const surface = createPaintSurface(atlas.width, atlas.fittedHeight);
+        if (surface === null) return;
+        for (let k = 0; k < atlas.requests.length; k++) {
+          paintRequest(surface, atlas.requests[k] as (typeof atlas.requests)[number]);
+          if (k % 24 === 23) yield;
+        }
+        const px = surface.ctx.getImageData(0, 0, atlas.width, atlas.fittedHeight);
+        updateTexture2DArrayFromPixels(engine, texture, new Uint8Array(px.data.buffer));
+        host.uploads.count("textures", px.data.byteLength, 4);
+      }
+
       function* build(): Slices {
         const batches: TownBatch[] = yield* townGeometry(ground, host.tier === "low" ? "low" : "full", start, atlas, through);
         // A code-built car for each model vehicle until its model lands (and for good where its file fails): made first, so they stand with the town's first cells.
         if (fleet.length > 0) batches.unshift(...(yield* standInGeometry(ground, fleet)));
-        // Paint the lettering, a few signs a slice, and upload the atlas once.
-        const surface = atlasTexture === null ? null : createPaintSurface(atlas.width, atlas.height);
-        if (surface !== null && atlasTexture !== null) {
-          for (let k = 0; k < atlas.requests.length; k++) {
-            paintRequest(surface, atlas.requests[k] as (typeof atlas.requests)[number]);
-            if (k % 24 === 23) yield;
+        // The atlas is as tall as its signs reach (the sign batches' UV are already in its terms); made, painted a few signs a slice and uploaded once.
+        if (seeThrough !== null) {
+          try {
+            atlasTexture = createTexture2DArray(engine, atlas.width, atlas.fittedHeight, 1, { mipMaps: true, srgb: true });
+          } catch (error) {
+            console.warn("the town's lettering atlas could not be made; its signs are not drawn:", error);
           }
-          const px = surface.ctx.getImageData(0, 0, atlas.width, atlas.height);
-          updateTexture2DArrayFromPixels(engine, atlasTexture, new Uint8Array(px.data.buffer));
-          host.uploads.count("textures", px.data.byteLength, 4);
+          if (atlasTexture !== null) {
+            seeThrough.sign = signMaterial(atlasTexture);
+            yield* paintAtlas(atlasTexture);
+          }
         }
         left = batches.length;
         for (const batch of batches) {
