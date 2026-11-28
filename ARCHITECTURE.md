@@ -9,7 +9,7 @@ the title page, hosting, and what is still scaffold and unfinished.
 
 ## The engine and what the game hands it
 
-The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.38). The engine
+The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.40). The engine
 makes the world from a seed: the coast (the engine's `olympic` terrain, with its cove, its highway and its massif), the
 forest and the clutter on it, the weather and the sky. A game registers the coast with a place laid over it, and the
 world is then the engine's coast with that place's ground.
@@ -23,7 +23,7 @@ the coast with `PORTASHTON_PLACE`: see "The ground the game lays over the coast"
 - `side`: the game's own of the page (`createPortAshtonPage`), which the shell calls at the page's own points: it shows the title page, repaints it, shows a panel by its address, and keeps the mode. Nothing plays before a session starts.
 - `identity` (`client/src/identity.ts`): the game's name, its word for a session (`case`), what a nameless player is called (`Detective`), and the prefix of everything it keeps in the browser (`capesorrow`, the game's former name, kept on purpose because players' saved settings are stored under it).
 - `away`: what the page for a visitor whose browser cannot play shows of the game: no still, and the same credits the Credits screen shows.
-- `protocol`, `worldWorker`, `statusLine`, `scene`, `probeState`: the session's wire version, the worker that makes its world (`world.worker.ts`, handed the town's start and the chunk cells its first spawn reads, `townSpawnCells`), a line of status, the staged scenes (none), and the state the tier check measures the renderer on.
+- `protocol`, `worldWorker`, `worldWorkers`, `statusLine`, `scene`, `probeState`: the session's wire version, the worker that makes its world (`world.worker.ts`, handed the town's start and the chunk cells its first spawn reads, `townSpawnCells`), how many of it the page runs (2: the first builds the terrain's rings and the rock faces for the session, the second looks up the cells of the ground's clutter, so that a drive does not wait on either), a line of status, the staged scenes (none), and the state the tier check measures the renderer on.
 
 ## The town
 
