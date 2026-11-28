@@ -163,6 +163,17 @@ export function* townGeometry(g: TownGround, detail: Detail, from: { x: number; 
     if (c.glass.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "glass", arrays: c.glass.take() });
     if (c.sign.vertices > 0) batches.push({ cx: c.cx, cz: c.cz, layer: "sign", arrays: c.sign.take() });
   }
+  // Every sign is placed: the atlas packs its rectangles into the height its rows reach, and the sign faces' UV (written at placement) follow.
+  for (const b of batches) if (b.layer === "sign") atlas.reach(b.arrays.uvs, b.arrays.indices);
+  atlas.fit();
+  for (const b of batches) {
+    if (b.layer !== "sign") continue;
+    const kept = atlas.carry(b.arrays.uvs, b.arrays.indices);
+    if (kept !== b.arrays.indices) b.arrays.indices = kept as Uint32Array;
+  }
+  const shown = batches.filter((b) => b.layer !== "sign" || b.arrays.indices.length > 0);
+  batches.length = 0;
+  batches.push(...shown);
   const distance = (b: TownBatch): number => {
     const dx = (b.cx + 0.5) * CELL - from.x;
     const dz = (b.cz + 0.5) * CELL - from.z;
