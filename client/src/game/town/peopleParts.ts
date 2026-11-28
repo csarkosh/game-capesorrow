@@ -7,6 +7,9 @@
  * - **The files hold the clips faster than life.** The table has sixty rows for each second of a file's clip, and a row is every bone's
  *   matrix. People who stand and sit move slowly, so the files hold each clip two and a half times too fast and a body plays it at
  *   `CLIP_STORED` of its rate: twenty-four rows to a second of movement, and a table two fifths the size.
+ * - **A bone is two texels of the table, not four.** The table holds each bone as a turn, a place and one size (`clipLayout`), and the
+ *   shader rebuilds its matrix: half the table's memory (5.3 MB a model where it was 10.7). The models' matrices are that but for a
+ *   shear of a few parts in a hundred thousand, which moves no point of a body by more than 0.055 mm.
  * - **They arrive when their files have.** Nothing holds the first frame: the loads begin once the town's geometry is made (`begin`), and a
  *   model that does not load is left out, said once on the console; the town stands without that person.
  * - **Only the near ones are drawn.** Every quarter second the people within `REACH` of the eye (less on the low tier) are written to their
@@ -262,6 +265,7 @@ export function createPeopleParts(host: PeoplePartsHost, placed: readonly Placed
     for (const batch of batches.values()) {
       void loadSkinnedModel(host.engine, host.scene, modelUrl(`models/${batch.id}.glb`), {
         capacity: batch.people.length + walk.cap,
+        clipLayout: "rigid",
         clock: host.clock,
         signal: loads.signal,
         // The material keeps the file's own textures and wears the town's air; indoors, so darker than the sky would light it.
