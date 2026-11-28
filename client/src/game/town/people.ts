@@ -27,8 +27,8 @@ import type { Xf } from "./roomKit.js";
 import type { TownGround } from "./townTypes.js";
 import type { Building, Furnishing, FurnishingKind, InteriorType, TownPlan, Unit } from "../../sim/town/types.js";
 
-/** The five models, by credit id (`client/assets/models/people.json`). */
-export const PERSON_MODELS = ["person.nathan", "person.eric", "person.sophia", "person.carla", "person.claudia"] as const;
+/** The six bodies, by id (`client/assets/models/people.json`): three women's and three men's, each carrying the heads its people wear (`peopleHeads.ts`). */
+export const PERSON_MODELS = ["person.f-rainjacket", "person.f-parka", "person.f-fleece", "person.m-puffer", "person.m-hoodie", "person.m-workjacket"] as const;
 export type PersonModel = (typeof PERSON_MODELS)[number];
 
 /** The clips the models carry: what a person can be doing. A model that lacks one plays `idle` in its place (said once on the console). */

@@ -22,12 +22,12 @@ const keyOf = (e: CreditEntry): string => JSON.stringify([e.source, e.author, e.
 describe("the game's own CREDITS.md", () => {
   const own = creditsModel(OWN_FILE);
 
-  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets (CC0) and the vehicle models and the people", () => {
+  it("is a credits file with prose, and a section for each third-party work the game carries: the town's texture sets (CC0), the vehicle models, and what the people hold", () => {
     expect(OWN_FILE.startsWith("# Credits\n")).toBe(true);
     expect(OWN_FILE).toMatch(/engine/);
     expect(OWN_FILE).toMatch(/Credits screen/);
-    // 48 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 7 only the rooms use, the 12 vehicle models, the 5 people and the 3 photo textures the cup and the phone in their hands are cut from.
-    expect(own.length).toBe(48);
+    // 43 works: the 22 layers of the town's textures, less the shingles the build script makes (21), the 7 only the rooms use, the 12 vehicle models and the 3 photo textures the cup and the phone in the people's hands are cut from.
+    expect(own.length).toBe(43);
     const textures = own.filter((e) => e.id.startsWith("town."));
     expect(textures.length).toBe(21);
     for (const e of textures) {
@@ -54,13 +54,8 @@ describe("the game's own CREDITS.md", () => {
       expect(e.url, e.id).toMatch(/^https:\/\//);
       expect(e.modified, e.id).toBe(true);
     }
-    const people = own.filter((e) => e.id.startsWith("person."));
-    expect(people.length).toBe(5);
-    for (const e of people) {
-      expect(e.license, e.id).toBe("CC-BY-4.0");
-      expect(e.author, e.id).toBe("Renderpeople");
-      expect(e.modified, e.id).toBe(true);
-    }
+    // The people's bodies and heads are the game's own work: nobody else's is credited for them.
+    expect(own.filter((e) => e.id.startsWith("person.")).length).toBe(0);
     // The cup's and the phone's picture: three CC0 photo textures.
     const hands = own.filter((e) => e.id.startsWith("hand."));
     expect(hands.map((e) => e.id)).toEqual(["hand.Paper002", "hand.NamaqualandCliff01", "hand.NamaqualandCliff02"]);
@@ -68,7 +63,7 @@ describe("the game's own CREDITS.md", () => {
       expect(e.license, e.id).toBe("CC0-1.0");
       expect(e.url, e.id).toMatch(/^https:\/\//);
     }
-    expect(own.length).toBe(textures.length + interiors.length + models.length + people.length + hands.length);
+    expect(own.length).toBe(textures.length + interiors.length + models.length + hands.length);
     expect(new Set(own.map((e) => e.id)).size).toBe(own.length);
   });
 

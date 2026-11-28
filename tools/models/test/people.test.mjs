@@ -1,6 +1,6 @@
-// The five people's models (`client/assets/models/people.json`, written by hand): the manifest lists the five files, every file is what
-// the manifest says (size and SHA-256; skipped where the files are Git LFS pointers, as in `manifest.test.mjs`), at most 3.7 MB a person and
-// 16.5 MB in all, and no source is named in what ships.
+// The people's models (`client/assets/models/people.json`, written by hand): the manifest lists the six bodies' files and the heads they
+// carry, every file is what the manifest says (size and SHA-256; skipped where the files are Git LFS pointers, as in `manifest.test.mjs`), at
+// most 6.3 MB a body with its heads and 36 MB in all, and no source is named in what ships.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,21 +8,53 @@ import { describe, expect, it } from 'vitest';
 
 const OUT = fileURLToPath(new URL('../../../client/assets/models', import.meta.url));
 const manifest = JSON.parse(readFileSync(`${OUT}/people.json`, 'utf8'));
-const NAMES = ['nathan', 'eric', 'sophia', 'carla', 'claudia'];
-const fetched = readFileSync(`${OUT}/person.nathan.glb`).toString('latin1', 0, 4) === 'glTF';
+const NAMES = ['f-rainjacket', 'f-parka', 'f-fleece', 'm-puffer', 'm-hoodie', 'm-workjacket'];
+const fetched = readFileSync(`${OUT}/person.f-rainjacket.glb`).toString('latin1', 0, 4) === 'glTF';
 
 describe('client/assets/models/people.json', () => {
-  it('lists the five files, each with a credit id, a height and a size within the budget: 3.7 MB a person, 16.6 MB in all (the base pictures carry their regions in alpha)', () => {
+  it('lists the six files, three women\'s bodies and three men\'s, each with a height and a size within the budget: 6.3 MB a body with the heads it carries, 36 MB in all', () => {
     expect(manifest.people.map((p) => p.id)).toEqual(NAMES.map((n) => `person.${n}`));
     for (const p of manifest.people) {
       expect(p.file).toBe(`${p.id}.glb`);
-      expect(p.credit).toBe(p.id);
-      expect(p.height, p.id).toBeGreaterThan(1.6);
-      expect(p.height, p.id).toBeLessThan(1.9);
-      expect(p.bytes, p.id).toBeLessThanOrEqual(3_700_000);
+      expect(p.sex, p.id).toBe(p.id.startsWith('person.f-') ? 'f' : 'm');
+      // The women stand about 1.63 to 1.70 m and the men 1.73 to 1.80 m, as people do.
+      expect(p.height, p.id).toBeGreaterThan(p.sex === 'f' ? 1.6 : 1.7);
+      expect(p.height, p.id).toBeLessThan(p.sex === 'f' ? 1.72 : 1.82);
+      expect(p.bytes, p.id).toBeLessThanOrEqual(6_300_000);
     }
     expect(manifest.total_bytes).toBe(manifest.people.reduce((n, p) => n + p.bytes, 0));
-    expect(manifest.total_bytes).toBeLessThanOrEqual(16_600_000);
+    expect(manifest.total_bytes).toBeLessThanOrEqual(36_000_000);
+  });
+
+  it('says who each head is (sex, background, age) and which bodies carry it: a body carries heads of its own sex only, at least five of them, and every head is carried', () => {
+    const heads = new Map(manifest.heads.map((h) => [h.id, h]));
+    expect(heads.size).toBe(manifest.heads.length);
+    for (const h of manifest.heads) {
+      expect(h.id, h.id).toMatch(/^[fm]-[a-z]+-\d+$/);
+      expect(['f', 'm'], h.id).toContain(h.sex);
+      expect(['white', 'hispanic', 'native', 'asian', 'black'], h.id).toContain(h.group);
+      expect(h.age, h.id).toBeGreaterThanOrEqual(18);
+      expect(h.age, h.id).toBeLessThan(95);
+      expect(Object.keys(h.look.regions).sort(), h.id).toEqual(['hair', 'skin']);
+    }
+    const carried = new Set();
+    for (const p of manifest.people) {
+      expect(p.heads.length, p.id).toBeGreaterThanOrEqual(5);
+      expect(new Set(p.heads).size, p.id).toBe(p.heads.length);
+      for (const id of p.heads) {
+        expect(heads.get(id)?.sex, `${p.id} ${id}`).toBe(p.sex);
+        carried.add(id);
+      }
+    }
+    expect(carried.size).toBe(heads.size);
+    // The town's mix needs a head of each background the coast's ports have, people of every age band among the largest, and both sexes.
+    for (const group of ['white', 'hispanic', 'native', 'asian', 'black']) expect(manifest.heads.some((h) => h.group === group), group).toBe(true);
+    for (const sex of ['f', 'm']) {
+      const white = manifest.heads.filter((h) => h.group === 'white' && h.sex === sex).map((h) => h.age);
+      expect(white.some((a) => a < 45), sex).toBe(true);
+      expect(white.some((a) => a >= 45 && a < 65), sex).toBe(true);
+      expect(white.some((a) => a >= 65), sex).toBe(true);
+    }
   });
 
   it('lists the clips every file carries, which the game plays by name', () => {
@@ -47,13 +79,18 @@ describe('client/assets/models/people.json', () => {
       // like the walk is held at its own speed (two seconds, 121 rows). A row is now half the size it was when 3,300 was set.
       const seconds = json.animations.map((a) => Math.max(...a.samplers.map((sampler) => json.accessors[sampler.input].max[0])));
       expect(seconds.reduce((rows, s) => rows + Math.round(s * 60) + 1, 0), p.file).toBeLessThanOrEqual(3400);
-      // Three primitives: the body, and the cup and the phone skinned to the right hand.
-      expect(json.meshes[0].primitives.length, p.file).toBe(3);
-      expect(json.materials.map((m) => m.name).filter((n) => n.startsWith('prop.')).sort(), p.file).toEqual(['prop.cup', 'prop.phone']);
+      // The primitives: the body, each head it carries, and the cup and the phone skinned to the right hand.
+      expect(json.meshes[0].primitives.length, p.file).toBe(3 + p.heads.length);
+      const materials = json.materials.map((m) => m.name);
+      expect(materials.filter((n) => n.startsWith('prop.')).sort(), p.file).toEqual(['prop.cup', 'prop.phone']);
+      expect(materials.filter((n) => n.startsWith('head.')).sort(), p.file).toEqual(p.heads.map((id) => `head.${id}`).sort());
+      expect(materials.filter((n) => n.startsWith('person.')), p.file).toEqual([p.id]);
+      // The fingers have no joints (the hands are still), which keeps the table of the clips small: 22 joints.
+      expect(json.skins[0].joints.length, p.file).toBe(22);
     }
   });
 
-  it('says how far a diving body goes at each thirtieth of a second of the dive, the same for all five: out and never back, still at the start and for the stand at the end', () => {
+  it('says how far a diving body goes at each thirtieth of a second of the dive, the same for all six: out and never back, still at the start and for the stand at the end', () => {
     const first = manifest.people[0].dive;
     for (const p of manifest.people) {
       expect(p.dive, p.id).toEqual(first);
@@ -79,10 +116,10 @@ describe('client/assets/models/people.json', () => {
     expect(travel[travel.length - 16]).toBe(total);
   });
 
-  it('says what each model\'s picture holds of shoes, legs, body, skin and hair: a mean colour and a share of the picture for each, the shares no more than the whole', () => {
-    for (const p of manifest.people) {
+  it('says what each picture holds: a body\'s of shoes, legs, body and skin (its hands), a head\'s of skin and hair; a mean colour and a share of the picture for each, the shares no more than the whole', () => {
+    for (const p of [...manifest.people, ...manifest.heads]) {
       const regions = p.look.regions;
-      expect(Object.keys(regions).sort(), p.id).toEqual(['bottoms', 'hair', 'shoes', 'skin', 'top']);
+      expect(Object.keys(regions).sort(), p.id).toEqual(p.id.startsWith('person.') ? ['bottoms', 'shoes', 'skin', 'top'] : ['hair', 'skin']);
       let whole = 0;
       for (const [name, r] of Object.entries(regions)) {
         expect(r.mean.length, `${p.id} ${name}`).toBe(3);
@@ -90,7 +127,8 @@ describe('client/assets/models/people.json', () => {
           expect(v, `${p.id} ${name}`).toBeGreaterThanOrEqual(0);
           expect(v, `${p.id} ${name}`).toBeLessThanOrEqual(1);
         }
-        expect(r.share, `${p.id} ${name}`).toBeGreaterThan(0.02);
+        // (A body's skin is its two hands, under a fiftieth of its picture.)
+        expect(r.share, `${p.id} ${name}`).toBeGreaterThan(0.015);
         whole += r.share;
       }
       expect(whole, p.id).toBeGreaterThan(0.9);
