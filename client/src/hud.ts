@@ -75,6 +75,7 @@ export function createWalkHud(container: HTMLElement, hooks: { onPause(): void }
   // The people's lines: a few captions, made as they are needed and kept, under the status and the prompt.
   const says: HTMLDivElement[] = [];
   const speech = document.createElement("div");
+  speech.className = "speech";
   root.append(cover, speech, status, flash, prompt, pause);
   container.append(style, root);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;

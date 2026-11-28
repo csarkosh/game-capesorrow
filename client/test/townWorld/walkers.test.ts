@@ -460,7 +460,9 @@ describe("the people who walk", () => {
   // The work of making a town's walkers, counted and not timed (this machine's time limits fail under load; the seconds are printed beside it). The bounds are
   // about half as much again as it takes now, which is a second or so on an idle machine for the played seed and under two for "sorrow".
   // (The played seed's steps are 126,000 before the downtown and 344,000 after, in 0.62 s and 0.70 s: its bound for them is 520,000.)
-  for (const [seed, bound] of [[SORROW, { builds: 1700, lines: 1900, points: 800_000, steps: 650_000 }], [20261121, { builds: 2000, lines: 1500, points: 850_000, steps: 520_000 }]] as const) {
+  // (With most trips made by two, each trip is two walkers to hold clear of the rest: the played seed's steps are 564,000 and "sorrow"'s 1,046,000, and
+  // their bounds 700,000 and 1,300,000.)
+  for (const [seed, bound] of [[SORROW, { builds: 1700, lines: 1900, points: 800_000, steps: 1_300_000 }], [20261121, { builds: 2000, lines: 1500, points: 850_000, steps: 700_000 }]] as const) {
     it(`seed ${seed}: making the walkers takes a bounded amount of work`, () => {
       const g = townGround(seed);
       outdoorPeopleFor(g.plan, g.anchor);

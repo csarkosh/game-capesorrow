@@ -1442,6 +1442,8 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
       // Two people, not a mirrored unit: the gap between them breathes between 0.6 and 0.9 m and the second drifts a little ahead and behind. The leader is to the
       // right of the middle and the other to its left, or the other way about where the first does not fit.
       const q = (salt: number): number => roll(key, attempt, salt, 74);
+      // A line one of them can walk, found on the way: where they cannot walk abreast, both take it.
+      let single: { pts: Float32Array; cum: Float32Array; length: number } | null = null;
       for (const sideOf of [1, -1]) {
         // A pair takes its corners wide, so that the one on the inside has room.
         // (Each pair a line of its own across the walk, as each walker has: the two a little to one side of the middle or the other.)
@@ -1449,13 +1451,19 @@ export function* walkerJob(plan: TownPlan, anchor: { readonly x: number; readonl
         if (mate === null) continue;
         const twin = beside(mate, 0.75 * sideOf, 0.15, 6 + q(1) * 8, q(2) * 6.28, 0.25, 26 + q(3) * 26, q(4) * 6.28);
         // The second's path is the first's moved over: round a tight bend it may stride or turn as nobody does, and then they do not walk abreast.
-        if (stepsOk(twin, true) && turnsOk(twin) && pathValid(mate, t0, speed) && pathValid(twin, t0, speed)) return [mk(mate, 10, 1), mk(twin, 20, 0)];
+        const abreast = stepsOk(twin, true) && turnsOk(twin);
+        // (Once one line is known to be good, the other side is tried only if the two could be abreast there.)
+        if (!abreast && single !== null) continue;
+        if (!pathValid(mate, t0, speed)) continue;
+        if (single === null) single = mate;
+        if (abreast && pathValid(twin, t0, speed)) return [mk(mate, 10, 1), mk(twin, 20, 0)];
       }
       // No room to walk abreast (a narrow walk, a pole, people standing): they go one behind the other, a pace and a bit apart, on the one line.
-      const file = tryPath(style.aim);
-      if (file !== null && pathValid(file, t0, speed)) {
+      if (single !== null) {
         const behind = t0 + (TANDEM[0] + q(5) * (TANDEM[1] - TANDEM[0])) / (speed * HOUR_S);
-        if (pathValid(file, behind, speed)) return [mk(file, 10, 1), { ...mk(file, 20, 0), t0: wrapHour(behind) }];
+        if (pathValid(single, behind, speed)) return [mk(single, 10, 1), { ...mk(single, 20, 0), t0: wrapHour(behind) }];
+        // Nor behind one another: one goes, on the line that is known to be good.
+        return [mk(single, 10, -1)];
       }
     }
     const lead = tryPath(style.aim);
