@@ -127,13 +127,11 @@ describe("the hold", () => {
     expect(pose.mx).toBeCloseTo(Math.sin(DRAWN_YAW) * Math.cos(DRAWN_PITCH), 2);
     expect(pose.my).toBeCloseTo(-Math.sin(DRAWN_PITCH), 2);
     expect(Math.hypot(pose.mx, pose.my, pose.mz)).toBeCloseTo(1, 6);
-    // The torch is drawn pointing into the scene: mostly forward (0.8 of its length or more), turned left 20 to 35 degrees, pitched up by no more than 20, and within 40 degrees of where the beam goes.
-    expect(pose.mz).toBeGreaterThanOrEqual(0.8);
-    const turn = (Math.atan2(pose.mx, pose.mz) * 180) / Math.PI;
-    expect(turn).toBeLessThanOrEqual(-20);
-    expect(turn).toBeGreaterThanOrEqual(-35);
-    expect((Math.asin(pose.my) * 180) / Math.PI).toBeLessThanOrEqual(20);
-    expect(pose.mx * pose.ax + pose.my * pose.ay + pose.mz * pose.az).toBeGreaterThan(Math.cos((45 * Math.PI) / 180));
+    // The torch is drawn as the owner's reference shows it (`handScreen.test.ts` measures the angle on the screen): up and to the left, seen along its side (mostly across the view, a little
+    // away), and the beam, which goes through the view's middle and down to the street, may differ from it.
+    expect(pose.mx).toBeLessThan(-0.6);
+    expect(pose.my).toBeGreaterThan(0.3);
+    expect(Math.abs(pose.mz)).toBeLessThan(0.4);
     // Lowered, the drawn axis is not the beam's either way round and nothing is lit: only the pair at the hold matters, and both are unit vectors.
     expect(Math.hypot(pose.ax, pose.ay, pose.az)).toBeCloseTo(1, 6);
   });

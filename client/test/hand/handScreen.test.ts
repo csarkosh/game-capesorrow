@@ -40,6 +40,8 @@ const leftInput = (aspect: number, over: Partial<WatchInput> = {}): WatchInput =
 
 const lo = (a: number[]): number => a.reduce((m, v) => Math.min(m, v), Infinity);
 const hi = (a: number[]): number => a.reduce((m, v) => Math.max(m, v), -Infinity);
+/** What the owner's reference picture measures (`reference.png`, 602 by 750): the torch's axis 37.6 degrees above horizontal (head up and left) and the forearm 22 degrees below horizontal toward the right. */
+const REFERENCE_TORCH_ANGLE = 37.6, REFERENCE_FOREARM_ANGLE = 22;
 const RIGHT_PARTS = readFileParts("hand.right");
 const LEFT_PARTS = readFileParts("hand.left");
 const part = (parts: FilePart[], name: string): FilePart => parts.find((p) => p.name === name) as FilePart;
@@ -88,38 +90,58 @@ describe("the right arm's framing: from the player, large, in the lower right", 
       const centre = [0, 1, 2].map((k) => grip.reduce((n, i) => n + (arm.positions[i + k] as number), 0) / grip.length);
       const fp = [rp.x + rb[0]! * centre[0]! + rb[3]! * centre[1]! + rb[6]! * centre[2]!, rp.y + rb[1]! * centre[0]! + rb[4]! * centre[1]! + rb[7]! * centre[2]!, rp.z + rb[2]! * centre[0]! + rb[5]! * centre[1]! + rb[8]! * centre[2]!];
       const fist: Pt = { x: (0.5 + ((fp[0]! / fp[2]!) * f) / W) * 100, y: (0.5 - ((fp[1]! / fp[2]!) * f) / H) * 100 };
-      // The head up and left of the fist and the middle of the view clear: the head at 52 to 58 percent across and 44 to 54 down; the fist near 62 to 68 across and 62 to 70 down.
-      // The head no farther left than 50 percent across and no higher than 42 percent down; the fist near 62 to 70 across and 64 to 74 down.
+      // The owner's reference (`reference.png`, measured: the torch's axis 37.6 degrees above horizontal, head up and left; the forearm 22 degrees below horizontal toward the right edge): ours within 7 and 10.
+      const px = (v: number[]): [number, number] => pixel(rp, rb, v, W, H) as [number, number];
+      const h2 = px([0, 0, 0]), t2 = px([0, 0, -(RIGHT.torch_length ?? 0.24)]);
+      const torchAngle = (Math.atan2(t2[1] - h2[1], t2[0] - h2[0]) * 180) / Math.PI;
+      expect(Math.abs(torchAngle - REFERENCE_TORCH_ANGLE), `${name}: torch ${torchAngle.toFixed(1)}`).toBeLessThanOrEqual(7);
+      const wr = [-(RIGHT.forearm_cut.wrist[0] as number), RIGHT.forearm_cut.wrist[1] as number, RIGHT.forearm_cut.wrist[2] as number];
+      const fo = [-(RIGHT.forearm_cut.toward_elbow[0] as number), RIGHT.forearm_cut.toward_elbow[1] as number, RIGHT.forearm_cut.toward_elbow[2] as number];
+      const w0 = px(wr), w1 = px([wr[0]! + fo[0]! * 0.12, wr[1]! + fo[1]! * 0.12, wr[2]! + fo[2]! * 0.12]);
+      const foreAngle = (Math.atan2(w1[1] - w0[1], w1[0] - w0[0]) * 180) / Math.PI;
+      process.stdout.write(`${name}: torch ${torchAngle.toFixed(1)} deg (reference 37.6), forearm ${foreAngle.toFixed(1)} deg (reference 22)\n`);
+      expect(Math.abs(foreAngle - REFERENCE_FOREARM_ANGLE), `${name}: forearm ${foreAngle.toFixed(1)}`).toBeLessThanOrEqual(10);
+      // The back of the hand faces up (and a little right) in the view, as the reference's does.
+      expect(rb[4]! / handScaleFor()).toBeGreaterThan(0.5);
+      // Placement: the head near 52 to 62 percent across and 52 to 64 down; the fist near 74 to 82 across and 74 to 84 down; nothing above 46 percent down or left of 46 across.
       expect(head.x).toBeGreaterThanOrEqual(50);
-      expect(head.y).toBeGreaterThanOrEqual(42);
-      expect(fist.x).toBeGreaterThanOrEqual(62);
-      expect(fist.x).toBeLessThanOrEqual(71);
-      expect(fist.y).toBeGreaterThanOrEqual(name === "aspect 1.2" ? 60 : 64);
-      expect(fist.y).toBeLessThanOrEqual(75);
+      expect(head.x).toBeLessThanOrEqual(65);
+      expect(head.y).toBeGreaterThanOrEqual(name === "aspect 1.2" ? 50 : 52);
+      expect(head.y).toBeLessThanOrEqual(66);
+      expect(fist.x).toBeGreaterThanOrEqual(72);
+      expect(fist.x).toBeLessThanOrEqual(84);
+      expect(fist.y).toBeGreaterThanOrEqual(72);
+      expect(fist.y).toBeLessThanOrEqual(86);
       expect(head.x).toBeLessThan(fist.x);
       expect(head.y).toBeLessThan(fist.y);
-      // The torch points up, left and away: its head is the highest and the leftmost of it, and it is the farthest from the eye.
       expect(tail.x).toBeGreaterThan(head.x);
       expect(tail.y).toBeGreaterThan(head.y);
-      expect(rp.mz).toBeGreaterThan(0);
-      // The middle of the view stays clear: nothing left of 48 percent of the width or above 40 percent of the height.
-      expect(lo(right.map((p) => p.x)) / W).toBeGreaterThanOrEqual(0.48 - 0.01);
-      expect(lo(right.map((p) => p.y)) / H).toBeGreaterThanOrEqual(0.4 - 0.01);
-      // The torch points into the scene, so on the screen it is foreshortened: about 12 to 30 percent of the width long.
+      expect(lo(right.map((p) => p.x)) / W).toBeGreaterThanOrEqual(0.46 - 0.01);
+      expect(lo(right.map((p) => p.y)) / H).toBeGreaterThanOrEqual(0.46 - 0.01);
+      // Size: the torch 34 to 42 percent of the width long at 16:10 (a little less on the wider windows, whose width is more than their height says), the fist about 28 to 34 percent of the height tall.
       const len = (Math.hypot((tail.x - head.x) * W, (tail.y - head.y) * H) / 100 / W) * 100;
-      expect(len).toBeGreaterThanOrEqual(12);
-      expect(len).toBeLessThanOrEqual(32);
-      // The forearm points forward too, into the scene: its line is within 45 degrees of the camera's forward axis.
-      const fore = RIGHT.forearm_cut.toward_elbow as number[];
-      const fz = rb[2]! * -fore[0]! + rb[5]! * fore[1]! + rb[8]! * fore[2]!;
-      expect(Math.abs(fz) / handScaleFor()).toBeGreaterThanOrEqual(Math.cos((45 * Math.PI) / 180));
-      // The forearm comes up from the bottom right corner: across the bottom edge right of about 74 percent (and the right edge below 80 percent down).
+      if (name.startsWith("16:10")) {
+        expect(len).toBeGreaterThanOrEqual(34);
+        expect(len).toBeLessThanOrEqual(44);
+      } else expect(len).toBeGreaterThanOrEqual(28);
+      const gripY: number[] = [];
+      for (let i = 0; i < arm.positions.length; i += 3) {
+        const z = arm.positions[i + 2] as number;
+        if (z < -0.04 && z > -0.16 && Math.hypot(arm.positions[i] as number, arm.positions[i + 1] as number) < 0.07) {
+          const q = pixel(rp, rb, [arm.positions[i] as number, arm.positions[i + 1] as number, z], W, H);
+          if (q !== null) gripY.push(q[1]);
+        }
+      }
+      const fistHeight = (hi(gripY) - lo(gripY)) / H;
+      process.stdout.write(`${name}: head ${head.x.toFixed(0)}/${head.y.toFixed(0)}, fist ${fist.x.toFixed(0)}/${fist.y.toFixed(0)} (percent across/down), torch ${len.toFixed(0)} percent of the width, fist ${(fistHeight * 100).toFixed(0)} percent of the height\n`);
+      expect(fistHeight, `${name}: fist ${(fistHeight * 100).toFixed(1)} percent of the height`).toBeGreaterThanOrEqual(0.25);
+      expect(fistHeight).toBeLessThanOrEqual(0.36);
+      // The forearm leaves through the right edge, its upper edge at about 71 percent down as the reference's (72), and/or the bottom edge right of 88 percent across.
       const bottom = right.filter((p) => p.y > H - 4).map((p) => p.x / W);
       const rightEdge = right.filter((p) => p.x > W - 4).map((p) => p.y / H);
       expect(bottom.length + rightEdge.length).toBeGreaterThan(0);
-      if (bottom.length > 0) expect(lo(bottom)).toBeGreaterThanOrEqual((name === "aspect 1.2" ? 0.5 : 0.62) - 0.03);
-      // It comes up from the corner on a diagonal: the sleeve's points near the bottom edge are all right of 70 percent, and it never touches the right edge above 80 percent down.
-      if (rightEdge.length > 0) expect(lo(rightEdge)).toBeGreaterThanOrEqual((name === "aspect 1.2" ? 0.7 : 0.8) - 0.03);
+      if (rightEdge.length > 0) expect(lo(rightEdge)).toBeGreaterThanOrEqual(0.66);
+      if (bottom.length > 0) expect(lo(bottom)).toBeGreaterThanOrEqual(0.7);
     });
   }
 
@@ -139,21 +161,6 @@ describe("the right arm's framing: from the player, large, in the lower right", 
     }
   });
 
-  it("shows some of the fingers' wrap, not only the back of the glove: the fingers' points are nearer the eye than the barrel's axis", () => {
-    const { rp, rb } = both(1248, 780);
-    const arm = part(RIGHT_PARTS, "arm");
-    const eye = (px: number, py: number, pz: number): number => Math.hypot(rp.x + rb[0]! * px + rb[3]! * py + rb[6]! * pz, rp.y + rb[1]! * px + rb[4]! * py + rb[7]! * pz, rp.z + rb[2]! * px + rb[5]! * py + rb[8]! * pz);
-    const axis = eye(0, 0, -0.1);
-    let fingers = 0, near = 0;
-    for (let i = 0; i < arm.positions.length; i += 3) {
-      const px = arm.positions[i]!, py = arm.positions[i + 1]!, pz = arm.positions[i + 2]!;
-      if (pz < -0.14 || pz > -0.07 || Math.hypot(px, py) < 0.02 || Math.hypot(px, py) > 0.045) continue;
-      fingers++;
-      if (eye(px, py, pz) < axis - 0.012) near++;
-    }
-    expect(fingers).toBeGreaterThan(100);
-    expect(near / fingers).toBeGreaterThan(0.35);
-  });
 });
 
 describe("the left arm and its watch: from the lower left, the face to the eye", () => {
@@ -178,8 +185,8 @@ describe("the left arm and its watch: from the lower left, the face to the eye",
       const cx = (tl.x + tr.x + br.x + bl.x) / 4 / W, cy = (tl.y + tr.y + br.y + bl.y) / 4 / H;
       expect(cx).toBeGreaterThanOrEqual(0.3);
       expect(cx).toBeLessThanOrEqual(0.37);
-      expect(cy).toBeGreaterThanOrEqual(0.64);
-      expect(cy).toBeLessThanOrEqual(0.73);
+      expect(cy).toBeGreaterThanOrEqual(0.79);
+      expect(cy).toBeLessThanOrEqual(0.85);
       // About a quarter of the view's height across (its longest way, the circle seen a little aslant): 19 to 28 percent.
       const side = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2 / H;
       expect(side).toBeGreaterThanOrEqual(0.19);
@@ -200,12 +207,12 @@ describe("the left arm and its watch: from the lower left, the face to the eye",
       const bottom = left.filter((p) => p.y > H - 4).map((p) => p.x / W);
       if (leftEdge.length > 0) expect(lo(leftEdge)).toBeGreaterThanOrEqual(0.66 - 0.02);
       expect(bottom.length).toBeGreaterThan(0);
-      expect(hi(bottom)).toBeLessThanOrEqual(0.3 + 0.02);
+      expect(hi(bottom)).toBeLessThanOrEqual(0.38);
     });
 
     it(`has the hand end by about half the width (52 percent) (${name})`, () => {
       const { leftHand } = both(W, H);
-      expect(hi(leftHand.map((p) => p.x)) / W).toBeLessThanOrEqual(name === "aspect 1.2" ? 0.58 : 0.52);
+      expect(hi(leftHand.map((p) => p.x)) / W).toBeLessThanOrEqual(name === "aspect 1.2" ? 0.58 : 0.54);
     });
   }
 
@@ -335,12 +342,12 @@ function widthBehindWrist(file: "right" | "left", W: number, H: number): number 
 
 describe("the two arms are as thick as each other, and the watch is 4/5 of the wrist", () => {
   for (const [name, W, H] of [["16:10", 1248, 780], ["16:9", 1280, 720], ["aspect 1.2", 949, 780]] as const) {
-    it(`has the right forearm's width just behind the wrist within 10 percent of the left's (${name})`, () => {
+    it(`has the right forearm's width just behind the wrist at least as great as the left's (${name})`, () => {
       const right = widthBehindWrist("right", W, H);
       const left = widthBehindWrist("left", W, H);
       process.stdout.write(`forearm width behind the wrist, ${name}: right ${(right * 100).toFixed(1)} percent of the height, left ${(left * 100).toFixed(1)}, ratio ${(right / left).toFixed(2)}\n`);
-      expect(right / left).toBeGreaterThanOrEqual(0.9);
-      expect(right / left).toBeLessThanOrEqual(1.1);
+      // At least as thick as the left (the owner asked): not under 0.98 of it.
+      expect(right / left).toBeGreaterThanOrEqual(0.98);
     });
 
     it(`has the watch's case 0.76 to 0.84 of the arm's width where it sits, as the eye sees them (${name})`, () => {
@@ -371,6 +378,17 @@ describe("the two arms are as thick as each other, and the watch is 4/5 of the w
       expect(caseWidth / sleeve).toBeLessThanOrEqual(0.84);
     });
   }
+
+  it("keeps the whole lit circle and its rim in the view, at 16:10, 16:9 and 1.2", () => {
+    for (const [W, H] of [[1248, 780], [1280, 720], [949, 780]] as const) {
+      const { quad } = both(W, H);
+      const cx = (quad[0]! + quad[2]! + quad[4]! + quad[6]!) / 4, cy = (quad[1]! + quad[3]! + quad[5]! + quad[7]!) / 4;
+      const r = (Math.hypot((quad[2]! - quad[0]!) * W, (quad[3]! - quad[1]!) * H) / 2) * 1.2 / H;
+      expect(cy + r, `${W}x${H}: the rim's lowest point`).toBeLessThan(0.99);
+      expect(cy - r).toBeGreaterThan(0);
+      expect(cx - r * (H / W)).toBeGreaterThan(0);
+    }
+  });
 
   it("has the lit circle about a fifth of the view's height across at 16:10 (19 to 21 percent, the mean of its two ways across)", () => {
     const { quad } = both(1248, 780);

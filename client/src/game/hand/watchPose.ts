@@ -21,10 +21,10 @@ export const WATCH_LOWER_SECONDS = 0.25;
 export const ARM_SCALE = 1.8;
 /** How far ahead of the eye the screen's middle is at the hold (metres), and where it stands on the view, as shares of its width (from the left) and height (from the top). */
 export const WATCH_DEPTH = 0.3;
-export const WATCH_SCREEN = { x: 0.31, y: 0.7 } as const;
+export const WATCH_SCREEN = { x: 0.31, y: 0.82 } as const;
 /** The way the forearm runs toward the fingers at the hold, in the camera's frame (a unit vector: to the right, rising a little, a little away), and the roll that turns the face to the eye. */
-export const WATCH_AXIS: readonly [number, number, number] = [0.746, 0.154, 0.7];
-export const WATCH_ROLL = -1.12;
+export const WATCH_AXIS: readonly [number, number, number] = [0.769, 0.015, 0.638];
+export const WATCH_ROLL = -0.97;
 /** How far straight below the hold the arm is when lowered, metres: past the bottom of the view at every shape. */
 export const WATCH_DROP = 0.6;
 

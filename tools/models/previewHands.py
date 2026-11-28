@@ -373,6 +373,36 @@ def main():
         for aspect, name in ((1.2, "real-both-12x10.png"), (2.2, "real-both-22x10.png")):
             p = holds(aspect)
             draw(placed(right, *p["right"]) + placed(left, *p["left"]), View(int(780 * aspect), 780, fov)).save(os.path.join(args.out, name))
+    if want("compare"):
+        # The owner's reference (`reference.png`, in the output folder) and our torch arm at the same size side by side: ours is drawn on a dark ground and cropped so that its torch is as long
+        # on the picture as the reference's (303 of its 602 pixels, from the knurled cap's middle at (125, 450) to the bezel's at (365, 635)); the angles of both are written on the picture.
+        ref_path = os.path.join(args.out, "reference.png")
+        if os.path.exists(ref_path):
+            ref = Image.open(ref_path).convert("RGB")
+            W, H = 2800, 1750
+            right_scene = placed(right, *pose["right"])
+            pic = draw(right_scene, View(W, H, fov), background=(0.08, 0.1, 0.18), ss=1)
+            h = pose["right"]
+            B, pos = h[1], h[0]
+            half_ = math.tan(fov / 2)
+
+            def at(c):
+                w = B @ (np.array(c) * np.array([-1, 1, 1])) + pos
+                return np.array([(0.5 + w[0] / w[2] / (half_ * W / H) / 2) * W, (0.5 - w[1] / w[2] / half_ / 2) * H])
+
+            head, tail = at([0, 0, 0]), at([0, 0, -0.24])
+            ours = math.degrees(math.atan2(-(head[1] - tail[1]), -(head[0] - tail[0])))
+            length = float(np.linalg.norm(head - tail))
+            k = 303.0 / length
+            mid = (head + tail) / 2
+            # the reference's torch middle is at (245, 542): put ours there
+            box = (mid[0] - 245 / k, mid[1] - 542 / k, mid[0] + (602 - 245) / k, mid[1] + (750 - 542) / k)
+            crop = pic.crop(tuple(int(round(v)) for v in box)).resize((602, 750), Image.LANCZOS)
+            both_ = Image.new("RGB", (1204 + 10, 750), (0, 0, 0))
+            both_.paste(ref.resize((602, 750)), (0, 0))
+            both_.paste(crop, (612, 0))
+            both_.save(os.path.join(args.out, "compare-reference.png"))
+            print("torch on screen: the reference's is 37.6 degrees above horizontal (head up and left); ours is %.1f" % ours)
     if want("torch"):
         rp = pose["right"][0]
         h = 0.5 + 0.0
