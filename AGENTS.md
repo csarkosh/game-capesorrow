@@ -1,6 +1,6 @@
 # game-portashton — working context
 
-Something Haunts Port Ashton (Port Ashton for short) is a game in which a detective investigates paranormal reports across the Pacific Northwest, in an open,
+Something’s Haunting Port Ashton (Port Ashton for short) is a game in which a detective investigates paranormal reports across the Pacific Northwest, in an open,
 procedurally generated coastal Washington. It is part PNW life and detective sim, part supernatural horror.
 
 It is built on [`@csarkosh/engine`](https://github.com/csarkosh/engine), as its sister game Day Hike is, and is served

@@ -357,7 +357,7 @@ function showSheet(root: HTMLElement, count: number, from: number): void {
     render(root);
   };
   sheet.append(
-    el("h1", { textContent: "Something Haunts Port Ashton - towns side by side" }),
+    el("h1", { textContent: "Something’s Haunting Port Ashton - towns side by side" }),
     el("div", { class: "sub", textContent: `${count} large ports from seeds ${from} to ${from + count - 1}. Click one to open it.` }),
     el("div", { class: "bar" }, prev, nextB),
   );

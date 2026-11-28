@@ -66,7 +66,7 @@ checks that production's `/portashton/title.html` is not the film's page.
 
 **4. Verify is not optional.** A client change can break production without any test failing: nothing in the suite loads
 a real bundle from a real host. `deploy:verify` prints a line a check and exits non-zero on any ✗: the page answers 200 as
-HTML with the title `Something Haunts Port Ashton`; every file it names under `/portashton/` answers 200 with a fitting content type (the
+HTML with the title `Something’s Haunting Port Ashton`; every file it names under `/portashton/` answers 200 with a fitting content type (the
 entry script is JavaScript, not the page again); a hashed file under `assets/` is immutable and the page itself `no-cache`;
 `/portashton/settings` answers the same page; the bundle names the build; and **Day Hike is untouched** (`/dayhike/`
 answers 200 as `Day Hike`, and the site's root still 301s to `https://csarko.sh/games`). `-- --sha <tag>` demands the

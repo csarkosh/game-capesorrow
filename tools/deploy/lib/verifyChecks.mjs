@@ -8,7 +8,7 @@ export const SITE_ROOT = 'https://games.csarko.sh/';
 export const GAMES_INDEX = 'https://csarko.sh/games';
 
 /** The title this game's page carries. */
-export const TITLE = 'Something Haunts Port Ashton';
+export const TITLE = 'Something’s Haunting Port Ashton';
 
 /** The title of the title film's page (`client/title.html`), a development page that production must never serve. */
 export const FILM_TITLE = 'Port Ashton title film';

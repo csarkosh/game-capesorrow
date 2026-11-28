@@ -38,6 +38,6 @@ describe("the title page's content", () => {
     expect(SOURCE).toContain("title.textContent = TITLE");
     expect(SOURCE).not.toMatch(/BLURB|dread/);
     expect(LANDING_STYLE).not.toContain("dread");
-    expect(TITLE).toBe("Something Haunts Port Ashton");
+    expect(TITLE).toBe("Something’s Haunting Port Ashton");
   });
 });

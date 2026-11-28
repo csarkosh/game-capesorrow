@@ -1,4 +1,4 @@
-<h1 align="center">Something Haunts Port Ashton</h1>
+<h1 align="center">Something’s Haunting Port Ashton</h1>
 
 <p align="center"><em>A grey stretch of coast; a folder of reports nobody believed; and the slow suspicion that some of them were true.</em></p>
 

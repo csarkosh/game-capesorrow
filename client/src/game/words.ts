@@ -4,7 +4,7 @@
  */
 
 /** The game's name, as the page's heading and the browser's tab carry it. */
-export const TITLE = "Something Haunts Port Ashton";
+export const TITLE = "Something’s Haunting Port Ashton";
 
 /** Above Play while the game is in development: a quiet line, on every build. */
 export const IN_DEVELOPMENT = "In development.";
