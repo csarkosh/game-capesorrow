@@ -13,7 +13,10 @@ export const TITLE_SEED = seedFromToken(TITLE_TOKEN);
 
 /** Film length, s. */
 export const TITLE_SECONDS = 32;
-/** Where the drift starts and ends: metres seaward of the quay's middle, and metres up. Within COMFORT (2 m/s) over the film's length. */
+/**
+ * Where the drift starts and ends: metres seaward of the quay's middle, and metres up. Within COMFORT (2 m/s) over the film's length, with
+ * little to spare (1.62 of the 2 m/s is used): a retune of any distance here, or of `TITLE_SECONDS`, must re-run `client/test/film/titlePath.test.ts`.
+ */
 export const START_SEAWARD = 300;
 export const START_UP = 40;
 export const END_SEAWARD = 262;

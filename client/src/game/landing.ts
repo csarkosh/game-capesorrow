@@ -99,13 +99,12 @@ export const LANDING_STYLE = `
   }
   .landing h1 {
     margin: 0 0 0.25rem; font-size: clamp(2.6rem, 9vw, 6rem); font-weight: 600;
-    line-height: 1.05; color: #ede4cc; overflow-wrap: anywhere;
+    line-height: 1.05; color: ${TITLE_CREAM}; overflow-wrap: anywhere;
     letter-spacing: 0.12em; text-transform: uppercase;
   }
   .landing p {
     margin: 0; max-width: 32rem; text-align: center;
-    /* Alpha lives in the colour rather than in the opacity property: the emphasised span below
-       has to reach full white, and a parent opacity would cap it. */
+    /* Alpha lives in the colour rather than in the opacity property, so a parent opacity does not cap what is inside it. */
     color: rgba(255, 255, 255, 0.62);
     /* Display copy: balance the rag rather than filling line one greedily. */
     text-wrap: balance;

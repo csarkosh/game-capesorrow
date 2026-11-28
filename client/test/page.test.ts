@@ -71,11 +71,11 @@ describe("the film behind the title page", () => {
   const fast = { effectiveType: "4g", saveData: false };
 
   /** A page side with a title page up on a stand-in container, the title assets and the title page's own drawing stubbed. */
-  async function landingWith(video: string | null, still: string | null, connection = fast) {
+  async function landingWith(video: string | null, still: string | null, connection = fast, reducedMotion = false) {
     vi.resetModules();
     const doc = installStandInDom();
     vi.stubGlobal("navigator", { connection });
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    vi.stubGlobal("matchMedia", () => ({ matches: reducedMotion }));
     vi.stubGlobal("location", { search: "" });
     FILM.url = video;
     FILM.still = still;
@@ -134,6 +134,20 @@ describe("the film behind the title page", () => {
       const video = container.children.find((c) => c.tagName === "VIDEO") as StandInVideo;
       expect(video.getAttribute("src")).toBeNull();
     }
+  });
+
+  it("never fetches the film with reduced motion", async () => {
+    const { container } = await landingWith("/title-Ab12.mp4", "/s.webp", fast, true);
+    const video = container.children.find((c) => c.tagName === "VIDEO") as StandInVideo | undefined;
+    expect(video?.getAttribute("src") ?? null).toBeNull();
+  });
+
+  it("stops the film for a visitor who is turned away", async () => {
+    const { side, container } = await landingWith("/title-Ab12.mp4", "/s.webp");
+    const video = container.children.find((c) => c.tagName === "VIDEO") as StandInVideo;
+    expect(video.getAttribute("src")).toBe("/title-Ab12.mp4");
+    side.turnedAway();
+    expect(video.getAttribute("src")).toBeNull();
   });
 
   it("stops the film at Play, and removes both when the page is left", async () => {
