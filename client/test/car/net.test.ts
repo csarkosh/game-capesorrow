@@ -20,7 +20,7 @@ import { ENTER_TICKS, INTERACT_BIT, FULL_SPEED, OWED_MAX, TOWN_SPEED, WHEELBASE 
 import { newInside } from "../../src/sim/inside/rooms.js";
 import { ENTERING, FOOT, LEAVING, SEATED, type Car, type Ride } from "../../src/sim/car/types.js";
 import { speedLimitAt } from "../../src/sim/car/limit.js";
-import { siteFor } from "../townWorld/world.js";
+import { planFor, siteFor } from "../townWorld/world.js";
 
 const SEED = 20261121;
 const cmd = (seq: number, more: Partial<InputCommand> = {}): InputCommand => ({ seq, moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0, ...more });
@@ -268,35 +268,76 @@ describe("a joined driver's replay", () => {
     expect(car.hx).toBeCloseTo(hostCar.hx, 12);
   }, timeLimit(60_000));
 
-  it("is exact across the fade: a car slowed from the full speed to the town's, replayed from a snapshot taken on the way", () => {
-    // Start on the highway 20 m before the limit begins to fall, heading south at the full speed, and drive straight on at full throttle.
-    let z = anchor.z + 5000;
-    while (speedLimitAt(SEED, roadCenterX(SEED, z - 1), z - 1) === FULL_SPEED) z -= 1;
-    const start = z + 20;
-    const { host, predicted } = pair(start, -1, FULL_SPEED);
-    let mid: WalkSnapshot | null = null;
-    const slowest = { v: FULL_SPEED };
-    // The highway bends, so the driver steers toward the road's centre 20 m ahead; the commands are made from the host's own run.
-    const run: InputCommand[] = [];
-    for (let i = 0; i < 900; i++) {
-      const car = host.state.cars[0] as Car;
-      const dx = roadCenterX(SEED, car.z - 20) - car.x;
-      const side = (dx * car.hz + 20 * car.hx) / Math.sqrt(dx * dx + 400);
-      const c = cmd(i + 1, { moveZ: 1, moveX: Math.max(-1, Math.min(1, side * 3)) });
-      run.push(c);
-      tickPlayers(host, new Map([[1, c]]), WALK_RULES);
-      slowest.v = Math.min(slowest.v, car.speed);
-      if (i === 399) mid = WALK.snapshot(host, 400);
+  it("is exact across the fade beside the highway: a car that leaves the highway's bed along a street at the full speed is slowed to the town's, replayed from a snapshot taken on the way", () => {
+    // A street that meets the highway: from the point of its line on the highway's bed, where the limit is the full speed, straight along it into
+    // the town, where the limit is the town's. The first such street the car runs clear on for two and a half seconds.
+    type Line = { x: number; z: number; dx: number; dz: number };
+    const lines: Line[] = [];
+    for (const st of planFor(SEED).streets) {
+      for (const [p, q] of [[st.a, st.b], [st.b, st.a]] as const) {
+        const lx = q.x - p.x;
+        const lz = q.z - p.z;
+        const length = Math.sqrt(lx * lx + lz * lz);
+        if (length < 60) continue;
+        const dx = lx / length;
+        const dz = lz / length;
+        // Back from the street's end toward the highway, up to 25 m, to where the limit is the full speed.
+        for (let back = 0; back <= 25; back += 0.5) {
+          const x = anchor.x + p.x - dx * back;
+          const z = anchor.z + p.z - dz * back;
+          if (speedLimitAt(SEED, x, z) !== FULL_SPEED) continue;
+          if (speedLimitAt(SEED, x + dx * 35, z + dz * 35) === TOWN_SPEED && speedLimitAt(SEED, x + dx * 50, z + dz * 50) === TOWN_SPEED) lines.push({ x, z, dx, dz });
+          break;
+        }
+      }
     }
+    expect(lines.length).toBeGreaterThan(0);
+    const runOn = (line: Line): { host: WalkWorld; predicted: WalkWorld; mid: WalkSnapshot | null; run: InputCommand[]; slowest: number } => {
+      const { host, predicted } = pair(anchor.z + 5000, 1, FULL_SPEED);
+      const car = host.state.cars[0] as Car;
+      car.x = line.x;
+      car.z = line.z;
+      car.hx = line.dx;
+      car.hz = line.dz;
+      groundCar(host.ground, car);
+      let mid: WalkSnapshot | null = null;
+      let slowest = FULL_SPEED;
+      const run: InputCommand[] = [];
+      for (let i = 0; i < 150; i++) {
+        const c = cmd(i + 1, { moveZ: 1 });
+        run.push(c);
+        tickPlayers(host, new Map([[1, c]]), WALK_RULES);
+        slowest = Math.min(slowest, (host.state.cars[0] as Car).speed);
+        // The snapshot is taken on the way down: the first tick the car is well under the full speed.
+        if (mid === null && (host.state.cars[0] as Car).speed < FULL_SPEED - 1.5) mid = WALK.snapshot(host, i + 1);
+      }
+      return { host, predicted, mid: mid as WalkSnapshot | null, run, slowest };
+    };
+    let ran: ReturnType<typeof runOn> | null = null;
+    for (const line of lines) {
+      const r = runOn(line);
+      // Nothing stood in its way: it was never below the town's speed, and it did come down far enough for the snapshot.
+      if (r.slowest > TOWN_SPEED - 0.2 && r.mid !== null) {
+        ran = r;
+        break;
+      }
+    }
+    expect(ran).not.toBeNull();
+    const { host, predicted, run, slowest } = ran as NonNullable<typeof ran>;
+    const mid = (ran as NonNullable<typeof ran>).mid as WalkSnapshot;
+    // The snapshot is of a tick before the last, so the replay has ticks to run.
+    expect(mid.tick).toBeLessThan(host.state.tick - 30);
     const hostCar = host.state.cars[0] as Car;
-    const midSpeed = (mid as unknown as WalkSnapshot).cars[0]?.speed as number;
+    const midSpeed = mid.cars[0]?.speed as number;
     // The run did cross the fade: the car went at the full speed at the start, was between the two speeds at the snapshot, and ends at the town's.
     expect(midSpeed).toBeLessThan(FULL_SPEED - 0.5);
     expect(midSpeed).toBeGreaterThan(TOWN_SPEED + 0.5);
     expect(hostCar.speed).toBeLessThan(FULL_SPEED - 3);
-    expect(slowest.v).toBeGreaterThan(TOWN_SPEED - 0.2);
-    // A joined machine corrected from the host's own state at tick 400 and replaying the rest ends where the host does, bit for bit.
-    reconcile(predicted, mid as unknown as WalkSnapshot, run);
+    expect(slowest).toBeGreaterThan(TOWN_SPEED - 0.2);
+    // It ends well inside the town, where the limit is the town's to within a little of the cover's own fade.
+    expect(speedLimitAt(SEED, hostCar.x, hostCar.z)).toBeLessThan(TOWN_SPEED + 0.5);
+    // A joined machine corrected from the host's own state at that tick and replaying the rest ends where the host does, bit for bit.
+    reconcile(predicted, mid, run);
     const car = predicted.state.cars[0] as Car;
     expect(car.x).toBe(hostCar.x);
     expect(car.z).toBe(hostCar.z);
