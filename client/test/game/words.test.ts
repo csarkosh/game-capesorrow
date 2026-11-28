@@ -10,8 +10,10 @@ const INDEX = readFileSync(fileURLToPath(new URL("../../index.html", import.meta
 const code = (name: string): string => readFileSync(SRC + name, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the title page's words", () => {
-  it("are the game's name, and the lines that stand in Play's place", () => {
+  it("are the game's name, in two parts, and the lines that stand in Play's place", () => {
     expect(words.TITLE).toBe("Something’s Haunting Port Ashton");
+    expect([words.TITLE_LEAD, words.TITLE_NAME]).toEqual(["Something’s Haunting", "Port Ashton"]);
+    expect(`${words.TITLE_LEAD} ${words.TITLE_NAME}`).toBe(words.TITLE);
     expect(Object.keys(words).filter((name) => name.startsWith("BLURB_"))).toEqual([]);
     expect(words.IN_DEVELOPMENT).toBe("In development.");
     expect([words.PLAY, words.LOADING, words.WAITING_FOR_HOST]).toEqual(["Play", "Loading…", "Waiting for the host…"]);

@@ -3,8 +3,11 @@
  * here and nowhere else. (The engine's screens, Settings and Credits, say their own.)
  */
 
-/** The game's name, as the page's heading and the browser's tab carry it. */
-export const TITLE = "Something’s Haunting Port Ashton";
+/** The game's name in its two parts: the heading sets the lead small on its own line above the name. */
+export const TITLE_LEAD = "Something’s Haunting";
+export const TITLE_NAME = "Port Ashton";
+/** The game's name, as the browser's tab and the page's heading (read whole) carry it. */
+export const TITLE = `${TITLE_LEAD} ${TITLE_NAME}`;
 
 /** Above Play while the game is in development: a quiet line, on every build. */
 export const IN_DEVELOPMENT = "In development.";
