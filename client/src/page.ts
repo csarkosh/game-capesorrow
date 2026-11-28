@@ -8,11 +8,13 @@ import { isMode, createModeKeeper } from "@csarkosh/engine/game/modeList";
 import type { LandingShell, PageGame, PageHost, PageSide } from "@csarkosh/engine/game/pageGame";
 import type { Route } from "@csarkosh/engine/game/router";
 import { pageStorage, parseTierOverride } from "@csarkosh/engine/game/tierChoice";
+import { createTitleLoop, titleLoopEnv, type TitleLoop } from "@csarkosh/engine/game/titleLoop";
 import type { AmbientAudio } from "@csarkosh/engine/game/ambientAudio";
 import type { CarSoundApi } from "./game/car/carSound.js";
 import { EMPTY_GAME, WALK_MODES, type WalkClient, type WalkHost, type WalkRenderer } from "./game.js";
 import { creditsEntries } from "./game/credits.js";
 import { renderLanding, type LandingHandle, type LandingPanel } from "./game/landing.js";
+import { titleStillUrl, titleVideoUrl } from "./game/titleAssets.js";
 import { landingModel, type LandingInput } from "./game/landingModel.js";
 import { createStatusLine, type WalkHud } from "./hud.js";
 import { PORTASHTON_IDENTITY } from "./identity.js";
@@ -23,6 +25,8 @@ import { createWalkWorld, type WalkState, type WalkWorld, type Walker } from "./
 /** Port Ashton's own of the page: made once by the shell, called at the page's own points. */
 export function createPortAshtonPage(h: PageHost): PageSide {
   let landing: LandingHandle | null = null;
+  /** The film behind the title page, made with the page and stopped at Play. */
+  let titleLoop: TitleLoop | null = null;
   // The mode (`WALK_MODES`), kept the same way as the graphics choice.
   const modeChoice = createModeKeeper(WALK_MODES, pageStorage);
   const currentMode = (): string => modeChoice.mode();
@@ -61,6 +65,9 @@ export function createPortAshtonPage(h: PageHost): PageSide {
 
   return {
     showLanding(container: HTMLDivElement, route, shell: LandingShell) {
+      // The still goes in first so the page paints above it; the film behind it fetches nothing
+      // until the page has loaded, and never on save-data, a slow connection or reduced motion.
+      titleLoop = createTitleLoop(container, titleStillUrl(), titleVideoUrl(), titleLoopEnv());
       const handle = renderLanding(
         container,
         landingModel(landingInput()),
@@ -83,7 +90,13 @@ export function createPortAshtonPage(h: PageHost): PageSide {
         panelFor(route),
       );
       landing = handle;
-      return { dispose: () => handle.dispose() };
+      return {
+        dispose: () => {
+          titleLoop?.dispose();
+          titleLoop = null;
+          handle.dispose();
+        },
+      };
     },
     landingUp: () => landing !== null,
     // A panel's address, with the title page already up: the panel slides in or out, and the browser's Back closes it.
@@ -94,8 +107,8 @@ export function createPortAshtonPage(h: PageHost): PageSide {
     left() {
       landing = null;
     },
-    // Nothing plays before a session starts.
-    played: () => undefined,
+    // Play was pressed: the film gives its bandwidth up. Nothing else plays before a session starts.
+    played: () => titleLoop?.stop(),
     carriesToGame: () => false,
     keepOpening: () => undefined,
     openingFor: () => null,
@@ -103,6 +116,7 @@ export function createPortAshtonPage(h: PageHost): PageSide {
     // A visitor turned away is shown the engine's page; the landing page held goes first.
     turnedAway() {
       landing = null;
+      titleLoop?.stop();
     },
     mode: currentMode,
     saveMode(next) {

@@ -15,7 +15,7 @@ import { production } from './lib/preconditions.mjs';
 import { reach } from './lib/reach.mjs';
 import {
   checkedBase, contentTypeFits, DAYHIKE_PAGE, DAYHIKE_TITLE, entryScript, findBuildTags, GAMES_INDEX, isBuildTag, isImmutable,
-  isNoCache, locationOf, modulePreloads, pageTitle, parseVerifyArgs, referencedUrls, SITE_ROOT, TITLE, VERIFY_USAGE,
+  isNoCache, locationOf, mp4Named, modulePreloads, pageTitle, parseVerifyArgs, referencedUrls, SITE_ROOT, TITLE, VERIFY_USAGE,
 } from './lib/verifyChecks.mjs';
 
 const args = parseVerifyArgs(process.argv.slice(2));
@@ -51,6 +51,10 @@ async function verify() {
   check(isHtml(page), 'the page is HTML', `content-type: ${type(page)}`);
   check(pageTitle(html) === TITLE, `the page's title is ${TITLE}`, `title was ${JSON.stringify(pageTitle(html))}`);
   check(isNoCache(page.headers.get('cache-control')), 'the page is not cached', `cache-control: ${page.headers.get('cache-control')}`);
+
+  // The title film is the script's to fetch after the page has loaded; the html names none.
+  const films = mp4Named(html);
+  check(films.length === 0, 'the page names no .mp4', `the html names ${films.slice(0, 3).join(', ')}`);
 
   // 2. Every file the page names under its base answers 200 with a type that fits it; the entry
   // script is JavaScript, not the page again.

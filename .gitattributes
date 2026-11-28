@@ -11,6 +11,8 @@
 *.png  filter=lfs diff=lfs merge=lfs -text
 *.jpg  filter=lfs diff=lfs merge=lfs -text
 *.ico  filter=lfs diff=lfs merge=lfs -text
+# The title film and its still, by directory as well as by extension.
+client/assets/video/* filter=lfs diff=lfs merge=lfs -text
 
 *.json text eol=lf
 *.md   text eol=lf

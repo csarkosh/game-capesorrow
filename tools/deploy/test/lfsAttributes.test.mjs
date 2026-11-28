@@ -12,6 +12,10 @@ describe('.gitattributes', () => {
     for (const ext of ['glb', 'webp', 'ktx2', 'mp3', 'mp4', 'wasm', 'png', 'jpg', 'ico']) expect(ATTRIBUTES, ext).toMatch(lfs(ext));
   });
 
+  it('tracks the title film directory too', () => {
+    expect(ATTRIBUTES).toMatch(/^client\/assets\/video\/\*\s+filter=lfs diff=lfs merge=lfs -text$/m);
+  });
+
   it('keeps text on LF line endings', () => {
     for (const ext of ['json', 'md', 'ts', 'mjs']) expect(ATTRIBUTES, ext).toMatch(new RegExp(`^\\*\\.${ext}\\s+text eol=lf$`, 'm'));
   });

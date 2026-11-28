@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  checkedBase, contentTypeFits, entryScript, findBuildTags, isBuildTag, isImmutable, isNoCache, locationOf, modulePreloads, pageTitle,
+  checkedBase, contentTypeFits, entryScript, findBuildTags, isBuildTag, isImmutable, isNoCache, locationOf, modulePreloads, mp4Named, pageTitle,
   parseVerifyArgs, referencedUrls,
 } from '../lib/verifyChecks.mjs';
 
@@ -127,5 +127,13 @@ describe('the build tag', () => {
   it("is a commit's short sha, with -dirty where its tree was, and never the development fallback", () => {
     for (const tag of ['abc1234', '0123456789abcdef0123456789abcdef01234567', 'abc1234-dirty']) expect(isBuildTag(tag), tag).toBe(true);
     for (const tag of ['dev', '', 'abc12', 'ABC1234', 'abc1234-dirt', 'zzz1234']) expect(isBuildTag(tag), tag).toBe(false);
+  });
+});
+
+describe('the title film', () => {
+  it('is not named by the page: a .mp4 in the html fails, and a page without one passes', () => {
+    expect(mp4Named(HTML)).toEqual([]);
+    expect(mp4Named(`${HTML}<video src="/portashton/assets/title-Ab12.mp4"></video>`)).toEqual(['/portashton/assets/title-Ab12.mp4']);
+    expect(mp4Named('<link rel="preload" href="/portashton/assets/title-Ab12.MP4?x=1">')).toHaveLength(1);
   });
 });

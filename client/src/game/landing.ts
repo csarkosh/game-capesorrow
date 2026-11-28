@@ -8,8 +8,9 @@ export const LANDING_STYLE = `
     /* The positioning context for the panels below; they carry the layout and the scrolling,
        because each panel is the box that holds the content a short viewport has to scroll. */
     position: relative; height: 100%;
-    /* The dark ground with a vignette over it. There is no still or loop behind it (yet), so it
-       reads as the flat #101014 the page's background is, darkening towards the edges. */
+    /* A soft vignette over the still and the film behind it (and over the flat #101014 where there
+       is none), darkening towards the edges so the buttons keep their contrast over a bright frame. */
+    z-index: 1;
     background: radial-gradient(
       ellipse at center,
       rgba(16, 16, 20, 0.35) 0%,
@@ -31,6 +32,14 @@ export const LANDING_STYLE = `
     --btn-solid-lit: rgba(232, 248, 248, 0.68);
     --btn-solid-hit: rgba(242, 253, 253, 0.86);
   }
+  /* The film and its still cover the page behind the title, centred and cropped, never stretched.
+     The still fades out (class gone) once the film can play through. */
+  .landing-loop, .landing-bg {
+    position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0;
+    object-fit: cover; object-position: center; pointer-events: none;
+  }
+  .landing-bg { transition: opacity 0.6s ease; }
+  .landing-bg.gone { opacity: 0; }
   /* Three panels in the same box: home slides out to the left as a panel slides in from the
      right, and back reverses it. All are absolutely positioned so the swap never shifts layout. */
   /* Each panel scrolls itself. index.html hides the document's overflow, so a viewport too short

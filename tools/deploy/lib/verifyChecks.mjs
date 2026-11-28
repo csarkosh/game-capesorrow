@@ -89,6 +89,15 @@ export function referencedUrls(html, pageUrl, basePath) {
   return [...seen];
 }
 
+/**
+ * The `.mp4` addresses the page's html names, in order. The title film is fetched by the script
+ * after `load`, never by the html, so a page that names one (a `<video src>`, a preload) would fetch
+ * it before Play for everyone, save-data and reduced motion included.
+ */
+export function mp4Named(html) {
+  return [...html.matchAll(/[^\s"'<>=()]*\.mp4\b[^\s"'<>)]*/gi)].map((m) => m[0]);
+}
+
 /** The entry script: the first `<script type="module" src>`, as an address, or null. */
 export function entryScript(html, pageUrl) {
   for (const tag of html.matchAll(/<script\b[^>]*>/gi)) {
