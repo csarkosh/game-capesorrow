@@ -81,8 +81,9 @@ export const WALK_SIDE: SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, 
  * The game's half of a session: `WALK_SIDE`'s nothing at every point but one. Before each frame's sync it works out the hour of
  * day (`dayClock.ts`: the console's hour plus the world's ticks since it was set) and, when it has moved past the gate from the hour
  * last pushed, pushes it to the renderer (which recomputes the sky). A new world starts the clock again from the console's hour.
+ * With `held` the clock does not run: the hour stays what the renderer was last given (the title film's, a take drawn at one hour).
  */
-export function walkSide(host: WalkSessionHost): SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient> {
+export function walkSide(host: WalkSessionHost, held = false): SessionSide<WalkWorld, WalkState, Walker, WalkRenderer, WalkHost, WalkClient> {
   let clock = startClock(host.base.hour);
   // The local player in a room has the weather with no rain (`insideWeather.ts`).
   const rain = createIndoorWeather(host);
@@ -95,6 +96,7 @@ export function walkSide(host: WalkSessionHost): SessionSide<WalkWorld, WalkStat
     worldIn: restart,
     beforeSync: (_world, state, localId) => {
       rain.step(state.players.get(localId)?.inside);
+      if (held) return;
       const step = stepClock(clock, host.base.hour, state.tick, host.appliedHour);
       clock = step.clock;
       if (step.push === null) return;

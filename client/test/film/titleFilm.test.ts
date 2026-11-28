@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "../../src/terrain.js";
 import { COMFORT, checkPath } from "@csarkosh/engine/game/film/cameraPath";
 import { filmGroundAt } from "@csarkosh/engine/game/film/filmMode";
@@ -44,5 +44,40 @@ describe("the build's inputs", () => {
     expect(Object.keys(buildInputs("production"))).toEqual(["main"]);
     expect(Object.keys(buildInputs("film"))).toEqual(["main", "title"]);
     expect(buildInputs("film").title).toMatch(/title\.html$/);
+  });
+});
+
+describe("the film's hour", () => {
+  /** A host that records every hour pushed to the renderer, standing at `hour` with the world's ticks counted by the test. */
+  function hostAt(hour: number) {
+    const pushed: number[] = [];
+    const host = {
+      base: { hour },
+      appliedHour: hour,
+      appliedWeather: TITLE_LOOK.weather,
+      renderer: { setView: vi.fn((h: number) => void pushed.push(h)) },
+      ambient: { setHush: vi.fn(), car: vi.fn() },
+      hud: {},
+    };
+    return { host, pushed };
+  }
+  /** Steps `side.beforeSync` over `ticks` ticks of a world with one outdoor walker. */
+  function run(game: typeof TITLE_GAME, ticks: number): number[] {
+    const { host, pushed } = hostAt(TITLE_LOOK.hour);
+    const side = game.side(host as never);
+    const state = { tick: 0, players: new Map([[1, { inside: undefined }]]) };
+    for (let t = 0; t < ticks; t++) {
+      state.tick = t;
+      side.beforeSync(undefined as never, state as never, 1);
+    }
+    return pushed;
+  }
+
+  it("is never moved by a day clock in the film's side", () => {
+    expect(run(TITLE_GAME, 40 * 60).filter((h) => h !== TITLE_LOOK.hour)).toEqual([]);
+  });
+
+  it("is still moved by play's side (the clock is play's)", () => {
+    expect(run(EMPTY_GAME, 40 * 60).length).toBeGreaterThan(0);
   });
 });

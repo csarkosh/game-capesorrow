@@ -6,7 +6,8 @@
 import "../assets.js";
 import "../terrain.js";
 import { startFilm, type FilmDefinition } from "@csarkosh/engine/game/film/filmMode";
-import { EMPTY_GAME, walkRenderer } from "../game.js";
+import { EMPTY_GAME, walkRenderer, walkSide } from "../game.js";
+import { createCapeSide } from "../game/car/side.js";
 import { townPartsWith } from "../game/town/townParts.js";
 import { WORLD_WORKERS } from "../worldWorkers.js";
 import { TITLE_LOOK, TITLE_WINDOWS } from "./titleLook.js";
@@ -41,10 +42,11 @@ export const TITLE_FILM: FilmDefinition = {
   lookDigest: titleLookDigest(TITLE_LOOK, TITLE_WINDOWS),
 };
 
-/** The empty game with the film's look and its renderer's town drawing its windows in the film's colour. */
+/** The empty game with the film's look, its renderer's town drawing its windows in the film's colour, and a side that holds the hour (the day's clock would flash later hours into a sequential take). */
 export const TITLE_GAME: typeof EMPTY_GAME = {
   ...EMPTY_GAME,
   look: TITLE_LOOK,
+  side: (host) => createCapeSide(host, walkSide(host, true)),
   renderer: walkRenderer(townPartsWith({ windowLight: TITLE_WINDOWS })),
 };
 
