@@ -82,7 +82,7 @@ describe("the reaction", () => {
     expect(DAZZLED).toContain(said.text);
     run(DAZZLE_IN + 0.05, () => [p], () => torch(), s);
     expect(shieldOf(s.dazzle, 1)).toBe(1);
-    const n: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+    const n: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
     expect(nudgeOf(s.react, 1, p.yaw, n)).toBe(true);
     // Turned a good way off facing the player, and a little less than away.
     expect(Math.abs(n.yaw)).toBeGreaterThan(0.5);
@@ -108,7 +108,7 @@ describe("the reaction", () => {
     expect(shieldOf(s.dazzle, 1)).toBe(0);
     // They look at the player (turned toward them, which for a person who faces them is no turn at all) and then are as their schedule has them.
     run(DAZZLE_LOOK + 1, () => [p], () => torch({ lit: false }), s);
-    const n: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+    const n: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
     expect(nudgeOf(s.react, 1, p.yaw, n)).toBe(false);
     expect(s.dazzle.people.size).toBe(0);
   });
@@ -118,7 +118,7 @@ describe("the reaction", () => {
     let t = 0;
     const w = (): Seen => person(7, -2 + t * 1.4, 4, { walking: true, yaw: Math.PI / 2 + 2.6 });
     const state = { react: newReact(), dazzle: newDazzle() };
-    const n: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+    const n: Nudge = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
     let held = 0;
     for (let i = 0; i < 90; i++) {
       t += DT;

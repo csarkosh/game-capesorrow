@@ -9,7 +9,7 @@ the title page, hosting, and what is still scaffold and unfinished.
 
 ## The engine and what the game hands it
 
-The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.37). The engine
+The game installs the engine as a release's tarball (the address in `client/package.json`; it is on v0.2.38). The engine
 makes the world from a seed: the coast (the engine's `olympic` terrain, with its cove, its highway and its massif), the
 forest and the clutter on it, the weather and the sky. A game registers the coast with a place laid over it, and the
 world is then the engine's coast with that place's ground.
@@ -198,7 +198,7 @@ The town's geometry wears scanned CC0 PBR textures (each work credited in `CREDI
 
 ### People in the shops
 
-The open shops have people doing what people do there (`game/town/people.ts`, `peopleParts.ts`; five models, `client/assets/models/person.<name>.glb`, each with 21 clips and three primitives, listed by hand in `people.json`; the files hold the clips two and a half times too fast and a body plays them at two fifths of its rate (`CLIP_STORED`), so the table of bone matrices the clips are baked into holds twenty-four rows to a second of movement and is no larger than it was with twelve clips). They are the drawing's, not the simulation's: no part of the plan, drawn from a hash of the building's id, the unit's id and the person's index, so the same plan gives the same people on every machine, and `TOWN_GEN` does not move. Only a unit that is open has any, and they are in the front of the room, within `FRONT_ZONE` (about 2 m) of the glass, in front of the room's painted sheet (`roomBackdrop.ts`), which is the part of the room that is drawn and seen from the street. What each does follows the kind of room and what it holds there: staff stand behind the service point (the first checkout, counter or desk, on the long side with less clear floor to a wall, since the plan puts the counter so that the clerk sees the door) and work the till, a bartender wipes the bar, and a clerk and a customer at the counter talk about half the time; an office worker sits at a desk and types; customers of a dining room, a cafe or a counter service room sit at tables and booths and eat, and those of a bar sit on its stools, stand at a high table with a drink or lean on the pool table; in a shop they browse a shelf, rack, case or cooler, or wait at the till on the phone; in a laundromat they load a washer, fold at a table, wait on a bench or look at their phone; a workshop has someone at a bench. Where a room's service point is deeper than the front zone its staff work at something in it (stock a shelf, wipe a front table) or there is none. A standing person's spot is held to the floor (0.35 m in from the walls, 0.3 m from every furnishing, 0.4 m from a chair, outside the door's zone, 0.7 m from the next person) and never faces the glass unless the task is at something in the window; a person with no clear spot is not there. The hash also draws the model (a room repeats one only past five people), a standing person's facing up to 15 degrees off square, a height of 0.95 to 1.04, a clip rate of 0.85 to 1.1 and a start in the clip, so no two move in step. In the right hand a body holds a paper cup or a phone only when its clip does (`handHeld.ts`): `cup` the cup, `drink` the cup only in a cafe, a bakery, a diner, an espresso stand or a convenience store (a tavern's, a bar's or a restaurant's drink holds none), `phone`, `call` and `sit_phone` the phone, anywhere, and every other clip nothing. Each model carries the two as small primitives skinned to that hand (materials `prop.cup` and `prop.phone`, sharing one small picture); the engine would draw both on every body, so `peopleParts.ts` tells it not to draw them and draws each itself from a matrix array of its own, the size of the bodies' (the thing's instance k is body k, since a body's clip is read by its index): the body's own matrix where that body holds it, a matrix that draws nothing everywhere else.
+The open shops have people doing what people do there (`game/town/people.ts`, `peopleParts.ts`; five models, `client/assets/models/person.<name>.glb`, each with 23 clips and three primitives, listed by hand in `people.json`; the files hold the clips two and a half times too fast and a body plays them at two fifths of its rate (`CLIP_STORED`), so the table of bone matrices the clips are baked into holds twenty-four rows to a second of movement and is no larger than it was with twelve clips). They are the drawing's, not the simulation's: no part of the plan, drawn from a hash of the building's id, the unit's id and the person's index, so the same plan gives the same people on every machine, and `TOWN_GEN` does not move. Only a unit that is open has any, and they are in the front of the room, within `FRONT_ZONE` (about 2 m) of the glass, in front of the room's painted sheet (`roomBackdrop.ts`), which is the part of the room that is drawn and seen from the street. What each does follows the kind of room and what it holds there: staff stand behind the service point (the first checkout, counter or desk, on the long side with less clear floor to a wall, since the plan puts the counter so that the clerk sees the door) and work the till, a bartender wipes the bar, and a clerk and a customer at the counter talk about half the time; an office worker sits at a desk and types; customers of a dining room, a cafe or a counter service room sit at tables and booths and eat, and those of a bar sit on its stools, stand at a high table with a drink or lean on the pool table; in a shop they browse a shelf, rack, case or cooler, or wait at the till on the phone; in a laundromat they load a washer, fold at a table, wait on a bench or look at their phone; a workshop has someone at a bench. Where a room's service point is deeper than the front zone its staff work at something in it (stock a shelf, wipe a front table) or there is none. A standing person's spot is held to the floor (0.35 m in from the walls, 0.3 m from every furnishing, 0.4 m from a chair, outside the door's zone, 0.7 m from the next person) and never faces the glass unless the task is at something in the window; a person with no clear spot is not there. The hash also draws the model (a room repeats one only past five people), a standing person's facing up to 15 degrees off square, a height of 0.95 to 1.04, a clip rate of 0.85 to 1.1 and a start in the clip, so no two move in step. In the right hand a body holds a paper cup or a phone only when its clip does (`handHeld.ts`): `cup` the cup, `drink` the cup only in a cafe, a bakery, a diner, an espresso stand or a convenience store (a tavern's, a bar's or a restaurant's drink holds none), `phone`, `call` and `sit_phone` the phone, anywhere, and every other clip nothing. Each model carries the two as small primitives skinned to that hand (materials `prop.cup` and `prop.phone`, sharing one small picture); the engine would draw both on every body, so `peopleParts.ts` tells it not to draw them and draws each itself from a matrix array of its own, the size of the bodies' (the thing's instance k is body k, since a body's clip is read by its index): the body's own matrix where that body holds it, a matrix that draws nothing everywhere else.
 
 **Where people sit is where the room is drawn with a seat.** The places chairs, stools, benches and a couch stand in are worked out in one place, `seatsOf` in `roomFill.ts` (a table's chairs, a booth's benches, a row of stools, a desk's chair, a couch, a bench, a window bar's and a high table's stools: each with its centre, the height of its top, which way a sitter faces and its family), and the drawing and `people.ts` both call it, so a sitter is on a seat that stands. A sitter's body is on the floor under the middle of the seat, raised by the seat's height less the one the clip was made for (0.46 m for a chair's clips, 0.75 m for the stool's). Seated people are not drawn on the low tier, which draws no chairs.
 
@@ -251,9 +251,11 @@ local player, as what a car knocks down is. It keeps, for each person it has cau
 and back, a turn of the body, and what they say.
 
 - **A car.** A person in the way a moving car is going (inside the strip its body will sweep, wider when it slides, and
-  less than 0.8 s ahead of its nose, at 1.2 m/s or more) jumps out of it: sideways to the nearer side that is not in a
-  wall, 0.7 m clear of the strip, with a hop, in 0.36 s. They turn on the driver and say something mean (`MEAN`), stay
-  out of the road while a car is near, and walk back. One in a room, behind its wall, does not; nor one who is seated.
+  less than 0.8 s ahead of its nose, at 1.2 m/s or more) throws themselves out of it, sideways, to the nearer side that
+  has room: a dive, a roll and back to their feet (below). Where neither side has room for the whole dive (a wall, a
+  parked car) they hop aside instead, 0.7 m clear of the strip, in 0.36 s. On their feet they turn on the driver, where
+  the car has got to, and say something mean (`MEAN`), stay out of the road while a car is near, and walk back. One in a
+  room, behind its wall, does not; nor one who is seated.
 - **The player on foot.** A person the player walks into (within 0.62 m, closing at 0.5 m/s or more) is knocked back a
   step along the player's way, leaning away, turns to them and is annoyed (`BUMPED`). Walked into again they are pushed
   further, to 1.7 m in all and never into a wall, and then go back. This is the collision there is: the person gives
@@ -283,8 +285,19 @@ and back, a turn of the body, and what they say.
 What is said is not voiced: a line is a caption over the head of the one who says it (`game/town/speech.ts` places it
 on the frame's view, `hud.ts` shows it), no more than four at once, fading with distance to nothing at 26 m. The words
 are `game/peopleWords.ts`, tables to be read and changed, a line chosen by a hash of who says it and how many they have
-said. No clip is made for a jump or a stumble (the models carry none): the body is shifted, hopped, leaned and turned by
-its matrix as it plays the clip it was playing (`PeopleParts.setNudge`, `writeNudged`), and what it holds goes with it.
+said. No clip is made for a hop or a stumble: the body is shifted, hopped, leaned and turned by its matrix as it plays
+the clip it was playing (`PeopleParts.setNudge`, `writeNudged`), and what it holds goes with it.
+
+**The dive is a clip and a list of distances made together.** Each model's file holds `dive`, played once: a crouch, a
+dive onto the hands, a roll over the back, a crouch on both feet and a stand that ends as `idle` begins. The clip stays
+over the model's own origin; the manifest (`people.json`, read by `game/town/dive.ts`) says how long it is and how far
+along its way the body has gone at each thirtieth of a second of it, and `peopleReact.ts` moves the body by those
+distances from where in the world the dive began (one who walks goes on along their path only when it is over, and
+catches it up at a walk). So a planted foot or hand stays where it is put: the distances are the ones the clip's feet
+were made for, and changing either without the other makes them slide. The body is turned the way it dives while the
+clip crouches (0.16 s), `peopleParts.ts` starts the clip the frame the dive begins and writes the body's own clip back
+the frame it is over, and the dark under the body goes with it. A model without the clip slides as it stands, said
+once on the console.
 `globalThis.__capePeople` answers a measuring tool with who is drawn, what is being said and how far a person is moved,
 and can provoke a reaction by the frame's own rules.
 
@@ -468,7 +481,9 @@ The designed top speeds (`TOP_SPEED` in `tuning.ts`) and grips (`GRIP`) are by s
 
 The speed is also held to a limit by place (`speedLimitAt`, `sim/car/limit.ts`): `TOWN_SPEED`, 10 m/s, where the town's
 cover holds the ground, rising smoothly to `FULL_SPEED`, 15 m/s, over the cover's fade past the town's last blocks
-(`COVER_FADE`, 160 m), and 15 m/s beyond. It follows the blocks and the quay and not the single outlying lots, so a lone
+(`COVER_FADE`, 160 m), and 15 m/s beyond. On the highway's bed (within `ROAD_BED_HALF`, 5.5 m, of its centre) it is
+15 m/s all the way through the town, easing down to the place's own over `HIGHWAY_SPEED_FADE`, 12 m, beside it, so a car
+that turns off into a street is slowed over a few metres. It follows the blocks and the quay and not the single outlying lots, so a lone
 building by the highway does not slow the car, and it is a pure function of the seed and the place, so the host's step
 and a joined machine's prediction agree. The streamed world does not keep up with an eye that travels faster than
 that; the table keeps the designed speeds for when the world is made ahead of travel, and raising `FULL_SPEED` is the
@@ -598,7 +613,7 @@ to stand, they stay seated.
 
 ### The wire
 
-`net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 3. A snapshot is a header (the message type, the tick,
+`net.ts` is the game's `NetGame`, at wire version `WALK_PROTOCOL` 5. A snapshot is a header (the message type, the tick,
 the last input taken and the count of players, 10 bytes), the players (31 bytes each: the engine's id, place, velocity,
 look and grounded flag, then the ride: a car's id, a seat, a phase and its ticks, then the room: its id, a phase and its ticks, see "Walking into a building"), a count of cars and the cars (35
 bytes each, at these offsets: the id 0, the place 1 to 12, the heading as two 16-bit integers 13 to 16, the speed and the
@@ -762,7 +777,8 @@ While the town's part lives, `globalThis.__capeCar` (`carDebug.ts`) answers with
 
 ### The car's limits
 
-- The top speed is held to 10 m/s in the town and 15 m/s (`FULL_SPEED`) past it, by place (`speedLimitAt`), because the
+- The top speed is held to 10 m/s in the town's streets and 15 m/s (`FULL_SPEED`) on the highway and past the town, by
+  place (`speedLimitAt`), because the
   streamed world does not keep up with a faster eye; the designed speeds stay in the table for when it does.
 - The car that is simulated is rigid: on a curb it tilts and a wheel can hang in the air. The suspension is drawn
   only (the body leans and rides over wheels that stay where the rigid car has them), and the wheels do not travel in
@@ -840,7 +856,7 @@ in `GOING_IN` and `GOING_OUT`, never the click, so the screen is black before th
 ### On the wire
 
 Three bytes more for each player after the ride: the room's id, the phase and its ticks (`MOVER_BYTES` is 31, `WALK_PROTOCOL`
-3). A read refuses a phase outside the four and a room's id that is 0 unless the phase is `OUTSIDE`. The host's word
+5). A read refuses a phase outside the four and a room's id that is 0 unless the phase is `OUTSIDE`. The host's word
 corrects the local player's `inside` as it does the ride. `view` leaves out of the frame every other player who is not where
 the local player is (the room's id for `INSIDE` and `GOING_OUT`, else the street), since a player in a room is 60 m up and
 must not be drawn to someone in the street, nor the reverse. The console's `goin bar`, `goin cafe`, `goin lodging` and

@@ -61,6 +61,7 @@ import type { Inside } from "../../sim/inside/rooms.js";
 import { createPeopleParts, type PeopleParts, type PlacedPerson } from "./peopleParts.js";
 import { newDazzle, shieldOf, stepDazzle, type DazzleSet } from "./peopleDazzle.js";
 import { TORCH_ANGLE } from "../hand/handLight.js";
+import { DIVE } from "./dive.js";
 import { newReact, nudgeOf, pairUp, stepReact, venueOfReason, venueOfTrade, type ReactPlayer, type Seen } from "./peopleReact.js";
 import { captionsOf, showCaptions, type Caption } from "./speech.js";
 import { cameraAxes, restAxes } from "@csarkosh/engine/game/lite/cameraPose";
@@ -311,7 +312,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
     for (const m of textured) markMaterialUboDirty(m);
   };
   // How the people answer the player (`peopleReact.ts`): who is drawn, the local player, what each says, and the view the captions are placed on.
-  const react = newReact();
+  const react = newReact(DIVE);
   // Who has a torch in their face (`peopleDazzle.ts`).
   const dazzle: DazzleSet = newDazzle();
   const seen: Seen[] = [];
@@ -507,10 +508,10 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
       drawnGround = (x, z) => groundAt(ground, x, z);
       const fleet = low ? [] : fleetOf(ground, "full");
       if (!low) {
-        vehicles = createVehicleParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
+        vehicles = createVehicleParts({ engine, scene, tier: host.tier, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4) }, fleet);
       }
 
-      car = createCarParts({ engine, scene, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
+      car = createCarParts({ engine, scene, tier: host.tier, shared, air, wet, jobs: host.jobs, eye: host.pose, uploaded: (bytes) => host.uploads.count("geometry", bytes, 4), groundAt: (x, z) => groundAt(ground, x, z), ahead });
       damage = createDamageParts({ engine, scene, air, ahead });
       (globalThis as { __capeCar?: CarDebug }).__capeCar = carDebug({ state: () => (holding ? held : null), pose: (id) => car?.pose(id) ?? null, camera: () => (chasing ? chaseSeen : null), prompt: promptShown, sound: voiceShown, lamp: () => (lampWritten ? lampSeen : null), knocked: () => knocked.list.map((d) => ({ id: d.id, kind: d.kind, x: d.x, z: d.z, angle: fallenBy(d), age: d.age })), struck: () => ({ hits: struck.hits, marks: struck.marks.map((m) => ({ solid: m.solid, x: m.x, y: m.y, z: m.z, size: m.size, age: m.age })), shoves: struck.shoves.map((q) => ({ solid: q.solid, kind: struckSolids(worldSeed)[q.solid]?.kind ?? "", sx: q.sx, sz: q.sz, angle: rockOf(q), since: q.since })) }) });
       // What a measuring tool may read of the people: who is drawn (where their schedule has them), what is being said, and how far a person is moved off their schedule. Copies.
@@ -518,7 +519,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
         seen: () => seen.map((p) => ({ ...p })),
         said: () => react.said.map((q) => ({ ...q })),
         moved(key) {
-          const n = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 };
+          const n = { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 };
           return nudgeOf(react, key, 0, n) ? n : null;
         },
         provoke(key, what) {
@@ -531,7 +532,7 @@ export const townParts: RenderGame<RenderState<RenderPlayer>, RenderPlayer, NoPa
           // (One in a room is taken to be in the open for it: there is no other way to look at a jump up close.)
           if (what === "car") stepReact(react, seen.map((q) => (q.key === key ? { ...q, sheltered: false } : q)), [{ x: p.x + bx * 5 + bz * 0.3, z: p.z + bz * 5 - bx * 0.3, hx: -bx, hz: -bz, speed: 9, slip: 0 }], null, 0, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
           else stepReact(react, seen, NO_POSES, { x: p.x + bx * 0.45, y: p.y, z: p.z + bz * 0.45, vx: -bx * 1.4, vz: -bz * 1.4, onFoot: true }, 0, shownHour, whereNow === 0 ? standBlocked : nowhereBlocked);
-          return react.said.length > before || nudgeOf(react, key, 0, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0 });
+          return react.said.length > before || nudgeOf(react, key, 0, { dx: 0, dy: 0, dz: 0, yaw: 0, lx: 1, lz: 0, lean: 0, dive: -1 });
         },
       };
       const plan = ground.plan;

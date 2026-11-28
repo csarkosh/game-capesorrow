@@ -4,13 +4,14 @@ import { TICK_DT } from "@csarkosh/engine/sim/constants";
 import { boxesNear } from "@csarkosh/engine/sim/boxSource";
 import type { Aabb } from "@csarkosh/engine/sim/level";
 import { roadCenterX } from "@csarkosh/engine/sim/olympic";
+import { ROAD_BED_HALF } from "@csarkosh/engine/sim/road";
 import { waterLevelAt } from "@csarkosh/engine/sim/waters";
 import { speedLimitAt } from "../../src/sim/car/limit.js";
 import { surfaceAt } from "../../src/sim/car/surface.js";
 import { CAR_CIRCLES, CAR_RADIUS, carEnv, driveCar, wheelPoints, type CarWorld } from "../../src/sim/car/body.js";
 import { touches } from "../../src/sim/car/knock.js";
 import { KNOCK_LOSS, knockablesFor, type KnockKind, type Knockable } from "../../src/sim/town/knockables.js";
-import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, FULL_SPEED, GRIP, OVERSPEED_DRAG, TOWN_SPEED, TOP_SPEED, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
+import { AXLE_FRONT, AXLE_REAR, CLIMB_MAX, FULL_SPEED, GRIP, HIGHWAY_SPEED_FADE, OVERSPEED_DRAG, TOWN_SPEED, TOP_SPEED, TRACK, WADE, WHEELBASE } from "../../src/sim/car/tuning.js";
 import { GRAVEL, PAVED, type Car, type CarControls } from "../../src/sim/car/types.js";
 import { bearingU } from "../../src/sim/town/bearings.js";
 import { deckTopAt } from "../../src/sim/town/decks.js";
@@ -700,39 +701,83 @@ describe("the car on the ground, the rails and the water", () => {
     return Math.max(-1, Math.min(1, side * 3));
   }
 
-  it("a car entering the town at full speed is slowed, never stopped", () => {
+  it("a car entering the town on the highway keeps its full speed", () => {
     // The town's last block to the north, then the highway 400 m beyond it, driven at full throttle toward the town.
     let last = -Infinity;
     for (const b of plan.blocks) if (b.district !== "outskirts") for (const p of b.polygon) last = Math.max(last, p.z);
     const z0 = last + 400;
     const c = carAt(roadCenterX(seed, z0), z0, 0, -1, FULL_SPEED);
     expect(speedLimitAt(seed, c.x, c.z)).toBe(FULL_SPEED);
+    // Beside the highway, past the fade of its own limit, the town's limit is the place's own.
+    const beside = ROAD_BED_HALF + HIGHWAY_SPEED_FADE + 1;
     const speeds = [c.speed];
     let inside = -1;
     for (let i = 0; i < 3200 && (inside < 0 || i < inside + 120); i++) {
       driveCar(world, c, { throttle: 1, turn: followHighway(c), handbrake: false });
       speeds.push(c.speed);
-      if (inside < 0 && speedLimitAt(seed, c.x, c.z) === TOWN_SPEED) inside = i;
+      // It stays on the highway's bed, where the limit is the full speed whatever the town beside it.
+      const centre = roadCenterX(seed, c.z);
+      expect(Math.abs(c.x - centre)).toBeLessThan(ROAD_BED_HALF);
+      expect(speedLimitAt(seed, c.x, c.z)).toBe(FULL_SPEED);
+      if (inside < 0 && (speedLimitAt(seed, centre + beside, c.z) === TOWN_SPEED || speedLimitAt(seed, centre - beside, c.z) === TOWN_SPEED)) inside = i;
     }
-    // Taken a second apart it only falls while it is between the two speeds (on either plateau the hill moves it by a few hundredths either way).
-    for (let i = 60; i < speeds.length; i += 60) {
-      if ((speeds[i - 60] as number) > TOWN_SPEED + 0.2 && (speeds[i - 60] as number) < FULL_SPEED - 0.1) expect(speeds[i] as number).toBeLessThan(speeds[i - 60] as number);
-    }
-    // It did come into a block, and ran on in it.
+    // It did come beside a block of the town, and ran on past it.
     expect(inside).toBeGreaterThan(0);
     expect(speeds.length).toBeGreaterThan(inside + 120);
+    for (let i = 1; i < speeds.length; i++) {
+      // Never slowed and never faster: the hill under it moves it by a few hundredths of a m/s either way, and no more.
+      expect(speeds[i] as number).toBeLessThanOrEqual((speeds[i - 1] as number) + 0.01);
+      expect(Math.abs((speeds[i] as number) - FULL_SPEED)).toBeLessThanOrEqual(0.2);
+    }
+    expect(speeds[0]).toBe(FULL_SPEED);
+  }, timeLimit(300_000));
+
+  it("a car over the town's speed on a street, as one that has turned off the highway, is slowed, never stopped", () => {
+    // A clear, paved stretch of a street in the town, out of reach of the highway's own limit: 20 m in from its end, 40 m long.
+    let from: { x: number; z: number; dx: number; dz: number } | null = null;
+    for (const st of plan.streets) {
+      if (from !== null) break;
+      const lx = st.b.x - st.a.x;
+      const lz = st.b.z - st.a.z;
+      const length = Math.sqrt(lx * lx + lz * lz);
+      if (length < 80) continue;
+      const dx = lx / length;
+      const dz = lz / length;
+      const x = anchor.x + st.a.x + dx * 20;
+      const z = anchor.z + st.a.z + dz * 20;
+      let fits = lineClear(x, z, dx, dz, 40, 2.5, null);
+      for (let s = 0; fits && s <= 40; s += 1) {
+        fits = speedLimitAt(seed, x + dx * s, z + dz * s) === TOWN_SPEED && surfaceAt(seed, x + dx * s, z + dz * s) === PAVED;
+      }
+      if (fits) from = { x, z, dx, dz };
+    }
+    expect(from).not.toBeNull();
+    const start = from as NonNullable<typeof from>;
+    const c = carAt(start.x, start.z, start.dx, start.dz, FULL_SPEED);
+    const speeds = [c.speed];
+    for (let i = 0; i < 150; i++) {
+      driveCar(world, c, full);
+      speeds.push(c.speed);
+    }
+    // Taken half a second apart it only falls while it is between the two speeds.
+    for (let i = 30; i < speeds.length; i += 30) {
+      if ((speeds[i - 30] as number) > TOWN_SPEED + 0.2 && (speeds[i - 30] as number) < FULL_SPEED - 0.1) expect(speeds[i] as number).toBeLessThan(speeds[i - 30] as number);
+    }
     for (let i = 1; i < speeds.length; i++) {
       const was = speeds[i - 1] as number;
       const now = speeds[i] as number;
       // Never faster than a tick before, never slower than the drag over the top speed takes in a tick, and never below the town's speed.
-      // The hill under it lets it gain or lose a few hundredths of a m/s now and then: it never gains more than that.
+      // A street has a grade the highway's bed has not: it adds or takes a few thousandths of a m/s a tick, and no more.
       expect(now).toBeLessThanOrEqual(was + 0.01);
-      expect(was - now).toBeLessThanOrEqual(OVERSPEED_DRAG * TICK_DT + 1e-9);
+      expect(was - now).toBeLessThanOrEqual(OVERSPEED_DRAG * TICK_DT + 0.01);
       expect(now).toBeGreaterThanOrEqual(TOWN_SPEED - 0.2);
     }
-    // Held to the town's speed once inside a block.
+    // Held to the town's speed, and it went on along the street: it was slowed, not stopped.
     expect(Math.abs((speeds[speeds.length - 1] as number) - TOWN_SPEED)).toBeLessThanOrEqual(0.2);
     expect(speeds[0]).toBe(FULL_SPEED);
+    const gone = (c.x - start.x) * start.dx + (c.z - start.z) * start.dz;
+    expect(gone).toBeGreaterThan(25);
+    expect(gone).toBeLessThan(40);
   }, timeLimit(300_000));
 });
 
