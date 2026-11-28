@@ -27,4 +27,15 @@ describe("roadCentreX", () => {
     for (const [seed, z] of asks) expect(Object.is(roadCentreX(seed, z), roadCenterX(seed, z)), `seed ${seed} z ${z}`).toBe(true);
     expect(asks.length).toBeGreaterThan(300);
   });
+
+  it("tells +0 from -0 in z: the kept answer is used only for the very same number", () => {
+    const order: number[][] = [[0, -0], [-0, 0], [0, -0, 0], [-0, 0, -0]];
+    for (const seed of [20261121, 1, 7]) {
+      for (const zs of order) {
+        // Another z first, so that each order starts from a miss.
+        roadCentreX(seed, 5);
+        for (const z of zs) expect(Object.is(roadCentreX(seed, z), roadCenterX(seed, z)), `seed ${seed} z ${Object.is(z, -0) ? "-0" : "+0"}`).toBe(true);
+      }
+    }
+  });
 });

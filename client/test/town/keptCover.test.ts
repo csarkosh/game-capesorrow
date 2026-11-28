@@ -78,4 +78,28 @@ describe("the kept cover and fill leave the registers as the full bodies do", ()
     expect(said).toBeGreaterThan(1000);
     expect(withFill).toBeGreaterThan(100);
   });
+
+  it("tells +0 from -0 in xf, zr, x and z: a kept answer is used only for the very same point", () => {
+    const plans = [planFor(20261121), planFor(1)];
+    const zeros: [number, number][] = [[0, 0], [-0, 0], [0, -0], [-0, -0]];
+    const bad: string[] = [];
+    const sign = (v: number): string => (Object.is(v, -0) ? "-0" : "+0");
+    for (const plan of plans) {
+      for (const first of zeros) {
+        for (const second of zeros) {
+          for (const lots of [true, false]) {
+            for (const [x, z] of [first, second]) {
+              const want = cover(coverIntoFull, plan, x, z, lots);
+              if (!same(cover(coverInto, plan, x, z, lots), want)) bad.push(`cover lots ${lots} (${sign(x)}, ${sign(z)}) after (${sign(first[0])}, ${sign(first[1])})`);
+            }
+          }
+          for (const [x, z] of [first, second]) {
+            const want = fill(fillWindowIntoFull, plan.fill, x, z);
+            if (!same(fill(fillWindowInto, plan.fill, x, z), want)) bad.push(`fill (${sign(x)}, ${sign(z)}) after (${sign(first[0])}, ${sign(first[1])})`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
 });

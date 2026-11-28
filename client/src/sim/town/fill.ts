@@ -106,9 +106,9 @@ let keptV = 0;
 let keptDx = 0;
 let keptDz = 0;
 
-/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. Leaves its answer in `FILL`. One terrain evaluation asks the same point more than once, so the last answer is kept, and `FILL` is left as `fillWindowIntoFull` leaves it. */
+/** The fill's weight at a point of the site's frame (0 to 1, with its gradient), the areas combined by a smooth union. Leaves its answer in `FILL`. One terrain evaluation asks the same point more than once, so the last answer is kept (used only for the very same point: a +0 is not a -0), and `FILL` is left as `fillWindowIntoFull` leaves it. */
 export function fillWindowInto(areas: readonly FillArea[], x: number, z: number): void {
-  if (keptAreas === areas && keptX === x && keptZ === z) {
+  if (keptAreas === areas && keptX === x && (x !== 0 || 1 / x === 1 / keptX) && keptZ === z && (z !== 0 || 1 / z === 1 / keptZ)) {
     FILL.v = keptV;
     FILL.dx = keptDx;
     FILL.dz = keptDz;

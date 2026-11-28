@@ -11,9 +11,9 @@ let lastSeed = NaN;
 let lastZ = NaN;
 let lastX = 0;
 
-/** `roadCenterX(seed, z)`, with the answer at the last seed and z asked kept. */
+/** `roadCenterX(seed, z)`, with the answer at the last seed and z asked kept, used only for the very same numbers (a +0 is not a -0, and a NaN is never the same). */
 export function roadCentreX(seed: number, z: number): number {
-  if (seed !== lastSeed || z !== lastZ) {
+  if (!(seed === lastSeed && (seed !== 0 || 1 / seed === 1 / lastSeed)) || !(z === lastZ && (z !== 0 || 1 / z === 1 / lastZ))) {
     lastX = roadCenterX(seed, z);
     lastSeed = seed;
     lastZ = z;
